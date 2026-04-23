@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shop-guru"
+version = "0.0.0"
+description = "ShopGuru: automated dataset generation for shopping LLM agent evaluation."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "ShopGym" }]
+license = { text = "MIT" }
+dependencies = [
+  "pydantic>=2.8",
+]
+
+[project.scripts]
+shop-guru = "shop_guru.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shop_guru"]

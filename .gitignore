@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Node / TS
+node_modules/
+dist/
+*.tsbuildinfo
+.pnpm-store/
+
+# Env / editors
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+
+# Generated Outputs
+outputs/
+
+# uv
+uv.lock

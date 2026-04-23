@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shop-arena"
+version = "0.0.0"
+description = "ShopArena: Environment Factory that generates deterministic sandbox SandboxShops from live storefronts."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "ShopGym" }]
+license = { text = "MIT" }
+dependencies = [
+  "pydantic>=2.8",
+]
+
+[project.scripts]
+shop-gen = "shop_gen.cli:main"
+shop-explore = "shop_explore.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shop_gen", "src/shop_explore"]
