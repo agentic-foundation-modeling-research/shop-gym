@@ -1,5 +1,0 @@
-[exec-0002] selected_task_id=product_detail
-[exec-0002] flipped product_detail to [~]
-[exec-0002] wrote artifact/product_detail.md
-[exec-0002] self-check: gallery, price, add-to-cart present — ok
-[exec-0002] flipped product_detail to [x]

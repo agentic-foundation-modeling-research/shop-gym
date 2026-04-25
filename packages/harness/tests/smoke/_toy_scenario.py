@@ -1,10 +1,11 @@
 """Shared toy-scenario helpers for live-CLI smoke tests (impl plan T3.4).
 
 Smoke tests drive a real CLI runtime through the same scenario the
-hand-authored ``toy_homepage`` cassette encodes (impl plan T2.5): create
-a two-task plan, then execute each task in priority order. This module
-is private (leading underscore) so pytest does not collect it as a test
-module; the public smoke tests in this package import from it.
+per-runtime ``toy_homepage_<runtime>`` cassettes encode (impl plan
+T3.3): create a two-task plan, then execute each task in priority
+order. This module is private (leading underscore) so pytest does not
+collect it as a test module; the public smoke tests in this package
+and the recording script under ``scripts/`` import from it.
 """
 
 from __future__ import annotations

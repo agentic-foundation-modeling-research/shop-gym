@@ -112,6 +112,12 @@ class ClaudeCodeRuntime:
             "--output-format",
             "stream-json",
             "--verbose",
+            # Headless runs cannot answer interactive permission prompts;
+            # auto-accept edits so file writes inside the workspace land
+            # without blocking. The harness still gates everything by the
+            # subprocess-level timeout.
+            "--permission-mode",
+            "acceptEdits",
         ]
         started_at = _utcnow()
         exit_code = _spawn_and_capture(

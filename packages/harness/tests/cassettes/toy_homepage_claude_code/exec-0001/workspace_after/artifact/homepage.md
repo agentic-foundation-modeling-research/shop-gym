@@ -1,0 +1,1 @@
+homepage: hero, nav, footer

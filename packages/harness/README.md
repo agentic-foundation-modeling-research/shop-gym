@@ -73,13 +73,19 @@ identical.
 
 ## Recording replay cassettes
 
-`tests/cassettes/<scenario>/` holds the cassettes consumed by the e2e
-suite. To re-record one against a real CLI runtime:
+`tests/cassettes/toy_homepage_<runtime>/` holds one cassette per real
+runtime, captured against the toy scenario in
+`tests/smoke/_toy_scenario.py`. Re-record either with the bundled
+driver:
 
 ```bash
-HARNESS_RECORD=1 pytest packages/harness/tests/e2e/test_loop_replay.py
+uv run python -m scripts.record_toy_cassette --runtime claude_code
+uv run python -m scripts.record_toy_cassette --runtime pi
 ```
 
-Record mode delegates each iteration to `ReplayRuntime`'s `fallback`
-runtime and writes a fresh cassette directory matching the layout in
-spec §5.6. Re-record whenever prompts or `AGENTS.md` change.
+(executed from `packages/harness/`).
+
+The script delegates each iteration to `ReplayRuntime`'s `fallback`
+runtime under `HARNESS_RECORD=1` and writes a fresh cassette directory
+matching the layout in spec §5.6. Re-record whenever prompts,
+`AGENTS.md`, or a runtime's native log contract changes.
