@@ -22,6 +22,7 @@ __all__ = ["AgentRuntime", "RuntimeIterationResult", "get_runtime"]
 _REGISTRY: dict[str, str] = {
     "replay": "harness.runtimes.replay:ReplayRuntime",
     "claude_code": "harness.runtimes.claude_code:ClaudeCodeRuntime",
+    "pi": "harness.runtimes.pi:PiRuntime",
 }
 
 

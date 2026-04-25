@@ -1,0 +1,18 @@
+{"type":"session","version":3,"id":"019dc428-0b07-7078-8af8-425d913ffbd6","timestamp":"2026-04-25T10:20:51.848Z","cwd":"/tmp/run"}
+{"type":"agent_start"}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"assistant","content":[]}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"Re"},"message":{"role":"assistant","content":[{"type":"text","text":"Re"}]}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Need to inspect plan.md."},{"type":"text","text":"Reading plan.md to find the next task."}]}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"toolCall","id":"toolu_1","name":"bash","arguments":{"command":"cat plan.md"}}]}}
+{"type":"tool_execution_start","toolCallId":"toolu_1","toolName":"bash","args":{"command":"cat plan.md"}}
+{"type":"tool_execution_end","toolCallId":"toolu_1","toolName":"bash","result":{"content":[{"type":"text","text":"# Plan\n\n## Tasks\n- [ ] homepage\n"}]},"isError":false}
+{"type":"message_end","message":{"role":"toolResult","toolCallId":"toolu_1","toolName":"bash","content":[{"type":"text","text":"# Plan\n\n## Tasks\n- [ ] homepage\n"}],"isError":false}}
+{"type":"turn_end","message":{"role":"assistant","content":[]},"toolResults":[]}
+{"type":"turn_start"}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"toolCall","id":"toolu_2","name":"bash","arguments":{"command":"false"}}]}}
+{"type":"message_end","message":{"role":"toolResult","toolCallId":"toolu_2","toolName":"bash","content":[{"type":"text","text":"command failed"}],"isError":true}}
+this line is not json — should be skipped
+{"type":"queue_update","steering":[],"followUp":[]}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Done."}]}}
+{"type":"agent_end","messages":[]}
