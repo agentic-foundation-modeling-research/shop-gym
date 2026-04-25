@@ -13,6 +13,7 @@ license = { text = "MIT" }
 dependencies = [
   "pydantic>=2.8",
   "httpx>=0.27",
+  "harness",
 ]
 
 [project.scripts]
