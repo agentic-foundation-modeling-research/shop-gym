@@ -5,7 +5,7 @@ description = "ShopGym: sandbox shop websites for building and evaluating shoppi
 requires-python = ">=3.11"
 
 [tool.uv.workspace]
-members = ["packages/shop_guru", "packages/shop_arena"]
+members = ["packages/shop_guru", "packages/shop_arena", "packages/harness"]
 
 [dependency-groups]
 dev = [
