@@ -1,10 +1,17 @@
 """Command-line entrypoint for ``shop_explore``.
 
 Implements the §5.11 CLI surface of
-``docs/specs/shop_arena/shop_explore.md``. v0.1 wires the
-``--prefetch-only`` debug path that runs §5.9 and exits; the full
-pipeline (default invocation and ``--synthesize-only``) is wired in
-later milestones (M2/M3) once :mod:`shop_explore.pipeline` exists.
+``docs/specs/shop_arena/shop_explore.md``. v0.1 wires two debug paths:
+
+* ``--prefetch-only`` runs §5.9 against the supplied URL and exits.
+* ``--synthesize-only PATH`` re-runs §5.10 against an existing
+  ``run_dir`` (the M3 mirror of the legacy ``--merge-only`` flag).
+
+Default invocation (no flag) drives the full pipeline through
+:mod:`shop_explore.pipeline`. The synthesis step inside that pipeline
+uses a no-op LLM client today and falls back to deterministic
+concatenation of ``parts/*.md`` (§5.10 fallback path); a real LLM
+client is wired in a later milestone.
 
 The module is import-safe: it performs no I/O at import time.
 """
@@ -18,9 +25,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from shop_explore.config import DEFAULT_MAX_ITERS, DEFAULT_TIMEOUT_SECONDS
+from shop_explore.config import DEFAULT_MAX_ITERS, DEFAULT_TIMEOUT_SECONDS, ExploreConfig
+from shop_explore.pipeline import explore
 from shop_explore.prefetch import ShopUnreachableError
 from shop_explore.prefetch import run as run_prefetch
+from shop_explore.synthesize import (
+    SynthesisError,
+)
+from shop_explore.synthesize import (
+    synthesize as run_synthesize,
+)
 
 EXIT_OK = 0
 """Successful run."""
@@ -37,20 +51,19 @@ def main(argv: list[str] | None = None) -> int:
 
     Returns:
         Process exit code. ``0`` on success; ``2`` if the storefront is
-        unreachable (bot-block, robots.txt deny, network error) or if
-        the requested mode is not yet wired.
+        unreachable (bot-block, robots.txt deny, network error), if the
+        ``--synthesize-only`` ``run_dir`` is missing or its layout is
+        invalid, or on argparse usage errors.
     """
     args = _build_parser().parse_args(argv)
 
     if args.prefetch_only:
         return _run_prefetch_only(args)
 
-    print(
-        "shop-explore: the full pipeline is not yet wired in this build; "
-        "pass --prefetch-only to seed prefetch artifacts.",
-        file=sys.stderr,
-    )
-    return EXIT_USAGE
+    if args.synthesize_only is not None:
+        return _run_synthesize_only(args)
+
+    return _run_explore(args)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -98,6 +111,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run the §5.9 prefetch step and exit; useful for debugging.",
     )
+    parser.add_argument(
+        "--synthesize-only",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Re-run §5.10 synthesis against an existing run_dir; mirrors "
+            "the legacy --merge-only flag. Skips prefetch and the harness loop."
+        ),
+    )
     return parser
 
 
@@ -115,6 +138,76 @@ def _run_prefetch_only(args: argparse.Namespace) -> int:
         f"shop-explore: wrote {len(result.entries)} prefetch entries to {dest_dir}",
     )
     return EXIT_OK
+
+
+def _run_synthesize_only(args: argparse.Namespace) -> int:
+    """Execute the ``--synthesize-only PATH`` path: §5.10 against ``PATH``."""
+    run_dir: Path = args.synthesize_only
+    if not run_dir.is_dir():
+        print(
+            f"shop-explore: --synthesize-only PATH must be an existing directory: {run_dir}",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    manual_prompt = _load_manual_prompt()
+    try:
+        result = run_synthesize(run_dir, llm=_NoOpLLMClient(), manual_prompt=manual_prompt)
+    except SynthesisError as exc:
+        print(f"shop-explore: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    print(
+        f"shop-explore: synthesized {result.manual_path} "
+        f"(manual_fallback={str(result.manual_fallback).lower()})",
+    )
+    return EXIT_OK
+
+
+def _run_explore(args: argparse.Namespace) -> int:
+    """Execute the default invocation: full pipeline via :func:`shop_explore.pipeline.explore`."""
+    config = ExploreConfig(
+        url=args.url,
+        out_dir=args.out,
+        runtime=args.runtime,
+        max_iters=args.max_iters,
+        timeout=args.timeout,
+    )
+    try:
+        result = explore(config)
+    except ShopUnreachableError as exc:
+        print(f"shop-explore: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    except SynthesisError as exc:
+        print(f"shop-explore: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    print(
+        f"shop-explore: wrote manual to {result.manual_path} "
+        f"(harness final_status={result.final_status.value})",
+    )
+    return EXIT_OK
+
+
+def _load_manual_prompt() -> str:
+    """Read the bundled ``synthesize_manual.md`` prompt resource."""
+    prompts_dir = Path(__file__).resolve().parent / "prompts"
+    return (prompts_dir / "synthesize_manual.md").read_text(encoding="utf-8")
+
+
+class _NoOpLLMClient:
+    """LLM client that always returns ``""`` (forces §5.10 fallback).
+
+    The CLI v0.1 does not wire a real LLM yet; ``--synthesize-only``
+    therefore always emits a fallback ``manual.md`` rendered as the
+    deterministic concatenation of ``parts/*.md``. A future milestone
+    will plug in an :class:`~shop_explore.synthesize.LLMClient`
+    selectable via ``--runtime``.
+    """
+
+    def complete(self, prompt: str) -> str:
+        """Return ``""`` to force the synthesis fallback path."""
+        return ""
 
 
 def _default_run_dir(url: str) -> Path:

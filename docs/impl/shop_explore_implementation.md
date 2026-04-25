@@ -64,8 +64,8 @@ without API keys via the harness `replay` runtime.
 ### M3 · Synthesis
 
 - [x] **T3.1** — `src/shop_explore/synthesize.py`: deterministic capabilities merge (calls `capabilities.merge_fragments`), deterministic stats compute, single-call LLM manual merge with retry-on-empty fallback to `parts/*.md` concatenation. Writes `manual.md`, `capabilities.json`, `stats.json`, `manifest.json`. **Check:** unit test of the deterministic path with the LLM mocked; second test forces empty LLM response and asserts `manifest.manual_fallback==true`.
-- [ ] **T3.2** — `src/shop_explore/prompts/synthesize_manual.md`: merge prompt. Re-applies anonymization rules. Output is the final `manual.md` body. **Check:** lint-only.
-- [ ] **T3.3** — Wire `synthesize` into `pipeline.explore` after the harness loop. Add `--synthesize-only PATH` to CLI. **Check:** `shop-explore --synthesize-only <run_dir>` against the M2 cassette emits a valid `manual.md` + `capabilities.json` + `stats.json` + `manifest.json`.
+- [x] **T3.2** — `src/shop_explore/prompts/synthesize_manual.md`: merge prompt. Re-applies anonymization rules. Output is the final `manual.md` body. **Check:** lint-only.
+- [x] **T3.3** — Wire `synthesize` into `pipeline.explore` after the harness loop. Add `--synthesize-only PATH` to CLI. **Check:** `shop-explore --synthesize-only <run_dir>` against the M2 cassette emits a valid `manual.md` + `capabilities.json` + `stats.json` + `manifest.json`.
 - [ ] **T3.4** — `tests/shop_explore/test_anonymization.py`: regex scan over the synthesized `manual.md` and `capabilities.json` from the M2 fixture. Asserts no occurrence of source domain, store name, or first 20 product titles from `prefetch/products.json`. **Check:** SC3 satisfied on the fixture.
 
 **M3 acceptance:** SC1 + SC2 + SC3 + SC4 satisfied on the replay fixture.

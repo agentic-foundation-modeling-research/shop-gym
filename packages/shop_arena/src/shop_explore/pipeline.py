@@ -1,17 +1,22 @@
 """Pipeline orchestrator for ``shop_explore`` runs.
 
-Implements §5.2 of the ShopExplore spec
+Implements §5.2 + §5.10 of the ShopExplore spec
 (``docs/specs/shop_arena/shop_explore.md``): the public :func:`explore`
 function takes a validated :class:`~shop_explore.config.ExploreConfig`,
 runs the deterministic prefetch step into a temporary seed directory,
 loads the bundled prompt resources (``agents.md``, ``planner.md``,
-``execute.md``), then drives the harness ``run_plan_exec_loop`` against
-the requested runtime.
+``execute.md``, ``synthesize_manual.md``), drives the harness
+``run_plan_exec_loop`` against the requested runtime, and finally calls
+:func:`shop_explore.synthesize.synthesize` to publish the four
+``manual.md`` / ``capabilities.json`` / ``stats.json`` /
+``manifest.json`` artifacts under ``run_dir/artifact/`` (spec §5.10).
 
-Synthesis (§5.10) is intentionally out of scope here; it lands in M3.
-This module's contract is: prefetch → harness loop → return the
-``ExploreResult`` paths under ``run_dir/artifact/`` and the harness
-``final_status``.
+The synthesis step requires an LLM client. Callers that do not pass
+one (the CLI today, replay tests) get a deterministic no-op client
+that returns an empty completion; :func:`shop_explore.synthesize.synthesize`
+then falls back to concatenating ``parts/*.md`` and flags
+``manifest.manual_fallback=true``. Production callers wire a real
+:class:`~shop_explore.synthesize.LLMClient` through the ``llm`` keyword.
 
 The module is import-safe — no I/O at import time. Prompt resources are
 read from disk only when :func:`explore` is invoked.
@@ -30,6 +35,7 @@ from harness import PlanExecLoopConfig, Prompts, get_runtime, run_plan_exec_loop
 from shop_explore import __version__
 from shop_explore.config import ExploreConfig, ExploreResult
 from shop_explore.prefetch import run as run_prefetch
+from shop_explore.synthesize import LLMClient, synthesize
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 """Directory holding the bundled ``agents.md`` / ``planner.md`` / ``execute.md`` resources."""
@@ -41,7 +47,7 @@ _RUN_ID_HASH_LEN = 8
 """Length of the SHA-256 prefix appended to the timestamp in a ``run_id`` (spec §5.4)."""
 
 
-def explore(config: ExploreConfig) -> ExploreResult:
+def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreResult:
     """Run the full ShopExplore pipeline for one storefront URL.
 
     Sequence (spec §5.2):
@@ -57,9 +63,16 @@ def explore(config: ExploreConfig) -> ExploreResult:
        eventual published artifacts under ``run_dir/artifact/``. These
        paths are forward declarations: synthesis (M3) is what actually
        creates the files at those locations.
+    6. Run :func:`shop_explore.synthesize.synthesize` to publish
+       ``manual.md`` / ``capabilities.json`` / ``stats.json`` /
+       ``manifest.json`` under ``run_dir/artifact/`` (spec §5.10).
 
     Args:
         config: Validated run configuration.
+        llm: Optional LLM client used for the single manual-merge call
+            (spec §5.10 step 3). When ``None``, a no-op client is used
+            and synthesis falls back to deterministic concatenation of
+            ``parts/*.md`` (``manifest.manual_fallback=true``).
 
     Returns:
         An :class:`ExploreResult` with the harness ``final_status`` and
@@ -69,12 +82,17 @@ def explore(config: ExploreConfig) -> ExploreResult:
     Raises:
         ShopUnreachableError: If the prefetch step aborts (bot-block,
             robots.txt deny, network error on ``/`` or ``robots.txt``).
+        SynthesisError: If the harness loop returned without populating
+            ``run_dir/artifact/parts/`` or ``run_dir/artifact/prefetch/``,
+            or if the merged capabilities fragments fail schema
+            validation.
     """
     run_dir = config.out_dir if config.out_dir is not None else _default_run_dir(config)
 
     agents_md = (_PROMPTS_DIR / "agents.md").read_text(encoding="utf-8")
     planner_prompt = (_PROMPTS_DIR / "planner.md").read_text(encoding="utf-8")
     execute_prompt = (_PROMPTS_DIR / "execute.md").read_text(encoding="utf-8")
+    manual_prompt = (_PROMPTS_DIR / "synthesize_manual.md").read_text(encoding="utf-8")
 
     seed_root = Path(tempfile.mkdtemp(prefix="shop-explore-seed-"))
     try:
@@ -95,6 +113,12 @@ def explore(config: ExploreConfig) -> ExploreResult:
     finally:
         shutil.rmtree(seed_root, ignore_errors=True)
 
+    synthesize(
+        run_dir,
+        llm=llm if llm is not None else _NoOpLLMClient(),
+        manual_prompt=manual_prompt,
+    )
+
     artifact_dir = run_dir / "artifact"
     return ExploreResult(
         run_dir=run_dir,
@@ -105,6 +129,23 @@ def explore(config: ExploreConfig) -> ExploreResult:
         prefetch_dir=artifact_dir / "prefetch",
         final_status=loop_result.final_status,
     )
+
+
+class _NoOpLLMClient:
+    """LLM client that always returns the empty string.
+
+    Used by :func:`explore` when the caller does not supply an LLM
+    client. Triggers the spec §5.10 fallback path inside
+    :func:`shop_explore.synthesize.synthesize`: the manual is rendered
+    as the deterministic concatenation of ``parts/*.md`` and
+    ``manifest.manual_fallback`` is set to ``True``. This keeps the
+    pipeline runnable without any LLM credentials (e.g. in CI replay
+    tests) until a real client is wired in a later milestone.
+    """
+
+    def complete(self, prompt: str) -> str:
+        """Return ``""`` to force the synthesis fallback path."""
+        return ""
 
 
 def _default_run_dir(config: ExploreConfig) -> Path:

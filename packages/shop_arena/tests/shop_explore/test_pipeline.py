@@ -91,8 +91,9 @@ def test_explore_passes_seeded_config_to_harness(
         captured["seed_files"] = sorted(
             p.relative_to(seed).as_posix() for p in seed.rglob("*") if p.is_file()
         )
-        # Materialise run_dir so downstream callers do not race on its existence.
+        # Materialise run_dir + the artifact tree the synthesis pass expects.
         loop_config.run_dir.mkdir(parents=True, exist_ok=True)
+        _seed_artifact_for_synthesis(loop_config.run_dir)
         return PlanExecLoopResult(
             run_dir=loop_config.run_dir,
             final_status=FinalStatus.COMPLETED,
@@ -164,6 +165,7 @@ def test_explore_uses_default_run_dir_when_out_dir_missing(
     ) -> PlanExecLoopResult:
         captured["run_dir"] = loop_config.run_dir
         loop_config.run_dir.mkdir(parents=True, exist_ok=True)
+        _seed_artifact_for_synthesis(loop_config.run_dir)
         return PlanExecLoopResult(
             run_dir=loop_config.run_dir,
             final_status=FinalStatus.COMPLETED,
@@ -196,3 +198,26 @@ def test_explore_uses_default_run_dir_when_out_dir_missing(
     assert len(timestamp) == RUN_ID_TIMESTAMP_LEN and timestamp.endswith("Z")
     assert len(short_hash) == _RUN_ID_HASH_LEN
     int(short_hash, 16)  # short_hash must be valid hex; raises otherwise.
+
+
+def _seed_artifact_for_synthesis(run_dir: Path) -> None:
+    """Seed a minimal ``artifact/`` tree so post-loop synthesis succeeds.
+
+    The real harness populates ``artifact/parts/`` from executor
+    iterations and ``artifact/prefetch/`` from the seed dir; the stubs
+    in this file short-circuit the loop, so we mirror just enough of
+    that layout for :func:`shop_explore.synthesize.synthesize` to run
+    without raising ``SynthesisError``. The body of the seeded part is
+    intentionally trivial — these tests assert wiring shape, not
+    synthesis fidelity (covered by ``test_synthesize.py``).
+    """
+    artifact_dir = run_dir / "artifact"
+    parts_dir = artifact_dir / "parts"
+    prefetch_dir = artifact_dir / "prefetch"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    prefetch_dir.mkdir(parents=True, exist_ok=True)
+    (parts_dir / "placeholder.md").write_text("# placeholder\n\nstub.\n", encoding="utf-8")
+    (parts_dir / "placeholder.caps.json").write_text("{}", encoding="utf-8")
+    (prefetch_dir / "products.json").write_text('{"products": []}', encoding="utf-8")
+    (prefetch_dir / "collections.json").write_text('{"collections": []}', encoding="utf-8")
+    (prefetch_dir / "cart.js").write_text('{"items": []}', encoding="utf-8")
