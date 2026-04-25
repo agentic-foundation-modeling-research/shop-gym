@@ -66,7 +66,7 @@ behind `HARNESS_SMOKE_*` env vars verify real-CLI parity.
 - [x] **T3.1** — `src/harness/runtimes/claude_code.py`: `ClaudeCodeRuntime`. Symlinks `run_dir/CLAUDE.md → AGENTS.md`. Spawns `claude --print --output-format=stream-json`, streams stdout to `iter_dir/native.log`, converts JSON-stream events to `TrajectoryStep`s. Honors timeout via `subprocess.run(timeout=...)` + process-group kill on expiry. **Check:** unit test of the converter against a recorded `native.log` fixture.
 - [x] **T3.2** — `src/harness/runtimes/pi.py`: `PiRuntime`. Same shape as T3.1 minus the CLAUDE.md symlink; ships its own native-log → `Trajectory` converter. **Check:** converter unit test against a recorded fixture.
 - [ ] **T3.3** — Re-record toy cassettes by running each real runtime with `HARNESS_RECORD=1` against the M2 scenario. Commit refreshed cassettes. **Check:** `test_loop_replay.py` still green; diff vs. M2 hand-authored cassette is review-readable.
-- [ ] **T3.4** — `tests/smoke/test_claude_code.py` + `tests/smoke/test_pi.py`, marked `@pytest.mark.smoke`, skipped unless `HARNESS_SMOKE_CLAUDE=1` / `HARNESS_SMOKE_PI=1`. Run the toy scenario live; assert `tasks_final` matches cassette and step-kind counts match within tolerance. **Check:** smoke run passes locally for at least one runtime; CI skips by default.
+- [x] **T3.4** — `tests/smoke/test_claude_code.py` + `tests/smoke/test_pi.py`, marked `@pytest.mark.smoke`, skipped unless `HARNESS_SMOKE_CLAUDE=1` / `HARNESS_SMOKE_PI=1`. Run the toy scenario live; assert `tasks_final` matches cassette and step-kind counts match within tolerance. **Check:** smoke run passes locally for at least one runtime; CI skips by default.
 
 **M3 acceptance:** SC2 fully satisfied — same toy scenario passes under both real runtimes.
 

@@ -59,3 +59,6 @@ reportMissingTypeStubs = false
 [tool.pytest.ini_options]
 testpaths = ["packages/shop_guru/tests", "packages/shop_arena/tests", "packages/harness/tests"]
 addopts = "-ra --strict-markers"
+markers = [
+  "smoke: live-CLI smoke tests; gated by HARNESS_SMOKE_* env vars",
+]
