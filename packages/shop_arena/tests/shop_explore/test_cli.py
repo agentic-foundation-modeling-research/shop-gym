@@ -140,14 +140,61 @@ def test_prefetch_only_returns_nonzero_on_bot_block(
     assert "robots_disallow" in err
 
 
-def test_default_invocation_is_not_yet_wired(
+def test_synthesize_only_publishes_manual_against_existing_run_dir(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    rc = main(["--out", str(tmp_path), BASE_URL])
+    """``--synthesize-only PATH`` runs §5.10 against an existing run_dir."""
+    run_dir = _seed_minimal_run_dir(tmp_path)
+
+    rc = main(["--synthesize-only", str(run_dir), BASE_URL])
+
+    assert rc == EXIT_OK
+    artifact = run_dir / "artifact"
+    assert (artifact / "manual.md").is_file()
+    assert (artifact / "capabilities.json").is_file()
+    assert (artifact / "stats.json").is_file()
+    assert (artifact / "manifest.json").is_file()
+
+    # Without a real LLM client wired the CLI uses the no-op fallback,
+    # so the manual is the deterministic concatenation of parts/*.md.
+    manifest = json.loads((artifact / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["manual_fallback"] is True
+    manual_text = (artifact / "manual.md").read_text(encoding="utf-8")
+    assert "placeholder body" in manual_text
+
+    out = capsys.readouterr().out
+    assert "manual_fallback=true" in out
+
+
+def test_synthesize_only_rejects_missing_run_dir(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--synthesize-only`` exits non-zero when ``PATH`` does not exist."""
+    missing = tmp_path / "does-not-exist"
+
+    rc = main(["--synthesize-only", str(missing), BASE_URL])
 
     assert rc == EXIT_USAGE
     err = capsys.readouterr().err
-    assert "--prefetch-only" in err
+    assert "--synthesize-only" in err
+
+
+def _seed_minimal_run_dir(tmp_path: Path) -> Path:
+    """Lay down a minimal harness-shaped run_dir for synthesis to consume."""
+    run_dir = tmp_path / "example-shop.com" / "20251024T120000Z-deadbeef"
+    parts_dir = run_dir / "artifact" / "parts"
+    prefetch_dir = run_dir / "artifact" / "prefetch"
+    parts_dir.mkdir(parents=True)
+    prefetch_dir.mkdir(parents=True)
+    (parts_dir / "placeholder.md").write_text(
+        "# placeholder\n\nplaceholder body.\n", encoding="utf-8"
+    )
+    (parts_dir / "placeholder.caps.json").write_text("{}", encoding="utf-8")
+    (prefetch_dir / "products.json").write_text('{"products": []}', encoding="utf-8")
+    (prefetch_dir / "collections.json").write_text('{"collections": []}', encoding="utf-8")
+    (prefetch_dir / "cart.js").write_text('{"items": []}', encoding="utf-8")
+    (run_dir / "plan.md").write_text("# plan.md\n\n## Tasks\n\n", encoding="utf-8")
+    return run_dir
 
 
 def test_missing_url_exits_with_usage_error() -> None:

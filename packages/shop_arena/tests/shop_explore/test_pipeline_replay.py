@@ -1,4 +1,4 @@
-"""End-to-end replay test for :func:`shop_explore.pipeline.explore` (T2.6).
+"""End-to-end replay test for :func:`shop_explore.pipeline.explore` (T2.6 + T3.3).
 
 Drives the full pipeline against the hand-crafted ``fixture_drawer_shop``
 cassette under :class:`harness.runtimes.replay.ReplayRuntime`. No real
@@ -6,15 +6,19 @@ LLM, no real network: storefront prefetch is stubbed via ``respx`` and
 the runtime selector is monkey-patched to return a ``ReplayRuntime``
 rooted at the cassette directory.
 
-This is the milestone gate for SC4 ("replayable"): a recorded
-`shop_explore` run drives end-to-end against `harness.runtimes.replay`.
-SC1 is partially satisfied here too — the loop runs end-to-end and
-populates ``plan.md`` + ``artifact/parts/`` + ``artifact/evidence/``;
-the synthesis pass that completes SC1 lands in M3.
+This is the milestone gate for SC1 ("end-to-end") and SC4
+("replayable"): a recorded `shop_explore` run drives end-to-end through
+`harness.runtimes.replay` *and* publishes the four §5.10 artifacts
+(``manual.md`` / ``capabilities.json`` / ``stats.json`` /
+``manifest.json``) under ``run_dir/artifact/``. The synthesis pass uses
+the no-op LLM client wired in :func:`shop_explore.pipeline.explore`, so
+``manifest.manual_fallback`` is ``True`` here — the prose comes from
+deterministic concatenation of ``parts/*.md`` per spec §5.10.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -152,3 +156,38 @@ def test_pipeline_replay_runs_end_to_end_against_drawer_shop_cassette(
     assert result.capabilities_path == artifact / "capabilities.json"
     assert result.stats_path == artifact / "stats.json"
     assert result.manifest_path == artifact / "manifest.json"
+
+    # Synthesis (§5.10) ran after the harness loop and published all four files.
+    _assert_synthesis_artifacts_published(result)
+
+
+def _assert_synthesis_artifacts_published(result: Any) -> None:
+    """Validate the four §5.10 artifacts the pipeline writes after the harness loop.
+
+    Split out from the main test body to keep the test under ruff's
+    statement-count budget; behavior is the same as inlined assertions.
+    """
+    assert result.manual_path.is_file()
+    assert result.capabilities_path.is_file()
+    assert result.stats_path.is_file()
+    assert result.manifest_path.is_file()
+
+    # Capabilities deep-merged from the four cassette fragments.
+    caps = json.loads(result.capabilities_path.read_text(encoding="utf-8"))
+    assert caps["cart"]["type"] == "drawer"
+    assert caps["search"]["has_predictive"] is True
+    assert caps["site_shell"]["has_mega_menu"] is True
+
+    # Manifest mirrors the harness summary; manual_fallback is True because
+    # the pipeline wired the no-op LLM client (real LLM lands later).
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["manual_fallback"] is True
+    assert manifest["harness_status"] == "completed"
+    assert manifest["plan_tasks_total"] == len(_EXPECTED_TASKS)
+    assert manifest["plan_tasks_done"] == len(_EXPECTED_TASKS)
+
+    # Manual is the deterministic concatenation of parts/*.md (fallback path).
+    manual_text = result.manual_path.read_text(encoding="utf-8")
+    for task_id in _EXPECTED_TASKS:
+        # Each cassette part starts with `# <task_id>` — see fixture_drawer_shop.
+        assert f"# {task_id}" in manual_text
