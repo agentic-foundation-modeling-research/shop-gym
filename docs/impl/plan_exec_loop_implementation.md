@@ -43,7 +43,7 @@ behind `HARNESS_SMOKE_*` env vars verify real-CLI parity.
 - [x] **T1.4** — `src/harness/config.py`: `Prompts`, `PlanExecLoopConfig`, `PlanExecLoopResult` (incl. `final_status` enum). **Check:** invalid configs (`max_iters <= 0`, missing prompt) raise `ValidationError`.
 - [x] **T1.5** — `src/harness/plan_parser.py`: `parse(text) -> TaskList`, `select_next(tasks)`, `diff(before, after)`, `InvalidPlanError`. Enforces all §5.5 invariants. **Check:** `tests/unit/test_plan_parser.py` covers happy path, each invariant violation, priority ordering, optional `— note`.
 - [x] **T1.6** — `src/harness/workspace.py`: `Workspace.create(config)`, `snapshot_plan`, `atomic_write_json` (temp + `os.replace`). Rejects non-empty `run_dir`. **Check:** `tests/unit/test_workspace.py` asserts the §5.3 layout exists post-create and that snapshots are byte-identical copies.
-- [ ] **T1.7** — `src/harness/protocol_check.py`: pure `run_protocol_checks(before, after, selected_id)` covering the §5.8 list. **Check:** one test per violation, plus a clean-pass case.
+- [x] **T1.7** — `src/harness/protocol_check.py`: pure `run_protocol_checks(before, after, selected_id)` covering the §5.8 list. **Check:** one test per violation, plus a clean-pass case.
 - [ ] **T1.8** — `src/harness/telemetry.py`: per-iter dir helper, `RunSummaryWriter.rewrite(run_dir, ...)` with secret-scrubbing regex, `reconstruct(run_dir) -> PlanExecLoopResult` validator. **Check:** unit test rebuilds `run.json` from a hand-crafted `iters/` tree; secrets in config snapshot are redacted.
 
 **M1 acceptance:** all unit tests green, `pyright --strict` clean, `ruff` clean. No subprocess code yet.
