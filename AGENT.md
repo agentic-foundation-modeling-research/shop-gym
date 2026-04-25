@@ -58,6 +58,13 @@ Before implementing:
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
+### Hierarchy Matters
+
+When create new files:
+
+- Think about the big picture and maintain a good codebase structure.
+- Don't put every files under the same folder. Instead, build modules with high cohesion, low coupling.
+
 ### Surgical Changes
 
 **Touch only what you must. Clean up only your own mess.**
@@ -107,3 +114,10 @@ NO PATCHING OR HACKING FOR SHORT TERM SUCCESS.
 - **Errors**: throw `Error` subclasses with meaningful messages. Never `throw` non-Error values. No `try/catch` without handling.
 - **Immutability**: `const` by default, `readonly` for fields, `ReadonlyArray<T>` for parameters when the callee should not mutate.
 - **Tests**: `vitest`, co-located as `*.test.ts` next to the unit under test.
+
+## Playwright Browser Skill Guidelines
+
+When using the `playwright-browser` skill, always follow these rules to avoid wrapper restrictions:
+
+1. **Always save files locally**: Do not use the temporary `ARTIFACT_DIR` or `/var/folders/` paths for screenshots, PDFs, or snapshots, as the wrapper's security policy will throw a `File access denied` error. Always write output to the current working directory using relative paths (e.g., `--filename "./screenshot.png"` or `--filename "./snapshot.md"`).
+2. **Use built-in commands**: Do not attempt to use `run-code` to access internal Playwright objects like `page.accessibility.snapshot()`. The wrapper does not expose the full Playwright API in this way and will throw a `TypeError`. Use the native built-in commands provided by the wrapper instead (e.g., `node "$SKILL_DIR/scripts/pw.js" snapshot --filename "./snapshot.md"`).

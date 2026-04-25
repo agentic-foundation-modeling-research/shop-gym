@@ -169,8 +169,8 @@ live `pi` runtime:
 
 ```bash
 # Pick the fixture slug used by tests (see tests/shop_explore/cassettes/README.md).
-export FIXTURE=fixture_fermliving
-export FIXTURE_URL=https://fermliving.com
+export FIXTURE=fixture_dawn_demo
+export FIXTURE_URL=https://theme-dawn-demo.myshopify.com
 
 HARNESS_RECORD=1 \
   uv run shop-explore --runtime pi \
@@ -206,11 +206,22 @@ packages/shop_arena/src/shop_explore/
 ├── __init__.py            # public re-exports (spec §8.1)
 ├── cli.py                 # argparse → explore()
 ├── config.py              # ExploreConfig, ExploreResult (pydantic v2)
-├── prefetch.py            # PrefetchResult, run(url)
-├── capabilities.py        # Capabilities schema + merge_fragments()
-├── stats.py               # compute_stats(prefetch, capabilities)
-├── synthesize.py          # synthesize(run_dir, llm) → manual.md, manifest.json
 ├── pipeline.py            # explore() — orchestrates the four steps
+├── stats.py               # compute_stats(prefetch, capabilities)
+├── coverage.py            # SC5 gate (test-side, not in public surface)
+├── prefetch/              # §5.9 deterministic HTTP prefetch
+│   ├── __init__.py        # re-exports run, PrefetchResult, ShopUnreachableError, defaults
+│   ├── models.py          # PrefetchEntry, PrefetchResult, ShopUnreachableError
+│   └── runner.py          # run() + fetch plan + bot-block detection
+├── capabilities/          # §5.5 capabilities schema + merge
+│   ├── __init__.py        # re-exports Capabilities, Conflict, merge_fragments, …
+│   ├── schema.py          # Capabilities + nested section models
+│   └── merge.py           # merge_fragments + Conflict + deep-merge helpers
+├── synthesize/            # §5.10 post-loop synthesis
+│   ├── __init__.py        # re-exports synthesize, SynthesisResult, LLMClient, …
+│   ├── core.py            # synthesize() entrypoint + result/error/protocol types
+│   ├── manual.py          # MANUAL_MIN_CHARS + render_manual + concat_parts
+│   └── manifest.py        # build_manifest + plan.md parsers
 ├── prompts/
 │   ├── agents.md
 │   ├── planner.md

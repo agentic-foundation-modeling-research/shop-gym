@@ -1,9 +1,8 @@
-# `fixture_fermliving` cassette
+# `fixture_feature_rich` cassette
 
 Hand-crafted replay cassette modelling a **feature-rich** Shopify
-storefront profile (the `https://fermliving.com` storefront documented
-in the M4 fixture choices) used by
-`tests/shop_explore/test_pipeline_replay.py` (T4.2).
+storefront profile, used by `tests/shop_explore/test_pipeline_replay.py`
+(T4.2).
 
 The feature-rich profile is deliberately authored with a **distinct
 task set** from `fixture_drawer_shop` so the parameterized replay
@@ -20,25 +19,18 @@ schema:
 
 ## Provenance
 
-This is a **synthetic placeholder cassette**, not a recording of the
-live `fermliving.com` storefront. Live recording is the M4 milestone
-gate covered by `docs/impl/shop_explore_implementation.md` T4.5
-(SHOP_EXPLORE_LIVE_FERMLIVING=1) — it is intentionally a manual,
-out-of-band run because it requires real LLM credentials, a real
-playwright skill session, and ~10–15 minutes of wall-clock time
-against the live storefront.
-
-The cassette here is hand-authored to reflect the documented profile of
-fermliving.com (mega menu, faceted filters, drawer cart with upsells,
-predictive search, locale + currency switchers) so the replay
-pipeline test exercises the feature-rich shape end-to-end. Refresh in
-place when the live recording lands; the README header in
-`cassettes/README.md` tracks status.
+This is a **synthetic placeholder cassette**, not a recording of any
+live storefront. The cassette is hand-authored to advertise the
+documented feature-rich profile (mega menu, faceted filters, drawer
+cart with upsells, predictive search, locale + currency switchers) so
+the replay pipeline test exercises the feature-rich shape end-to-end.
+Refresh in place when a recorded cassette is added; the README header
+in `cassettes/README.md` tracks status.
 
 ## Shape
 
 ```
-fixture_fermliving/
+fixture_feature_rich/
 ├── plan/
 │   ├── trajectory.json
 │   └── workspace_after/plan.md

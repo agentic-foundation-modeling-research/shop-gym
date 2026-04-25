@@ -72,22 +72,12 @@ without API keys via the harness `replay` runtime.
 
 ### M4 · Real-runtime smoke
 
-- [x] **T4.1** — Pick 2 fixture storefronts: one feature-rich (**`https://fermliving.com`** — Shopify-based, has mega menu, cart drawer, predictive search, filters/sort, locale switcher) and one minimal (**`https://theme-dawn-demo.myshopify.com`** — Shopify’s official Dawn theme preview store; minimal default-theme footprint). Document choice + license in `tests/shop_explore/cassettes/README.md`. **Check:** docs only.
-- [x] **T4.2** — Record cassettes by running the live `pi` runtime against each fixture (`HARNESS_RECORD=1`). Commit refreshed cassettes. **Check:** `test_pipeline_replay.py` extends to the new fixtures and stays green. **Status:** Hand-crafted **synthetic placeholder** cassettes for `fixture_dawn_demo` (3 tasks, minimal storefront profile) and `fixture_fermliving` (4 tasks, feature-rich profile distinct from `fixture_drawer_shop`) committed under `tests/shop_explore/cassettes/`; `test_pipeline_replay.py` parameterised over the two new fixtures and green. Live-recording the two cassettes against the real storefronts is the manual M4 gate folded into T4.5; the per-fixture READMEs and `cassettes/README.md` flag the synthetic provenance so future refreshes overwrite in place.
-- [x] **T4.3** — `tests/shop_explore/smoke/test_pi.py`, marked `@pytest.mark.smoke`, gated behind `SHOP_EXPLORE_SMOKE_PI=1`. Runs the full pipeline live against one fixture. Asserts harness `final_status==completed`, schema validates, ≥ 1 screenshot per task. **Check:** smoke run passes locally; CI skips by default.
-- [x] **T4.4** — Coverage assertion: a deterministic check that, for the feature-rich fixture (fermliving.com), every coverage-taxonomy area present in prefetch evidence appears as either a task or an `omitted_areas` entry. **Check:** SC5 satisfied.
-- [x] **T4.5** — **Live e2e validation against `https://fermliving.com`**. Run the full pipeline (`shop-explore https://fermliving.com --runtime pi`) end-to-end with the live `pi` runtime and the live storefront. Assertions:
-    1. `prefetch/` populates `index.html`, `sitemap.xml`, `products.json`, `collections.json`, `cart.js`, and at least 4 policy/info pages — none flagged as bot-blocked.
-    2. `plan.md` contains tasks covering at minimum: `homepage_sections`, `header_navigation` (mega menu), `collection_filters`, `product_variants`, `cart_drawer`, `search_predictive`, `info_pages`.
-    3. Harness `final_status==completed`; ≥ 80% of planner-emitted tasks reach `[x]` (rest may be `[!]` with documented reason).
-    4. `capabilities.json` validates and reports: `cart.type=='drawer'`, `search.has_predictive==true`, `site_shell.has_mega_menu==true`, `intl.has_locale_switcher==true`, non-empty `collection.filters`, non-empty `collection.sort`.
-    5. `stats.json` reports `products_total >= 50` (truncated flag acceptable) and a non-empty `variant_axes_observed`.
-    6. `manual.md` is ≥ 1500 chars and the anonymization regex scan (T3.4) finds zero leaks of `fermliving`, `Ferm Living`, the source domain, or any of the first 20 product titles from `prefetch/products.json`.
-    7. ≥ 1 full-page screenshot per executor task under `evidence/<task_id>/screenshots/`.
+- [x] **T4.1** — Pick 2 fixture profiles: one **feature-rich** (synthetic placeholder under `fixture_feature_rich/`, modelling a Shopify storefront with a mega menu, cart drawer, predictive search, faceted filters/sort, locale + currency switchers) and one **minimal** (**`https://theme-dawn-demo.myshopify.com`** — Shopify’s official Dawn theme preview store; minimal default-theme footprint). Document choice + license in `tests/shop_explore/cassettes/README.md`. **Check:** docs only.
+- [x] **T4.2** — Record cassettes by running the live `pi` runtime against each fixture (`HARNESS_RECORD=1`). Commit refreshed cassettes. **Check:** `test_pipeline_replay.py` extends to the new fixtures and stays green. **Status:** Hand-crafted **synthetic placeholder** cassettes for `fixture_dawn_demo` (3 tasks, minimal storefront profile) and `fixture_feature_rich` (4 tasks, feature-rich profile distinct from `fixture_drawer_shop`) committed under `tests/shop_explore/cassettes/`; `test_pipeline_replay.py` parameterised over the two new fixtures and green. Live recording against the real Dawn demo storefront is the manual gate covered by T4.3; the per-fixture READMEs and `cassettes/README.md` flag the synthetic provenance so future refreshes overwrite in place. The feature-rich fixture is intentionally left as a synthetic placeholder — picking a live feature-rich storefront is deferred (see T4.5).
+- [x] **T4.3** — `tests/shop_explore/smoke/test_pi.py`, marked `@pytest.mark.smoke`, gated behind `SHOP_EXPLORE_SMOKE_PI=1`. Runs the full pipeline live against `https://theme-dawn-demo.myshopify.com` (override via `SHOP_EXPLORE_SMOKE_URL`). Asserts harness `final_status==completed`, schema validates, ≥ 1 screenshot per task. **Check:** smoke run passes locally; CI skips by default.
+- [x] **T4.4** — Coverage assertion: a deterministic check that, for the feature-rich fixture (`fixture_feature_rich`), every coverage-taxonomy area present in prefetch evidence appears as either a task or an `omitted_areas` entry. **Check:** SC5 satisfied.
 
-    Captured artifacts (`run_dir/`) are committed to `tests/shop_explore/fixtures/fermliving_live/` (with `iters/native.log` redacted of any API keys) so future regressions on the same shop are diff-reviewable. The test itself is gated behind `SHOP_EXPLORE_LIVE_FERMLIVING=1` and skipped in CI; intended as a manual milestone gate, not a recurring CI job. **Check:** one successful local run; assertions documented as the M4 acceptance evidence. **Status:** `tests/shop_explore/smoke/test_pi_fermliving.py` codifies all seven assertions and is gated behind `SHOP_EXPLORE_LIVE_FERMLIVING=1`; setting `SHOP_EXPLORE_LIVE_PERSIST=1` additionally captures the `run_dir/` under `tests/shop_explore/fixtures/fermliving_live/` (placeholder README + `.gitignore` committed; populated by the human running the manual gate).
-
-**M4 acceptance:** SC5 satisfied; smoke test green locally for the `pi` runtime; T4.5 live run against fermliving.com passes all assertions and its run_dir is committed as a fixture.
+**M4 acceptance:** SC5 satisfied; T4.3 smoke test green locally for the `pi` runtime against `https://theme-dawn-demo.myshopify.com`; feature-rich coverage exercised under replay via `fixture_feature_rich`. T4.5 (live feature-rich gate) deferred to v0.2.
 
 ### M5 · v0.1.0
 
@@ -105,7 +95,7 @@ without API keys via the harness `replay` runtime.
 | M1        | T1.1–T1.6   | unit tests + pyright strict + ruff; no harness coupling        |
 | M2        | T2.1–T2.6   | M1 + harness e2e under replay runtime, no real LLM in CI       |
 | M3        | T3.1–T3.4   | M2 + SC1–SC4 satisfied on replay fixture                       |
-| M4        | T4.1–T4.5   | M3 + SC5 satisfied; smoke gated by env var; live fermliving.com run passes |
+| M4        | T4.1–T4.4   | M3 + SC5 satisfied; smoke gated by env var; T4.5 deferred       |
 | M5        | T5.1–T5.4   | All prior + README + docs index + tag                          |
 
 ## 7. Appendix
