@@ -72,7 +72,7 @@ without API keys via the harness `replay` runtime.
 
 ### M4 · Real-runtime smoke
 
-- [ ] **T4.1** — Pick 2 fixture storefronts: one feature-rich (**`https://fermliving.com`** — Shopify-based, has mega menu, cart drawer, predictive search, filters/sort, locale switcher) and one minimal (TBD). Document choice + license in `tests/shop_explore/cassettes/README.md`. **Check:** docs only.
+- [x] **T4.1** — Pick 2 fixture storefronts: one feature-rich (**`https://fermliving.com`** — Shopify-based, has mega menu, cart drawer, predictive search, filters/sort, locale switcher) and one minimal (**`https://theme-dawn-demo.myshopify.com`** — Shopify’s official Dawn theme preview store; minimal default-theme footprint). Document choice + license in `tests/shop_explore/cassettes/README.md`. **Check:** docs only.
 - [ ] **T4.2** — Record cassettes by running the live `pi` runtime against each fixture (`HARNESS_RECORD=1`). Commit refreshed cassettes. **Check:** `test_pipeline_replay.py` extends to the new fixtures and stays green.
 - [ ] **T4.3** — `tests/shop_explore/smoke/test_pi.py`, marked `@pytest.mark.smoke`, gated behind `SHOP_EXPLORE_SMOKE_PI=1`. Runs the full pipeline live against one fixture. Asserts harness `final_status==completed`, schema validates, ≥ 1 screenshot per task. **Check:** smoke run passes locally; CI skips by default.
 - [ ] **T4.4** — Coverage assertion: a deterministic check that, for the feature-rich fixture (fermliving.com), every coverage-taxonomy area present in prefetch evidence appears as either a task or an `omitted_areas` entry. **Check:** SC5 satisfied.
