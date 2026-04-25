@@ -29,3 +29,6 @@ outputs/
 
 # uv
 uv.lock
+
+# playwright
+.playwright-cli/
