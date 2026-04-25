@@ -1,0 +1,20 @@
+{
+  "site_shell": {
+    "has_announcement_bar": false,
+    "header_style": "horizontal",
+    "has_mega_menu": false,
+    "nav_depth": 1,
+    "footer_groups": 1
+  },
+  "homepage": {
+    "section_types": ["hero_image", "featured_collection"],
+    "section_count": 2,
+    "has_popup_modal": false
+  },
+  "floating": {
+    "has_chat_widget": false,
+    "has_age_gate": false,
+    "has_cookie_banner": false,
+    "has_newsletter_popup": false
+  }
+}

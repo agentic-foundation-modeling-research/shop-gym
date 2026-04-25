@@ -1,0 +1,36 @@
+{
+  "iter_id": "exec-0003",
+  "runtime": "pi",
+  "started_at": "2026-04-25T14:03:00Z",
+  "ended_at": "2026-04-25T14:03:30Z",
+  "exit_code": 0,
+  "prompt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "steps": [
+    {
+      "timestamp": "2026-04-25T14:03:00Z",
+      "kind": "message",
+      "role": "user",
+      "text": "<<<harness-control>>>\nselected_task_id: collection_filters\n<<<end>>>\n\nExecute the collection_filters task."
+    },
+    {
+      "timestamp": "2026-04-25T14:03:05Z",
+      "kind": "tool_call",
+      "call_id": "exec3-open",
+      "tool": "bash",
+      "arguments": {"command": "node $SKILL_DIR/scripts/pw.js goto --url '/collections/all'"}
+    },
+    {
+      "timestamp": "2026-04-25T14:03:10Z",
+      "kind": "tool_result",
+      "call_id": "exec3-open",
+      "output": "Loaded /collections/all; left rail shows four filter groups and a sort dropdown above the grid.",
+      "is_error": false
+    },
+    {
+      "timestamp": "2026-04-25T14:03:25Z",
+      "kind": "message",
+      "role": "assistant",
+      "text": "Exercised size/color/material/price filters and the sort dropdown; collection_filters marked [x]."
+    }
+  ]
+}

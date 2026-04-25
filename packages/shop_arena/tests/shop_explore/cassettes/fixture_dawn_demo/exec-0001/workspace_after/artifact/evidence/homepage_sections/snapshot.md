@@ -1,0 +1,26 @@
+# homepage_sections — a11y snapshot (state: initial load)
+
+- banner
+  - link "Home"
+  - navigation "primary"
+    - link "Catalog"
+  - button "search"
+  - link "account"
+  - link "cart"
+- region "hero"
+  - heading "Sample headline"
+  - link "Shop now"
+- region "featured_collection"
+  - heading "Featured products"
+  - list
+    - listitem
+      - link "Sample product 1"
+    - listitem
+      - link "Sample product 2"
+    - listitem
+      - link "Sample product 3"
+    - listitem
+      - link "Sample product 4"
+- contentinfo
+  - list "menu"
+  - form "newsletter"

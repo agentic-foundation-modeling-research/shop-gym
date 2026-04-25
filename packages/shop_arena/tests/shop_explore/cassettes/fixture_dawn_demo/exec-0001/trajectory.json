@@ -1,0 +1,36 @@
+{
+  "iter_id": "exec-0001",
+  "runtime": "pi",
+  "started_at": "2026-04-25T13:01:00Z",
+  "ended_at": "2026-04-25T13:01:30Z",
+  "exit_code": 0,
+  "prompt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "steps": [
+    {
+      "timestamp": "2026-04-25T13:01:00Z",
+      "kind": "message",
+      "role": "user",
+      "text": "<<<harness-control>>>\nselected_task_id: homepage_sections\n<<<end>>>\n\nExecute the homepage_sections task."
+    },
+    {
+      "timestamp": "2026-04-25T13:01:05Z",
+      "kind": "tool_call",
+      "call_id": "exec1-snapshot",
+      "tool": "bash",
+      "arguments": {"command": "node $SKILL_DIR/scripts/pw.js snapshot --url '/' --out evidence/homepage_sections/snapshot.md"}
+    },
+    {
+      "timestamp": "2026-04-25T13:01:10Z",
+      "kind": "tool_result",
+      "call_id": "exec1-snapshot",
+      "output": "Captured a11y snapshot for /; minimal hero plus a single featured-collection row.",
+      "is_error": false
+    },
+    {
+      "timestamp": "2026-04-25T13:01:25Z",
+      "kind": "message",
+      "role": "assistant",
+      "text": "Wrote parts/homepage_sections.md, parts/homepage_sections.caps.json, evidence/homepage_sections/snapshot.md; flipped task to [x]."
+    }
+  ]
+}
