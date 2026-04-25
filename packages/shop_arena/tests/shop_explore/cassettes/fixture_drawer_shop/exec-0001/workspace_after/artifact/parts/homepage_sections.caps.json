@@ -1,0 +1,23 @@
+{
+  "site_shell": {
+    "has_announcement_bar": true,
+    "header_style": "horizontal",
+    "has_mega_menu": true,
+    "nav_depth": 2,
+    "footer_groups": 4
+  },
+  "homepage": {
+    "section_types": [
+      "hero_carousel",
+      "featured_collection",
+      "promo_banner",
+      "testimonials",
+      "newsletter"
+    ],
+    "section_count": 5,
+    "has_popup_modal": true
+  },
+  "floating": {
+    "has_newsletter_popup": true
+  }
+}

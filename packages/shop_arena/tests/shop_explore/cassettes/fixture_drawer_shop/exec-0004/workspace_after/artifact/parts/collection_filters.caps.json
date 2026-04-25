@@ -1,0 +1,13 @@
+{
+  "collection": {
+    "layout": "grid",
+    "columns_desktop": 4,
+    "filters": ["size", "color", "price"],
+    "sort": ["featured", "price_asc", "price_desc", "newest"],
+    "pagination": "load_more"
+  },
+  "intl": {
+    "has_locale_switcher": true,
+    "has_currency_switcher": false
+  }
+}

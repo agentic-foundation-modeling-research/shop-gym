@@ -1,0 +1,8 @@
+{
+  "search": {
+    "trigger": "header_icon",
+    "has_predictive": true,
+    "predictive_types": ["products", "collections"],
+    "results_layout": "grid_with_filters"
+  }
+}
