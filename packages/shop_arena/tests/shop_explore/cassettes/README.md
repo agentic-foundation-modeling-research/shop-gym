@@ -27,11 +27,11 @@ the trajectory content.
 
 ## Fixture inventory
 
-| Fixture slug          | Source storefront                         | Role          | How recorded                | Status          |
-| --------------------- | ----------------------------------------- | ------------- | --------------------------- | --------------- |
-| `fixture_drawer_shop` | _synthetic_ (no live source)              | feature-rich  | hand-crafted (M2)           | ✅ committed    |
-| `fixture_fermliving`  | `https://fermliving.com`                  | feature-rich  | live `pi` runtime (T4.2)    | ⏳ planned      |
-| `fixture_dawn_demo`   | `https://theme-dawn-demo.myshopify.com`   | minimal       | live `pi` runtime (T4.2)    | ⏳ planned      |
+| Fixture slug          | Source storefront                         | Role          | How recorded                       | Status                       |
+| --------------------- | ----------------------------------------- | ------------- | ---------------------------------- | ---------------------------- |
+| `fixture_drawer_shop` | _synthetic_ (no live source)              | feature-rich  | hand-crafted (M2)                  | ✅ committed                 |
+| `fixture_fermliving`  | `https://fermliving.com`                  | feature-rich  | hand-crafted placeholder (T4.2)    | ✅ committed (synthetic)     |
+| `fixture_dawn_demo`   | `https://theme-dawn-demo.myshopify.com`   | minimal       | hand-crafted placeholder (T4.2)    | ✅ committed (synthetic)     |
 
 The **synthetic** fixture (`fixture_drawer_shop`) is the canonical
 hand-crafted cassette used by `test_pipeline_replay.py` and
@@ -39,9 +39,17 @@ hand-crafted cassette used by `test_pipeline_replay.py` and
 real shop and is fully checked in. See its own
 [`fixture_drawer_shop/README.md`](./fixture_drawer_shop/README.md).
 
-The two **live-recorded** fixtures below back T4.2–T4.5 of the
-implementation plan and are recorded by setting `HARNESS_RECORD=1` and
-running `shop-explore --runtime pi <url>` against the live storefront.
+The two **placeholder** fixtures below back T4.2–T4.5 of the
+implementation plan. They are currently **hand-crafted** to model the
+documented profile of each storefront so the parameterized replay
+test (`test_pipeline_replay.py::test_pipeline_replay_runs_end_to_end_against_alt_cassettes`)
+exercises a minimal-shape and a feature-rich shape end-to-end without
+any live LLM or browser session. The live recording (overwriting these
+placeholders with real `pi`-runtime captures) is the manual M4
+milestone gate covered by **T4.5** — see the recording workflow at the
+bottom of this file. Until then, anyone refreshing them in place must
+still pass `tests/shop_explore/test_anonymization.py` against the new
+content.
 
 ---
 

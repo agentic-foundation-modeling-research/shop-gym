@@ -19,10 +19,12 @@ deterministic concatenation of ``parts/*.md`` per spec §5.10.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 import respx
 
 from harness.config import FinalStatus
@@ -190,4 +192,163 @@ def _assert_synthesis_artifacts_published(result: Any) -> None:
     manual_text = result.manual_path.read_text(encoding="utf-8")
     for task_id in _EXPECTED_TASKS:
         # Each cassette part starts with `# <task_id>` — see fixture_drawer_shop.
+        assert f"# {task_id}" in manual_text
+
+
+@dataclass(frozen=True)
+class _ReplayFixture:
+    """One fixture-storefront slug + the assertions the replay pipeline must satisfy."""
+
+    name: str
+    base_url: str
+    tasks: tuple[str, ...]
+    sentinel_caps: tuple[tuple[tuple[str, ...], object], ...]
+
+
+_DAWN_DEMO_FIXTURE = _ReplayFixture(
+    name="fixture_dawn_demo",
+    base_url="https://dawn-demo-shop.example",
+    tasks=("homepage_sections", "info_pages", "cart_drawer"),
+    sentinel_caps=(
+        (("cart", "type"), "drawer"),
+        (("site_shell", "has_mega_menu"), False),
+        (("homepage", "section_count"), 2),
+        (("intl", "has_currency_switcher"), True),
+    ),
+)
+
+_FERMLIVING_FIXTURE = _ReplayFixture(
+    name="fixture_fermliving",
+    base_url="https://feature-rich-shop.example",
+    tasks=(
+        "homepage_sections",
+        "header_navigation",
+        "collection_filters",
+        "cart_drawer",
+    ),
+    sentinel_caps=(
+        (("cart", "type"), "drawer"),
+        (("site_shell", "has_mega_menu"), True),
+        (("site_shell", "nav_depth"), 2),
+        (("search", "has_predictive"), True),
+        (("intl", "has_locale_switcher"), True),
+        (("intl", "has_currency_switcher"), True),
+    ),
+)
+
+_ALT_FIXTURES: tuple[_ReplayFixture, ...] = (_DAWN_DEMO_FIXTURE, _FERMLIVING_FIXTURE)
+
+
+def _stub_storefront_at(mock: respx.MockRouter, base_url: str) -> None:
+    """Re-bind the §5.9 prefetch URL plan against an arbitrary base URL."""
+    mock.get(f"{base_url}/robots.txt").mock(
+        return_value=_ok("User-agent: *\nAllow: /\n", content_type="text/plain")
+    )
+    mock.get(f"{base_url}/").mock(return_value=_ok("<!doctype html><html></html>"))
+    mock.get(f"{base_url}/sitemap.xml").mock(
+        return_value=_ok(
+            "<?xml version='1.0'?><urlset></urlset>",
+            content_type="application/xml",
+        )
+    )
+    mock.get(f"{base_url}/products.json", params={"limit": "50"}).mock(
+        return_value=_ok('{"products": []}', content_type="application/json")
+    )
+    mock.get(f"{base_url}/collections.json", params={"limit": "50"}).mock(
+        return_value=_ok('{"collections": []}', content_type="application/json")
+    )
+    mock.get(
+        f"{base_url}/search/suggest.json",
+        params={"q": "a", "resources[type]": "product"},
+    ).mock(return_value=_ok('{"resources": {}}', content_type="application/json"))
+    mock.get(f"{base_url}/cart.js").mock(
+        return_value=_ok('{"items": []}', content_type="application/json")
+    )
+    mock.get(f"{base_url}/cart").mock(return_value=_ok("<html>cart</html>"))
+    mock.get(f"{base_url}/search").mock(return_value=_ok("<html>search</html>"))
+    for slug in ("refund-policy", "privacy-policy", "terms-of-service", "shipping-policy"):
+        mock.get(f"{base_url}/policies/{slug}").mock(return_value=_ok(f"<html>{slug}</html>"))
+    for slug in ("about", "contact", "faq"):
+        mock.get(f"{base_url}/pages/{slug}").mock(return_value=_ok(f"<html>{slug}</html>"))
+
+
+@pytest.mark.parametrize("fixture", _ALT_FIXTURES, ids=lambda fx: fx.name)
+@respx.mock
+def test_pipeline_replay_runs_end_to_end_against_alt_cassettes(
+    fixture: _ReplayFixture, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Parameterised replay coverage for the M4 fixture cassettes (T4.2).
+
+    Same end-to-end shape as the drawer-shop test above: prefetch is
+    stubbed via ``respx`` and the runtime is monkey-patched to a
+    :class:`~harness.runtimes.replay.ReplayRuntime` rooted at the
+    fixture cassette. The fixture spec drives the expected task list
+    and the sentinel capability claims each cassette is meant to
+    advertise.
+    """
+    cassette_dir = Path(__file__).resolve().parent / "cassettes" / fixture.name
+    _stub_storefront_at(respx.mock, fixture.base_url)
+
+    def fake_get_runtime(name: str) -> Any:
+        assert name == "pi"
+        return ReplayRuntime(scenario_dir=cassette_dir)
+
+    monkeypatch.setattr(pipeline_mod, "get_runtime", fake_get_runtime)
+
+    out_dir = tmp_path / "run"
+    config = ExploreConfig(
+        url=fixture.base_url,
+        out_dir=out_dir,
+        runtime="pi",
+        max_iters=len(fixture.tasks) + 2,
+        timeout=_PREFETCH_TIMEOUT_SECONDS,
+    )
+
+    result = pipeline_mod.explore(config)
+
+    assert result.final_status is FinalStatus.COMPLETED
+    plan_md = (out_dir / "plan.md").read_text(encoding="utf-8")
+    parsed_tasks = parse_plan(plan_md).tasks
+    assert tuple(t.id for t in parsed_tasks) == fixture.tasks
+    assert all(t.status is TaskStatus.DONE for t in parsed_tasks)
+
+    artifact = out_dir / "artifact"
+    for task_id in fixture.tasks:
+        assert (artifact / "parts" / f"{task_id}.md").is_file()
+        assert (artifact / "parts" / f"{task_id}.caps.json").is_file()
+        evidence = artifact / "evidence" / task_id
+        assert evidence.is_dir() and any(p.is_file() for p in evidence.rglob("*"))
+
+    iters_root = out_dir / "iters"
+    assert (iters_root / "plan" / "trajectory.json").is_file()
+    for n in range(1, len(fixture.tasks) + 1):
+        assert (iters_root / f"exec-{n:04d}" / "trajectory.json").is_file()
+
+    _assert_alt_synthesis_artifacts(result, fixture)
+
+
+def _assert_alt_synthesis_artifacts(result: Any, fixture: _ReplayFixture) -> None:
+    """Validate the §5.10 publication step for a parameterised fixture."""
+    assert result.manual_path.is_file()
+    assert result.capabilities_path.is_file()
+    assert result.stats_path.is_file()
+    assert result.manifest_path.is_file()
+
+    caps = json.loads(result.capabilities_path.read_text(encoding="utf-8"))
+    for path, expected in fixture.sentinel_caps:
+        node: Any = caps
+        for key in path:
+            node = node[key]
+        assert node == expected, (
+            f"{fixture.name}: expected {'.'.join(path)}={expected!r}, got {node!r}"
+        )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["manual_fallback"] is True
+    assert manifest["harness_status"] == "completed"
+    assert manifest["plan_tasks_total"] == len(fixture.tasks)
+    assert manifest["plan_tasks_done"] == len(fixture.tasks)
+
+    manual_text = result.manual_path.read_text(encoding="utf-8")
+    for task_id in fixture.tasks:
         assert f"# {task_id}" in manual_text

@@ -1,0 +1,36 @@
+{
+  "iter_id": "plan",
+  "runtime": "pi",
+  "started_at": "2026-04-25T14:00:00Z",
+  "ended_at": "2026-04-25T14:00:05Z",
+  "exit_code": 0,
+  "prompt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "steps": [
+    {
+      "timestamp": "2026-04-25T14:00:00Z",
+      "kind": "message",
+      "role": "user",
+      "text": "Run one planner iteration for the feature-rich fermliving fixture."
+    },
+    {
+      "timestamp": "2026-04-25T14:00:01Z",
+      "kind": "tool_call",
+      "call_id": "plan-write-1",
+      "tool": "write",
+      "arguments": {"path": "plan.md"}
+    },
+    {
+      "timestamp": "2026-04-25T14:00:02Z",
+      "kind": "tool_result",
+      "call_id": "plan-write-1",
+      "output": "Wrote plan.md with four evidenced tasks targeting the long-tail feature surface.",
+      "is_error": false
+    },
+    {
+      "timestamp": "2026-04-25T14:00:05Z",
+      "kind": "message",
+      "role": "assistant",
+      "text": "Plan emitted: homepage_sections, header_navigation, collection_filters, cart_drawer; age_gate omitted."
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "cart": {
+    "type": "drawer",
+    "has_promo_input": true,
+    "has_upsells": true,
+    "has_shipping_estimate": false
+  },
+  "product": {
+    "gallery_style": "thumbnail_strip",
+    "variant_selectors": ["color", "size"],
+    "has_quantity_selector": true,
+    "has_recommendations": true
+  }
+}
