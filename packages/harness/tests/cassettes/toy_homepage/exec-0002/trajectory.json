@@ -1,0 +1,34 @@
+{
+  "iter_id": "exec-0002",
+  "runtime": "replay",
+  "started_at": "2024-01-01T00:02:00+00:00",
+  "ended_at": "2024-01-01T00:02:02+00:00",
+  "exit_code": 0,
+  "prompt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "steps": [
+    {
+      "kind": "thought",
+      "timestamp": "2024-01-01T00:02:00+00:00",
+      "text": "Selected task is product_detail. Cover gallery, price, add-to-cart."
+    },
+    {
+      "kind": "tool_call",
+      "timestamp": "2024-01-01T00:02:01+00:00",
+      "call_id": "call-1",
+      "tool": "write_file",
+      "arguments": {"path": "artifact/product_detail.md"}
+    },
+    {
+      "kind": "tool_result",
+      "timestamp": "2024-01-01T00:02:01+00:00",
+      "call_id": "call-1",
+      "output": "wrote artifact/product_detail.md"
+    },
+    {
+      "kind": "message",
+      "timestamp": "2024-01-01T00:02:02+00:00",
+      "role": "assistant",
+      "text": "Marked product_detail [x]."
+    }
+  ]
+}

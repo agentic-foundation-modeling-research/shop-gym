@@ -1,0 +1,21 @@
+{
+  "iter_id": "plan",
+  "runtime": "replay",
+  "started_at": "2024-01-01T00:00:00+00:00",
+  "ended_at": "2024-01-01T00:00:01+00:00",
+  "exit_code": 0,
+  "prompt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "steps": [
+    {
+      "kind": "thought",
+      "timestamp": "2024-01-01T00:00:00+00:00",
+      "text": "Two storefront surfaces to cover: homepage and product detail."
+    },
+    {
+      "kind": "message",
+      "timestamp": "2024-01-01T00:00:01+00:00",
+      "role": "assistant",
+      "text": "Wrote plan.md with two PENDING tasks: homepage (priority 2), product_detail (priority 1)."
+    }
+  ]
+}
