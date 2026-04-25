@@ -1,6 +1,0 @@
-# Keep raw harness logs out of the repo — they may contain API keys.
-iters/**/native.log
-**/native.log
-
-# Internal raw-prefetch dumps are not committed for live fixtures.
-_raw/

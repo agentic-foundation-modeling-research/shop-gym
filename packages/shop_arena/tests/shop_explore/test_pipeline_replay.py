@@ -217,8 +217,8 @@ _DAWN_DEMO_FIXTURE = _ReplayFixture(
     ),
 )
 
-_FERMLIVING_FIXTURE = _ReplayFixture(
-    name="fixture_fermliving",
+_FEATURE_RICH_FIXTURE = _ReplayFixture(
+    name="fixture_feature_rich",
     base_url="https://feature-rich-shop.example",
     tasks=(
         "homepage_sections",
@@ -236,7 +236,7 @@ _FERMLIVING_FIXTURE = _ReplayFixture(
     ),
 )
 
-_ALT_FIXTURES: tuple[_ReplayFixture, ...] = (_DAWN_DEMO_FIXTURE, _FERMLIVING_FIXTURE)
+_ALT_FIXTURES: tuple[_ReplayFixture, ...] = (_DAWN_DEMO_FIXTURE, _FEATURE_RICH_FIXTURE)
 
 
 def _stub_storefront_at(mock: respx.MockRouter, base_url: str) -> None:

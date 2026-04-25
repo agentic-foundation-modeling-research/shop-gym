@@ -33,7 +33,7 @@ import pytest
 
 from shop_explore.synthesize import synthesize
 
-_CASSETTE_DIR = Path(__file__).resolve().parent / "cassettes" / "fixture_drawer_shop"
+_CASSETTE_DIR = Path(__file__).resolve().parent.parent / "cassettes" / "fixture_drawer_shop"
 _FINAL_ITER_DIR = _CASSETTE_DIR / "exec-0004"
 _TASK_IDS: tuple[str, ...] = (
     "homepage_sections",
@@ -46,8 +46,8 @@ _MANUAL_PROMPT = "Merge the per-task notes into one anonymized Shop Manual."
 # Distinctive brand-specific markers that must not leak into the
 # published artifacts. Constructed to be unmistakable strings (no
 # generic English words) so the regex scan has zero false positives.
-_SOURCE_DOMAIN = "ferm-living-leakcanary.example.com"
-_SOURCE_STORE_NAME = "Ferm Living Leakcanary"
+_SOURCE_DOMAIN = "brand-leakcanary.example.com"
+_SOURCE_STORE_NAME = "Brand Leakcanary"
 _LEAK_PRODUCT_TITLES: tuple[str, ...] = tuple(
     f"LeakCanary{i:02d}-Brutalist-Vase-Limited-Edition" for i in range(20)
 )

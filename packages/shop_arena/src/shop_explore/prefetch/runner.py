@@ -1,26 +1,13 @@
-"""Deterministic HTTP prefetch step for ``shop_explore``.
-
-Implements §5.9 of the ShopExplore spec
-(``docs/specs/shop_arena/shop_explore.md``): a small, fixed-URL HTTP
-fetch that seeds the harness ``run_dir/artifact/prefetch/`` with enough
-storefront context for the planner to reason about coverage.
-
-No LLM. No browsing. No crawler. The agents do all further interaction
-with the shop through the playwright skill.
-
-Public surface:
-
-* :class:`PrefetchEntry` — per-URL outcome record.
-* :class:`PrefetchResult` — summary written to ``prefetch.json``.
-* :class:`ShopUnreachableError` — raised on bot-block / fatal index.
-* :func:`run` — fetch a storefront into ``dest_dir``.
+"""Fetch plan, bot-block detection, and the :func:`run` entrypoint.
 
 Bot-block detection (spec §5.9): if ``robots.txt`` disallows ``*`` on
 ``/``, or ``/`` returns 403/429/503, or ``/`` body matches a Cloudflare
-challenge marker, :func:`run` raises :class:`ShopUnreachableError`
-before fetching the rest of the URL list. Network errors on
-``robots.txt`` or ``/`` are also fatal; errors on subsequent URLs are
-recorded in :class:`PrefetchResult` but do not abort the run.
+challenge marker, :func:`run` raises
+:class:`~shop_explore.prefetch.models.ShopUnreachableError` before
+fetching the rest of the URL list. Network errors on ``robots.txt`` or
+``/`` are also fatal; errors on subsequent URLs are recorded in
+:class:`~shop_explore.prefetch.models.PrefetchResult` but do not abort
+the run.
 """
 
 from __future__ import annotations
@@ -34,9 +21,13 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from pydantic import BaseModel, ConfigDict
 
 from shop_explore._version import __version__
+from shop_explore.prefetch.models import (
+    PrefetchEntry,
+    PrefetchResult,
+    ShopUnreachableError,
+)
 
 DEFAULT_USER_AGENT = f"ShopExplore/{__version__} (+https://github.com/Shopify/shop-gym)"
 """Default User-Agent sent on every prefetch request (spec §5.9)."""
@@ -84,67 +75,6 @@ _FETCH_PLAN: tuple[tuple[str, str], ...] = (
 )
 
 
-class ShopUnreachableError(RuntimeError):
-    """Raised when the storefront is bot-blocked or its index is fatal.
-
-    Attributes:
-        reason: One of ``"robots_disallow"``, ``"http_status"``,
-            ``"cloudflare_challenge"``, ``"network_error"``.
-        detail: Human-readable detail (URL, status, marker, etc.).
-    """
-
-    def __init__(self, reason: str, *, detail: str) -> None:
-        super().__init__(f"shop unreachable ({reason}): {detail}")
-        self.reason = reason
-        self.detail = detail
-
-
-class PrefetchEntry(BaseModel):
-    """Per-URL outcome record persisted in ``prefetch.json``.
-
-    Attributes:
-        url: Absolute URL that was fetched.
-        path: The relative path component (e.g. ``"/products.json"``).
-        status: HTTP status, or ``None`` on transport-level failure.
-        content_type: ``Content-Type`` response header, if any.
-        bytes: Body length actually written to disk (``0`` on failure).
-        saved_to: Filename relative to ``dest_dir``, or ``None`` if the
-            response was not persisted.
-        error: Short error string when the fetch failed, else ``None``.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    url: str
-    path: str
-    status: int | None
-    content_type: str | None
-    bytes: int
-    saved_to: str | None
-    error: str | None = None
-
-
-class PrefetchResult(BaseModel):
-    """Summary returned by :func:`run` and persisted as ``prefetch.json``.
-
-    Attributes:
-        base_url: The storefront base URL the run was anchored at.
-        user_agent: User-Agent header used for every request.
-        started_at: ISO-8601 UTC timestamp of the first request.
-        finished_at: ISO-8601 UTC timestamp after the last request.
-        entries: One :class:`PrefetchEntry` per URL attempted, in fetch
-            order.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    base_url: str
-    user_agent: str
-    started_at: str
-    finished_at: str
-    entries: tuple[PrefetchEntry, ...]
-
-
 def run(
     url: str,
     *,
@@ -175,7 +105,8 @@ def run(
             tests.
 
     Returns:
-        A :class:`PrefetchResult` summarizing every URL attempted.
+        A :class:`~shop_explore.prefetch.models.PrefetchResult`
+        summarizing every URL attempted.
 
     Raises:
         ShopUnreachableError: If ``robots.txt`` disallows ``*`` on ``/``,

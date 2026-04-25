@@ -228,9 +228,9 @@ def parse_plan_coverage(plan_md: str) -> tuple[set[str], set[str]]:
     """Extract task ids and omitted-area slugs from a ``plan.md``.
 
     Mirrors the lightweight parsing done by
-    :func:`shop_explore.synthesize._count_plan_tasks` and
-    :func:`shop_explore.synthesize._parse_omitted_areas`, but returns
-    raw slug sets rather than counts / records.
+    :func:`shop_explore.synthesize.manifest._count_plan_tasks` and
+    :func:`shop_explore.synthesize.manifest._parse_omitted_areas`, but
+    returns raw slug sets rather than counts / records.
 
     Args:
         plan_md: Contents of ``plan.md``. May be empty.

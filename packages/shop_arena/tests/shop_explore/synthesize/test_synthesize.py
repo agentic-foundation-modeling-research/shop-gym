@@ -24,7 +24,7 @@ from shop_explore.synthesize import (
     synthesize,
 )
 
-_CASSETTE_DIR = Path(__file__).resolve().parent / "cassettes" / "fixture_drawer_shop"
+_CASSETTE_DIR = Path(__file__).resolve().parent.parent / "cassettes" / "fixture_drawer_shop"
 _FINAL_ITER_DIR = _CASSETTE_DIR / "exec-0004"
 _EXPECTED_TASK_IDS: tuple[str, ...] = (
     "homepage_sections",

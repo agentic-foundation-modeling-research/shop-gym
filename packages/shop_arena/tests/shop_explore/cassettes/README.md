@@ -27,11 +27,11 @@ the trajectory content.
 
 ## Fixture inventory
 
-| Fixture slug          | Source storefront                         | Role          | How recorded                       | Status                       |
-| --------------------- | ----------------------------------------- | ------------- | ---------------------------------- | ---------------------------- |
-| `fixture_drawer_shop` | _synthetic_ (no live source)              | feature-rich  | hand-crafted (M2)                  | ✅ committed                 |
-| `fixture_fermliving`  | `https://fermliving.com`                  | feature-rich  | hand-crafted placeholder (T4.2)    | ✅ committed (synthetic)     |
-| `fixture_dawn_demo`   | `https://theme-dawn-demo.myshopify.com`   | minimal       | hand-crafted placeholder (T4.2)    | ✅ committed (synthetic)     |
+| Fixture slug           | Source storefront                         | Role          | How recorded                       | Status                       |
+| ---------------------- | ----------------------------------------- | ------------- | ---------------------------------- | ---------------------------- |
+| `fixture_drawer_shop`  | _synthetic_ (no live source)              | feature-rich  | hand-crafted (M2)                  | ✅ committed                 |
+| `fixture_feature_rich` | _synthetic_ (no live source)              | feature-rich  | hand-crafted placeholder (T4.2)    | ✅ committed (synthetic)     |
+| `fixture_dawn_demo`    | `https://theme-dawn-demo.myshopify.com`   | minimal       | hand-crafted placeholder (T4.2)    | ✅ committed (synthetic)     |
 
 The **synthetic** fixture (`fixture_drawer_shop`) is the canonical
 hand-crafted cassette used by `test_pipeline_replay.py` and
@@ -40,27 +40,22 @@ real shop and is fully checked in. See its own
 [`fixture_drawer_shop/README.md`](./fixture_drawer_shop/README.md).
 
 The two **placeholder** fixtures below back T4.2–T4.5 of the
-implementation plan. They are currently **hand-crafted** to model the
-documented profile of each storefront so the parameterized replay
-test (`test_pipeline_replay.py::test_pipeline_replay_runs_end_to_end_against_alt_cassettes`)
+implementation plan. They are currently **hand-crafted** to model a
+generic profile shape so the parameterized replay test
+(`test_pipeline_replay.py::test_pipeline_replay_runs_end_to_end_against_alt_cassettes`)
 exercises a minimal-shape and a feature-rich shape end-to-end without
-any live LLM or browser session. The live recording (overwriting these
-placeholders with real `pi`-runtime captures) is the manual M4
-milestone gate covered by **T4.5** — see the recording workflow at the
-bottom of this file. Until then, anyone refreshing them in place must
-still pass `tests/shop_explore/test_anonymization.py` against the new
-content.
+any live LLM or browser session. Anyone refreshing them in place must
+still pass `tests/shop_explore/synthesize/test_anonymization.py`
+against the new content.
 
 ---
 
 ## Live fixture choices (T4.1)
 
-### `fixture_fermliving` — feature-rich
+### `fixture_feature_rich` — feature-rich
 
-- **URL:** `https://fermliving.com`
-- **Platform:** Shopify (verified — `/cart.js`, `/products.json`,
-  `/collections.json`, `/sitemap.xml` all return 200).
-- **Why feature-rich:** the storefront exercises the long tail of the
+- **Source:** synthetic placeholder (no live storefront pinned).
+- **Why feature-rich:** the cassette models the long tail of the
   §5.3 coverage taxonomy in a single shop:
   - **Site shell:** announcement bar, mega menu, multi-column footer.
   - **Homepage:** hero carousel, multiple featured-collection sections,
@@ -73,13 +68,8 @@ content.
   - **Search:** predictive panel with products + collections.
   - **Intl:** locale switcher + currency switcher.
   - **Info:** about, contact, shipping, returns, privacy, ToS, FAQ.
-- **Why this exact shop:** picked in the implementation plan
-  (`docs/impl/shop_explore_implementation.md` §M4) because it is a
-  long-lived, large-catalog Shopify storefront whose feature footprint
-  hits every coverage-taxonomy area, making it the natural target for
-  the M4 live e2e gate (T4.5) and for SC5 (coverage).
-- **License / fair-use stance:** we record cassettes against the public
-  storefront. The repo commits **only**:
+- **License / fair-use stance:** when this cassette is refreshed from a
+  live recording in a future milestone, the repo will commit **only**:
   - the cassette `workspace_after/` overlay (anonymized
     `parts/<task>.md` + `parts/<task>.caps.json` + `evidence/<task>/`
     snapshots/screenshots), and
@@ -88,17 +78,12 @@ content.
 
   Anonymization (per spec §5.10 and `prompts/agents.md`) strips brand
   names, store names, and product titles at executor write-time;
-  `tests/shop_explore/test_anonymization.py` enforces this with a
-  regex scan over the synthesized artefacts before commit. Raw
+  `tests/shop_explore/synthesize/test_anonymization.py` enforces this
+  with a regex scan over the synthesized artefacts before commit. Raw
   prefetch responses (`prefetch/index.html`, `prefetch/products.json`,
   …) and trajectory `native.log` lines are **not** committed for
   live-recorded fixtures — they are gitignored under
-  `cassettes/fixture_fermliving/_raw/` if generated.
-
-  We do **not** redistribute Ferm Living's product imagery, copy, or
-  brand assets. Screenshots committed under `evidence/` are evaluated
-  case-by-case during cassette refresh (T4.2) and removed if they
-  contain identifying brand artwork.
+  `cassettes/fixture_feature_rich/_raw/` if generated.
 
 ### `fixture_dawn_demo` — minimal
 
@@ -130,7 +115,7 @@ content.
 - **License / fair-use stance:** the storefront is owned and operated
   by Shopify Inc. as a public theme preview. The catalog (sample
   products, sample copy, sample imagery) is Shopify's own demo
-  content. We treat it the same as `fixture_fermliving` for repo
+  content. We treat it the same as `fixture_feature_rich` for repo
   hygiene: only anonymized cassette overlays are committed; raw
   prefetch and trajectory logs are gitignored.
 
@@ -141,12 +126,6 @@ content.
 Live cassettes are recorded by the harness, not authored by hand.
 
 ```bash
-# Feature-rich fixture
-HARNESS_RECORD=1 \
-  uv run shop-explore https://fermliving.com \
-  --runtime pi \
-  --out packages/shop_arena/tests/shop_explore/cassettes/fixture_fermliving
-
 # Minimal fixture
 HARNESS_RECORD=1 \
   uv run shop-explore https://theme-dawn-demo.myshopify.com \
@@ -156,7 +135,7 @@ HARNESS_RECORD=1 \
 
 After recording:
 
-1. Run `pytest packages/shop_arena/tests/shop_explore/test_anonymization.py`
+1. Run `pytest packages/shop_arena/tests/shop_explore/synthesize/test_anonymization.py`
    against the new cassette. **Must be green** — no leaks of source
    domain, store name, or first 20 product titles.
 2. Hand-review `evidence/<task_id>/screenshots/*.png` for

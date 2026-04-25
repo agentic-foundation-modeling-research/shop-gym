@@ -19,7 +19,7 @@ Spec contract worth calling out explicitly:
 
 * ``products_truncated`` is set when ``prefetch/products.json`` returned
   ≥ 50 products (the limit we request, see
-  :data:`shop_explore.prefetch._FETCH_PLAN`). Per spec §8.2 this is the
+  :data:`shop_explore.prefetch.runner._FETCH_PLAN`). Per spec §8.2 this is the
   v0.1 sampling caveat — no pagination.
 * ``feature_count`` is derived from ``capabilities``: every truthy bool
   contributes ``1`` and every non-empty list contributes its length.
