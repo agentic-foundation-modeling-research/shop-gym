@@ -92,7 +92,7 @@ without API keys via the harness `replay` runtime.
 ### M5 · v0.1.0
 
 - [x] **T5.1** — `src/shop_explore/__init__.py` re-exports the spec §8.1 public surface only. **Check:** `from shop_explore import explore, ExploreConfig, ExploreResult, Capabilities, Stats` works; nothing else top-level.
-- [ ] **T5.2** — `packages/shop_arena/src/shop_explore/README.md`: usage example, runtime-selection note, record-cassette workflow, layout reference. **Check:** README snippet runs end-to-end (`--prefetch-only` path).
+- [x] **T5.2** — `packages/shop_arena/src/shop_explore/README.md`: usage example, runtime-selection note, record-cassette workflow, layout reference. **Check:** README snippet runs end-to-end (`--prefetch-only` path).
 - [ ] **T5.3** — Update `docs/specs/README.md` ShopArena row to point at this spec + impl. Update repo `README.md` ShopArena bullet to describe `shop_explore` v0.1 status. **Check:** links resolve.
 - [ ] **T5.4** — Tag `shop-explore-v0.1.0`. Bump package version if shop_arena is independently versioned (currently `0.0.0` — leave unless we agree to bump). **Check:** tag pushed.
 
