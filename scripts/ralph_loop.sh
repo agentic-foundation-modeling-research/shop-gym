@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROMPT='Study @docs/specs/harness/plan_exec_loop.md; Pick the most important task from @docs/impl/plan_exec_loop_implementation.md,
-do it end-to-end (edit code, run tests), then mark it "- [x]" in @docs/impl/plan_exec_loop_implementation.md
+PROMPT='Study @docs/specs/shop_arena/shop_explore.md; Pick the most important task from @docs/impl/shop_explore_implementation.md,
+do it end-to-end (edit code, run tests), then mark it "- [x]" in @docs/impl/shop_explore_implementation.md
 and commit with a short message. If no unchecked tasks remain, print
 exactly "ALL TASKS ARE DONE" and stop.'
 
@@ -13,5 +13,5 @@ for i in {1..50}; do
     echo "✅ task list drained"; break
     fi
     # safety: stop if no checkbox progress was made
-    if ! git diff --quiet docs/impl/plan_exec_loop_implementation.md; then git add docs/impl/plan_exec_loop_implementation.md; fi
+    if ! git diff --quiet docs/impl/shop_explore_implementation.md; then git add docs/impl/shop_explore_implementation.md; fi
 done
