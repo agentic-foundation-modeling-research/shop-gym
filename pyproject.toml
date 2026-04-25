@@ -13,6 +13,8 @@ dev = [
   "pytest-cov>=5.0",
   "ruff>=0.6",
   "pyright>=1.1.380",
+  "respx>=0.21",
+  "httpx>=0.27",
   "shop-arena",
   "shop-guru",
   "harness",
