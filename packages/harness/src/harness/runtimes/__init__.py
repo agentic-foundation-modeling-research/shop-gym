@@ -43,9 +43,7 @@ def get_runtime(name: str, **kwargs: Any) -> AgentRuntime:
         target = _REGISTRY[name]
     except KeyError:
         known = ", ".join(sorted(_REGISTRY)) or "<none>"
-        raise ValueError(
-            f"Unknown runtime {name!r}; known runtimes: {known}"
-        ) from None
+        raise ValueError(f"Unknown runtime {name!r}; known runtimes: {known}") from None
     module_name, _, attr = target.partition(":")
     module = importlib.import_module(module_name)
     factory = getattr(module, attr)

@@ -151,7 +151,5 @@ class PlanExecLoopResult(BaseModel):
             elif isinstance(item, dict):
                 coerced.append(Task(**cast(dict[str, Any], item)))
             else:
-                raise TypeError(
-                    f"tasks_final item must be Task or dict, got {type(item)!r}"
-                )
+                raise TypeError(f"tasks_final item must be Task or dict, got {type(item)!r}")
         return tuple(coerced)
