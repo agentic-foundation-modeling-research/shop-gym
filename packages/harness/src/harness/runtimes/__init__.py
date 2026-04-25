@@ -21,6 +21,7 @@ __all__ = ["AgentRuntime", "RuntimeIterationResult", "get_runtime"]
 # the runtime class itself).
 _REGISTRY: dict[str, str] = {
     "replay": "harness.runtimes.replay:ReplayRuntime",
+    "claude_code": "harness.runtimes.claude_code:ClaudeCodeRuntime",
 }
 
 
