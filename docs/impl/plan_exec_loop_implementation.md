@@ -38,7 +38,7 @@ behind `HARNESS_SMOKE_*` env vars verify real-CLI parity.
 ### M1 · Core primitives
 
 - [x] **T1.1** — Create `packages/harness/` skeleton: `pyproject.toml` (hatchling, mirror `shop_arena`), `src/harness/__init__.py`, `src/harness/py.typed`, empty `tests/`. **Check:** `uv sync` installs it.
-- [ ] **T1.2** — Register the package in root `pyproject.toml` under `[tool.uv.workspace]`, `[tool.ruff].src`, `[tool.pyright].include`, `[tool.pytest.ini_options].testpaths`. **Check:** `pyright --strict` and `ruff check` run clean on the empty package.
+- [x] **T1.2** — Register the package in root `pyproject.toml` under `[tool.uv.workspace]`, `[tool.ruff].src`, `[tool.pyright].include`, `[tool.pytest.ini_options].testpaths`. **Check:** `pyright --strict` and `ruff check` run clean on the empty package.
 - [ ] **T1.3** — `src/harness/types.py`: `TaskStatus` enum, frozen dataclasses `Task` / `TaskList`, pydantic v2 `Trajectory` + tagged-union `TrajectoryStep`, `IterationMetadata`, `ProtocolCheckResult`. **Check:** unit tests round-trip every pydantic model through JSON.
 - [ ] **T1.4** — `src/harness/config.py`: `Prompts`, `PlanExecLoopConfig`, `PlanExecLoopResult` (incl. `final_status` enum). **Check:** invalid configs (`max_iters <= 0`, missing prompt) raise `ValidationError`.
 - [ ] **T1.5** — `src/harness/plan_parser.py`: `parse(text) -> TaskList`, `select_next(tasks)`, `diff(before, after)`, `InvalidPlanError`. Enforces all §5.5 invariants. **Check:** `tests/unit/test_plan_parser.py` covers happy path, each invariant violation, priority ordering, optional `— note`.
