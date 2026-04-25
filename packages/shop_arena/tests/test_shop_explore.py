@@ -1,12 +1,11 @@
-"""Smoke tests for shop_explore."""
+"""Smoke tests for the ``shop_explore`` package.
+
+Detailed CLI behavior is covered under ``tests/shop_explore/``; this
+module only guards basic importability of the public version string.
+"""
 
 from shop_explore import __version__
-from shop_explore.cli import main
 
 
 def test_version_is_string() -> None:
     assert isinstance(__version__, str)
-
-
-def test_cli_exits_cleanly() -> None:
-    assert main([]) == 0
