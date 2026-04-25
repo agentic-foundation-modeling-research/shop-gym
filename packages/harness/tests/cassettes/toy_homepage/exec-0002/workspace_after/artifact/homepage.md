@@ -1,5 +1,0 @@
-# homepage
-
-- hero
-- nav
-- footer
