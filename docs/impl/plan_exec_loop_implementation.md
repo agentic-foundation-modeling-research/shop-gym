@@ -74,7 +74,7 @@ behind `HARNESS_SMOKE_*` env vars verify real-CLI parity.
 
 - [x] **T4.1** — Lock public surface: `harness/__init__.py` re-exports only the names in spec §8.1. **Check:** `from harness import …` works for each listed symbol; nothing else is importable from the top level.
 - [x] **T4.2** — `packages/harness/README.md`: 60-line usage example, runtime-selection note, record-cassette workflow. **Check:** `python -c` snippet from the README runs.
-- [ ] **T4.3** — `packages/harness/CHANGELOG.md`: `0.1.0` entry. Bump `pyproject.toml` version to `0.1.0`. Tag `harness-v0.1.0`. **Check:** tag pushed.
+- [x] **T4.3** — `packages/harness/CHANGELOG.md`: `0.1.0` entry. Bump `pyproject.toml` version to `0.1.0`. Tag `harness-v0.1.0`. **Check:** tag pushed.
 - [ ] **T4.4** — Already done in this PR: `docs/specs/README.md` cross-cutting row "Impl Plan" cell points here. Verify it still does. **Check:** link resolves.
 
 ---
