@@ -1,0 +1,6 @@
+# Live-recorded cassette artefacts that must NOT be committed.
+# See ./README.md for the recording workflow.
+fixture_fermliving/_raw/
+fixture_dawn_demo/_raw/
+fixture_fermliving/**/native.log
+fixture_dawn_demo/**/native.log
