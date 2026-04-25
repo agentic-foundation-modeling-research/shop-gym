@@ -1,0 +1,5 @@
+# homepage
+
+- hero
+- nav
+- footer
