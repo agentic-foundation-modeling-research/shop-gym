@@ -32,7 +32,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from harness import PlanExecLoopConfig, Prompts, get_runtime, run_plan_exec_loop
-from shop_explore import __version__
+from shop_explore._version import __version__
 from shop_explore.config import ExploreConfig, ExploreResult
 from shop_explore.prefetch import run as run_prefetch
 from shop_explore.synthesize import LLMClient, synthesize

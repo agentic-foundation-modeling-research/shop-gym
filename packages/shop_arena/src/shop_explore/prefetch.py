@@ -36,7 +36,7 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 from pydantic import BaseModel, ConfigDict
 
-from shop_explore import __version__
+from shop_explore._version import __version__
 
 DEFAULT_USER_AGENT = f"ShopExplore/{__version__} (+https://github.com/Shopify/shop-gym)"
 """Default User-Agent sent on every prefetch request (spec §5.9)."""
