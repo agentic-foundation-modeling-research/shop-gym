@@ -645,3 +645,231 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     });
   });
 });
+
+// ── Cart extra-field mutations (T4.4) ─────────────────────────────────────
+
+interface CartExtraSummary {
+  readonly discountCodes: readonly { readonly code: string; readonly applicable: boolean }[];
+  readonly appliedGiftCards: readonly {
+    readonly id: string;
+    readonly lastCharacters: string | null;
+  }[];
+  readonly note: string;
+  readonly attributes: readonly { readonly key: string; readonly value: string }[];
+  readonly buyerIdentity: {
+    readonly countryCode: string | null;
+    readonly email: string | null;
+    readonly phone: string | null;
+  };
+}
+
+const CART_EXTRA_FIELDS = /* GraphQL */ `
+  cart {
+    id
+    note
+    attributes { key value }
+    discountCodes { code applicable }
+    appliedGiftCards { id lastCharacters }
+    buyerIdentity { countryCode email phone }
+  }
+  userErrors { code field message }
+`;
+
+async function readExtras(
+  run: (source: string) => Promise<ExecutionResult>,
+  cartId: string,
+): Promise<CartExtraSummary> {
+  const result = await run(/* GraphQL */ `
+    {
+      cart(id: "${cartId}") {
+        note
+        attributes { key value }
+        discountCodes { code applicable }
+        appliedGiftCards { id lastCharacters }
+        buyerIdentity { countryCode email phone }
+      }
+    }
+  `);
+  expect(result.errors).toBeUndefined();
+  const data = result.data as { readonly cart: CartExtraSummary | null };
+  if (data.cart === null) throw new Error('expected cart to be non-null');
+  return data.cart;
+}
+
+describe('cartResolvers — extra-field mutations (T4.4)', () => {
+  it('cartDiscountCodesUpdate stores codes and reflects them on Query.cart', async () => {
+    const carts = new CartStore();
+    const cart = carts.create();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartDiscountCodesUpdate(
+          cartId: "${cart.id}"
+          discountCodes: ["SUMMER10", "WELCOME"]
+        ) {
+          ${CART_EXTRA_FIELDS}
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    const extras = await readExtras(run, cart.id);
+    expect(extras.discountCodes).toEqual([
+      { code: 'SUMMER10', applicable: true },
+      { code: 'WELCOME', applicable: true },
+    ]);
+  });
+
+  it('cartDiscountCodesUpdate with null clears stored codes', async () => {
+    const carts = new CartStore();
+    const cart = carts.create({ discountCodes: ['SAVE5'] });
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartDiscountCodesUpdate(cartId: "${cart.id}", discountCodes: null) {
+          cart { discountCodes { code } }
+          userErrors { message }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    const extras = await readExtras(run, cart.id);
+    expect(extras.discountCodes).toEqual([]);
+  });
+
+  it('cartBuyerIdentityUpdate persists country, email, and phone', async () => {
+    const carts = new CartStore();
+    const cart = carts.create();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartBuyerIdentityUpdate(
+          cartId: "${cart.id}"
+          buyerIdentity: {
+            countryCode: CA
+            email: "buyer@example.com"
+            phone: "+15551234567"
+          }
+        ) {
+          ${CART_EXTRA_FIELDS}
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    const extras = await readExtras(run, cart.id);
+    expect(extras.buyerIdentity).toEqual({
+      countryCode: 'CA',
+      email: 'buyer@example.com',
+      phone: '+15551234567',
+    });
+  });
+
+  it('cartBuyerIdentityUpdate is partial — omitted fields are preserved', async () => {
+    const carts = new CartStore();
+    const cart = carts.create({
+      buyerIdentity: { countryCode: 'CA', email: 'old@example.com', phone: '+11111111111' },
+    });
+    const run = runWith(carts);
+    await run(/* GraphQL */ `
+      mutation {
+        cartBuyerIdentityUpdate(
+          cartId: "${cart.id}"
+          buyerIdentity: { email: "new@example.com" }
+        ) {
+          cart { id }
+          userErrors { message }
+        }
+      }
+    `);
+    const extras = await readExtras(run, cart.id);
+    expect(extras.buyerIdentity).toEqual({
+      countryCode: 'CA',
+      email: 'new@example.com',
+      phone: '+11111111111',
+    });
+  });
+
+  it('cartNoteUpdate persists a free-form note', async () => {
+    const carts = new CartStore();
+    const cart = carts.create();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartNoteUpdate(cartId: "${cart.id}", note: "Please gift wrap.") {
+          ${CART_EXTRA_FIELDS}
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    const extras = await readExtras(run, cart.id);
+    expect(extras.note).toBe('Please gift wrap.');
+  });
+
+  it('cartAttributesUpdate replaces stored attributes', async () => {
+    const carts = new CartStore();
+    const cart = carts.create({ attributes: [{ key: 'old', value: 'value' }] });
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartAttributesUpdate(
+          cartId: "${cart.id}"
+          attributes: [
+            { key: "engraving", value: "Hello" }
+            { key: "gift", value: "true" }
+          ]
+        ) {
+          ${CART_EXTRA_FIELDS}
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    const extras = await readExtras(run, cart.id);
+    expect(extras.attributes).toEqual([
+      { key: 'engraving', value: 'Hello' },
+      { key: 'gift', value: 'true' },
+    ]);
+  });
+
+  it('cartGiftCardCodesUpdate materializes AppliedGiftCard nodes with last4', async () => {
+    const carts = new CartStore();
+    const cart = carts.create();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartGiftCardCodesUpdate(
+          cartId: "${cart.id}"
+          giftCardCodes: ["GIFT-ABCD-1234", "AB"]
+        ) {
+          ${CART_EXTRA_FIELDS}
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    const extras = await readExtras(run, cart.id);
+    expect(extras.appliedGiftCards).toHaveLength(2);
+    expect(extras.appliedGiftCards[0]?.lastCharacters).toBe('1234');
+    expect(extras.appliedGiftCards[1]?.lastCharacters).toBe('AB');
+    expect(extras.appliedGiftCards[0]?.id).toMatch(/^gid:\/\/shopify\/AppliedGiftCard\/[0-9a-f]{8}$/);
+    // GIDs are deterministic per code.
+    expect(extras.appliedGiftCards[0]?.id).not.toBe(extras.appliedGiftCards[1]?.id);
+  });
+
+  it('extra-field mutations return INVALID userError when cartId is unknown', async () => {
+    const carts = new CartStore();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartNoteUpdate(cartId: "gid://shopify/Cart/cart-999", note: "ignored") {
+          cart { id }
+          userErrors { code field message }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      cartNoteUpdate: {
+        cart: null,
+        userErrors: [{ code: 'INVALID', field: ['cartId'], message: 'Cart not found' }],
+      },
+    });
+  });
+});

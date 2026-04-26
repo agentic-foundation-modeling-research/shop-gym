@@ -37,13 +37,14 @@ import {
   type ProductVariantNode,
   buildMoneyV2,
   buildProductVariantNode,
+  gid,
 } from './builders.js';
 import type { ResolverContext } from './index.js';
 
 // ── Input shapes ───────────────────────────────────────────────────────────
 // Hand-typed until graphql-codegen lands in M7 (T7.1). Mirrors the SDL
-// `CartLineInput`, `CartLineUpdateInput`, and `CartInput` inputs scoped to
-// the line-management surface owned by this milestone.
+// `CartLineInput`, `CartLineUpdateInput`, `CartInput`, and
+// `CartBuyerIdentityInput` inputs scoped to the cart surface.
 
 export interface AttributeInput {
   readonly key: string;
@@ -63,8 +64,19 @@ export interface CartLineUpdateInput {
   readonly attributes?: readonly AttributeInput[] | null;
 }
 
+export interface CartBuyerIdentityInput {
+  readonly countryCode?: string | null;
+  readonly email?: string | null;
+  readonly phone?: string | null;
+  readonly customerAccessToken?: string | null;
+}
+
 export interface CartInput {
   readonly lines?: readonly CartLineInput[] | null;
+  readonly discountCodes?: readonly string[] | null;
+  readonly attributes?: readonly AttributeInput[] | null;
+  readonly note?: string | null;
+  readonly buyerIdentity?: CartBuyerIdentityInput | null;
 }
 
 // ── State shapes ──────────────────────────────────────────────────────────
@@ -77,10 +89,22 @@ export interface CartLineState {
   attributes: readonly AttributeInput[];
 }
 
-/** Mutable cart record held by the store. The `id` is immutable; `lines` is rewritten in place. */
+/** Buyer-identity slot held on a `CartState`. `customer` always resolves to null in v0.1. */
+export interface CartBuyerIdentityState {
+  countryCode: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+/** Mutable cart record held by the store. The `id` is immutable; the rest is rewritten in place. */
 export interface CartState {
   readonly id: string;
   lines: CartLineState[];
+  discountCodes: string[];
+  giftCardCodes: string[];
+  buyerIdentity: CartBuyerIdentityState;
+  note: string;
+  attributes: AttributeInput[];
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────
@@ -102,16 +126,38 @@ export class CartStore {
    * Allocate a new cart and register it under a fresh
    * `gid://shopify/Cart/cart-<n>` id. Initial `input.lines`, if any, are
    * inserted via `addLines` so duplicate `merchandiseId`s merge the same way
-   * a follow-up `cartLinesAdd` would.
+   * a follow-up `cartLinesAdd` would. Other `CartInput` fields
+   * (`discountCodes`, `attributes`, `note`, `buyerIdentity`) are stored
+   * verbatim so a follow-up `Query.cart(id)` reflects them.
    */
   create(input?: CartInput | null): CartState {
     this.cartCounter += 1;
     const id = `gid://shopify/Cart/cart-${this.cartCounter}`;
-    const cart: CartState = { id, lines: [] };
+    const cart: CartState = {
+      id,
+      lines: [],
+      discountCodes: [],
+      giftCardCodes: [],
+      buyerIdentity: { countryCode: null, email: null, phone: null },
+      note: '',
+      attributes: [],
+    };
     this.carts.set(id, cart);
     this.lineCounters.set(id, 0);
     if (input?.lines !== undefined && input.lines !== null && input.lines.length > 0) {
       this.addLines(cart, input.lines);
+    }
+    if (input?.discountCodes !== undefined && input.discountCodes !== null) {
+      this.setDiscountCodes(cart, input.discountCodes);
+    }
+    if (input?.attributes !== undefined && input.attributes !== null) {
+      this.setAttributes(cart, input.attributes);
+    }
+    if (input?.note !== undefined && input.note !== null) {
+      this.setNote(cart, input.note);
+    }
+    if (input?.buyerIdentity !== undefined && input.buyerIdentity !== null) {
+      this.setBuyerIdentity(cart, input.buyerIdentity);
     }
     return cart;
   }
@@ -182,6 +228,48 @@ export class CartStore {
     cart.lines = cart.lines.filter((l) => !ids.has(l.id));
   }
 
+  /**
+   * Replace the cart's discount codes. v0.1 performs no validation — every
+   * code is stored as-is and reported `applicable: true` by the resolver.
+   * Passing `null` clears the list (matches Shopify behavior for the
+   * `cartDiscountCodesUpdate` mutation when `discountCodes` is null).
+   */
+  setDiscountCodes(cart: CartState, codes: readonly string[] | null): void {
+    cart.discountCodes = codes === null ? [] : [...codes];
+  }
+
+  /**
+   * Replace the cart's applied gift-card codes. v0.1 performs no validation —
+   * codes are stored as-is and rendered as `AppliedGiftCard` nodes (id,
+   * lastCharacters, no `amountUsed`).
+   */
+  setGiftCardCodes(cart: CartState, codes: readonly string[]): void {
+    cart.giftCardCodes = [...codes];
+  }
+
+  /**
+   * Merge a buyer-identity update into the cart. Fields explicitly set to
+   * `null` in the input clear the corresponding stored value; omitted /
+   * `undefined` fields are left untouched (matches the Storefront API's
+   * partial-update semantics). `customerAccessToken` is accepted but ignored
+   * — v0.1 has no real customer auth.
+   */
+  setBuyerIdentity(cart: CartState, identity: CartBuyerIdentityInput): void {
+    if (identity.countryCode !== undefined) cart.buyerIdentity.countryCode = identity.countryCode;
+    if (identity.email !== undefined) cart.buyerIdentity.email = identity.email;
+    if (identity.phone !== undefined) cart.buyerIdentity.phone = identity.phone;
+  }
+
+  /** Replace the cart's free-form note. */
+  setNote(cart: CartState, note: string): void {
+    cart.note = note;
+  }
+
+  /** Replace the cart's custom attributes. */
+  setAttributes(cart: CartState, attributes: readonly AttributeInput[]): void {
+    cart.attributes = attributes.map((a) => ({ key: a.key, value: a.value }));
+  }
+
   /** Reset the store. Used by `server.close()` and in tests. */
   clear(): void {
     this.carts.clear();
@@ -241,6 +329,17 @@ export interface CartBuyerIdentityNode {
   readonly phone: string | null;
 }
 
+export interface CartDiscountCodeNode {
+  readonly code: string;
+  readonly applicable: boolean;
+}
+
+export interface AppliedGiftCardNode {
+  readonly id: string;
+  readonly lastCharacters: string | null;
+  readonly amountUsed: MoneyV2Node | null;
+}
+
 export interface CartNode {
   readonly id: string;
   readonly checkoutUrl: string;
@@ -248,8 +347,8 @@ export interface CartNode {
   readonly updatedAt: string;
   readonly cost: CartCostNode;
   readonly attributes: readonly AttributeNode[];
-  readonly discountCodes: readonly { readonly code: string; readonly applicable: boolean }[];
-  readonly appliedGiftCards: readonly never[];
+  readonly discountCodes: readonly CartDiscountCodeNode[];
+  readonly appliedGiftCards: readonly AppliedGiftCardNode[];
   readonly buyerIdentity: CartBuyerIdentityNode;
   readonly note: string;
   /** Internal: materialized lines used by the `Cart.lines(first)` resolver. */
@@ -292,10 +391,9 @@ export interface CartMutationPayloadNode {
 /**
  * Resolver map for the Cart area. Covers `Query.cart(id)` (T4.2), the four
  * line-management mutations (`cartCreate`, `cartLinesAdd`, `cartLinesUpdate`,
- * `cartLinesRemove`, T4.3), plus the `BaseCartLine` / `Merchandise` union
- * discriminators and the `Cart.lines` connection field. The discount-code /
- * buyer-identity / note / attribute / gift-card mutations (T4.4) merge into
- * this map as they ship.
+ * `cartLinesRemove`, T4.3), the discount-code / buyer-identity / note /
+ * attribute / gift-card mutations (T4.4), plus the `BaseCartLine` /
+ * `Merchandise` union discriminators and the `Cart.lines` connection field.
  */
 export const cartResolvers = {
   Query: {
@@ -350,6 +448,61 @@ export const cartResolvers = {
       const state = ctx.carts.get(args.cartId);
       if (state === undefined) return cartNotFoundPayload();
       ctx.carts.removeLines(state, args.lineIds);
+      return successPayload(state, ctx);
+    },
+
+    cartDiscountCodesUpdate: (
+      _parent: unknown,
+      args: { readonly cartId: string; readonly discountCodes?: readonly string[] | null },
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.setDiscountCodes(state, args.discountCodes ?? null);
+      return successPayload(state, ctx);
+    },
+
+    cartBuyerIdentityUpdate: (
+      _parent: unknown,
+      args: { readonly cartId: string; readonly buyerIdentity: CartBuyerIdentityInput },
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.setBuyerIdentity(state, args.buyerIdentity);
+      return successPayload(state, ctx);
+    },
+
+    cartNoteUpdate: (
+      _parent: unknown,
+      args: { readonly cartId: string; readonly note: string },
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.setNote(state, args.note);
+      return successPayload(state, ctx);
+    },
+
+    cartAttributesUpdate: (
+      _parent: unknown,
+      args: { readonly cartId: string; readonly attributes: readonly AttributeInput[] },
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.setAttributes(state, args.attributes);
+      return successPayload(state, ctx);
+    },
+
+    cartGiftCardCodesUpdate: (
+      _parent: unknown,
+      args: { readonly cartId: string; readonly giftCardCodes: readonly string[] },
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.setGiftCardCodes(state, args.giftCardCodes);
       return successPayload(state, ctx);
     },
   },
@@ -431,12 +584,32 @@ function buildCartNode(state: CartState, data: SandboxShopData, baseUrl: string)
       totalTaxAmount: null,
       totalDutyAmount: null,
     },
-    attributes: [],
-    discountCodes: [],
-    appliedGiftCards: [],
-    buyerIdentity: { countryCode: null, customer: null, email: null, phone: null },
-    note: '',
+    attributes: state.attributes.map((a) => ({ key: a.key, value: a.value })),
+    discountCodes: state.discountCodes.map((code) => ({ code, applicable: true })),
+    appliedGiftCards: state.giftCardCodes.map(buildAppliedGiftCardNode),
+    buyerIdentity: {
+      countryCode: state.buyerIdentity.countryCode,
+      customer: null,
+      email: state.buyerIdentity.email,
+      phone: state.buyerIdentity.phone,
+    },
+    note: state.note,
     lineNodes,
+  };
+}
+
+/**
+ * Materialize a stored gift-card code into an `AppliedGiftCard` node. v0.1
+ * performs no real validation, so `amountUsed` is always null and
+ * `lastCharacters` is the last four characters of the code (or the whole
+ * code if shorter). The id is a deterministic GID hashed from the code so
+ * the same value yields the same id across server restarts.
+ */
+function buildAppliedGiftCardNode(code: string): AppliedGiftCardNode {
+  return {
+    id: gid('AppliedGiftCard', code),
+    lastCharacters: code.length === 0 ? null : code.slice(-4),
+    amountUsed: null,
   };
 }
 
