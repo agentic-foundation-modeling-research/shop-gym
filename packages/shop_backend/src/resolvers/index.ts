@@ -3,16 +3,19 @@
  * every resolver module under this directory and the combined
  * `sandboxResolvers` map wired into `createSandboxSchema` by default.
  *
- * Resolver areas covered at this milestone (M2): shop / menu / localization
- * (T2.3), product / collection (T2.4), page / blog / article (T2.5).
- * Search (M3), cart (M4), and metafield (M5) maps land in subsequent
- * milestones and are merged into `sandboxResolvers` as they ship.
+ * Resolver areas covered to date: shop / menu / localization (T2.3),
+ * product / collection (T2.4), page / blog / article (T2.5), search
+ * (T3.1, partial — `Query.search` only). `predictiveSearch` /
+ * `productRecommendations` (T3.2 / T3.3), cart (M4), and metafield (M5)
+ * maps land in subsequent milestones and are merged into `sandboxResolvers`
+ * as they ship.
  */
 
 import type { SandboxShopData } from '../data/types.js';
 import type { SandboxSchemaResolvers } from '../schema.js';
 import { contentResolvers } from './content.js';
 import { productResolvers } from './product.js';
+import { searchResolvers } from './search.js';
 import { shopResolvers } from './shop.js';
 
 /**
@@ -43,9 +46,11 @@ export const sandboxResolvers: SandboxSchemaResolvers = {
     ...shopResolvers.Query,
     ...productResolvers.Query,
     ...contentResolvers.Query,
+    ...searchResolvers.Query,
   },
   Shop: shopResolvers.Shop,
   Product: productResolvers.Product,
   Collection: productResolvers.Collection,
   Blog: contentResolvers.Blog,
+  SearchResultItem: searchResolvers.SearchResultItem,
 };
