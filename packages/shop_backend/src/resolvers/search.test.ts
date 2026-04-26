@@ -1,8 +1,10 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createYoga } from 'graphql-yoga';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import { loadShopData } from '../data/loader.js';
 import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
@@ -203,5 +205,185 @@ describe('searchResolvers — Query.search sort + pagination', () => {
         nodes: [{ __typename: 'Product' }, { __typename: 'Product' }, { __typename: 'Product' }],
       },
     });
+  });
+});
+
+// ── Query.predictiveSearch ────────────────────────────────────────────────
+
+const PREDICTIVE_QUERY = /* GraphQL */ `
+  query (
+    $q: String!
+    $limit: Int
+    $limitScope: PredictiveSearchLimitScope
+    $types: [PredictiveSearchType]
+  ) {
+    predictiveSearch(query: $q, limit: $limit, limitScope: $limitScope, types: $types) {
+      products {
+        handle
+      }
+      collections {
+        handle
+      }
+      pages {
+        handle
+      }
+      articles {
+        handle
+      }
+      queries {
+        text
+        styledText
+        trackingParameters
+      }
+    }
+  }
+`;
+
+interface PredictiveSearchPayload {
+  readonly products: ReadonlyArray<{ readonly handle: string }>;
+  readonly collections: ReadonlyArray<{ readonly handle: string }>;
+  readonly pages: ReadonlyArray<{ readonly handle: string }>;
+  readonly articles: ReadonlyArray<{ readonly handle: string }>;
+  readonly queries: ReadonlyArray<{
+    readonly text: string;
+    readonly styledText: string;
+    readonly trackingParameters: string | null;
+  }>;
+}
+
+async function predictiveSearchOn(
+  yogaInstance: ReturnType<typeof createYoga>,
+  variables: {
+    readonly q: string;
+    readonly limit?: number;
+    readonly limitScope?: 'EACH' | 'ALL';
+    readonly types?: readonly string[];
+  },
+): Promise<PredictiveSearchPayload> {
+  const response = await yogaInstance.fetch(`${BASE_URL}/graphql`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query: PREDICTIVE_QUERY, variables }),
+  });
+  const payload = (await response.json()) as {
+    readonly data?: { readonly predictiveSearch?: PredictiveSearchPayload };
+    readonly errors?: readonly unknown[];
+  };
+  if (payload.errors !== undefined) {
+    throw new Error(`predictiveSearch query failed: ${JSON.stringify(payload.errors)}`);
+  }
+  if (payload.data?.predictiveSearch === undefined) {
+    throw new Error('predictiveSearch query returned no data');
+  }
+  return payload.data.predictiveSearch;
+}
+
+const predictiveSearch = (variables: {
+  readonly q: string;
+  readonly limit?: number;
+  readonly limitScope?: 'EACH' | 'ALL';
+  readonly types?: readonly string[];
+}): Promise<PredictiveSearchPayload> => predictiveSearchOn(yoga, variables);
+
+describe('searchResolvers — Query.predictiveSearch', () => {
+  it('returns matches across every entity type plus a query suggestion', async () => {
+    // "mock" hits every product (vendor "Mock Pet Foods"), the welcome-post
+    // article (title), and no pages or collections. Exercises the cross-type
+    // fan-out and the suggestion echo.
+    const result = await predictiveSearch({ q: 'mock' });
+    expect(result.products).toEqual([
+      { handle: 'tickless-anti-tick-collar' },
+      { handle: 'fuzzyard-mushroom-dog-toys' },
+      { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
+      { handle: 'applaws-mackerel-and-sardines-70g' },
+      { handle: 'bluestem-toothbrush' },
+    ]);
+    expect(result.collections).toEqual([]);
+    expect(result.pages).toEqual([]);
+    expect(result.articles).toEqual([{ handle: 'welcome-post' }]);
+    expect(result.queries).toEqual([
+      { text: 'mock', styledText: 'mock', trackingParameters: null },
+    ]);
+  });
+
+  it('matches collections by title — "dog" hits "Dog Essentials"', async () => {
+    const result = await predictiveSearch({ q: 'dog', types: ['COLLECTION'] });
+    expect(result.collections).toEqual([{ handle: 'dog-essentials' }]);
+    expect(result.products).toEqual([]);
+    expect(result.queries).toEqual([]);
+  });
+
+  it('honors limit per type when limitScope is EACH (default)', async () => {
+    // 5 products match "mock"; cap to 2.
+    const result = await predictiveSearch({ q: 'mock', limit: 2 });
+    expect(result.products).toEqual([
+      { handle: 'tickless-anti-tick-collar' },
+      { handle: 'fuzzyard-mushroom-dog-toys' },
+    ]);
+    expect(result.articles).toEqual([{ handle: 'welcome-post' }]);
+    expect(result.queries).toHaveLength(1);
+  });
+
+  it('honors limit across all types when limitScope is ALL', async () => {
+    // "mock" hits 5 products + 1 article. limit=3 across ALL keeps the first
+    // 3 products and drops everything else; the suggestion is unaffected.
+    const result = await predictiveSearch({ q: 'mock', limit: 3, limitScope: 'ALL' });
+    expect(result.products).toEqual([
+      { handle: 'tickless-anti-tick-collar' },
+      { handle: 'fuzzyard-mushroom-dog-toys' },
+      { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
+    ]);
+    expect(result.articles).toEqual([]);
+    expect(result.queries).toHaveLength(1);
+  });
+
+  it('echoes the trimmed term in the SearchQuerySuggestion', async () => {
+    const result = await predictiveSearch({ q: '  Tickless  ', types: ['QUERY'] });
+    expect(result.queries).toEqual([
+      { text: 'Tickless', styledText: 'Tickless', trackingParameters: null },
+    ]);
+    expect(result.products).toEqual([]);
+  });
+
+  it('suppresses the query suggestion when QUERY is omitted from types', async () => {
+    const result = await predictiveSearch({ q: 'mock', types: ['PRODUCT'] });
+    expect(result.products.length).toBeGreaterThan(0);
+    expect(result.queries).toEqual([]);
+    expect(result.articles).toEqual([]);
+  });
+
+  it('returns empty results for an empty query (no types echoed either)', async () => {
+    const result = await predictiveSearch({ q: '   ' });
+    expect(result.products).toEqual([]);
+    expect(result.collections).toEqual([]);
+    expect(result.pages).toEqual([]);
+    expect(result.articles).toEqual([]);
+    expect(result.queries).toEqual([]);
+  });
+});
+
+describe('searchResolvers — Query.predictiveSearch with no blogs.json', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sandbox-shop-no-blogs-'));
+  fs.cpSync(FIXTURE_DIR, tmpDir, { recursive: true });
+  fs.rmSync(path.join(tmpDir, 'blogs.json'));
+
+  const noBlogsData = loadShopData(tmpDir);
+  const noBlogsYoga = createYoga({
+    schema: createSandboxSchema(resolvers),
+    context: (): ResolverContext => ({ data: noBlogsData, baseUrl: BASE_URL }),
+  });
+
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns no articles when blogs.json is absent', async () => {
+    const result = await predictiveSearchOn(noBlogsYoga, { q: 'mock' });
+    expect(result.products.length).toBeGreaterThan(0);
+    expect(result.articles).toEqual([]);
+    // The suggestion is still emitted — it does not depend on the blogs file.
+    expect(result.queries).toEqual([
+      { text: 'mock', styledText: 'mock', trackingParameters: null },
+    ]);
   });
 });

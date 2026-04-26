@@ -1,17 +1,19 @@
 /**
  * Resolvers for the Search area of the Storefront API.
  *
- * Covers `Query.search` per `docs/specs/shop_backend/storefront_api.md` §5.3:
+ * Covers `Query.search` and `Query.predictiveSearch` per
+ * `docs/specs/shop_backend/storefront_api.md` §5.3:
  *
  *   - Substring, lowercased, AND-of-terms matching. An empty (or
- *     whitespace-only) query matches every item — same semantics as
- *     `matchesSearch` in `builders.ts`.
+ *     whitespace-only) query matches every item for `Query.search` — same
+ *     semantics as `matchesSearch` in `builders.ts`. `Query.predictiveSearch`
+ *     short-circuits to empty results on a blank query.
  *   - Products are searched against `title` + `description_html` + `vendor` +
- *     `product_type` + `tags`. Pages and articles are searched against `title`
- *     only.
- *   - `types` filters which of `PRODUCT` / `PAGE` / `ARTICLE` are surfaced.
- *     When omitted (or `null`), all three are returned.
- *   - Results are returned as a `SearchResultItem` union connection. The
+ *     `product_type` + `tags`. Collections use `title` + `description` +
+ *     `description_html`. Pages and articles use `title` only.
+ *   - For `Query.search`, `types` filters which of `PRODUCT` / `PAGE` /
+ *     `ARTICLE` are surfaced. When omitted (or `null`), all three are
+ *     returned. Results are a `SearchResultItem` union connection; the
  *     `__resolveType` resolver discriminates on the `gid://shopify/<Type>/...`
  *     prefix produced by the per-area builders.
  *   - Sort keys (per spec §5.3 / SDL `SearchSortKeys`):
@@ -24,14 +26,26 @@
  *     `reverse` flips the final order (matches `Query.products` semantics).
  *   - `prefix` and `unavailableProducts` arguments are accepted by the SDL
  *     but ignored at this milestone.
+ *   - `Query.predictiveSearch` returns up to `limit` matches per type
+ *     (`limitScope: EACH`, default) or across all types (`limitScope: ALL`),
+ *     plus a single `SearchQuerySuggestion` echoing the trimmed query. The
+ *     `types` argument may also include `QUERY`, which gates whether the
+ *     suggestion is emitted; omitting `types` defaults to all five types.
+ *     Articles are empty when `blogs.json` is absent.
  *
- * `Query.predictiveSearch` and `Query.productRecommendations` land in T3.2 and
- * T3.3; they are intentionally omitted from this map.
+ * `Query.productRecommendations` lands in T3.3 and is intentionally omitted
+ * from this map.
  */
 
 import { type Connection, type PaginationArgs, paginate } from '../data/pagination.js';
-import type { Blog, Product } from '../data/types.js';
-import { type ProductNode, buildProductNode, matchesSearch } from './builders.js';
+import type { Blog, Collection, Product } from '../data/types.js';
+import {
+  type CollectionNode,
+  type ProductNode,
+  buildCollectionNode,
+  buildProductNode,
+  matchesSearch,
+} from './builders.js';
 import { type ArticleNode, type PageNode, buildArticleNode, buildPageNode } from './content.js';
 import type { ResolverContext } from './index.js';
 
@@ -41,11 +55,21 @@ import type { ResolverContext } from './index.js';
 export type SearchType = 'PRODUCT' | 'PAGE' | 'ARTICLE';
 export type SearchSortKey = 'PRICE' | 'RELEVANCE';
 
+export type PredictiveSearchType = 'PRODUCT' | 'COLLECTION' | 'PAGE' | 'ARTICLE' | 'QUERY';
+export type PredictiveSearchLimitScope = 'ALL' | 'EACH';
+
 interface SearchArgs extends PaginationArgs {
   readonly query: string;
   readonly types?: readonly SearchType[] | null;
   readonly sortKey?: SearchSortKey | null;
   readonly reverse?: boolean | null;
+}
+
+interface PredictiveSearchArgs {
+  readonly query: string;
+  readonly limit?: number | null;
+  readonly limitScope?: PredictiveSearchLimitScope | null;
+  readonly types?: readonly PredictiveSearchType[] | null;
 }
 
 // ── Node shapes ────────────────────────────────────────────────────────────
@@ -58,9 +82,39 @@ export interface SearchResultItemConnectionNode extends Connection<SearchResultI
   readonly totalCount: number;
 }
 
+/** Single query suggestion emitted under `PredictiveSearchResult.queries`. */
+export interface SearchQuerySuggestionNode {
+  readonly text: string;
+  readonly styledText: string;
+  readonly trackingParameters: string | null;
+}
+
+/** Shape returned by `Query.predictiveSearch`. */
+export interface PredictiveSearchResultNode {
+  readonly products: readonly ProductNode[];
+  readonly collections: readonly CollectionNode[];
+  readonly pages: readonly PageNode[];
+  readonly articles: readonly ArticleNode[];
+  readonly queries: readonly SearchQuerySuggestionNode[];
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────
 
 const DEFAULT_TYPES: readonly SearchType[] = ['PRODUCT', 'PAGE', 'ARTICLE'];
+
+const DEFAULT_PREDICTIVE_TYPES: readonly PredictiveSearchType[] = [
+  'PRODUCT',
+  'COLLECTION',
+  'PAGE',
+  'ARTICLE',
+  'QUERY',
+];
+
+/**
+ * Default `limit` per type when the caller does not supply one. Matches the
+ * Storefront API default of 10 results per type.
+ */
+const DEFAULT_PREDICTIVE_LIMIT = 10;
 
 const PRODUCT_GID_PREFIX = 'gid://shopify/Product/';
 const PAGE_GID_PREFIX = 'gid://shopify/Page/';
@@ -100,6 +154,27 @@ export const searchResolvers = {
       const nodes = sorted.map((entry) => entry.node);
       const connection = paginate(nodes, args);
       return { ...connection, totalCount: nodes.length };
+    },
+
+    predictiveSearch: (
+      _parent: unknown,
+      args: PredictiveSearchArgs,
+      ctx: ResolverContext,
+    ): PredictiveSearchResultNode => {
+      const trimmed = args.query.trim();
+      if (trimmed === '') return emptyPredictiveResult();
+
+      const types = normalizePredictiveTypes(args.types);
+      const limit = clampPredictiveLimit(args.limit);
+      const scope = args.limitScope ?? 'EACH';
+
+      const products = types.has('PRODUCT') ? matchProducts(ctx, trimmed) : [];
+      const collections = types.has('COLLECTION') ? matchCollections(ctx, trimmed) : [];
+      const pages = types.has('PAGE') ? matchPages(ctx, trimmed) : [];
+      const articles = types.has('ARTICLE') ? matchArticles(ctx, trimmed) : [];
+      const queries = types.has('QUERY') ? [buildQuerySuggestion(trimmed)] : [];
+
+      return capPredictiveResult({ products, collections, pages, articles, queries }, scope, limit);
     },
   },
 
@@ -227,4 +302,117 @@ function sortResults(
 function normalizeTypes(types: readonly SearchType[] | null | undefined): ReadonlySet<SearchType> {
   const list = types ?? DEFAULT_TYPES;
   return new Set(list);
+}
+
+// ── Predictive search helpers ─────────────────────────────────────────────
+
+function normalizePredictiveTypes(
+  types: readonly PredictiveSearchType[] | null | undefined,
+): ReadonlySet<PredictiveSearchType> {
+  const list = types ?? DEFAULT_PREDICTIVE_TYPES;
+  return new Set(list);
+}
+
+/**
+ * Coerce the caller-supplied limit into a positive integer, falling back to
+ * the documented default. Non-positive or non-finite inputs collapse to the
+ * default rather than producing empty results — matches Shopify's tolerant
+ * handling of bad `limit` values.
+ */
+function clampPredictiveLimit(limit: number | null | undefined): number {
+  if (limit === null || limit === undefined) return DEFAULT_PREDICTIVE_LIMIT;
+  if (!Number.isFinite(limit) || limit <= 0) return DEFAULT_PREDICTIVE_LIMIT;
+  return Math.floor(limit);
+}
+
+function matchProducts(ctx: ResolverContext, query: string): readonly ProductNode[] {
+  const out: ProductNode[] = [];
+  for (const product of ctx.data.products) {
+    if (matchesSearch(query, productHaystack(product))) {
+      out.push(buildProductNode(product, ctx.data.store, ctx.baseUrl));
+    }
+  }
+  return out;
+}
+
+function matchCollections(ctx: ResolverContext, query: string): readonly CollectionNode[] {
+  const out: CollectionNode[] = [];
+  for (const collection of ctx.data.collections) {
+    if (matchesSearch(query, collectionHaystack(collection))) {
+      out.push(buildCollectionNode(collection, ctx.baseUrl));
+    }
+  }
+  return out;
+}
+
+function matchPages(ctx: ResolverContext, query: string): readonly PageNode[] {
+  const out: PageNode[] = [];
+  for (const page of ctx.data.pages) {
+    if (matchesSearch(query, page.title)) out.push(buildPageNode(page));
+  }
+  return out;
+}
+
+function matchArticles(ctx: ResolverContext, query: string): readonly ArticleNode[] {
+  const out: ArticleNode[] = [];
+  for (const blog of ctx.data.blogs) {
+    appendArticleMatches(out, blog, query);
+  }
+  return out;
+}
+
+function appendArticleMatches(out: ArticleNode[], blog: Blog, query: string): void {
+  for (const article of blog.articles) {
+    if (matchesSearch(query, article.title)) {
+      out.push(buildArticleNode(article, blog.handle));
+    }
+  }
+}
+
+function collectionHaystack(collection: Collection): string {
+  return [collection.title, collection.description ?? '', collection.description_html ?? ''].join(
+    ' ',
+  );
+}
+
+function buildQuerySuggestion(text: string): SearchQuerySuggestionNode {
+  return { text, styledText: text, trackingParameters: null };
+}
+
+function emptyPredictiveResult(): PredictiveSearchResultNode {
+  return { products: [], collections: [], pages: [], articles: [], queries: [] };
+}
+
+/**
+ * Apply `limitScope` to a predictive result. `EACH` (the SDL default) caps
+ * each per-type list at `limit`; `ALL` caps the combined total of the four
+ * entity lists at `limit` while always preserving the (single) query
+ * suggestion. Per-type traversal order matches the Storefront API surface:
+ * products, then collections, pages, articles. The query suggestion list is
+ * not subject to `limit` since it always contains at most one entry.
+ */
+function capPredictiveResult(
+  result: PredictiveSearchResultNode,
+  scope: PredictiveSearchLimitScope,
+  limit: number,
+): PredictiveSearchResultNode {
+  if (scope === 'EACH') {
+    return {
+      products: result.products.slice(0, limit),
+      collections: result.collections.slice(0, limit),
+      pages: result.pages.slice(0, limit),
+      articles: result.articles.slice(0, limit),
+      queries: result.queries,
+    };
+  }
+
+  let remaining = limit;
+  const products = result.products.slice(0, remaining);
+  remaining -= products.length;
+  const collections = result.collections.slice(0, Math.max(0, remaining));
+  remaining -= collections.length;
+  const pages = result.pages.slice(0, Math.max(0, remaining));
+  remaining -= pages.length;
+  const articles = result.articles.slice(0, Math.max(0, remaining));
+  return { products, collections, pages, articles, queries: result.queries };
 }
