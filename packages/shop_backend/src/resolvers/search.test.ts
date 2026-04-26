@@ -7,6 +7,7 @@ import { createYoga } from 'graphql-yoga';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { loadShopData } from '../data/loader.js';
+import type { Product, SandboxShopData, Store } from '../data/types.js';
 import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
 import type { ResolverContext } from './index.js';
 import { searchResolvers } from './search.js';
@@ -359,6 +360,217 @@ describe('searchResolvers — Query.predictiveSearch', () => {
     expect(result.pages).toEqual([]);
     expect(result.articles).toEqual([]);
     expect(result.queries).toEqual([]);
+  });
+});
+
+// ── Query.productRecommendations ──────────────────────────────────────────
+
+const TEST_STORE: Store = {
+  shop_id: 1,
+  name: 'Test Shop',
+  domain: 'test.example',
+  description: '',
+  currency_code: 'USD',
+  country_code: 'US',
+  payment_settings: { accepted_card_brands: [] },
+  brand: {
+    logo_url: null,
+    colors: { primary: '#000000', secondary: '#ffffff' },
+  },
+};
+
+function makeProduct(
+  id: number,
+  handle: string,
+  productType: string,
+  tags: readonly string[],
+): Product {
+  return {
+    id,
+    title: handle,
+    handle,
+    description_html: '',
+    vendor: 'TestVendor',
+    product_type: productType,
+    tags,
+    published_at: '2026-01-01T00:00:00Z',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    options: [],
+    variants: [
+      {
+        id: id * 10,
+        title: 'Default',
+        sku: null,
+        price: '10.00',
+        compare_at_price: null,
+        available: true,
+        option1: null,
+        option2: null,
+        option3: null,
+        position: 1,
+        requires_shipping: true,
+      },
+    ],
+    images: [],
+  };
+}
+
+function makeData(products: readonly Product[]): SandboxShopData {
+  return {
+    store: TEST_STORE,
+    products,
+    collections: [],
+    navigation: {},
+    pages: [],
+    policies: [],
+    blogs: [],
+    metafields: { shop: [], products: {}, collections: {} },
+    productsByHandle: new Map(products.map((p) => [p.handle, p])),
+    variantsByGid: new Map(),
+  };
+}
+
+const RECOMMENDATIONS_QUERY = /* GraphQL */ `
+  query ($id: ID!) {
+    productRecommendations(productId: $id) {
+      handle
+    }
+  }
+`;
+
+interface RecommendationsResponse {
+  readonly data?: {
+    readonly productRecommendations: readonly { readonly handle: string }[] | null;
+  };
+  readonly errors?: readonly unknown[];
+}
+
+async function recommend(
+  yogaInstance: ReturnType<typeof createYoga>,
+  productId: string,
+): Promise<readonly { readonly handle: string }[] | null> {
+  const response = await yogaInstance.fetch(`${BASE_URL}/graphql`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query: RECOMMENDATIONS_QUERY, variables: { id: productId } }),
+  });
+  const payload = (await response.json()) as RecommendationsResponse;
+  if (payload.errors !== undefined) {
+    throw new Error(`productRecommendations failed: ${JSON.stringify(payload.errors)}`);
+  }
+  if (payload.data === undefined) throw new Error('productRecommendations returned no data');
+  return payload.data.productRecommendations;
+}
+
+describe('searchResolvers — Query.productRecommendations', () => {
+  // Synthetic catalog designed to exercise the type/tag/dataset-order cascade:
+  //   alpha:   type 'cat',  tags red+blue  (the requesting product)
+  //   beta:    type 'cat',  tags green     — same-type bonus only
+  //   gamma:   type 'dog',  tags red       — 1 tag overlap
+  //   delta:   type 'dog',  tags []        — no signal, dataset-order tail
+  //   epsilon: type 'bird', tags blue+red  — 2 tag overlaps
+  // Expected ranking from alpha: beta (same type) > epsilon (2 tags) >
+  // gamma (1 tag) > delta (0).
+  const synthetic = [
+    makeProduct(1, 'alpha', 'cat', ['red', 'blue']),
+    makeProduct(2, 'beta', 'cat', ['green']),
+    makeProduct(3, 'gamma', 'dog', ['red']),
+    makeProduct(4, 'delta', 'dog', []),
+    makeProduct(5, 'epsilon', 'bird', ['blue', 'red']),
+  ];
+  const syntheticData = makeData(synthetic);
+  const syntheticYoga = createYoga({
+    schema: createSandboxSchema(resolvers),
+    context: (): ResolverContext => ({ data: syntheticData, baseUrl: BASE_URL }),
+  });
+
+  it('prefers same-type products, then tag overlap, then dataset order', async () => {
+    const result = await recommend(syntheticYoga, 'gid://shopify/Product/1');
+    expect(result).toEqual([
+      { handle: 'beta' },
+      { handle: 'epsilon' },
+      { handle: 'gamma' },
+      { handle: 'delta' },
+    ]);
+  });
+
+  it('excludes the requesting product even when it would otherwise rank', async () => {
+    const result = await recommend(syntheticYoga, 'gid://shopify/Product/1');
+    const handles = (result ?? []).map((p) => p.handle);
+    expect(handles).not.toContain('alpha');
+  });
+
+  it('caps the result at four products and drops the lowest-ranked tail', async () => {
+    // Adding a 6th product with both same-type AND a tag overlap pushes it
+    // above pure same-type beta. The cap then drops delta (the zero-score
+    // dataset-order tail) so the result holds exactly four entries.
+    const sixProductData = makeData([...synthetic, makeProduct(6, 'zeta', 'cat', ['red'])]);
+    const sixYoga = createYoga({
+      schema: createSandboxSchema(resolvers),
+      context: (): ResolverContext => ({ data: sixProductData, baseUrl: BASE_URL }),
+    });
+    const result = await recommend(sixYoga, 'gid://shopify/Product/1');
+    expect(result).toEqual([
+      { handle: 'zeta' },
+      { handle: 'beta' },
+      { handle: 'epsilon' },
+      { handle: 'gamma' },
+    ]);
+  });
+
+  it('returns the available subset when fewer than four other products exist', async () => {
+    const tinyData = makeData([
+      makeProduct(1, 'alpha', 'cat', []),
+      makeProduct(2, 'beta', 'cat', []),
+      makeProduct(3, 'gamma', 'dog', []),
+    ]);
+    const tinyYoga = createYoga({
+      schema: createSandboxSchema(resolvers),
+      context: (): ResolverContext => ({ data: tinyData, baseUrl: BASE_URL }),
+    });
+    const result = await recommend(tinyYoga, 'gid://shopify/Product/1');
+    expect(result).toEqual([{ handle: 'beta' }, { handle: 'gamma' }]);
+  });
+
+  it('does not award the same-type bonus to two empty product_type values', async () => {
+    // alpha + beta share an empty product_type; the bonus is suppressed so the
+    // tag overlap (red) wins and beta sorts ahead despite alpha-vs-gamma also
+    // having an empty-vs-empty type.
+    const data = makeData([
+      makeProduct(1, 'alpha', '', ['red']),
+      makeProduct(2, 'beta', 'snake', ['red']),
+      makeProduct(3, 'gamma', '', []),
+    ]);
+    const targetYoga = createYoga({
+      schema: createSandboxSchema(resolvers),
+      context: (): ResolverContext => ({ data, baseUrl: BASE_URL }),
+    });
+    const result = await recommend(targetYoga, 'gid://shopify/Product/1');
+    expect(result).toEqual([{ handle: 'beta' }, { handle: 'gamma' }]);
+  });
+
+  it('returns null for an unknown product GID', async () => {
+    const result = await recommend(syntheticYoga, 'gid://shopify/Product/999');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for a malformed product GID', async () => {
+    const result = await recommend(syntheticYoga, 'not-a-gid');
+    expect(result).toBeNull();
+  });
+
+  it('integrates with the loader fixture — excludes the requesting product', async () => {
+    // The fixture has 5 products with no shared types or tags, so every
+    // candidate ties at score 0. Dataset insertion order must be preserved
+    // and the requesting product (tickless, id 9048676991150) excluded.
+    const result = await recommend(yoga, 'gid://shopify/Product/9048676991150');
+    expect(result).toEqual([
+      { handle: 'fuzzyard-mushroom-dog-toys' },
+      { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
+      { handle: 'applaws-mackerel-and-sardines-70g' },
+      { handle: 'bluestem-toothbrush' },
+    ]);
   });
 });
 

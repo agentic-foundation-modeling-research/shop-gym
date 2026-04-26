@@ -141,7 +141,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
   to `limit` matches per type plus a single query suggestion.
   **Check:** test covers limit honoring, term echoed in the
   suggestion, missing-blog case.
-- [ ] **T3.3** — `Query.productRecommendations(productId)`: pick up
+- [x] **T3.3** — `Query.productRecommendations(productId)`: pick up
   to 4 other products from the same `product_type`, fall back to the
   next-most-similar by tag overlap, then random dataset order. Mock-
   api uses naive "first 4 other products" — improve here since this

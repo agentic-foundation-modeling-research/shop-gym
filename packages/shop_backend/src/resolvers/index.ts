@@ -5,8 +5,8 @@
  *
  * Resolver areas covered to date: shop / menu / localization (T2.3),
  * product / collection (T2.4), page / blog / article (T2.5), search
- * (T3.1 + T3.2 — `Query.search` and `Query.predictiveSearch`).
- * `productRecommendations` (T3.3), cart (M4), and metafield (M5) maps land
+ * (T3.1 + T3.2 + T3.3 — `Query.search`, `Query.predictiveSearch`,
+ * `Query.productRecommendations`). Cart (M4) and metafield (M5) maps land
  * in subsequent milestones and are merged into `sandboxResolvers` as they
  * ship.
  */
