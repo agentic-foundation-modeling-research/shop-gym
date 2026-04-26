@@ -432,3 +432,57 @@ describe('productResolvers — Product.selectedOrFirstAvailableVariant', () => {
     });
   });
 });
+
+describe('productResolvers — ProductVariant.quantityAvailable + availableForSale', () => {
+  it('exposes the tracked count via selectedOrFirstAvailableVariant', async () => {
+    const result = await run(/* GraphQL */ `
+      {
+        product(handle: "fuzzyard-mushroom-dog-toys") {
+          selectedOrFirstAvailableVariant(
+            selectedOptions: [{ name: "Giggles Mushroom", value: "Giggles Mushroom" }]
+          ) {
+            title
+            quantityAvailable
+            availableForSale
+          }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      product: {
+        selectedOrFirstAvailableVariant: {
+          title: 'Giggles Mushroom',
+          quantityAvailable: 2,
+          availableForSale: true,
+        },
+      },
+    });
+  });
+
+  it('overrides availableForSale to false when the inventory count is zero', async () => {
+    const result = await run(/* GraphQL */ `
+      {
+        product(handle: "fuzzyard-mushroom-dog-toys") {
+          selectedOrFirstAvailableVariant(
+            selectedOptions: [{ name: "Giggles Mushroom", value: "Cosmo Mushroom" }]
+          ) {
+            title
+            quantityAvailable
+            availableForSale
+          }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      product: {
+        selectedOrFirstAvailableVariant: {
+          title: 'Cosmo Mushroom',
+          quantityAvailable: 0,
+          availableForSale: false,
+        },
+      },
+    });
+  });
+});

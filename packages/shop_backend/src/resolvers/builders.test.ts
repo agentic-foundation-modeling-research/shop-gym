@@ -127,6 +127,77 @@ describe('buildProductVariantNode', () => {
   });
 });
 
+describe('buildProductVariantNode with inventory', () => {
+  const product = productByHandle('fuzzyard-mushroom-dog-toys');
+
+  function variantById(id: number) {
+    const variant = product.variants.find((v) => v.id === id);
+    if (variant === undefined) throw new Error(`fixture missing variant ${id}`);
+    return variant;
+  }
+
+  it('exposes the tracked count and stays availableForSale when stock > 0', () => {
+    const variant = variantById(47242666836142);
+    const node = buildProductVariantNode(
+      product,
+      variant,
+      data.store,
+      BASE_URL,
+      data.inventoryByVariantId,
+    );
+    expect(node.quantityAvailable).toBe(2);
+    expect(node.availableForSale).toBe(true);
+  });
+
+  it('overrides availableForSale to false when the tracked count is zero', () => {
+    const variant = variantById(47242687709358);
+    expect(variant.available).toBe(true);
+    const node = buildProductVariantNode(
+      product,
+      variant,
+      data.store,
+      BASE_URL,
+      data.inventoryByVariantId,
+    );
+    expect(node.quantityAvailable).toBe(0);
+    expect(node.availableForSale).toBe(false);
+  });
+
+  it('falls back to variant.available when quantity_available is null', () => {
+    const variant = variantById(47242695737518);
+    const node = buildProductVariantNode(
+      product,
+      variant,
+      data.store,
+      BASE_URL,
+      data.inventoryByVariantId,
+    );
+    expect(node.quantityAvailable).toBeNull();
+    expect(node.availableForSale).toBe(variant.available);
+  });
+
+  it('falls back to variant.available when no entry exists for the variant', () => {
+    const variant = variantById(47242720215214);
+    expect(data.inventoryByVariantId.has(variant.id)).toBe(false);
+    const node = buildProductVariantNode(
+      product,
+      variant,
+      data.store,
+      BASE_URL,
+      data.inventoryByVariantId,
+    );
+    expect(node.quantityAvailable).toBeNull();
+    expect(node.availableForSale).toBe(variant.available);
+  });
+
+  it('falls back to variant.available when no inventory map is supplied', () => {
+    const variant = variantById(47242687709358);
+    const node = buildProductVariantNode(product, variant, data.store, BASE_URL);
+    expect(node.quantityAvailable).toBeNull();
+    expect(node.availableForSale).toBe(variant.available);
+  });
+});
+
 describe('buildProductNode', () => {
   it('computes priceRange across variants and exposes available variants', () => {
     const product = productByHandle('fuzzyard-mushroom-dog-toys');

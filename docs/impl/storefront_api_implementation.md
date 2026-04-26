@@ -252,7 +252,7 @@ needs the SDL stable). T7.3 and T7.4 are independent.
   from `src/schema.ts`. Resolver files import argument + return
   types from there. **Check:** removing a typeDef field breaks the
   resolver compile; CI fails on drift.
-- [ ] **T7.2** — Inventory queries. Add `inventory.json` to the
+- [x] **T7.2** — Inventory queries. Add `inventory.json` to the
   dataset contract, plumb through `ProductVariant.quantityAvailable`
   and `availableForSale` reads inventory levels. **Check:** spec
   appendix updated; test covers a low-stock variant.

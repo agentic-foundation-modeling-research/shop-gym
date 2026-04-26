@@ -88,7 +88,7 @@ export const productResolvers = {
     ): ProductNode | null => {
       const product = ctx.data.productsByHandle.get(args.handle);
       if (product === undefined) return null;
-      return buildProductNode(product, ctx.data.store, ctx.baseUrl);
+      return buildProductNode(product, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId);
     },
 
     products: (
@@ -98,7 +98,9 @@ export const productResolvers = {
     ): ProductConnectionNode => {
       const filtered = filterProducts(ctx.data.products, args.query ?? null);
       const sorted = sortProducts(filtered, args.sortKey ?? null, args.reverse ?? false);
-      const nodes = sorted.map((p) => buildProductNode(p, ctx.data.store, ctx.baseUrl));
+      const nodes = sorted.map((p) =>
+        buildProductNode(p, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
+      );
       const connection = paginate(nodes, args);
       return { ...connection, totalCount: filtered.length };
     },
@@ -156,7 +158,9 @@ export const productResolvers = {
       ctx: ResolverContext,
     ): ProductConnectionNode => {
       const products = collectionProducts(ctx.data, parent.handle);
-      const nodes = products.map((p) => buildProductNode(p, ctx.data.store, ctx.baseUrl));
+      const nodes = products.map((p) =>
+        buildProductNode(p, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
+      );
       const connection = paginate(nodes, args);
       return { ...connection, totalCount: nodes.length };
     },

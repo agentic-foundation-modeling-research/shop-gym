@@ -20,6 +20,7 @@
 
 import type {
   Collection,
+  InventoryEntry,
   NavigationItem,
   Policy,
   Product,
@@ -28,6 +29,14 @@ import type {
   ProductVariant,
   Store,
 } from '../data/types.js';
+
+/**
+ * Optional per-variant inventory lookup threaded into the product / variant
+ * builders (since v0.2). Resolvers pass `ctx.data.inventoryByVariantId`; tests
+ * and out-of-tree callers may pass `undefined` to fall back to the dataset's
+ * binary `variants[].available` flag (spec §5.3 inventory rules).
+ */
+export type InventoryLookup = ReadonlyMap<number, InventoryEntry> | undefined;
 
 // ── Node shapes ────────────────────────────────────────────────────────────
 // Hand-typed until graphql-codegen lands in M7 (T7.1).
@@ -236,18 +245,28 @@ function rewriteImageUrl(src: string, baseUrl: string): string {
 
 // ── Product / variant ──────────────────────────────────────────────────────
 
-/** Build a `ProductVariant` node from its parent product + the dataset variant. */
+/**
+ * Build a `ProductVariant` node from its parent product + the dataset variant.
+ *
+ * `inventory` (optional, since v0.2) supplies per-variant stock counts. When a
+ * tracked entry exists for `variant.id`, `availableForSale` derives from
+ * `quantity_available > 0` and `quantityAvailable` echoes the count. Otherwise
+ * (no entry, or `quantity_available === null`) `quantityAvailable` is `null`
+ * and `availableForSale` falls back to `variant.available` (spec §5.3).
+ */
 export function buildProductVariantNode(
   product: Product,
   variant: ProductVariant,
   store: Store,
   baseUrl: string,
+  inventory?: InventoryLookup,
 ): ProductVariantNode {
   const featured = pickFeaturedImage(product);
+  const entry = inventory?.get(variant.id);
   return {
     id: gid('ProductVariant', variant.id),
     title: variant.title,
-    availableForSale: variant.available,
+    availableForSale: resolveAvailableForSale(variant, entry),
     sku: variant.sku ?? '',
     price: buildMoneyV2(variant.price, store.currency_code),
     compareAtPrice:
@@ -264,8 +283,18 @@ export function buildProductVariantNode(
       vendor: product.vendor,
     },
     requiresShipping: variant.requires_shipping,
-    quantityAvailable: null,
+    quantityAvailable: entry?.quantity_available ?? null,
   };
+}
+
+function resolveAvailableForSale(
+  variant: ProductVariant,
+  entry: InventoryEntry | undefined,
+): boolean {
+  if (entry === undefined || entry.quantity_available === null) {
+    return variant.available;
+  }
+  return entry.quantity_available > 0;
 }
 
 function buildSelectedOptions(
@@ -295,9 +324,22 @@ function pickFeaturedImage(product: Product): ProductImage | null {
   return pick;
 }
 
-/** Build a `Product` node with its variants, options, images, and price ranges. */
-export function buildProductNode(product: Product, store: Store, baseUrl: string): ProductNode {
-  const variants = product.variants.map((v) => buildProductVariantNode(product, v, store, baseUrl));
+/**
+ * Build a `Product` node with its variants, options, images, and price ranges.
+ *
+ * `inventory` (optional, since v0.2) is forwarded to every
+ * `buildProductVariantNode` call; `Product.availableForSale` reflects the
+ * resolved variant-level availability (spec §5.3).
+ */
+export function buildProductNode(
+  product: Product,
+  store: Store,
+  baseUrl: string,
+  inventory?: InventoryLookup,
+): ProductNode {
+  const variants = product.variants.map((v) =>
+    buildProductVariantNode(product, v, store, baseUrl, inventory),
+  );
   const images = product.images.map((img) => buildImageNode(img, baseUrl));
   const featured = pickFeaturedImage(product);
   return {
@@ -309,7 +351,7 @@ export function buildProductNode(product: Product, store: Store, baseUrl: string
     productType: product.product_type,
     vendor: product.vendor,
     tags: product.tags,
-    availableForSale: product.variants.some((v) => v.available),
+    availableForSale: variants.some((v) => v.availableForSale),
     publishedAt: product.published_at,
     createdAt: product.created_at,
     updatedAt: product.updated_at,

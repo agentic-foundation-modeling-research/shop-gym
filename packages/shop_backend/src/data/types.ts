@@ -173,6 +173,24 @@ export interface Metafield {
   readonly type: string;
 }
 
+/** Per-variant inventory entry (since v0.2). */
+export interface InventoryEntry {
+  /**
+   * Stock quantity for this variant. `null` means tracked-but-unknown
+   * (returns `null` to GraphQL); a number is read verbatim.
+   */
+  readonly quantity_available: number | null;
+}
+
+/**
+ * `inventory.json` (since v0.2). Optional file; defaults to `{}`.
+ * Variants without a matching entry are treated as untracked (per spec §5.3).
+ */
+export interface InventoryFile {
+  /** Variant id (numeric) as a string key. */
+  readonly [variantId: string]: InventoryEntry;
+}
+
 /**
  * Lookup entry for `variantsByGid`: the variant plus the product it belongs to,
  * so cart resolvers can materialize merchandise without a second pass.
@@ -195,8 +213,11 @@ export interface SandboxShopData {
   readonly policies: readonly Policy[];
   readonly blogs: readonly Blog[];
   readonly metafields: MetafieldsFile;
+  readonly inventory: InventoryFile;
   /** `handle` → product. */
   readonly productsByHandle: ReadonlyMap<string, Product>;
   /** `gid://shopify/ProductVariant/<id>` → owning product + variant. */
   readonly variantsByGid: ReadonlyMap<string, VariantLookup>;
+  /** Numeric variant id → inventory entry. Empty when `inventory.json` is absent. */
+  readonly inventoryByVariantId: ReadonlyMap<number, InventoryEntry>;
 }

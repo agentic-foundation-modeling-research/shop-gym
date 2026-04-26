@@ -11,7 +11,8 @@
  * `navigation.json`, `pages.json`, `policies.json`.
  *
  * Optional files: `blogs.json` (defaults to `[]`), `metafields.json` (defaults
- * to `{ shop: [], products: {}, collections: {} }`).
+ * to `{ shop: [], products: {}, collections: {} }`), `inventory.json` (since
+ * v0.2; defaults to `{}`).
  */
 
 import * as fs from 'node:fs';
@@ -21,6 +22,8 @@ import type {
   Article,
   Blog,
   Collection,
+  InventoryEntry,
+  InventoryFile,
   Metafield,
   MetafieldsFile,
   Navigation,
@@ -80,6 +83,7 @@ const REQUIRED_FILES = {
 const OPTIONAL_FILES = {
   blogs: 'blogs.json',
   metafields: 'metafields.json',
+  inventory: 'inventory.json',
 } as const;
 
 const NAVIGATION_TYPES: ReadonlySet<NavigationItemType> = new Set([
@@ -127,8 +131,13 @@ export function loadShopData(dir: string): SandboxShopData {
       ? defaultMetafields()
       : validateMetafields(OPTIONAL_FILES.metafields, metafieldsRaw);
 
+  const inventoryRaw = readOptional(dir, OPTIONAL_FILES.inventory);
+  const inventory =
+    inventoryRaw === null ? {} : validateInventory(OPTIONAL_FILES.inventory, inventoryRaw);
+
   const productsByHandle = buildProductsByHandle(products);
   const variantsByGid = buildVariantsByGid(products);
+  const inventoryByVariantId = buildInventoryByVariantId(OPTIONAL_FILES.inventory, inventory);
 
   const data: SandboxShopData = {
     store,
@@ -139,8 +148,10 @@ export function loadShopData(dir: string): SandboxShopData {
     policies,
     blogs,
     metafields,
+    inventory,
     productsByHandle,
     variantsByGid,
+    inventoryByVariantId,
   };
   return Object.freeze(data);
 }
@@ -491,6 +502,20 @@ function defaultMetafields(): MetafieldsFile {
   return { shop: [], products: {}, collections: {} };
 }
 
+function validateInventory(file: string, raw: unknown): InventoryFile {
+  const obj = expectObject(file, '$', raw);
+  const result: Record<string, InventoryEntry> = {};
+  for (const [variantId, value] of Object.entries(obj)) {
+    const entryRaw = expectObject(file, `$.${variantId}`, value);
+    const quantity =
+      entryRaw.quantity_available === null
+        ? null
+        : expectNumber(file, `$.${variantId}.quantity_available`, entryRaw.quantity_available);
+    result[variantId] = { quantity_available: quantity };
+  }
+  return result;
+}
+
 // ── Indices ────────────────────────────────────────────────────────────────
 
 function buildProductsByHandle(products: readonly Product[]): ReadonlyMap<string, Product> {
@@ -507,6 +532,25 @@ function buildVariantsByGid(products: readonly Product[]): ReadonlyMap<string, V
     for (const variant of product.variants) {
       map.set(`gid://shopify/ProductVariant/${variant.id}`, { product, variant });
     }
+  }
+  return map;
+}
+
+function buildInventoryByVariantId(
+  file: string,
+  inventory: InventoryFile,
+): ReadonlyMap<number, InventoryEntry> {
+  const map = new Map<number, InventoryEntry>();
+  for (const [variantIdStr, entry] of Object.entries(inventory)) {
+    const variantId = Number.parseInt(variantIdStr, 10);
+    if (!Number.isFinite(variantId) || String(variantId) !== variantIdStr) {
+      throw new InvalidDatasetError(
+        file,
+        `$.${variantIdStr}`,
+        `expected variant id key to parse as an integer, got '${variantIdStr}'`,
+      );
+    }
+    map.set(variantId, entry);
   }
   return map;
 }

@@ -172,7 +172,9 @@ export const searchResolvers = {
       const ranked = rankRecommendations(ctx.data.products, target);
       return ranked
         .slice(0, MAX_RECOMMENDATIONS)
-        .map((p) => buildProductNode(p, ctx.data.store, ctx.baseUrl));
+        .map((p) =>
+          buildProductNode(p, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
+        );
     },
 
     predictiveSearch: (
@@ -212,7 +214,7 @@ function collectProducts(out: ScoredEntry[], ctx: ResolverContext, query: string
   for (const product of ctx.data.products) {
     if (!matchesSearch(query, productHaystack(product))) continue;
     out.push({
-      node: buildProductNode(product, ctx.data.store, ctx.baseUrl),
+      node: buildProductNode(product, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
       score: scoreProduct(query, product),
       price: minVariantPrice(product),
     });
@@ -410,7 +412,9 @@ function matchProducts(ctx: ResolverContext, query: string): readonly ProductNod
   const out: ProductNode[] = [];
   for (const product of ctx.data.products) {
     if (matchesSearch(query, productHaystack(product))) {
-      out.push(buildProductNode(product, ctx.data.store, ctx.baseUrl));
+      out.push(
+        buildProductNode(product, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
+      );
     }
   }
   return out;
