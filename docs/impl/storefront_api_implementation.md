@@ -131,7 +131,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
 
 ### M3 · Search + recommendations
 
-- [ ] **T3.1** — `src/resolvers/search.ts`: `Query.search` per spec
+- [x] **T3.1** — `src/resolvers/search.ts`: `Query.search` per spec
   §5.3. Returns a union (`Product | Page | Article`) connection.
   Honors `types`, `first`/`after`, `sortKey` (RELEVANCE = match-rank,
   PRICE = min variant). **Check:** `search.test.ts` covers term

@@ -17,9 +17,9 @@
  *   - `Blog.articleByHandle(handle)` — direct lookup over the parent blog's
  *     articles, `null` on miss.
  *
- * Page / Blog / Article builders are kept inline because no other resolver
- * area consumes them yet. If T3.1 (search) needs them they can move into
- * `builders.ts`.
+ * Page / Article builders are exported so the search resolver (T3.1) can reuse
+ * them when assembling the `SearchResultItem` union; the blog builder stays
+ * private since search does not surface blog nodes directly.
  */
 
 import { type Connection, type PaginationArgs, paginate } from '../data/pagination.js';
@@ -130,7 +130,8 @@ export const contentResolvers = {
 
 // ── Builders ──────────────────────────────────────────────────────────────
 
-function buildPageNode(page: Page): PageNode {
+/** Build a `Page` node from a dataset `Page`. Exported for the search resolver. */
+export function buildPageNode(page: Page): PageNode {
   return {
     id: gid('Page', page.handle),
     handle: page.handle,
@@ -151,7 +152,11 @@ function buildBlogNode(blog: Blog): BlogNode {
   };
 }
 
-function buildArticleNode(article: Article, blogHandle: string): ArticleNode {
+/**
+ * Build an `Article` node nested under the supplied `blogHandle`. Exported for
+ * the search resolver, which surfaces articles in the `SearchResultItem` union.
+ */
+export function buildArticleNode(article: Article, blogHandle: string): ArticleNode {
   return {
     id: gid('Article', `${blogHandle}/${article.handle}`),
     handle: article.handle,
