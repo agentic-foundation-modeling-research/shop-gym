@@ -1,7 +1,7 @@
 """Unit tests for :mod:`shop_explore.synthesize` (T3.1).
 
 Covers the deterministic synthesis path with a mocked LLM and the
-fallback path when the LLM returns an empty / short response. Both
+loud-failure path when the LLM returns an empty / short response. Both
 tests build a populated ``run_dir`` from the hand-crafted
 ``fixture_drawer_shop`` cassette so they exercise the full
 capabilities deep-merge + stats compute + manifest assembly without
@@ -175,7 +175,6 @@ def test_synthesize_writes_all_published_artifacts_with_llm_response(
     assert result.capabilities_path == artifact / "capabilities.json"
     assert result.stats_path == artifact / "stats.json"
     assert result.manifest_path == artifact / "manifest.json"
-    assert result.manual_fallback is False
     assert result.capability_conflicts == ()
 
     # manual.md contains the LLM body verbatim (with trailing newline).
@@ -203,7 +202,7 @@ def test_synthesize_writes_all_published_artifacts_with_llm_response(
 
     # manifest.json mirrors the harness run summary + plan tallies.
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["manual_fallback"] is False
+    assert "manual_fallback" not in manifest  # fallback removed in M3 — failures are loud
     assert manifest["harness_status"] == "completed"
     assert manifest["runtime"] == "pi"
     assert manifest["iters"] == {"plan": 1, "exec": _EXPECTED_EXEC_ITERS}
@@ -232,29 +231,36 @@ def test_synthesize_writes_all_published_artifacts_with_llm_response(
         assert f"# {task_id}" in sent
 
 
-def test_synthesize_falls_back_when_llm_response_is_empty(tmp_path: Path) -> None:
-    """Empty LLM response → ``manifest.manual_fallback==true`` and parts-concat manual."""
+def test_synthesize_raises_when_llm_response_is_empty(tmp_path: Path) -> None:
+    """Empty LLM response → :class:`SynthesisError`; no ``manual.md`` written.
+
+    Earlier revisions silently fell back to a deterministic concatenation of
+    ``parts/*.md`` (``manifest.manual_fallback=true``). That path masked
+    LLM-client misconfiguration and was removed in M3 — failures are now
+    loud.
+    """
     run_dir = _seed_run_dir(tmp_path)
     llm = _StubLLM("")
 
-    result = synthesize(run_dir, llm=llm, manual_prompt=_MANUAL_PROMPT)
+    with pytest.raises(SynthesisError, match="manual render failed"):
+        synthesize(run_dir, llm=llm, manual_prompt=_MANUAL_PROMPT)
 
-    assert result.manual_fallback is True
-    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["manual_fallback"] is True
+    assert not (run_dir / "artifact" / "manual.md").exists()
+    assert not (run_dir / "artifact" / "manifest.json").exists()
 
-    # Fallback manual is the concatenation of parts/*.md in sorted order.
-    manual_text = result.manual_path.read_text(encoding="utf-8")
-    parts_dir = run_dir / "artifact" / "parts"
-    expected_chunks = [
-        (parts_dir / f"{task_id}.md").read_text(encoding="utf-8").rstrip("\n")
-        for task_id in sorted(_EXPECTED_TASK_IDS)
-    ]
-    assert manual_text == "\n\n".join(expected_chunks).rstrip("\n") + "\n"
 
-    # capabilities.json + stats.json still deterministic regardless of fallback.
-    caps = json.loads(result.capabilities_path.read_text(encoding="utf-8"))
-    assert caps["cart"]["type"] == "drawer"
+def test_synthesize_raises_when_llm_complete_raises(tmp_path: Path) -> None:
+    """Wire-level ``complete`` failure → :class:`SynthesisError` (no silent fallback)."""
+    run_dir = _seed_run_dir(tmp_path)
+
+    class _BoomLLM:
+        def complete(self, prompt: str) -> str:
+            raise RuntimeError("boom: api unavailable")
+
+    with pytest.raises(SynthesisError, match="manual render failed: boom"):
+        synthesize(run_dir, llm=_BoomLLM(), manual_prompt=_MANUAL_PROMPT)
+
+    assert not (run_dir / "artifact" / "manual.md").exists()
 
 
 def test_synthesize_raises_when_artifact_layout_missing(tmp_path: Path) -> None:

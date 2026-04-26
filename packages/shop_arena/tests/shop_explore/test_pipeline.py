@@ -9,13 +9,16 @@ runtime behavior.
 
 Also covers T6.2: when the configured runtime satisfies
 :class:`harness.LLMCompleter`, the pipeline routes the §5.10 manual-merge
-LLM call through ``runtime.complete``. Stub runtimes that omit
-``complete`` keep the deterministic-concatenation fallback (the existing
-v0.1 behaviour).
+LLM call through ``runtime.complete``. Tests that drive non-completer
+stub runtimes inject an explicit ``llm=`` argument to :func:`explore`
+because :func:`shop_explore.pipeline.build_runtime_llm` now raises
+:class:`SynthesisError` rather than falling back silently to a no-op
+client (M3 — the silent fallback masked LLM-client misconfiguration).
 """
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +30,14 @@ from harness.config import FinalStatus, PlanExecLoopConfig, PlanExecLoopResult
 from harness.runtimes import RuntimeIterationResult
 from shop_explore import pipeline as pipeline_mod
 from shop_explore.config import ExploreConfig
-from shop_explore.pipeline import RUN_ID_HASH_LEN, build_runtime_llm
+from shop_explore.pipeline import (
+    RUN_ID_HASH_LEN,
+    _render_agents_md,
+    _resolve_playwright_skill_dir,
+    build_runtime_llm,
+)
 from shop_explore.prefetch import PrefetchResult
+from shop_explore.synthesize import SynthesisError
 
 BASE_URL = "https://example-shop.com"
 MAX_ITERS = 4
@@ -73,6 +82,31 @@ def _stub_storefront(mock: respx.MockRouter) -> None:
 
 class _StubRuntime:
     """Sentinel runtime instance; never invoked by the test."""
+
+
+_STUB_MANUAL_BODY = (
+    "# Shop Manual\n\n## Overview\n\n"
+    + ("Stub manual body produced by the pipeline test. " * 8)
+    + "\n"
+)
+
+
+class _StubLLM:
+    """Synthesis ``LLMClient`` stub for tests that drive non-completer runtimes.
+
+    Injected via :func:`shop_explore.pipeline.explore`'s ``llm=`` keyword
+    so the §5.10 manual-merge call doesn't trip the
+    :class:`harness.runtimes.LLMCompleter` guard in
+    :func:`shop_explore.pipeline.build_runtime_llm`.
+    """
+
+    def __init__(self, response: str = _STUB_MANUAL_BODY) -> None:
+        self._response = response
+        self.calls: list[str] = []
+
+    def complete(self, prompt: str) -> str:
+        self.calls.append(prompt)
+        return self._response
 
 
 @respx.mock
@@ -122,7 +156,7 @@ def test_explore_passes_seeded_config_to_harness(
         max_iters=MAX_ITERS,
         timeout=TIMEOUT_SECONDS,
     )
-    result = pipeline_mod.explore(config)
+    result = pipeline_mod.explore(config, llm=_StubLLM())
 
     # Runtime selection passed the configured name through to the registry.
     assert captured["runtime_name"] == "pi"
@@ -134,6 +168,11 @@ def test_explore_passes_seeded_config_to_harness(
     assert loop_config.max_iters == MAX_ITERS
     assert loop_config.timeout == TIMEOUT_SECONDS
     assert loop_config.agents_md.startswith("# AGENTS.md")
+    # Both agents.md placeholders must be substituted before the harness sees it —
+    # otherwise executors waste 4-5 bash calls per iter on environment discovery.
+    assert "{{PLAYWRIGHT_SKILL_DIR}}" not in loop_config.agents_md
+    assert "{{CAPABILITIES_SCHEMA}}" not in loop_config.agents_md
+    assert "class Capabilities(BaseModel):" in loop_config.agents_md
     assert loop_config.prompts.planner.startswith("# planner.md")
     assert loop_config.prompts.execute.startswith("# execute.md")
 
@@ -199,7 +238,7 @@ def test_explore_uses_default_run_dir_when_out_dir_missing(
     monkeypatch.setattr(pipeline_mod, "run_prefetch", fake_prefetch)
 
     config = ExploreConfig(url=BASE_URL, runtime="pi")
-    pipeline_mod.explore(config)
+    pipeline_mod.explore(config, llm=_StubLLM())
 
     run_dir: Path = captured["run_dir"]
     # outputs/shop_manuals/<domain>/<run_id>
@@ -223,9 +262,11 @@ def test_explore_routes_synthesis_call_through_completer_runtime(
 
     Asserts impl plan T6.2 acceptance: the pipeline delegates the
     single §5.10 LLM call to the harness runtime when it exposes
-    ``complete``. The stub returns a long-enough response so
-    ``manual_fallback`` flips to ``False`` (a real-LLM run with the
-    M2 cassette would observe the same).
+    ``complete``. The stub returns a long-enough response so synthesis
+    completes successfully; if the response were under
+    :data:`shop_explore.synthesize.MANUAL_MIN_CHARS` the pipeline would
+    raise :class:`SynthesisError` rather than fall back silently (M3
+    behaviour).
     """
     _stub_storefront(respx.mock)
 
@@ -291,7 +332,7 @@ def test_explore_routes_synthesis_call_through_completer_runtime(
     assert timeout == TIMEOUT_SECONDS
 
     manifest_text = (out_dir / "artifact" / "manifest.json").read_text(encoding="utf-8")
-    assert '"manual_fallback": false' in manifest_text
+    assert "manual_fallback" not in manifest_text
     manual_text = result.manual_path.read_text(encoding="utf-8")
     assert "Real model output for the merged manual." in manual_text
 
@@ -329,8 +370,15 @@ def test_build_runtime_llm_returns_runtime_adapter_for_completer() -> None:
     assert runtime.calls == [("hello", 7.5)]
 
 
-def test_build_runtime_llm_falls_back_to_noop_for_non_completer() -> None:
-    """Runtimes without ``complete`` get a no-op client (forces fallback path)."""
+def test_build_runtime_llm_raises_for_non_completer_runtime() -> None:
+    """Runtimes without ``complete`` make ``build_runtime_llm`` raise ``SynthesisError``.
+
+    Earlier revisions returned a no-op client whose ``complete`` returned
+    ``""``; that path masked LLM-client misconfiguration and triggered a
+    silent deterministic-concatenation fallback in synthesis. M3 dropped
+    the fallback — non-completer runtimes now have to be paired with an
+    explicit ``llm=`` argument to :func:`shop_explore.pipeline.explore`.
+    """
 
     class _BareRuntime:
         def run_iteration(
@@ -343,9 +391,105 @@ def test_build_runtime_llm_falls_back_to_noop_for_non_completer() -> None:
         ) -> RuntimeIterationResult:
             raise AssertionError("run_iteration should not be called in this test")
 
-    client = build_runtime_llm(_BareRuntime(), timeout=1.0)
+    with pytest.raises(SynthesisError, match="does not implement LLMCompleter"):
+        build_runtime_llm(_BareRuntime(), timeout=1.0)
 
-    assert client.complete("anything") == ""
+
+def test_render_agents_md_substitutes_both_placeholders(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`_render_agents_md` swaps both placeholders for concrete values.
+
+    Pins the skill resolver to a known path so the test is hermetic;
+    the schema source is read from the actual ``capabilities/schema.py``
+    module so the test fails loudly if the placeholder name drifts.
+    """
+    fake_skill = tmp_path / "skill"
+    fake_skill.mkdir()
+    monkeypatch.setattr(
+        pipeline_mod,
+        "_resolve_playwright_skill_dir",
+        lambda: fake_skill,
+    )
+
+    template = (
+        "# AGENTS.md\n\n"
+        'SKILL_DIR="{{PLAYWRIGHT_SKILL_DIR}}"\n\n'
+        "```python\n{{CAPABILITIES_SCHEMA}}\n```\n"
+    )
+    rendered = _render_agents_md(template)
+
+    assert "{{PLAYWRIGHT_SKILL_DIR}}" not in rendered
+    assert "{{CAPABILITIES_SCHEMA}}" not in rendered
+    assert f'SKILL_DIR="{fake_skill}"' in rendered
+    # Schema is inlined verbatim from the live source so it cannot drift.
+    assert "class Capabilities(BaseModel):" in rendered
+    assert 'model_config = ConfigDict(extra="forbid")' in rendered
+
+
+def test_render_agents_md_falls_back_when_skill_unresolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the skill cannot be located, the placeholder gets ``<unresolved>``.
+
+    The renderer must not raise — environments without ``pi-playwright``
+    installed (e.g. replay-only CI) still need a renderable AGENTS.md.
+    The literal placeholder makes the failure obvious if the agent
+    actually tries to use ``$SKILL_DIR``.
+    """
+    monkeypatch.setattr(pipeline_mod, "_resolve_playwright_skill_dir", lambda: None)
+
+    template = 'SKILL_DIR="{{PLAYWRIGHT_SKILL_DIR}}"\n'
+    rendered = _render_agents_md(template)
+
+    assert rendered.startswith('SKILL_DIR="<unresolved>"')
+
+
+def test_resolve_playwright_skill_dir_uses_pnpm_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The resolver shells out to ``pnpm root -g`` first and validates SKILL.md.
+
+    Stubs :func:`subprocess.run` so the test is hermetic — no global
+    package manager invocations. Builds a fake global root with a
+    ``pi-playwright`` skill tree to confirm the helper joins the
+    relative skill path correctly.
+    """
+    skill_root = tmp_path / "global"
+    skill_dir = skill_root / "pi-playwright" / "skills" / "playwright-browser"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("# stub", encoding="utf-8")
+
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(argv: tuple[str, ...], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(tuple(argv))
+        if argv[0] == "pnpm":
+            return subprocess.CompletedProcess(argv, 0, stdout=f"{skill_root}\n", stderr="")
+        raise AssertionError("npm fallback should not be reached when pnpm succeeds")
+
+    monkeypatch.setattr(pipeline_mod.subprocess, "run", fake_run)
+
+    resolved = _resolve_playwright_skill_dir()
+
+    assert resolved == skill_dir
+    assert calls == [("pnpm", "root", "-g")]
+
+
+def test_resolve_playwright_skill_dir_returns_none_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Returns ``None`` when both pnpm and npm are unavailable or skill is missing."""
+
+    def fake_run(argv: tuple[str, ...], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        # Both managers exit non-zero — equivalent to "skill not installed".
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="not found")
+
+    monkeypatch.setattr(pipeline_mod.subprocess, "run", fake_run)
+
+    assert _resolve_playwright_skill_dir() is None
 
 
 def _seed_artifact_for_synthesis(run_dir: Path) -> None:

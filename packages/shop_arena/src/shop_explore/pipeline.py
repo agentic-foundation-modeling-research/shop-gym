@@ -12,16 +12,16 @@ loads the bundled prompt resources (``agents.md``, ``planner.md``,
 ``manifest.json`` artifacts under ``run_dir/artifact/`` (spec §5.10).
 
 The synthesis step requires an LLM client. When the configured runtime
-satisfies :class:`harness.runtimes.LLMCompleter` (today only ``pi``),
+satisfies :class:`harness.runtimes.LLMCompleter` (``pi``, ``claude_code``),
 the pipeline wraps it in a thin :class:`_RuntimeLLMClient` adapter so the
 manual-merge call goes through the same model the runtime drives its
 iterations with — resolving spec §8.2 open question 1 in favour of
 "reuse harness runtime LLM" (impl plan T6.2). Runtimes that cannot
 serve completions (e.g. :class:`harness.runtimes.replay.ReplayRuntime`)
-fall back to :class:`_NoOpLLMClient`, which yields an empty completion
-and triggers the §5.10 fallback path inside
-:func:`shop_explore.synthesize.synthesize`. Callers may always override
-the wiring by passing an explicit ``llm`` keyword.
+raise :class:`SynthesisError` from :func:`build_runtime_llm`; callers
+must inject an explicit ``llm`` keyword to :func:`explore` in that
+case. There is no silent fallback — earlier revisions returned an empty
+completion, which masked LLM-client misconfiguration.
 
 The module is import-safe — no I/O at import time. Prompt resources are
 read from disk only when :func:`explore` is invoked.
@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import shutil
+import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -48,10 +49,16 @@ from harness.runtimes import LLMCompleter
 from shop_explore._version import __version__
 from shop_explore.config import ExploreConfig, ExploreResult
 from shop_explore.prefetch import run as run_prefetch
-from shop_explore.synthesize import LLMClient, synthesize
+from shop_explore.synthesize import LLMClient, SynthesisError, synthesize
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 """Directory holding the bundled ``agents.md`` / ``planner.md`` / ``execute.md`` resources."""
+
+_CAPABILITIES_SCHEMA_PATH = Path(__file__).resolve().parent / "capabilities" / "schema.py"
+"""Source of truth for the ``{{CAPABILITIES_SCHEMA}}`` placeholder in ``agents.md`` (§5)."""
+
+_PLAYWRIGHT_SKILL_RELPATH = "pi-playwright/skills/playwright-browser"
+"""Relative path of the playwright skill under the JS package manager's global root."""
 
 _DEFAULT_OUTPUT_ROOT = Path("outputs") / "shop_manuals"
 """Default parent of ``<domain>/<run_id>/`` when ``ExploreConfig.out_dir`` is omitted."""
@@ -85,9 +92,13 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
     Args:
         config: Validated run configuration.
         llm: Optional LLM client used for the single manual-merge call
-            (spec §5.10 step 3). When ``None``, a no-op client is used
-            and synthesis falls back to deterministic concatenation of
-            ``parts/*.md`` (``manifest.manual_fallback=true``).
+            (spec §5.10 step 3). When ``None``, the configured runtime
+            is wrapped via :func:`build_runtime_llm`; runtimes that do
+            not implement :class:`harness.runtimes.LLMCompleter`
+            (e.g. :class:`harness.runtimes.replay.ReplayRuntime`) make
+            that wrapping raise :class:`SynthesisError`. Replay tests
+            and other completer-less callers must inject an explicit
+            stub here.
 
     Returns:
         An :class:`ExploreResult` with the harness ``final_status`` and
@@ -98,15 +109,20 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
         ShopUnreachableError: If the prefetch step aborts (bot-block,
             robots.txt deny, network error on ``/`` or ``robots.txt``).
         SynthesisError: If the harness loop returned without populating
-            ``run_dir/artifact/parts/`` or ``run_dir/artifact/prefetch/``,
-            or if the merged capabilities fragments fail schema
-            validation.
+            ``run_dir/artifact/parts/`` or ``run_dir/artifact/prefetch/``;
+            if the merged capabilities fragments fail schema validation;
+            if the runtime does not implement
+            :class:`harness.runtimes.LLMCompleter` and no ``llm`` was
+            supplied; or if the manual-merge LLM call fails / returns
+            an unusable response.
     """
     run_dir = config.out_dir if config.out_dir is not None else _default_run_dir(config)
     _log.info("run_dir=%s", run_dir)
     _log.info("tail %s/iters/*/native.log for progress", run_dir)
 
-    agents_md = (_PROMPTS_DIR / "agents.md").read_text(encoding="utf-8")
+    agents_md = _render_agents_md(
+        (_PROMPTS_DIR / "agents.md").read_text(encoding="utf-8"),
+    )
     planner_prompt = (_PROMPTS_DIR / "planner.md").read_text(encoding="utf-8")
     execute_prompt = (_PROMPTS_DIR / "execute.md").read_text(encoding="utf-8")
     manual_prompt = (_PROMPTS_DIR / "synthesize_manual.md").read_text(encoding="utf-8")
@@ -151,8 +167,7 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
         manual_prompt=manual_prompt,
     )
     _log.info(
-        "synthesis done: manual_fallback=%s, capability_conflicts=%d",
-        str(synthesis.manual_fallback).lower(),
+        "synthesis done: capability_conflicts=%d",
         len(synthesis.capability_conflicts),
     )
 
@@ -169,20 +184,23 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
 
 
 def build_runtime_llm(runtime: AgentRuntime, *, timeout: float) -> LLMClient:
-    """Return an :class:`LLMClient` backed by ``runtime`` when supported.
+    """Return an :class:`LLMClient` backed by ``runtime``.
 
-    Inspects ``runtime`` for the :class:`harness.runtimes.LLMCompleter` Protocol:
+    Inspects ``runtime`` for the :class:`harness.runtimes.LLMCompleter`
+    Protocol. When supported, returns a :class:`_RuntimeLLMClient` that
+    delegates the synthesis manual-merge call (spec §5.10) through the
+    same runtime that drives the harness loop — so the synthesis call
+    hits the same underlying model (§8.2 open question 1 resolved in
+    favour of "reuse harness runtime LLM").
 
-    * If ``runtime`` exposes a ``complete(prompt, *, timeout)`` method,
-      returns a :class:`_RuntimeLLMClient` that delegates the synthesis
-      manual-merge call (spec §5.10) through it. The same runtime
-      drives the harness loop, so the synthesis call hits the same
-      underlying model — resolving §8.2 open question 1 in favour of
-      "reuse harness runtime LLM".
-    * Otherwise (e.g. :class:`harness.runtimes.replay.ReplayRuntime`),
-      returns a :class:`_NoOpLLMClient` that yields an empty completion
-      and triggers the §5.10 fallback path inside
-      :func:`shop_explore.synthesize.synthesize`.
+    Runtimes that cannot serve completions (e.g.
+    :class:`harness.runtimes.replay.ReplayRuntime`) raise
+    :class:`SynthesisError` here. Earlier revisions silently fell back
+    to a no-op client that returned ``""`` and triggered a deterministic
+    concatenation; that path masked LLM-client misconfiguration and was
+    removed deliberately. Callers driving such runtimes (e.g. the replay
+    test suite) must inject an explicit ``llm`` argument to
+    :func:`explore`.
 
     Args:
         runtime: The harness runtime instance returned by
@@ -194,10 +212,17 @@ def build_runtime_llm(runtime: AgentRuntime, *, timeout: float) -> LLMClient:
     Returns:
         An :class:`LLMClient` ready to pass to
         :func:`shop_explore.synthesize.synthesize`.
+
+    Raises:
+        SynthesisError: When ``runtime`` does not satisfy
+            :class:`harness.runtimes.LLMCompleter`.
     """
     if isinstance(runtime, LLMCompleter):
         return _RuntimeLLMClient(runtime, timeout=timeout)
-    return _NoOpLLMClient()
+    raise SynthesisError(
+        f"runtime {type(runtime).__name__} does not implement LLMCompleter; "
+        "pass an explicit llm= to explore() (or switch to a runtime that does)"
+    )
 
 
 class _RuntimeLLMClient:
@@ -207,10 +232,9 @@ class _RuntimeLLMClient:
     iteration ``timeout`` is captured at construction time so the
     :class:`LLMClient` Protocol's single-argument ``complete`` shape is
     preserved at the synthesis call site. Any exception raised by the
-    runtime is re-raised; the synthesis ``render_manual`` helper
-    catches broad failures and falls back to deterministic
-    concatenation, so an upstream subprocess error still produces a
-    Shop Manual (with ``manifest.manual_fallback=True``).
+    runtime propagates unchanged so :func:`synthesize` can surface it as
+    a :class:`SynthesisError` and abort the run — there is no silent
+    fallback.
     """
 
     def __init__(self, runtime: LLMCompleter, *, timeout: float) -> None:
@@ -223,23 +247,73 @@ class _RuntimeLLMClient:
         return self._runtime.complete(prompt, timeout=self._timeout)
 
 
-class _NoOpLLMClient:
-    """LLM client that always returns the empty string.
+def _render_agents_md(template: str) -> str:
+    """Substitute ``{{PLAYWRIGHT_SKILL_DIR}}`` and ``{{CAPABILITIES_SCHEMA}}``.
 
-    Used by :func:`explore` when the configured runtime cannot serve
-    one-shot completions (e.g. :class:`harness.runtimes.replay.ReplayRuntime`)
-    and the caller did not supply an explicit client. Triggers the spec
-    §5.10 fallback path inside
-    :func:`shop_explore.synthesize.synthesize`: the manual is rendered
-    as the deterministic concatenation of ``parts/*.md`` and
-    ``manifest.manual_fallback`` is set to ``True``. This keeps the
-    pipeline runnable without any LLM credentials (e.g. in CI replay
-    tests).
+    Both placeholders are rendered into the bundled ``agents.md`` template
+    once per run so executor iterations don't need to discover them on
+    their own (each discovery costs 4-5 bash calls per iteration on the
+    Claude Code runtime). The skill path is resolved against the active
+    JS package-manager global root; the capabilities schema is read from
+    ``shop_explore.capabilities.schema`` so it can never drift from the
+    pydantic model.
+
+    Args:
+        template: Raw contents of ``prompts/agents.md``.
+
+    Returns:
+        The template with both placeholders substituted. When the
+        playwright skill cannot be located on this machine, the
+        placeholder is replaced with a literal ``"<unresolved>"`` and a
+        warning is logged — the agent will still try to run but will
+        fail loudly the first time it touches ``$SKILL_DIR``, which is
+        what we want for environments where browsing is not expected
+        (e.g. ``replay`` runtime tests).
     """
+    skill_dir = _resolve_playwright_skill_dir()
+    if skill_dir is None:
+        _log.warning(
+            "could not resolve pi-playwright skill dir; "
+            "rendering agents.md with placeholder '<unresolved>'",
+        )
+        skill_value = "<unresolved>"
+    else:
+        skill_value = str(skill_dir)
+    schema_source = _CAPABILITIES_SCHEMA_PATH.read_text(encoding="utf-8")
+    return template.replace("{{PLAYWRIGHT_SKILL_DIR}}", skill_value).replace(
+        "{{CAPABILITIES_SCHEMA}}",
+        schema_source.rstrip("\n"),
+    )
 
-    def complete(self, prompt: str) -> str:
-        """Return ``""`` to force the synthesis fallback path."""
-        return ""
+
+def _resolve_playwright_skill_dir() -> Path | None:
+    """Locate the ``pi-playwright`` browser skill on this machine.
+
+    Tries ``pnpm root -g`` first (the project standard), then falls back
+    to ``npm root -g``. Returns the absolute path to the skill directory
+    when ``SKILL.md`` is present, or ``None`` when neither command
+    succeeds or the skill is not installed globally.
+    """
+    for cmd in (("pnpm", "root", "-g"), ("npm", "root", "-g")):
+        try:
+            proc = subprocess.run(
+                cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5.0,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+        if proc.returncode != 0:
+            continue
+        root = proc.stdout.strip()
+        if not root:
+            continue
+        candidate = Path(root) / _PLAYWRIGHT_SKILL_RELPATH
+        if (candidate / "SKILL.md").is_file():
+            return candidate
+    return None
 
 
 def _default_run_dir(config: ExploreConfig) -> Path:

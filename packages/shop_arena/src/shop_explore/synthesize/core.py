@@ -4,10 +4,12 @@ Pure function modulo a single ``llm.complete`` call: reads the harness
 artifact tree, writes the four published files, and returns a
 :class:`SynthesisResult` summary.
 
-The single LLM call is the *only* network egress; any exception raised
-by the client is swallowed (in :func:`shop_explore.synthesize.manual.render_manual`)
-and treated as an empty response so we always emit a ``manual.md``
-(spec §5.10 fallback).
+The single LLM call is the *only* network egress. Failures — wire-level
+exceptions or sub-:data:`shop_explore.synthesize.manual.MANUAL_MIN_CHARS`
+responses — surface as :class:`SynthesisError` and abort the run; no
+``manual.md`` is written. Earlier revisions silently fell back to a
+deterministic concatenation of ``parts/*.md``, which masked LLM-client
+misconfiguration; that fallback was removed deliberately (spec §5.10).
 """
 
 from __future__ import annotations
@@ -25,16 +27,20 @@ from shop_explore.capabilities import (
 )
 from shop_explore.stats import compute as compute_stats
 from shop_explore.synthesize.manifest import build_manifest
-from shop_explore.synthesize.manual import concat_parts, render_manual
+from shop_explore.synthesize.manual import (
+    ManualRenderError,
+    concat_parts,
+    render_manual,
+)
 
 
 class SynthesisError(ValueError):
     """Raised when synthesis cannot produce a published Shop Manual.
 
-    Wraps both layout errors (missing ``parts/`` or ``prefetch/``) and
-    schema errors (capabilities fragments fail to merge into a valid
-    :class:`~shop_explore.capabilities.Capabilities`). Either is fatal:
-    callers should surface a non-zero exit code.
+    Wraps layout errors (missing ``parts/`` or ``prefetch/``), schema
+    errors (capabilities fragments fail to merge), and manual-render
+    failures (LLM call raises or returns a sub-threshold response).
+    Either is fatal: callers should surface a non-zero exit code.
     """
 
 
@@ -43,8 +49,8 @@ class LLMClient(Protocol):
 
     A single ``complete(prompt) -> str`` method. Implementations are
     free to talk to any provider; tests inject a stub. Exceptions
-    raised by ``complete`` are caught by :func:`synthesize` and
-    treated as an empty response (triggers fallback, not a failure).
+    raised by ``complete`` propagate as :class:`SynthesisError` —
+    synthesis does not retry or fall back.
     """
 
     def complete(self, prompt: str) -> str:
@@ -62,11 +68,6 @@ class SynthesisResult(BaseModel):
         capabilities_path: ``capabilities.json`` (structured tags).
         stats_path: ``stats.json`` (analysis statistics).
         manifest_path: ``manifest.json`` (run summary).
-        manual_fallback: ``True`` iff the LLM response was empty or
-            shorter than
-            :data:`shop_explore.synthesize.manual.MANUAL_MIN_CHARS` and
-            we fell back to deterministic concatenation of
-            ``parts/*.md``.
         capability_conflicts: Leaf-level merge conflicts recorded by
             :func:`shop_explore.capabilities.merge_fragments`.
     """
@@ -77,7 +78,6 @@ class SynthesisResult(BaseModel):
     capabilities_path: Path
     stats_path: Path
     manifest_path: Path
-    manual_fallback: bool
     capability_conflicts: tuple[Conflict, ...]
 
 
@@ -99,22 +99,23 @@ def synthesize(
             :attr:`shop_explore.config.ExploreConfig.out_dir` when the
             caller supplied one. Must already contain the harness
             ``artifact/`` tree.
-        llm: Client used for the single manual-merge call. Any
-            exception raised by ``complete`` is treated as an empty
-            response and triggers the fallback path.
+        llm: Client used for the single manual-merge call. Exceptions
+            from ``complete`` propagate as :class:`SynthesisError`;
+            sub-:data:`shop_explore.synthesize.manual.MANUAL_MIN_CHARS`
+            responses do the same.
         manual_prompt: Merge prompt body (the ``synthesize_manual.md``
             resource owned by ``shop_explore.prompts``). Sent verbatim
             ahead of the capabilities document and per-task parts.
 
     Returns:
-        A :class:`SynthesisResult` recording the four published paths,
-        the ``manual_fallback`` flag, and any capability merge
-        conflicts.
+        A :class:`SynthesisResult` recording the four published paths
+        and any capability merge conflicts.
 
     Raises:
         SynthesisError: ``<run_dir>/artifact/parts`` or
-            ``<run_dir>/artifact/prefetch`` is missing, or the merged
-            capabilities fragments fail schema validation.
+            ``<run_dir>/artifact/prefetch`` is missing, the merged
+            capabilities fragments fail schema validation, or the
+            manual-merge LLM call fails / returns an unusable response.
     """
     artifact_dir = run_dir / "artifact"
     parts_dir = artifact_dir / "parts"
@@ -140,19 +141,20 @@ def synthesize(
     stats_path.write_text(stats.model_dump_json(indent=2) + "\n", encoding="utf-8")
 
     parts_concat = concat_parts(parts_dir)
-    manual_text, manual_fallback = render_manual(
-        llm=llm,
-        manual_prompt=manual_prompt,
-        capabilities=capabilities,
-        parts_concat=parts_concat,
-    )
+    try:
+        manual_text = render_manual(
+            llm=llm,
+            manual_prompt=manual_prompt,
+            capabilities=capabilities,
+            parts_concat=parts_concat,
+        )
+    except ManualRenderError as exc:
+        raise SynthesisError(f"manual render failed: {exc}") from exc
+    except Exception as exc:
+        raise SynthesisError(f"manual render failed: {exc}") from exc
     manual_path.write_text(manual_text, encoding="utf-8")
 
-    manifest = build_manifest(
-        run_dir=run_dir,
-        conflicts=conflicts,
-        manual_fallback=manual_fallback,
-    )
+    manifest = build_manifest(run_dir=run_dir, conflicts=conflicts)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     return SynthesisResult(
@@ -160,6 +162,5 @@ def synthesize(
         capabilities_path=capabilities_path,
         stats_path=stats_path,
         manifest_path=manifest_path,
-        manual_fallback=manual_fallback,
         capability_conflicts=tuple(conflicts),
     )

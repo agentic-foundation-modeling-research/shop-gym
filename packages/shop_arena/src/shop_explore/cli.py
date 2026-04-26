@@ -186,8 +186,11 @@ def _run_synthesize_only(args: argparse.Namespace) -> int:
 
     Resolves the configured harness runtime and routes the manual-merge
     LLM call through it (impl plan T6.2). Runtimes that do not satisfy
-    :class:`harness.runtimes.LLMCompleter` fall back to the no-op
-    client, which triggers the §5.10 deterministic concatenation path.
+    :class:`harness.runtimes.LLMCompleter` cause :func:`build_runtime_llm`
+    to raise :class:`SynthesisError`; the CLI surfaces that as a usage
+    error rather than silently falling back to a deterministic merge
+    (M3 behaviour — earlier revisions silently masked LLM-client
+    misconfiguration).
     """
     run_dir: Path = args.synthesize_only
     if not run_dir.is_dir():
@@ -201,17 +204,14 @@ def _run_synthesize_only(args: argparse.Namespace) -> int:
     runtime_name = args.runtime if args.runtime is not None else "pi"
     timeout = args.timeout if args.timeout is not None else DEFAULT_TIMEOUT_SECONDS
     runtime = get_runtime(runtime_name)
-    llm = build_runtime_llm(runtime, timeout=timeout)
     try:
+        llm = build_runtime_llm(runtime, timeout=timeout)
         result = run_synthesize(run_dir, llm=llm, manual_prompt=manual_prompt)
     except SynthesisError as exc:
         print(f"shop-explore: {exc}", file=sys.stderr)
         return EXIT_USAGE
 
-    print(
-        f"shop-explore: synthesized {result.manual_path} "
-        f"(manual_fallback={str(result.manual_fallback).lower()})",
-    )
+    print(f"shop-explore: synthesized {result.manual_path}")
     return EXIT_OK
 
 

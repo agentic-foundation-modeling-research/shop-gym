@@ -14,9 +14,12 @@ from pathlib import Path
 import pytest
 
 from harness.runtimes import AgentRuntime, get_runtime
+from harness.runtimes.base import LLMCompleter
 from harness.runtimes.claude_code import (
     ClaudeCodeRuntime,
     _ensure_claude_md_symlink,
+    build_argv,
+    build_complete_argv,
     parse_native_log,
 )
 from harness.trajectory import (
@@ -195,11 +198,16 @@ def test_runtime_satisfies_agent_runtime_protocol() -> None:
     assert runtime.binary == "claude"
 
 
-def test_runtime_defaults_to_opus_4_7() -> None:
-    """The default model is ``claude-opus-4-7`` for reproducibility."""
+def test_runtime_defaults_to_sonnet_4_6() -> None:
+    """The default model is ``claude-sonnet-4-6`` (faster than Opus 4.7).
+
+    Sonnet 4.6 is roughly 2-3x faster than Opus 4.7 on the storefront
+    exploration loop and converges to similar manuals — switching the
+    default trades a small fidelity hit for a meaningful wall-clock win.
+    """
     runtime = ClaudeCodeRuntime()
 
-    assert runtime.model == "claude-opus-4-7"
+    assert runtime.model == "claude-sonnet-4-6"
 
 
 def test_get_runtime_resolves_claude_code() -> None:
@@ -211,9 +219,7 @@ def test_get_runtime_resolves_claude_code() -> None:
 
 def test_get_runtime_claude_code_forwards_kwargs() -> None:
     """Constructor kwargs (``binary``, ``model``) are forwarded by the registry."""
-    runtime = get_runtime(
-        "claude_code", binary="/opt/bin/claude", model="claude-sonnet-4-6"
-    )
+    runtime = get_runtime("claude_code", binary="/opt/bin/claude", model="claude-sonnet-4-6")
 
     assert isinstance(runtime, ClaudeCodeRuntime)
     assert runtime.binary == "/opt/bin/claude"
@@ -227,3 +233,73 @@ def test_get_runtime_claude_code_rejects_unknown_kwargs(
     """Forwarding garbage to the constructor surfaces a `TypeError`."""
     with pytest.raises(TypeError):
         get_runtime("claude_code", **bad_kw)
+
+
+def test_build_argv_threads_model_and_skip_permissions_flag() -> None:
+    """The iteration argv pins ``--model`` and ``--dangerously-skip-permissions``."""
+    assert build_argv(binary="claude", model="claude-sonnet-4-6") == [
+        "claude",
+        "--print",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        "claude-sonnet-4-6",
+        "--dangerously-skip-permissions",
+    ]
+
+
+def test_build_complete_argv_disables_tools_and_session_state() -> None:
+    """One-shot completion argv strips tools, slash commands, and session state.
+
+    ``--tools ""`` disables every built-in tool; ``--no-session-persistence``
+    keeps the call from polluting on-disk session state. We intentionally
+    do not pass ``--bare`` because that would skip keychain reads and
+    break OAuth-authenticated CLIs.
+    """
+    assert build_complete_argv(binary="claude", model="opus") == [
+        "claude",
+        "--print",
+        "--tools",
+        "",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+        "--model",
+        "opus",
+    ]
+
+
+def test_runtime_satisfies_llm_completer_protocol() -> None:
+    """`ClaudeCodeRuntime` exposes ``complete`` and so satisfies `LLMCompleter`."""
+    runtime = ClaudeCodeRuntime(binary="claude")
+
+    assert isinstance(runtime, LLMCompleter)
+
+
+def test_runtime_complete_model_defaults_to_opus() -> None:
+    """The default ``complete_model`` is ``"opus"`` (synthesis benefits from Opus reasoning).
+
+    Iteration runs Sonnet for speed; the post-loop synthesis merges
+    hundreds of KB of agent output into a single Shop Manual, where
+    Opus's long-context reasoning is worth the wall-clock hit.
+    """
+    runtime = ClaudeCodeRuntime()
+
+    assert runtime.complete_model == "opus"
+
+
+def test_runtime_complete_model_is_threaded_through_to_argv() -> None:
+    """``complete_model`` rather than ``model`` is what feeds the completion argv."""
+    runtime = ClaudeCodeRuntime(model="claude-sonnet-4-6", complete_model="opus")
+
+    assert runtime.model == "claude-sonnet-4-6"
+    assert runtime.complete_model == "opus"
+    # The iteration argv pins the iteration model.
+    iter_argv = build_argv(binary=runtime.binary, model=runtime.model)
+    assert iter_argv[iter_argv.index("--model") + 1] == "claude-sonnet-4-6"
+    # The completion argv pins the completion model — and since the
+    # completion argv ends with ``--model M``, a tail slice is exact.
+    assert build_complete_argv(binary=runtime.binary, model=runtime.complete_model)[-2:] == [
+        "--model",
+        "opus",
+    ]
