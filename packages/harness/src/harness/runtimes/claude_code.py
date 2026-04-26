@@ -52,20 +52,31 @@ _NATIVE_LOG_FILENAME: Final[str] = "native.log"
 _AGENTS_FILENAME: Final[str] = "AGENTS.md"
 _CLAUDE_FILENAME: Final[str] = "CLAUDE.md"
 _DEFAULT_BIN: Final[str] = "claude"
-_DEFAULT_MODEL: Final[str] = "claude-opus-4-7"
+_DEFAULT_MODEL: Final[str] = "claude-sonnet-4-6"
+_DEFAULT_COMPLETE_MODEL: Final[str] = "opus"
 _KILL_GRACE_SECONDS: Final[float] = 5.0
 
 
 class ClaudeCodeRuntime:
     """`AgentRuntime` adapter wrapping the Claude Code CLI.
 
-    The constructor takes no required arguments; ``binary`` and ``model``
-    are exposed so tests and packaging can override them without forking.
+    The constructor takes no required arguments; ``binary``, ``model``,
+    and ``complete_model`` are exposed so tests and packaging can
+    override them without forking.
+
+    The two models are split because the iteration loop and the
+    one-shot completion have different cost/quality trade-offs. Sonnet
+    is roughly 2-3x faster on the executor loop and converges to
+    similar manuals; the synthesis step is a single non-interactive
+    merge over hundreds of KB of agent output, where Opus's stronger
+    long-context reasoning is worth the wall-clock hit.
 
     Attributes:
         binary: Executable name or absolute path of the ``claude`` CLI.
-        model: Model identifier passed via ``--model`` (full name like
-            ``claude-opus-4-7`` or alias like ``opus``).
+        model: Model identifier passed via ``--model`` for iteration
+            (full name like ``claude-opus-4-7`` or alias like ``opus``).
+        complete_model: Model identifier passed via ``--model`` for the
+            one-shot ``complete`` call used by post-loop synthesis.
     """
 
     def __init__(
@@ -73,18 +84,26 @@ class ClaudeCodeRuntime:
         *,
         binary: str = _DEFAULT_BIN,
         model: str = _DEFAULT_MODEL,
+        complete_model: str = _DEFAULT_COMPLETE_MODEL,
     ) -> None:
-        """Initialise a runtime backed by ``binary`` and ``model``.
+        """Initialise a runtime backed by ``binary``, ``model``, and ``complete_model``.
 
         Args:
             binary: Executable name or absolute path of the ``claude`` CLI.
                 Defaults to ``"claude"`` (resolved via ``PATH``).
-            model: Model identifier passed to ``claude --model``. Defaults
-                to ``"claude-opus-4-7"``. Accepts a full model name or an
-                alias supported by the CLI (e.g. ``"opus"``, ``"sonnet"``).
+            model: Model identifier passed to ``claude --model`` for
+                iteration. Defaults to ``"claude-sonnet-4-6"``. Accepts a
+                full model name or an alias supported by the CLI
+                (e.g. ``"opus"``, ``"sonnet"``).
+            complete_model: Model identifier passed to ``claude --model``
+                for one-shot completions (post-loop synthesis). Defaults
+                to ``"opus"`` so the manual-merge call benefits from
+                Opus's stronger long-context reasoning even when
+                iteration runs on Sonnet.
         """
         self._binary = binary
         self._model = model
+        self._complete_model = complete_model
 
     @property
     def binary(self) -> str:
@@ -93,8 +112,13 @@ class ClaudeCodeRuntime:
 
     @property
     def model(self) -> str:
-        """Model identifier passed via ``--model``."""
+        """Model identifier passed via ``--model`` for iteration."""
         return self._model
+
+    @property
+    def complete_model(self) -> str:
+        """Model identifier passed via ``--model`` for one-shot completions."""
+        return self._complete_model
 
     def run_iteration(
         self,
@@ -123,20 +147,7 @@ class ClaudeCodeRuntime:
         """
         _ensure_claude_md_symlink(run_dir)
         log_path = iter_dir / _NATIVE_LOG_FILENAME
-        argv = [
-            self._binary,
-            "--print",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--model",
-            self._model,
-            # Headless runs cannot answer interactive permission prompts;
-            # auto-accept edits so file writes inside the workspace land
-            # without blocking. The harness still gates everything by the
-            # subprocess-level timeout.
-            "--dangerously-skip-permissions",
-        ]
+        argv = build_argv(binary=self._binary, model=self._model)
         started_at = _utcnow()
         exit_code = _spawn_and_capture(
             argv=argv,
@@ -160,6 +171,41 @@ class ClaudeCodeRuntime:
         )
         return RuntimeIterationResult(trajectory=trajectory)
 
+    def complete(self, prompt: str, *, timeout: float) -> str:
+        """Run a one-shot non-agent ``claude`` completion against ``prompt``.
+
+        Implements the `LLMCompleter` Protocol from
+        `harness.runtimes.base`. Spawns ``claude --print --tools ""
+        --disable-slash-commands --no-session-persistence --model M`` so
+        the call is a pure prompt → text completion. ``M`` is
+        ``self._complete_model`` (default ``"opus"``), which is
+        intentionally distinct from the iteration model — the synthesis
+        merge benefits from Opus's stronger long-context reasoning. The
+        empty ``--tools`` value strips the entire built-in tool set.
+
+        We deliberately do **not** pass ``--bare``: that flag also skips
+        keychain reads and the OAuth/credential path Claude Code uses by
+        default, which would force every interactive user to fall back to
+        ``ANTHROPIC_API_KEY``. Hooks, plugin sync, and CLAUDE.md
+        auto-discovery still load, but they only enrich the prompt — the
+        synthesis call is a single prompt → text round-trip and does not
+        touch tools, sessions, or the workspace.
+
+        Args:
+            prompt: Fully rendered prompt delivered on the CLI's stdin.
+            timeout: Wall-clock budget in seconds. The CLI is killed on
+                expiry and `subprocess.TimeoutExpired` is re-raised.
+
+        Returns:
+            The CLI's stdout decoded as UTF-8 (replacement-mode), with
+            trailing whitespace stripped. May be empty.
+
+        Raises:
+            subprocess.TimeoutExpired: When the CLI exceeds ``timeout``.
+        """
+        argv = build_complete_argv(binary=self._binary, model=self._complete_model)
+        return _spawn_oneshot(argv=argv, prompt=prompt, timeout=timeout)
+
 
 # ---------------------------------------------------------------------------
 # Workspace setup
@@ -180,6 +226,73 @@ def _ensure_claude_md_symlink(run_dir: Path) -> None:
         return
     # Relative symlink so the workspace is portable across moves.
     os.symlink(_AGENTS_FILENAME, target)
+
+
+# ---------------------------------------------------------------------------
+# CLI argv builders
+# ---------------------------------------------------------------------------
+
+
+def build_argv(*, binary: str, model: str) -> list[str]:
+    """Build the ``claude`` invocation argv for a single iteration.
+
+    Args:
+        binary: Executable name or absolute path of the ``claude`` CLI.
+        model: Model identifier forwarded as ``--model``.
+
+    Returns:
+        The argv list ready to pass to `subprocess.Popen`.
+    """
+    return [
+        binary,
+        "--print",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        model,
+        # Headless runs cannot answer interactive permission prompts;
+        # auto-accept edits so file writes inside the workspace land
+        # without blocking. The harness still gates everything by the
+        # subprocess-level timeout.
+        "--dangerously-skip-permissions",
+    ]
+
+
+def build_complete_argv(*, binary: str, model: str) -> list[str]:
+    """Build the ``claude`` argv for a one-shot non-agent completion.
+
+    Disables tools, slash commands, and session persistence so the call
+    is a pure prompt → text completion. Used by
+    `ClaudeCodeRuntime.complete` to satisfy the `LLMCompleter` protocol.
+
+    We deliberately do not pass ``--bare`` here: that flag also skips
+    keychain reads and the OAuth/credential path Claude Code uses by
+    default, which would force every interactive user to fall back to
+    ``ANTHROPIC_API_KEY``. Hooks, plugin sync, and CLAUDE.md
+    auto-discovery still load, but they only enrich the prompt — the
+    completion is still a single prompt → text round-trip with tools
+    disabled, no sessions, and no workspace mutation.
+
+    Args:
+        binary: Executable name or absolute path of the ``claude`` CLI.
+        model: Model identifier forwarded as ``--model``.
+
+    Returns:
+        The argv list ready to pass to `subprocess.Popen`.
+    """
+    return [
+        binary,
+        "--print",
+        # Empty value disables every built-in tool — the call is a pure
+        # text completion with no side effects.
+        "--tools",
+        "",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+        "--model",
+        model,
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +350,44 @@ def _terminate_group(proc: subprocess.Popen[bytes]) -> None:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         with suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=_KILL_GRACE_SECONDS)
+
+
+def _spawn_oneshot(
+    *,
+    argv: list[str],
+    prompt: str,
+    timeout: float,
+) -> str:
+    """Run ``argv`` with ``prompt`` on stdin, returning captured stdout.
+
+    Mirrors `_spawn_and_capture`'s timeout / process-group discipline,
+    but captures stdout into memory and discards stderr — the call
+    pattern is a pure prompt → text completion, so tee'ing to a log file
+    would just leave a debug artifact behind. On `subprocess.TimeoutExpired`
+    we send ``SIGTERM`` to the process group, give it a brief grace
+    window, then escalate to ``SIGKILL`` and re-raise.
+
+    Returns:
+        The child's UTF-8-decoded stdout, with trailing whitespace
+        stripped. Returns an empty string when the child writes nothing
+        (e.g. immediate non-zero exit).
+    """
+    proc = subprocess.Popen(
+        argv,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        stdout_bytes, _ = proc.communicate(input=prompt.encode("utf-8"), timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _terminate_group(proc)
+        raise
+    finally:
+        if proc.poll() is None:
+            _terminate_group(proc)
+    return stdout_bytes.decode("utf-8", errors="replace").rstrip()
 
 
 # ---------------------------------------------------------------------------

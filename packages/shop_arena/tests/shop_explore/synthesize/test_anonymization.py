@@ -176,8 +176,6 @@ def test_synthesized_artifacts_contain_no_leaks_on_m2_fixture(tmp_path: Path) ->
 
     result = synthesize(run_dir, llm=llm, manual_prompt=_MANUAL_PROMPT)
 
-    assert result.manual_fallback is False  # sanity — clean LLM body kept
-
     manual_text = result.manual_path.read_text(encoding="utf-8")
     capabilities_text = result.capabilities_path.read_text(encoding="utf-8")
 

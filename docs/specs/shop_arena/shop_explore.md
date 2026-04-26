@@ -511,11 +511,19 @@ runs (no further harness involvement):
      iters, plan_tasks_total, plan_tasks_done, plan_tasks_blocked,
      omitted_areas, capability_conflicts, paths}`.
 
-Synthesis failure modes:
+Synthesis failure modes (loud — no silent fallback):
 
 - Capabilities schema invalid → exit non-zero, no `manual.md` emitted.
-- Manual LLM call empty / < 200 chars → fall back to deterministic
-  concatenation of `parts/*.md`, set `manifest.json:manual_fallback=true`.
+- Manual LLM call empty / < 200 chars → exit non-zero, no `manual.md` /
+  `manifest.json` emitted. Earlier revisions silently concatenated
+  `parts/*.md` and set `manifest.json:manual_fallback=true`; that path
+  masked LLM-client misconfiguration (the `_NoOpLLMClient` always
+  returned `""`) and was removed deliberately.
+- Manual LLM call raises (network error, timeout, runtime missing
+  `complete()`) → exit non-zero, no `manual.md` / `manifest.json`
+  emitted. Runtimes that do not implement `harness.runtimes.LLMCompleter`
+  (e.g. `replay`) require an explicit `llm=` argument to
+  `shop_explore.pipeline.explore`.
 
 ### 5.11 CLI surface
 

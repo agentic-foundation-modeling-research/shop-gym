@@ -2,18 +2,17 @@
 
 Drives the full pipeline against the hand-crafted ``fixture_drawer_shop``
 cassette under :class:`harness.runtimes.replay.ReplayRuntime`. No real
-LLM, no real network: storefront prefetch is stubbed via ``respx`` and
-the runtime selector is monkey-patched to return a ``ReplayRuntime``
-rooted at the cassette directory.
+LLM, no real network: storefront prefetch is stubbed via ``respx``, the
+runtime selector is monkey-patched to return a ``ReplayRuntime`` rooted
+at the cassette directory, and a :class:`_StubLLM` is injected explicitly
+so the §5.10 synthesis call has a usable client (``ReplayRuntime`` does
+not implement :class:`harness.runtimes.LLMCompleter`).
 
 This is the milestone gate for SC1 ("end-to-end") and SC4
 ("replayable"): a recorded `shop_explore` run drives end-to-end through
 `harness.runtimes.replay` *and* publishes the four §5.10 artifacts
 (``manual.md`` / ``capabilities.json`` / ``stats.json`` /
-``manifest.json``) under ``run_dir/artifact/``. The synthesis pass uses
-the no-op LLM client wired in :func:`shop_explore.pipeline.explore`, so
-``manifest.manual_fallback`` is ``True`` here — the prose comes from
-deterministic concatenation of ``parts/*.md`` per spec §5.10.
+``manifest.json``) under ``run_dir/artifact/``.
 """
 
 from __future__ import annotations
@@ -44,6 +43,36 @@ _EXPECTED_TASKS: tuple[str, ...] = (
 )
 _PREFETCH_TIMEOUT_SECONDS = 30.0
 _REPLAY_MAX_ITERS = 6
+
+# Synthesized manual body used by the injected stub LLM. Must clear
+# :data:`shop_explore.synthesize.manual.MANUAL_MIN_CHARS` (200 chars
+# stripped) so the pipeline's loud-failure guard does not trip.
+_STUB_MANUAL_BODY = (
+    "# Shop Manual\n\n"
+    "## Overview\n\n"
+    "Anonymized synthesized manual produced by the replay test stub.\n\n"
+    + ("Structured prose summarizing per-task parts. " * 8)
+    + "\n"
+)
+
+
+class _StubLLM:
+    """Minimal :class:`shop_explore.synthesize.LLMClient` stub for replay tests.
+
+    The replay runtime does not implement
+    :class:`harness.runtimes.LLMCompleter`, so :func:`explore` would
+    raise :class:`shop_explore.synthesize.SynthesisError` if called
+    without an explicit ``llm=`` argument. Tests inject this stub to
+    keep the synthesis call deterministic and credential-less.
+    """
+
+    def __init__(self, response: str = _STUB_MANUAL_BODY) -> None:
+        self._response = response
+        self.calls: list[str] = []
+
+    def complete(self, prompt: str) -> str:
+        self.calls.append(prompt)
+        return self._response
 
 
 def _ok(content: str | bytes, *, content_type: str = "text/html; charset=utf-8") -> httpx.Response:
@@ -109,7 +138,7 @@ def test_pipeline_replay_runs_end_to_end_against_drawer_shop_cassette(
         timeout=_PREFETCH_TIMEOUT_SECONDS,
     )
 
-    result = pipeline_mod.explore(config)
+    result = pipeline_mod.explore(config, llm=_StubLLM())
 
     # Harness drained all four PENDING tasks within budget.
     assert result.final_status is FinalStatus.COMPLETED
@@ -180,19 +209,19 @@ def _assert_synthesis_artifacts_published(result: Any) -> None:
     assert caps["search"]["has_predictive"] is True
     assert caps["site_shell"]["has_mega_menu"] is True
 
-    # Manifest mirrors the harness summary; manual_fallback is True because
-    # the pipeline wired the no-op LLM client (real LLM lands later).
+    # Manifest mirrors the harness summary. ``manual_fallback`` was removed
+    # in M3 — synthesis now fails loudly when the LLM call misbehaves.
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["manual_fallback"] is True
+    assert "manual_fallback" not in manifest
     assert manifest["harness_status"] == "completed"
     assert manifest["plan_tasks_total"] == len(_EXPECTED_TASKS)
     assert manifest["plan_tasks_done"] == len(_EXPECTED_TASKS)
 
-    # Manual is the deterministic concatenation of parts/*.md (fallback path).
+    # Manual is whatever the injected stub returned — the replay test
+    # uses :data:`_STUB_MANUAL_BODY`, which has the same `# Shop Manual`
+    # heading the synthesis prompt would normally produce.
     manual_text = result.manual_path.read_text(encoding="utf-8")
-    for task_id in _EXPECTED_TASKS:
-        # Each cassette part starts with `# <task_id>` — see fixture_drawer_shop.
-        assert f"# {task_id}" in manual_text
+    assert manual_text.startswith("# Shop Manual")
 
 
 @dataclass(frozen=True)
@@ -304,7 +333,7 @@ def test_pipeline_replay_runs_end_to_end_against_alt_cassettes(
         timeout=_PREFETCH_TIMEOUT_SECONDS,
     )
 
-    result = pipeline_mod.explore(config)
+    result = pipeline_mod.explore(config, llm=_StubLLM())
 
     assert result.final_status is FinalStatus.COMPLETED
     plan_md = (out_dir / "plan.md").read_text(encoding="utf-8")
@@ -344,11 +373,11 @@ def _assert_alt_synthesis_artifacts(result: Any, fixture: _ReplayFixture) -> Non
         )
 
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["manual_fallback"] is True
+    assert "manual_fallback" not in manifest
     assert manifest["harness_status"] == "completed"
     assert manifest["plan_tasks_total"] == len(fixture.tasks)
     assert manifest["plan_tasks_done"] == len(fixture.tasks)
 
+    # Manual is whatever the injected stub returned (see ``_StubLLM``).
     manual_text = result.manual_path.read_text(encoding="utf-8")
-    for task_id in fixture.tasks:
-        assert f"# {task_id}" in manual_text
+    assert manual_text.startswith("# Shop Manual")

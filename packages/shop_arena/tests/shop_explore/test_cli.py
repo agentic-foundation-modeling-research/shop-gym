@@ -155,19 +155,20 @@ def test_prefetch_only_returns_nonzero_on_bot_block(
     assert "robots_disallow" in err
 
 
-def test_synthesize_only_publishes_manual_against_existing_run_dir(
+def test_synthesize_only_fails_loudly_when_runtime_lacks_completer(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``--synthesize-only PATH`` runs §5.10 against an existing run_dir.
+    """Non-completer runtime → ``SynthesisError`` exit, no artifacts emitted.
 
-    The configured runtime is replaced with a non-completer stub so the
-    CLI's T6.2 wiring falls back to the no-op LLM client and the manual
-    is rendered as the deterministic concatenation of ``parts/*.md``
-    (``manifest.manual_fallback == True``). Exercises the
-    ``isinstance(runtime, LLMCompleter)`` branch in
-    :func:`shop_explore.pipeline.build_runtime_llm`.
+    Earlier revisions silently fell back to a no-op LLM client and a
+    deterministic concatenation of ``parts/*.md`` whenever the runtime
+    didn't implement :class:`harness.runtimes.LLMCompleter`. That path
+    masked LLM-client misconfiguration and was removed in M3 — the CLI
+    now surfaces the missing-completer condition as a usage error and
+    refuses to publish ``manual.md`` / ``manifest.json``. Exercises the
+    raise branch in :func:`shop_explore.pipeline.build_runtime_llm`.
     """
     run_dir = _seed_minimal_run_dir(tmp_path)
 
@@ -181,20 +182,14 @@ def test_synthesize_only_publishes_manual_against_existing_run_dir(
 
     rc = main(["--synthesize-only", str(run_dir), BASE_URL])
 
-    assert rc == EXIT_OK
+    assert rc == EXIT_USAGE
     artifact = run_dir / "artifact"
-    assert (artifact / "manual.md").is_file()
-    assert (artifact / "capabilities.json").is_file()
-    assert (artifact / "stats.json").is_file()
-    assert (artifact / "manifest.json").is_file()
+    # Synthesis aborted before anything was published.
+    assert not (artifact / "manual.md").exists()
+    assert not (artifact / "manifest.json").exists()
 
-    manifest = json.loads((artifact / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["manual_fallback"] is True
-    manual_text = (artifact / "manual.md").read_text(encoding="utf-8")
-    assert "placeholder body" in manual_text
-
-    out = capsys.readouterr().out
-    assert "manual_fallback=true" in out
+    err = capsys.readouterr().err
+    assert "does not implement LLMCompleter" in err
 
 
 def test_synthesize_only_routes_manual_call_through_completer_runtime(
@@ -205,9 +200,11 @@ def test_synthesize_only_routes_manual_call_through_completer_runtime(
     """A runtime satisfying ``LLMCompleter`` receives the manual-merge prompt.
 
     Asserts impl plan T6.2: the CLI's ``--synthesize-only`` path
-    delegates the §5.10 LLM call to the configured runtime instead of
-    the no-op fallback. The stub returns a non-empty completion so
-    ``manifest.manual_fallback`` flips to ``False``.
+    delegates the §5.10 LLM call to the configured runtime. The stub
+    returns a non-empty completion that clears
+    :data:`shop_explore.synthesize.MANUAL_MIN_CHARS` so synthesis
+    succeeds end-to-end (a too-short response would now raise
+    :class:`SynthesisError` rather than silently fall back).
     """
     run_dir = _seed_minimal_run_dir(tmp_path)
     captured: dict[str, object] = {}
@@ -233,7 +230,7 @@ def test_synthesize_only_routes_manual_call_through_completer_runtime(
     assert rc == EXIT_OK
     artifact = run_dir / "artifact"
     manifest = json.loads((artifact / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["manual_fallback"] is False
+    assert "manual_fallback" not in manifest
     manual_text = (artifact / "manual.md").read_text(encoding="utf-8")
     assert "Real model output for the merged manual." in manual_text
 
@@ -243,7 +240,7 @@ def test_synthesize_only_routes_manual_call_through_completer_runtime(
     assert captured["timeout"] == expected_timeout
 
     out = capsys.readouterr().out
-    assert "manual_fallback=false" in out
+    assert "synthesized" in out
 
 
 def test_synthesize_only_rejects_missing_run_dir(

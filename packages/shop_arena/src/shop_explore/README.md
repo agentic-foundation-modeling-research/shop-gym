@@ -26,6 +26,43 @@ That installs the `shop-explore` console script defined by
 
 ---
 
+## Prerequisites
+
+`shop-explore` is an orchestrator — it shells out to an agent runtime
+and, through that runtime, to a browser-automation skill. Make sure the
+relevant pieces are installed before running a live exploration:
+
+| Component                  | When required                       | How to install                                                  |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------------- |
+| Python ≥ 3.11 + `uv`       | Always                              | [astral.sh/uv](https://docs.astral.sh/uv/), then `uv sync`      |
+| `claude` CLI               | `--runtime claude_code`             | [docs.claude.com/claude-code](https://docs.claude.com/claude-code) |
+| `pi` CLI                   | `--runtime pi`                      | Internal — see `packages/harness/README.md`                     |
+| `pnpm` ≥ 9 (or `npm` ≥ 10) | Any run that drives a browser       | [pnpm.io/installation](https://pnpm.io/installation)            |
+| `pi-playwright` skill      | Any run that drives a browser       | `pnpm add -g pi-playwright` (or `npm i -g pi-playwright`)       |
+| Runtime API key            | Live runs (not `replay`-only tests) | `ANTHROPIC_API_KEY` for `claude_code`, runtime env vars for `pi` |
+
+Quick sanity checks:
+
+```bash
+uv --version                                  # Python toolchain
+claude --version                              # only if --runtime claude_code
+pi --version                                  # only if --runtime pi
+node "$(pnpm root -g)/pi-playwright/skills/playwright-browser/scripts/pw.js" --help
+```
+
+The last command should print the playwright wrapper's help. If it
+fails, `shop-explore` will still start, but the rendered `AGENTS.md`
+will contain `SKILL_DIR="<unresolved>"` and the agent will fail the
+first time it tries to drive the browser. The pipeline logs a
+`could not resolve pi-playwright skill dir` warning at startup when
+this happens — watch for it.
+
+The `--prefetch-only` and `--synthesize-only` flows do not touch the
+agent runtime or the browser skill, so the only hard requirement for
+those is `uv sync`.
+
+---
+
 ## Usage
 
 ### Library
@@ -116,6 +153,17 @@ uv run shop-explore https://example-shop.com \
 Each attempt is appended to `config_snapshot.resume_history` in
 `run.json` (one entry per call to `run_plan_exec_loop`, per
 resume.md §5.7).
+
+> **Cross-machine resume caveat.** The harness `Workspace.open` resume
+> check requires byte-for-byte equality on `AGENTS.md`. Because the
+> rendered `AGENTS.md` bakes in the absolute path of the
+> `pi-playwright` skill on the recording machine (see
+> [Design notes](#design-notes--agentsmd-template-rendering) below),
+> resuming a run on a different machine — or after a `pnpm` global
+> reinstall that moved the skill — will fail with a workspace-mismatch
+> error. Re-render or re-run on the original machine, or run
+> `--synthesize-only` against the existing `parts/` if you only need
+> to refresh the manual.
 
 ---
 
@@ -312,6 +360,46 @@ fallback live runtime and persists `trajectory.json` +
 The synthetic `fixture_drawer_shop` is hand-crafted (no live source)
 and stays the canonical replay fixture for the M2/M3 tests; the
 recorded fixtures back T4.2–T4.5 of the implementation plan.
+
+---
+
+## Design notes — `AGENTS.md` template rendering
+
+`prompts/agents.md` is a **template**, not a final prompt.
+`pipeline.explore` renders two placeholders into it once per run before
+handing the result to the harness:
+
+| Placeholder                | Source                                           | Purpose                                                              |
+| -------------------------- | ------------------------------------------------ | -------------------------------------------------------------------- |
+| `{{PLAYWRIGHT_SKILL_DIR}}` | `pnpm root -g` (then `npm root -g` as fallback)  | Lets the agent run `node $SKILL_DIR/scripts/pw.js …` without discovering the path itself |
+| `{{CAPABILITIES_SCHEMA}}`  | `shop_explore.capabilities.schema` source        | Pins the closed pydantic schema inline so it can never drift from the model |
+
+The substitution lives in `pipeline._render_agents_md`. The skill-path
+resolver (`_resolve_playwright_skill_dir`) tries `pnpm` first to match
+the project standard, falls back to `npm`, and returns `None` (rendered
+as the literal string `"<unresolved>"`) when neither is installed or
+the global package is missing. A warning is logged so misconfigured
+environments fail loudly the first time an iteration touches
+`$SKILL_DIR`.
+
+### Why pre-resolve the skill path?
+
+Each executor iteration pays a 4–5 bash-call discovery cost if it has
+to find the skill itself (`require.resolve`, `pnpm root -g`, `find`,
+…). Pre-rendering trades that per-iteration cost for one resolution at
+pipeline startup, which materially shrinks Claude Code wall-time on
+20-iter runs.
+
+The tradeoff is that `AGENTS.md` now bakes in an absolute filesystem
+path, so it is **machine-specific**. This is fine for the typical
+workflow (one machine drives a run end-to-end and may resume on the
+same machine) but breaks cross-machine resume (see the [Resuming a
+prior run](#resuming-a-prior-run) caveat). If we ever need portable
+run dirs, the cleanest follow-up is to switch the placeholder to an
+environment-variable indirection (`SKILL_DIR="${SHOP_EXPLORE_SKILL_DIR}"`)
+that the harness sets at runtime spawn — keeping the identity bytes
+machine-stable. Today's bake-in is the simpler shortcut and is
+documented as such.
 
 ---
 

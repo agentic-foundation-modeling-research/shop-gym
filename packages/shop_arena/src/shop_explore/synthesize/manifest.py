@@ -26,7 +26,6 @@ def build_manifest(
     *,
     run_dir: Path,
     conflicts: list[Conflict],
-    manual_fallback: bool,
 ) -> dict[str, Any]:
     """Assemble the ``manifest.json`` payload (spec §5.10 step 4)."""
     plan_md_path = run_dir / "plan.md"
@@ -49,7 +48,6 @@ def build_manifest(
         "plan_tasks_blocked": plan_tasks_blocked,
         "omitted_areas": omitted_areas,
         "capability_conflicts": [c.model_dump(mode="json") for c in conflicts],
-        "manual_fallback": manual_fallback,
         "synthesized_at": _utc_now_iso(),
         "paths": {
             "manual": "artifact/manual.md",

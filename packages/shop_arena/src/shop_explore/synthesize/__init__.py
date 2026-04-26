@@ -11,12 +11,14 @@ Public surface (re-exported here so callers keep using
 ``shop_explore.synthesize.X``):
 
 * :func:`synthesize` — the post-loop entrypoint.
-* :class:`SynthesisError` — raised on missing/invalid run_dir layout
-  or when the merged capabilities fail schema validation.
+* :class:`SynthesisError` — raised on missing/invalid run_dir layout,
+  when the merged capabilities fail schema validation, or when the
+  manual-merge LLM call fails / returns an unusable response.
 * :class:`SynthesisResult` — closed pydantic model returned by
   :func:`synthesize`.
 * :class:`LLMClient` — minimal protocol the manual-merge call uses.
-* :data:`MANUAL_MIN_CHARS` — fallback threshold (spec §5.10).
+* :data:`MANUAL_MIN_CHARS` — minimum manual length below which the
+  call is treated as failed (spec §5.10).
 
 Submodules:
 
@@ -24,7 +26,7 @@ Submodules:
   entrypoint plus the :class:`SynthesisResult` / :class:`LLMClient` /
   :class:`SynthesisError` public surface.
 * :mod:`shop_explore.synthesize.manual` — single LLM call for
-  ``manual.md`` plus the deterministic concatenation fallback.
+  ``manual.md``.
 * :mod:`shop_explore.synthesize.manifest` — ``manifest.json`` builder
   and the ``plan.md`` parsing helpers it depends on.
 """
