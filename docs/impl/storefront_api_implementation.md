@@ -177,7 +177,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
   cart, returned in `Cart` shape; no real validation. **Check**:
   per-mutation unit test asserting the field is reflected in the
   next `Query.cart(id)`.
-- [ ] **T4.5** — `createSandboxServer` constructs a fresh `CartStore`
+- [x] **T4.5** — `createSandboxServer` constructs a fresh `CartStore`
   per call, passes it on the `ResolverContext`, and clears it on
   `close()`. **Check:** test creating two server instances in the
   same process verifies cart ids in one are unknown in the other.
