@@ -1,0 +1,333 @@
+/**
+ * Resolvers for the Product / Collection area of the Storefront API.
+ *
+ * Covers the surface enumerated in
+ * `docs/specs/shop_backend/storefront_api.md` §5.2:
+ *
+ *   - `Query.product(handle)` — direct dataset lookup, `null` on miss.
+ *   - `Query.products(first/last/before/after/sortKey/reverse/query)` —
+ *     filtered + sorted + Relay-paginated. Filter semantics per spec §5.3
+ *     (`title`, `description_html`, `vendor`, `product_type`, `tags`).
+ *     `totalCount` reflects the post-filter, pre-pagination size.
+ *   - `Query.collection(handle)` — dataset lookup; the synthetic handle
+ *     `"all"` is materialized in-memory and contains every dataset product
+ *     (spec §5.3).
+ *   - `Query.collections(first/last/before/after/sortKey/reverse)` — sorted
+ *     + paginated.
+ *   - `Product.selectedOrFirstAvailableVariant(selectedOptions)` — pick the
+ *     variant matching `selectedOptions`, otherwise the first available
+ *     variant, otherwise the first variant, otherwise `null`.
+ *   - `Collection.products` — nested products connection. Resolves member
+ *     handles against `data.productsByHandle`; for the synthetic `"all"`
+ *     handle, returns the full dataset.
+ *
+ * Sort keys per spec §5.3:
+ *   - `products`: TITLE / PRICE (min variant price) / CREATED_AT /
+ *     UPDATED_AT / VENDOR / PRODUCT_TYPE / ID / BEST_SELLING and RELEVANCE
+ *     fall back to dataset order. `reverse` honored.
+ *   - `collections`: TITLE / UPDATED_AT / ID; RELEVANCE falls back to dataset
+ *     order.
+ */
+
+import { type Connection, type PaginationArgs, paginate } from '../data/pagination.js';
+import type { Collection, Product, SandboxShopData } from '../data/types.js';
+import {
+  type CollectionNode,
+  type ProductNode,
+  type ProductVariantNode,
+  buildCollectionNode,
+  buildProductNode,
+  gid,
+  matchesSearch,
+} from './builders.js';
+import type { ResolverContext } from './index.js';
+
+// ── Connection shapes ─────────────────────────────────────────────────────
+
+/** Connection with the `totalCount` extension exposed on `ProductConnection`. */
+export interface ProductConnectionNode extends Connection<ProductNode> {
+  readonly totalCount: number;
+}
+
+// ── Argument shapes ───────────────────────────────────────────────────────
+// Hand-typed until graphql-codegen lands in M7 (T7.1).
+
+export type ProductSortKey =
+  | 'TITLE'
+  | 'PRODUCT_TYPE'
+  | 'VENDOR'
+  | 'UPDATED_AT'
+  | 'CREATED_AT'
+  | 'BEST_SELLING'
+  | 'PRICE'
+  | 'ID'
+  | 'RELEVANCE';
+
+export type CollectionSortKey = 'TITLE' | 'UPDATED_AT' | 'ID' | 'RELEVANCE';
+
+interface ProductsArgs extends PaginationArgs {
+  readonly sortKey?: ProductSortKey | null;
+  readonly reverse?: boolean | null;
+  readonly query?: string | null;
+}
+
+interface CollectionsArgs extends PaginationArgs {
+  readonly sortKey?: CollectionSortKey | null;
+  readonly reverse?: boolean | null;
+}
+
+interface SelectedOptionInput {
+  readonly name: string;
+  readonly value: string;
+}
+
+interface SelectedOrFirstArgs {
+  readonly selectedOptions?: readonly SelectedOptionInput[] | null;
+  readonly ignoreUnknownOptions?: boolean | null;
+  readonly caseInsensitiveMatch?: boolean | null;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────
+
+/** Synthetic collection handle that exposes every product in the dataset. */
+const ALL_HANDLE = 'all';
+
+// ── Resolvers ─────────────────────────────────────────────────────────────
+
+/**
+ * Resolver map for the Product / Collection area. Wired into
+ * `createSandboxSchema` once T2.6 combines the per-area maps.
+ */
+export const productResolvers = {
+  Query: {
+    product: (
+      _parent: unknown,
+      args: { readonly handle: string },
+      ctx: ResolverContext,
+    ): ProductNode | null => {
+      const product = ctx.data.productsByHandle.get(args.handle);
+      if (product === undefined) return null;
+      return buildProductNode(product, ctx.data.store, ctx.baseUrl);
+    },
+
+    products: (
+      _parent: unknown,
+      args: ProductsArgs,
+      ctx: ResolverContext,
+    ): ProductConnectionNode => {
+      const filtered = filterProducts(ctx.data.products, args.query ?? null);
+      const sorted = sortProducts(filtered, args.sortKey ?? null, args.reverse ?? false);
+      const nodes = sorted.map((p) => buildProductNode(p, ctx.data.store, ctx.baseUrl));
+      const connection = paginate(nodes, args);
+      return { ...connection, totalCount: filtered.length };
+    },
+
+    collection: (
+      _parent: unknown,
+      args: { readonly handle: string },
+      ctx: ResolverContext,
+    ): CollectionNode | null => {
+      if (args.handle === ALL_HANDLE) return buildAllCollectionNode();
+      const collection = findCollection(ctx.data, args.handle);
+      if (collection === null) return null;
+      return buildCollectionNode(collection, ctx.baseUrl);
+    },
+
+    collections: (
+      _parent: unknown,
+      args: CollectionsArgs,
+      ctx: ResolverContext,
+    ): Connection<CollectionNode> => {
+      const sorted = sortCollections(
+        ctx.data.collections,
+        args.sortKey ?? null,
+        args.reverse ?? false,
+      );
+      const nodes = sorted.map((c) => buildCollectionNode(c, ctx.baseUrl));
+      return paginate(nodes, args);
+    },
+  },
+
+  Product: {
+    selectedOrFirstAvailableVariant: (
+      parent: ProductNode,
+      args: SelectedOrFirstArgs,
+    ): ProductVariantNode | null => {
+      const selected = args.selectedOptions ?? null;
+      if (selected !== null && selected.length > 0) {
+        const caseInsensitive = args.caseInsensitiveMatch ?? false;
+        const ignoreUnknown = args.ignoreUnknownOptions ?? false;
+        const found = parent.variants.find((variant) =>
+          matchesSelectedOptions(variant, selected, caseInsensitive, ignoreUnknown),
+        );
+        if (found !== undefined) return found;
+      }
+      const firstAvailable = parent.variants.find((variant) => variant.availableForSale);
+      if (firstAvailable !== undefined) return firstAvailable;
+      return parent.variants[0] ?? null;
+    },
+  },
+
+  Collection: {
+    products: (
+      parent: CollectionNode,
+      args: PaginationArgs,
+      ctx: ResolverContext,
+    ): ProductConnectionNode => {
+      const products = collectionProducts(ctx.data, parent.handle);
+      const nodes = products.map((p) => buildProductNode(p, ctx.data.store, ctx.baseUrl));
+      const connection = paginate(nodes, args);
+      return { ...connection, totalCount: nodes.length };
+    },
+  },
+};
+
+// ── Filter / sort helpers ─────────────────────────────────────────────────
+
+function filterProducts(products: readonly Product[], query: string | null): readonly Product[] {
+  if (query === null || query.trim() === '') return products;
+  return products.filter((product) => matchesSearch(query, productHaystack(product)));
+}
+
+function productHaystack(product: Product): string {
+  return [
+    product.title,
+    product.description_html,
+    product.vendor,
+    product.product_type,
+    ...product.tags,
+  ].join(' ');
+}
+
+function sortProducts(
+  products: readonly Product[],
+  sortKey: ProductSortKey | null,
+  reverse: boolean,
+): readonly Product[] {
+  let result: readonly Product[] = products;
+  if (sortKey !== null && sortKey !== 'BEST_SELLING' && sortKey !== 'RELEVANCE') {
+    const copy = [...products];
+    copy.sort((a, b) => compareProducts(a, b, sortKey));
+    result = copy;
+  }
+  if (reverse) result = [...result].reverse();
+  return result;
+}
+
+function compareProducts(a: Product, b: Product, key: ProductSortKey): number {
+  switch (key) {
+    case 'TITLE':
+      return a.title.localeCompare(b.title);
+    case 'VENDOR':
+      return a.vendor.localeCompare(b.vendor);
+    case 'PRODUCT_TYPE':
+      return a.product_type.localeCompare(b.product_type);
+    case 'CREATED_AT':
+      return a.created_at.localeCompare(b.created_at);
+    case 'UPDATED_AT':
+      return a.updated_at.localeCompare(b.updated_at);
+    case 'ID':
+      return a.id - b.id;
+    case 'PRICE':
+      return minVariantPrice(a) - minVariantPrice(b);
+    case 'BEST_SELLING':
+    case 'RELEVANCE':
+      return 0;
+  }
+}
+
+function minVariantPrice(product: Product): number {
+  let min = Number.POSITIVE_INFINITY;
+  for (const variant of product.variants) {
+    const value = Number.parseFloat(variant.price);
+    if (Number.isFinite(value) && value < min) min = value;
+  }
+  return Number.isFinite(min) ? min : 0;
+}
+
+function sortCollections(
+  collections: readonly Collection[],
+  sortKey: CollectionSortKey | null,
+  reverse: boolean,
+): readonly Collection[] {
+  let result: readonly Collection[] = collections;
+  if (sortKey !== null && sortKey !== 'RELEVANCE') {
+    const copy = [...collections];
+    copy.sort((a, b) => compareCollections(a, b, sortKey));
+    result = copy;
+  }
+  if (reverse) result = [...result].reverse();
+  return result;
+}
+
+function compareCollections(a: Collection, b: Collection, key: CollectionSortKey): number {
+  switch (key) {
+    case 'TITLE':
+      return a.title.localeCompare(b.title);
+    case 'UPDATED_AT':
+      return (a.updated_at ?? '').localeCompare(b.updated_at ?? '');
+    case 'ID':
+      return a.id - b.id;
+    case 'RELEVANCE':
+      return 0;
+  }
+}
+
+// ── Collection helpers ────────────────────────────────────────────────────
+
+function findCollection(data: SandboxShopData, handle: string): Collection | null {
+  for (const collection of data.collections) {
+    if (collection.handle === handle) return collection;
+  }
+  return null;
+}
+
+function buildAllCollectionNode(): CollectionNode {
+  return {
+    id: gid('Collection', ALL_HANDLE),
+    handle: ALL_HANDLE,
+    title: 'All Products',
+    description: '',
+    descriptionHtml: '',
+    image: null,
+    updatedAt: null,
+  };
+}
+
+function collectionProducts(data: SandboxShopData, handle: string): readonly Product[] {
+  if (handle === ALL_HANDLE) return data.products;
+  const collection = findCollection(data, handle);
+  if (collection === null) return [];
+  const result: Product[] = [];
+  for (const productHandle of collection.product_handles) {
+    const product = data.productsByHandle.get(productHandle);
+    if (product !== undefined) result.push(product);
+  }
+  return result;
+}
+
+// ── Variant matching ──────────────────────────────────────────────────────
+
+function matchesSelectedOptions(
+  variant: ProductVariantNode,
+  selected: readonly SelectedOptionInput[],
+  caseInsensitive: boolean,
+  ignoreUnknown: boolean,
+): boolean {
+  for (const input of selected) {
+    const variantOption = variant.selectedOptions.find((option) =>
+      caseInsensitive
+        ? option.name.toLowerCase() === input.name.toLowerCase()
+        : option.name === input.name,
+    );
+    if (variantOption === undefined) {
+      if (ignoreUnknown) continue;
+      return false;
+    }
+    const matches = caseInsensitive
+      ? variantOption.value.toLowerCase() === input.value.toLowerCase()
+      : variantOption.value === input.value;
+    if (!matches) return false;
+  }
+  return true;
+}

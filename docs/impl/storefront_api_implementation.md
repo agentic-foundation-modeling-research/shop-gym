@@ -105,7 +105,7 @@ No GraphQL schema changes yet.
   fires `{ shop { name primaryDomain { host } paymentSettings {
   currencyCode } privacyPolicy { handle title } } }` against the
   fixture; values match `store.json` + `policies.json`.
-- [ ] **T2.4** — `src/resolvers/product.ts`: `Query.product`,
+- [x] **T2.4** — `src/resolvers/product.ts`: `Query.product`,
   `Query.products` (with `query`, `sortKey`, `reverse`),
   `Query.collection`, `Query.collections`, plus
   `Product.selectedOrFirstAvailableVariant(selectedOptions)` and
