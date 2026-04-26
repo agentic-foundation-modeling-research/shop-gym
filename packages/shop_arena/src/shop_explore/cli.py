@@ -8,10 +8,14 @@ Implements the §5.11 CLI surface of
   ``run_dir`` (the M3 mirror of the legacy ``--merge-only`` flag).
 
 Default invocation (no flag) drives the full pipeline through
-:mod:`shop_explore.pipeline`. The synthesis step inside that pipeline
-uses a no-op LLM client today and falls back to deterministic
-concatenation of ``parts/*.md`` (§5.10 fallback path); a real LLM
-client is wired in a later milestone.
+:mod:`shop_explore.pipeline`. Both the default and the
+``--synthesize-only`` paths route the §5.10 manual-merge LLM call
+through the configured harness runtime via
+:func:`shop_explore.pipeline.build_runtime_llm` — when ``--runtime``
+satisfies :class:`harness.runtimes.LLMCompleter` (``pi`` today) the synthesis
+hits the same model the runtime drives iterations with; otherwise it
+falls back to the no-op client and the deterministic concatenation of
+``parts/*.md`` (impl plan T6.2).
 
 The module is import-safe: it performs no I/O at import time.
 """
@@ -25,8 +29,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from harness import get_runtime
 from shop_explore.config import DEFAULT_MAX_ITERS, DEFAULT_TIMEOUT_SECONDS, ExploreConfig
-from shop_explore.pipeline import explore
+from shop_explore.pipeline import build_runtime_llm, explore
 from shop_explore.prefetch import ShopUnreachableError
 from shop_explore.prefetch import run as run_prefetch
 from shop_explore.synthesize import (
@@ -141,7 +146,13 @@ def _run_prefetch_only(args: argparse.Namespace) -> int:
 
 
 def _run_synthesize_only(args: argparse.Namespace) -> int:
-    """Execute the ``--synthesize-only PATH`` path: §5.10 against ``PATH``."""
+    """Execute the ``--synthesize-only PATH`` path: §5.10 against ``PATH``.
+
+    Resolves the configured harness runtime and routes the manual-merge
+    LLM call through it (impl plan T6.2). Runtimes that do not satisfy
+    :class:`harness.runtimes.LLMCompleter` fall back to the no-op
+    client, which triggers the §5.10 deterministic concatenation path.
+    """
     run_dir: Path = args.synthesize_only
     if not run_dir.is_dir():
         print(
@@ -151,8 +162,10 @@ def _run_synthesize_only(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     manual_prompt = _load_manual_prompt()
+    runtime = get_runtime(args.runtime)
+    llm = build_runtime_llm(runtime, timeout=args.timeout)
     try:
-        result = run_synthesize(run_dir, llm=_NoOpLLMClient(), manual_prompt=manual_prompt)
+        result = run_synthesize(run_dir, llm=llm, manual_prompt=manual_prompt)
     except SynthesisError as exc:
         print(f"shop-explore: {exc}", file=sys.stderr)
         return EXIT_USAGE
@@ -193,21 +206,6 @@ def _load_manual_prompt() -> str:
     """Read the bundled ``synthesize_manual.md`` prompt resource."""
     prompts_dir = Path(__file__).resolve().parent / "prompts"
     return (prompts_dir / "synthesize_manual.md").read_text(encoding="utf-8")
-
-
-class _NoOpLLMClient:
-    """LLM client that always returns ``""`` (forces §5.10 fallback).
-
-    The CLI v0.1 does not wire a real LLM yet; ``--synthesize-only``
-    therefore always emits a fallback ``manual.md`` rendered as the
-    deterministic concatenation of ``parts/*.md``. A future milestone
-    will plug in an :class:`~shop_explore.synthesize.LLMClient`
-    selectable via ``--runtime``.
-    """
-
-    def complete(self, prompt: str) -> str:
-        """Return ``""`` to force the synthesis fallback path."""
-        return ""
 
 
 def _default_run_dir(url: str) -> Path:

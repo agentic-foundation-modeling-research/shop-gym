@@ -11,12 +11,17 @@ loads the bundled prompt resources (``agents.md``, ``planner.md``,
 ``manual.md`` / ``capabilities.json`` / ``stats.json`` /
 ``manifest.json`` artifacts under ``run_dir/artifact/`` (spec §5.10).
 
-The synthesis step requires an LLM client. Callers that do not pass
-one (the CLI today, replay tests) get a deterministic no-op client
-that returns an empty completion; :func:`shop_explore.synthesize.synthesize`
-then falls back to concatenating ``parts/*.md`` and flags
-``manifest.manual_fallback=true``. Production callers wire a real
-:class:`~shop_explore.synthesize.LLMClient` through the ``llm`` keyword.
+The synthesis step requires an LLM client. When the configured runtime
+satisfies :class:`harness.runtimes.LLMCompleter` (today only ``pi``),
+the pipeline wraps it in a thin :class:`_RuntimeLLMClient` adapter so the
+manual-merge call goes through the same model the runtime drives its
+iterations with — resolving spec §8.2 open question 1 in favour of
+"reuse harness runtime LLM" (impl plan T6.2). Runtimes that cannot
+serve completions (e.g. :class:`harness.runtimes.replay.ReplayRuntime`)
+fall back to :class:`_NoOpLLMClient`, which yields an empty completion
+and triggers the §5.10 fallback path inside
+:func:`shop_explore.synthesize.synthesize`. Callers may always override
+the wiring by passing an explicit ``llm`` keyword.
 
 The module is import-safe — no I/O at import time. Prompt resources are
 read from disk only when :func:`explore` is invoked.
@@ -31,7 +36,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from harness import PlanExecLoopConfig, Prompts, get_runtime, run_plan_exec_loop
+from harness import (
+    AgentRuntime,
+    PlanExecLoopConfig,
+    Prompts,
+    get_runtime,
+    run_plan_exec_loop,
+)
+from harness.runtimes import LLMCompleter
 from shop_explore._version import __version__
 from shop_explore.config import ExploreConfig, ExploreResult
 from shop_explore.prefetch import run as run_prefetch
@@ -115,7 +127,7 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
 
     synthesize(
         run_dir,
-        llm=llm if llm is not None else _NoOpLLMClient(),
+        llm=llm if llm is not None else build_runtime_llm(runtime, timeout=config.timeout),
         manual_prompt=manual_prompt,
     )
 
@@ -131,16 +143,73 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
     )
 
 
+def build_runtime_llm(runtime: AgentRuntime, *, timeout: float) -> LLMClient:
+    """Return an :class:`LLMClient` backed by ``runtime`` when supported.
+
+    Inspects ``runtime`` for the :class:`harness.runtimes.LLMCompleter` Protocol:
+
+    * If ``runtime`` exposes a ``complete(prompt, *, timeout)`` method,
+      returns a :class:`_RuntimeLLMClient` that delegates the synthesis
+      manual-merge call (spec §5.10) through it. The same runtime
+      drives the harness loop, so the synthesis call hits the same
+      underlying model — resolving §8.2 open question 1 in favour of
+      "reuse harness runtime LLM".
+    * Otherwise (e.g. :class:`harness.runtimes.replay.ReplayRuntime`),
+      returns a :class:`_NoOpLLMClient` that yields an empty completion
+      and triggers the §5.10 fallback path inside
+      :func:`shop_explore.synthesize.synthesize`.
+
+    Args:
+        runtime: The harness runtime instance returned by
+            :func:`harness.get_runtime`.
+        timeout: Wall-clock budget forwarded to ``runtime.complete``.
+            Reuses ``ExploreConfig.timeout`` so the synthesis call is
+            bounded by the same per-iteration budget.
+
+    Returns:
+        An :class:`LLMClient` ready to pass to
+        :func:`shop_explore.synthesize.synthesize`.
+    """
+    if isinstance(runtime, LLMCompleter):
+        return _RuntimeLLMClient(runtime, timeout=timeout)
+    return _NoOpLLMClient()
+
+
+class _RuntimeLLMClient:
+    """:class:`LLMClient` that delegates each call to a harness runtime.
+
+    The runtime must satisfy :class:`harness.runtimes.LLMCompleter`; the
+    iteration ``timeout`` is captured at construction time so the
+    :class:`LLMClient` Protocol's single-argument ``complete`` shape is
+    preserved at the synthesis call site. Any exception raised by the
+    runtime is re-raised; the synthesis ``render_manual`` helper
+    catches broad failures and falls back to deterministic
+    concatenation, so an upstream subprocess error still produces a
+    Shop Manual (with ``manifest.manual_fallback=True``).
+    """
+
+    def __init__(self, runtime: LLMCompleter, *, timeout: float) -> None:
+        """Capture the runtime instance and the per-call timeout."""
+        self._runtime = runtime
+        self._timeout = timeout
+
+    def complete(self, prompt: str) -> str:
+        """Delegate to ``runtime.complete(prompt, timeout=...)``."""
+        return self._runtime.complete(prompt, timeout=self._timeout)
+
+
 class _NoOpLLMClient:
     """LLM client that always returns the empty string.
 
-    Used by :func:`explore` when the caller does not supply an LLM
-    client. Triggers the spec §5.10 fallback path inside
+    Used by :func:`explore` when the configured runtime cannot serve
+    one-shot completions (e.g. :class:`harness.runtimes.replay.ReplayRuntime`)
+    and the caller did not supply an explicit client. Triggers the spec
+    §5.10 fallback path inside
     :func:`shop_explore.synthesize.synthesize`: the manual is rendered
     as the deterministic concatenation of ``parts/*.md`` and
     ``manifest.manual_fallback`` is set to ``True``. This keeps the
     pipeline runnable without any LLM credentials (e.g. in CI replay
-    tests) until a real client is wired in a later milestone.
+    tests).
     """
 
     def complete(self, prompt: str) -> str:

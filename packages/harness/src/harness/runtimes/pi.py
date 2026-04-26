@@ -153,6 +153,32 @@ class PiRuntime:
         )
         return RuntimeIterationResult(trajectory=trajectory)
 
+    def complete(self, prompt: str, *, timeout: float) -> str:
+        """Run a one-shot non-agent ``pi`` completion against ``prompt``.
+
+        Implements the `LLMCompleter` Protocol from
+        `harness.runtimes.base`. Spawns ``pi --print --mode text
+        --no-tools --no-context-files --no-session [--model M]`` so the
+        call is a pure prompt → text completion against the same model
+        the runtime drives its iterations with. No AGENTS.md
+        auto-loading, no tools, no session persistence, no log file
+        side-effects.
+
+        Args:
+            prompt: Fully rendered prompt delivered on the CLI's stdin.
+            timeout: Wall-clock budget in seconds. The CLI is killed on
+                expiry and `subprocess.TimeoutExpired` is re-raised.
+
+        Returns:
+            The CLI's stdout decoded as UTF-8 (replacement-mode), with
+            trailing whitespace stripped. May be empty.
+
+        Raises:
+            subprocess.TimeoutExpired: When the CLI exceeds ``timeout``.
+        """
+        argv = build_complete_argv(binary=self._binary, model=self._model)
+        return _spawn_oneshot(argv=argv, prompt=prompt, timeout=timeout)
+
 
 # ---------------------------------------------------------------------------
 # CLI argv builder
@@ -172,6 +198,36 @@ def build_argv(*, binary: str, model: str | None) -> list[str]:
         The argv list ready to pass to `subprocess.Popen`.
     """
     argv = [binary, "--print", "--mode", "json"]
+    if model is not None:
+        argv.extend(["--model", model])
+    return argv
+
+
+def build_complete_argv(*, binary: str, model: str | None) -> list[str]:
+    """Build the ``pi`` argv for a one-shot non-agent completion.
+
+    Disables tools, AGENTS.md auto-loading, and session persistence so
+    the call is a pure prompt → text completion. Used by
+    `PiRuntime.complete` to satisfy the `LLMCompleter` protocol.
+
+    Args:
+        binary: Executable name or absolute path of the ``pi`` CLI.
+        model: Optional model identifier forwarded as ``--model``. When
+            ``None``, the flag is omitted and ``pi`` uses its built-in
+            default — same defaulting behaviour as `build_argv`.
+
+    Returns:
+        The argv list ready to pass to `subprocess.Popen`.
+    """
+    argv = [
+        binary,
+        "--print",
+        "--mode",
+        "text",
+        "--no-tools",
+        "--no-context-files",
+        "--no-session",
+    ]
     if model is not None:
         argv.extend(["--model", model])
     return argv
@@ -232,6 +288,44 @@ def _terminate_group(proc: subprocess.Popen[bytes]) -> None:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         with suppress(subprocess.TimeoutExpired):
             proc.wait(timeout=_KILL_GRACE_SECONDS)
+
+
+def _spawn_oneshot(
+    *,
+    argv: list[str],
+    prompt: str,
+    timeout: float,
+) -> str:
+    """Run ``argv`` with ``prompt`` on stdin, returning captured stdout.
+
+    Mirrors `_spawn_and_capture`'s timeout / process-group discipline,
+    but captures stdout into memory and discards stderr — the call
+    pattern is a pure prompt → text completion, so tee'ing to a log file
+    would just leave a debug artifact behind. On `subprocess.TimeoutExpired`
+    we send ``SIGTERM`` to the process group, give it a brief grace
+    window, then escalate to ``SIGKILL`` and re-raise.
+
+    Returns:
+        The child's UTF-8-decoded stdout, with trailing whitespace
+        stripped. Returns an empty string when the child writes nothing
+        (e.g. immediate non-zero exit).
+    """
+    proc = subprocess.Popen(
+        argv,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        stdout_bytes, _ = proc.communicate(input=prompt.encode("utf-8"), timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _terminate_group(proc)
+        raise
+    finally:
+        if proc.poll() is None:
+            _terminate_group(proc)
+    return stdout_bytes.decode("utf-8", errors="replace").rstrip()
 
 
 # ---------------------------------------------------------------------------
