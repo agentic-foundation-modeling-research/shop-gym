@@ -1,14 +1,13 @@
 /**
- * Tests for `createSandboxServer` cart-store isolation (spec T4.5).
+ * Tests for `createSandboxServer` (T6.2 + T4.5).
  *
- * Boots two server instances against the same fixture dataset on ephemeral
- * ports, then asserts that cart ids minted by server A are unknown to
- * server B — i.e. the per-server `CartStore` replaces the module-level
- * `Map`/counter that mock-api shared across instances.
- *
- * A second test exercises the `close() → listen()` round trip on a single
- * server: the store is cleared on close, so a cart id minted before close
- * does not resolve after the listener is rebound.
+ * Two areas under test:
+ *   1. Wrapper wiring (T6.2). The server boots against an ephemeral port and
+ *      resolves the canonical `{ shop { name } }` query against both
+ *      `/graphql` and `/api/2024-01/graphql.json`. Satisfies SC2 + SC4.
+ *   2. Cart-store isolation (T4.5). Cart ids minted by server A are unknown
+ *      to server B; the store is cleared on `close()` and a cart id minted
+ *      before close does not resolve after the listener is rebound.
  */
 
 import * as path from 'node:path';
@@ -46,16 +45,56 @@ interface CartQueryData {
   readonly cart: { readonly id: string } | null;
 }
 
-const CREATE_CART = /* GraphQL */ `mutation { cartCreate(input: {}) { cart { id } } }`;
+interface ShopQueryData {
+  readonly shop: { readonly name: string };
+}
+
+const CREATE_CART = /* GraphQL */ 'mutation { cartCreate(input: {}) { cart { id } } }';
+const SHOP_QUERY = /* GraphQL */ '{ shop { name } }';
 const lookupCart = (id: string) => /* GraphQL */ `{ cart(id: "${id}") { id } }`;
+
+describe('createSandboxServer — HTTP wiring', () => {
+  it('serves { shop { name } } at /graphql and the versioned /api/<v>/graphql.json', async () => {
+    const data = loadShopData(FIXTURE_DIR);
+    const server = createSandboxServer({ data, dataDir: FIXTURE_DIR, port: 0 });
+    await server.listen();
+    try {
+      const baseUrl = server.url.replace(/\/graphql$/, '');
+      const direct = await gql<ShopQueryData>(server.url, SHOP_QUERY);
+      expect(direct.errors).toBeUndefined();
+      expect(direct.data?.shop.name).toBe(data.store.name);
+
+      const versioned = await gql<ShopQueryData>(`${baseUrl}/api/2024-01/graphql.json`, SHOP_QUERY);
+      expect(versioned.errors).toBeUndefined();
+      expect(versioned.data?.shop.name).toBe(data.store.name);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('responds to GET /health with the dataset store name', async () => {
+    const data = loadShopData(FIXTURE_DIR);
+    const server = createSandboxServer({ data, dataDir: FIXTURE_DIR, port: 0 });
+    await server.listen();
+    try {
+      const baseUrl = server.url.replace(/\/graphql$/, '');
+      const response = await fetch(`${baseUrl}/health`);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { status: string; store: string };
+      expect(body).toEqual({ status: 'ok', store: data.store.name });
+    } finally {
+      await server.close();
+    }
+  });
+});
 
 describe('createSandboxServer — cart-store isolation', () => {
   it('does not share cart ids across two server instances', async () => {
     const data = loadShopData(FIXTURE_DIR);
     // `port: 0` requests an ephemeral port so two instances can listen
     // simultaneously without coordination.
-    const serverA = createSandboxServer({ data, port: 0 });
-    const serverB = createSandboxServer({ data, port: 0 });
+    const serverA = createSandboxServer({ data, dataDir: FIXTURE_DIR, port: 0 });
+    const serverB = createSandboxServer({ data, dataDir: FIXTURE_DIR, port: 0 });
     try {
       await Promise.all([serverA.listen(), serverB.listen()]);
 
@@ -75,7 +114,7 @@ describe('createSandboxServer — cart-store isolation', () => {
 
   it('clears its cart store on close()', async () => {
     const data = loadShopData(FIXTURE_DIR);
-    const server = createSandboxServer({ data, port: 0 });
+    const server = createSandboxServer({ data, dataDir: FIXTURE_DIR, port: 0 });
     await server.listen();
 
     const created = await gql<CartCreateData>(server.url, CREATE_CART);

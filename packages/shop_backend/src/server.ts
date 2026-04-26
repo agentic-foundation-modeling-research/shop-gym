@@ -1,29 +1,50 @@
 /**
- * SandboxShop server entry point (T4.5).
+ * SandboxShop server entry point (T6.2).
  *
- * `createSandboxServer({ data, port?, host? })` wires the SDL + resolvers
- * built by `createSandboxSchema()` against a freshly constructed `CartStore`
- * (spec §5.5) and exposes `/graphql` over `node:http`. Each call allocates
- * its own store, so concurrent server instances — including parallel test
- * suites — never share cart ids. `close()` shuts the listener down and
- * clears the store, matching the spec's "cleared on `server.close()`"
- * contract.
+ * `createSandboxServer({ data, dataDir, port?, host?, baseUrl? })` wires the
+ * SDL + resolvers built by `createSandboxSchema()` against a freshly
+ * constructed `CartStore` (spec §5.5) and serves the surface defined in
+ * spec §5.4 over `node:http`:
  *
- * The HTTP wrapper added in M6 (T6.1 / T6.2 — `/health`, `/images/*`,
- * versioned routing) layers on top of this scaffold; `createSandboxServer`
- * is the seam M6 builds against.
+ *   - `POST /graphql` — yoga-mounted GraphQL endpoint.
+ *   - `POST /api/<version>/graphql.json` — rewritten to `/graphql` for
+ *     Storefront-API-versioned clients.
+ *   - `GET /images/<path>` — static images under `<dataDir>/images/`.
+ *   - `GET /health` — `{ status: "ok", store }` JSON.
+ *
+ * CORS follows spec §5.4: `Access-Control-Allow-Origin: *`, methods
+ * `POST, OPTIONS`, headers `Content-Type, X-Shopify-Storefront-Access-Token`.
+ *
+ * Each call allocates its own `CartStore`, so concurrent server instances —
+ * including parallel test suites — never share cart ids. `close()` shuts
+ * the listener down and clears the store, matching the spec's "cleared on
+ * `server.close()`" contract.
  */
 
 import { type Server, createServer as createHttpServer } from 'node:http';
-import { createYoga } from 'graphql-yoga';
+import { type CORSOptions, createYoga } from 'graphql-yoga';
 import type { SandboxShopData } from './data/types.js';
+import { buildHttpHandler } from './http.js';
 import { CartStore } from './resolvers/cart.js';
 import type { ResolverContext } from './resolvers/index.js';
 import { createSandboxSchema } from './schema.js';
 
+/** CORS configuration mandated by spec §5.4. */
+const CORS: CORSOptions = {
+  origin: '*',
+  methods: ['POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'X-Shopify-Storefront-Access-Token'],
+};
+
 export interface ServerOptions {
   /** Loaded SandboxShop dataset; resolvers read against this snapshot. */
   readonly data: SandboxShopData;
+  /**
+   * SandboxShop dataset directory. Static images are served from
+   * `<dataDir>/images/`. Required so the HTTP wrapper can locate the asset
+   * root; the loader in M1 does not retain it on `SandboxShopData`.
+   */
+  readonly dataDir: string;
   /** TCP port to bind. `0` requests an ephemeral port (used by tests). Defaults to 4000. */
   readonly port?: number;
   /** Host interface to bind. Defaults to `127.0.0.1`. */
@@ -54,7 +75,7 @@ export interface SandboxServer {
  * return `null` (spec §5.3).
  */
 export function createSandboxServer(options: ServerOptions): SandboxServer {
-  const { data, port = 4000, host = '127.0.0.1' } = options;
+  const { data, dataDir, port = 4000, host = '127.0.0.1' } = options;
   const carts = new CartStore();
   const schema = createSandboxSchema();
 
@@ -64,6 +85,7 @@ export function createSandboxServer(options: ServerOptions): SandboxServer {
   const yoga = createYoga({
     schema,
     graphqlEndpoint: '/graphql',
+    cors: CORS,
     context: (): ResolverContext => ({
       data,
       carts,
@@ -71,7 +93,13 @@ export function createSandboxServer(options: ServerOptions): SandboxServer {
     }),
   });
 
-  const http: Server = createHttpServer(yoga);
+  const handler = buildHttpHandler({
+    yoga,
+    dataDir,
+    storeName: data.store.name,
+  });
+
+  const http: Server = createHttpServer(handler);
 
   return {
     listen: () =>

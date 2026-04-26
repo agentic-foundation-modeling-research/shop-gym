@@ -24,7 +24,7 @@ async function main(): Promise<void> {
       `${data.pages.length} pages, ${data.blogs.length} blogs, ${data.policies.length} policies`,
   );
 
-  const server = createSandboxServer({ data, port });
+  const server = createSandboxServer({ data, dataDir, port });
   await server.listen();
   console.log(`shop-backend listening at ${server.url}`);
 }
