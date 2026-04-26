@@ -22,13 +22,22 @@
  * private since search does not surface blog nodes directly.
  */
 
-import { type Connection, type PaginationArgs, paginate } from '../data/pagination.js';
+import type {
+  BlogArticleByHandleArgs,
+  BlogArticlesArgs,
+  QueryBlogArgs,
+  QueryBlogsArgs,
+  QueryPageArgs,
+} from '../__generated__/resolvers-types.js';
+import { type Connection, paginate } from '../data/pagination.js';
 import type { Article, Blog, Page } from '../data/types.js';
 import { gid } from './builders.js';
 import type { ResolverContext } from './index.js';
 
 // ── Node shapes ────────────────────────────────────────────────────────────
-// Hand-typed until graphql-codegen lands in M7 (T7.1).
+// Argument shapes are imported from the generated resolver types above; the
+// hand-typed parent shapes below stay because codegen mappers are deferred
+// (see `codegen.ts`).
 
 export interface PageNode {
   readonly id: string;
@@ -91,7 +100,7 @@ export const contentResolvers = {
   Query: {
     page: (
       _parent: unknown,
-      args: { readonly handle: string },
+      args: QueryPageArgs,
       ctx: ResolverContext,
     ): PageNode | null => {
       const page = findPage(ctx.data.pages, args.handle);
@@ -100,26 +109,26 @@ export const contentResolvers = {
 
     blog: (
       _parent: unknown,
-      args: { readonly handle: string },
+      args: QueryBlogArgs,
       ctx: ResolverContext,
     ): BlogNode | null => {
       const blog = findBlog(ctx.data.blogs, args.handle);
       return blog === null ? null : buildBlogNode(blog);
     },
 
-    blogs: (_parent: unknown, args: PaginationArgs, ctx: ResolverContext): Connection<BlogNode> => {
+    blogs: (_parent: unknown, args: QueryBlogsArgs, ctx: ResolverContext): Connection<BlogNode> => {
       const nodes = ctx.data.blogs.map(buildBlogNode);
       return paginate(nodes, args);
     },
   },
 
   Blog: {
-    articles: (parent: BlogNode, args: PaginationArgs): ArticleConnectionNode => {
+    articles: (parent: BlogNode, args: BlogArticlesArgs): ArticleConnectionNode => {
       const connection = paginate(parent.articles, args);
       return { ...connection, totalCount: parent.articles.length };
     },
 
-    articleByHandle: (parent: BlogNode, args: { readonly handle: string }): ArticleNode | null => {
+    articleByHandle: (parent: BlogNode, args: BlogArticleByHandleArgs): ArticleNode | null => {
       for (const article of parent.articles) {
         if (article.handle === args.handle) return article;
       }

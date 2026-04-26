@@ -39,7 +39,16 @@
  *     unknown product GIDs resolve to `null`.
  */
 
-import { type Connection, type PaginationArgs, paginate } from '../data/pagination.js';
+import type {
+  PredictiveSearchLimitScope,
+  PredictiveSearchType,
+  QueryPredictiveSearchArgs,
+  QueryProductRecommendationsArgs,
+  QuerySearchArgs,
+  SearchSortKeys,
+  SearchType,
+} from '../__generated__/resolvers-types.js';
+import { type Connection, paginate } from '../data/pagination.js';
 import type { Blog, Collection, Product } from '../data/types.js';
 import {
   type CollectionNode,
@@ -51,28 +60,13 @@ import {
 import { type ArticleNode, type PageNode, buildArticleNode, buildPageNode } from './content.js';
 import type { ResolverContext } from './index.js';
 
-// ── Argument shapes ───────────────────────────────────────────────────────
-// Hand-typed until graphql-codegen lands in M7 (T7.1).
-
-export type SearchType = 'PRODUCT' | 'PAGE' | 'ARTICLE';
-export type SearchSortKey = 'PRICE' | 'RELEVANCE';
-
-export type PredictiveSearchType = 'PRODUCT' | 'COLLECTION' | 'PAGE' | 'ARTICLE' | 'QUERY';
-export type PredictiveSearchLimitScope = 'ALL' | 'EACH';
-
-interface SearchArgs extends PaginationArgs {
-  readonly query: string;
-  readonly types?: readonly SearchType[] | null;
-  readonly sortKey?: SearchSortKey | null;
-  readonly reverse?: boolean | null;
-}
-
-interface PredictiveSearchArgs {
-  readonly query: string;
-  readonly limit?: number | null;
-  readonly limitScope?: PredictiveSearchLimitScope | null;
-  readonly types?: readonly PredictiveSearchType[] | null;
-}
+/**
+ * Re-export the SDL-derived sort key union under the codebase's historic
+ * `SearchSortKey` alias so internal helpers and tests don't need to learn the
+ * generated name. Codegen keeps this in sync with the SDL.
+ */
+export type SearchSortKey = SearchSortKeys;
+export type { PredictiveSearchLimitScope, PredictiveSearchType, SearchType };
 
 // ── Node shapes ────────────────────────────────────────────────────────────
 
@@ -151,7 +145,7 @@ export const searchResolvers = {
   Query: {
     search: (
       _parent: unknown,
-      args: SearchArgs,
+      args: QuerySearchArgs,
       ctx: ResolverContext,
     ): SearchResultItemConnectionNode => {
       const types = normalizeTypes(args.types);
@@ -170,7 +164,7 @@ export const searchResolvers = {
 
     productRecommendations: (
       _parent: unknown,
-      args: { readonly productId: string },
+      args: QueryProductRecommendationsArgs,
       ctx: ResolverContext,
     ): readonly ProductNode[] | null => {
       const target = findProductByGid(ctx.data.products, args.productId);
@@ -183,7 +177,7 @@ export const searchResolvers = {
 
     predictiveSearch: (
       _parent: unknown,
-      args: PredictiveSearchArgs,
+      args: QueryPredictiveSearchArgs,
       ctx: ResolverContext,
     ): PredictiveSearchResultNode => {
       const trimmed = args.query.trim();
@@ -309,7 +303,7 @@ function minVariantPrice(product: Product): number {
 
 function sortResults(
   entries: readonly ScoredEntry[],
-  sortKey: SearchSortKey,
+  sortKey: SearchSortKeys,
   reverse: boolean,
 ): readonly ScoredEntry[] {
   const copy = [...entries];
@@ -324,7 +318,7 @@ function sortResults(
 
 // ── Internal helpers ──────────────────────────────────────────────────────
 
-function normalizeTypes(types: readonly SearchType[] | null | undefined): ReadonlySet<SearchType> {
+function normalizeTypes(types: QuerySearchArgs['types']): ReadonlySet<SearchType> {
   const list = types ?? DEFAULT_TYPES;
   return new Set(list);
 }
@@ -390,10 +384,14 @@ function similarityScore(
 // ── Predictive search helpers ─────────────────────────────────────────────
 
 function normalizePredictiveTypes(
-  types: readonly PredictiveSearchType[] | null | undefined,
+  types: QueryPredictiveSearchArgs['types'],
 ): ReadonlySet<PredictiveSearchType> {
-  const list = types ?? DEFAULT_PREDICTIVE_TYPES;
-  return new Set(list);
+  if (types === null || types === undefined) return new Set(DEFAULT_PREDICTIVE_TYPES);
+  const out = new Set<PredictiveSearchType>();
+  for (const t of types) {
+    if (t !== null && t !== undefined) out.add(t);
+  }
+  return out;
 }
 
 /**

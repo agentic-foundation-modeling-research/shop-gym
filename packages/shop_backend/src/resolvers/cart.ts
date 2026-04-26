@@ -31,6 +31,23 @@
  * attribute / gift-card fields stored on the cart.
  */
 
+import type {
+  AttributeInput,
+  CartBuyerIdentityInput,
+  CartInput,
+  CartLineInput,
+  CartLineUpdateInput,
+  MutationCartAttributesUpdateArgs,
+  MutationCartBuyerIdentityUpdateArgs,
+  MutationCartCreateArgs,
+  MutationCartDiscountCodesUpdateArgs,
+  MutationCartGiftCardCodesUpdateArgs,
+  MutationCartLinesAddArgs,
+  MutationCartLinesRemoveArgs,
+  MutationCartLinesUpdateArgs,
+  MutationCartNoteUpdateArgs,
+  QueryCartArgs,
+} from '../__generated__/resolvers-types.js';
 import type { ProductVariant, SandboxShopData, VariantLookup } from '../data/types.js';
 import {
   type MoneyV2Node,
@@ -41,43 +58,15 @@ import {
 } from './builders.js';
 import type { ResolverContext } from './index.js';
 
-// ── Input shapes ───────────────────────────────────────────────────────────
-// Hand-typed until graphql-codegen lands in M7 (T7.1). Mirrors the SDL
-// `CartLineInput`, `CartLineUpdateInput`, `CartInput`, and
-// `CartBuyerIdentityInput` inputs scoped to the cart surface.
-
-export interface AttributeInput {
-  readonly key: string;
-  readonly value: string;
-}
-
-export interface CartLineInput {
-  readonly merchandiseId: string;
-  readonly quantity?: number | null;
-  readonly attributes?: readonly AttributeInput[] | null;
-}
-
-export interface CartLineUpdateInput {
-  readonly id: string;
-  readonly quantity?: number | null;
-  readonly merchandiseId?: string | null;
-  readonly attributes?: readonly AttributeInput[] | null;
-}
-
-export interface CartBuyerIdentityInput {
-  readonly countryCode?: string | null;
-  readonly email?: string | null;
-  readonly phone?: string | null;
-  readonly customerAccessToken?: string | null;
-}
-
-export interface CartInput {
-  readonly lines?: readonly CartLineInput[] | null;
-  readonly discountCodes?: readonly string[] | null;
-  readonly attributes?: readonly AttributeInput[] | null;
-  readonly note?: string | null;
-  readonly buyerIdentity?: CartBuyerIdentityInput | null;
-}
+// Re-export the SDL-derived input types so callers in the codebase keep
+// importing them from `cart.ts` without reaching into the generated module.
+export type {
+  AttributeInput,
+  CartBuyerIdentityInput,
+  CartInput,
+  CartLineInput,
+  CartLineUpdateInput,
+} from '../__generated__/resolvers-types.js';
 
 // ── State shapes ──────────────────────────────────────────────────────────
 
@@ -399,7 +388,7 @@ export const cartResolvers = {
   Query: {
     cart: (
       _parent: unknown,
-      args: { readonly id: string },
+      args: QueryCartArgs,
       ctx: ResolverContext,
     ): CartNode | null => {
       const state = ctx.carts.get(args.id);
@@ -411,16 +400,16 @@ export const cartResolvers = {
   Mutation: {
     cartCreate: (
       _parent: unknown,
-      args: { readonly input?: CartInput | null },
+      args: MutationCartCreateArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
-      const state = ctx.carts.create(args.input ?? null);
+      const state = ctx.carts.create(args.input);
       return successPayload(state, ctx);
     },
 
     cartLinesAdd: (
       _parent: unknown,
-      args: { readonly cartId: string; readonly lines: readonly CartLineInput[] },
+      args: MutationCartLinesAddArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
@@ -431,7 +420,7 @@ export const cartResolvers = {
 
     cartLinesUpdate: (
       _parent: unknown,
-      args: { readonly cartId: string; readonly lines: readonly CartLineUpdateInput[] },
+      args: MutationCartLinesUpdateArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
@@ -442,7 +431,7 @@ export const cartResolvers = {
 
     cartLinesRemove: (
       _parent: unknown,
-      args: { readonly cartId: string; readonly lineIds: readonly string[] },
+      args: MutationCartLinesRemoveArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
@@ -453,7 +442,7 @@ export const cartResolvers = {
 
     cartDiscountCodesUpdate: (
       _parent: unknown,
-      args: { readonly cartId: string; readonly discountCodes?: readonly string[] | null },
+      args: MutationCartDiscountCodesUpdateArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
@@ -464,7 +453,7 @@ export const cartResolvers = {
 
     cartBuyerIdentityUpdate: (
       _parent: unknown,
-      args: { readonly cartId: string; readonly buyerIdentity: CartBuyerIdentityInput },
+      args: MutationCartBuyerIdentityUpdateArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
@@ -475,7 +464,7 @@ export const cartResolvers = {
 
     cartNoteUpdate: (
       _parent: unknown,
-      args: { readonly cartId: string; readonly note: string },
+      args: MutationCartNoteUpdateArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
@@ -486,7 +475,7 @@ export const cartResolvers = {
 
     cartAttributesUpdate: (
       _parent: unknown,
-      args: { readonly cartId: string; readonly attributes: readonly AttributeInput[] },
+      args: MutationCartAttributesUpdateArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
@@ -497,7 +486,7 @@ export const cartResolvers = {
 
     cartGiftCardCodesUpdate: (
       _parent: unknown,
-      args: { readonly cartId: string; readonly giftCardCodes: readonly string[] },
+      args: MutationCartGiftCardCodesUpdateArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);

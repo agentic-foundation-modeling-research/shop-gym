@@ -18,6 +18,7 @@
  * payment settings come from the dataset, not from mock-api hardcodes.
  */
 
+import type { QueryMenuArgs } from '../__generated__/resolvers-types.js';
 import type { Policy, SandboxShopData, Store } from '../data/types.js';
 import {
   type MenuItemNode,
@@ -29,8 +30,9 @@ import {
 import type { ResolverContext } from './index.js';
 
 // ── Node shapes ────────────────────────────────────────────────────────────
-// Hand-typed parent shapes for the Shop area. Types from `@graphql-codegen`
-// will replace these in M7 (T7.1).
+// Argument types are imported from the generated resolver types module above;
+// the hand-typed parent shapes below remain because codegen mappers are
+// deferred (see `codegen.ts`).
 
 export interface ShopParentNode {
   readonly id: string;
@@ -175,7 +177,7 @@ export const shopResolvers = {
     shop: (_parent: unknown, _args: unknown, ctx: ResolverContext): ShopParentNode =>
       buildShopNode(ctx.data.store),
 
-    menu: (_parent: unknown, args: { handle: string }, ctx: ResolverContext): MenuNode | null => {
+    menu: (_parent: unknown, args: QueryMenuArgs, ctx: ResolverContext): MenuNode | null => {
       const items = ctx.data.navigation[args.handle];
       if (items === undefined) return null;
       return {
