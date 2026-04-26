@@ -386,11 +386,7 @@ export interface CartMutationPayloadNode {
  */
 export const cartResolvers = {
   Query: {
-    cart: (
-      _parent: unknown,
-      args: QueryCartArgs,
-      ctx: ResolverContext,
-    ): CartNode | null => {
+    cart: (_parent: unknown, args: QueryCartArgs, ctx: ResolverContext): CartNode | null => {
       const state = ctx.carts.get(args.id);
       if (state === undefined) return null;
       return buildCartNode(state, ctx.data, ctx.baseUrl);
@@ -622,7 +618,13 @@ function buildCartLineNode(
   data: SandboxShopData,
   baseUrl: string,
 ): CartLineNode {
-  const merchandise = buildProductVariantNode(lookup.product, lookup.variant, data.store, baseUrl);
+  const merchandise = buildProductVariantNode(
+    lookup.product,
+    lookup.variant,
+    data.store,
+    baseUrl,
+    data.inventoryByVariantId,
+  );
   return {
     id: line.id,
     quantity: line.quantity,

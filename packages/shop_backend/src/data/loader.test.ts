@@ -57,6 +57,13 @@ describe('loadShopData', () => {
     expect(data.metafields.shop).toHaveLength(1);
     expect(data.metafields.products['go-skin-and-coat-chicken-with-grains-12lb']).toHaveLength(1);
     expect(data.metafields.collections['dog-essentials']).toHaveLength(1);
+
+    // inventory.json (since v0.2): tracked counts indexed by numeric variant id.
+    expect(data.inventory['47242666836142']).toEqual({ quantity_available: 2 });
+    expect(data.inventoryByVariantId.get(47242666836142)).toEqual({ quantity_available: 2 });
+    expect(data.inventoryByVariantId.get(47242687709358)).toEqual({ quantity_available: 0 });
+    expect(data.inventoryByVariantId.get(47242695737518)).toEqual({ quantity_available: null });
+    expect(data.inventoryByVariantId.has(47242720215214)).toBe(false);
   });
 
   it('builds productsByHandle covering every product', () => {
@@ -132,5 +139,34 @@ describe('loadShopData', () => {
     const data = loadShopData(tmpDir);
     expect(data.blogs).toEqual([]);
     expect(data.metafields).toEqual({ shop: [], products: {}, collections: {} });
+  });
+
+  it('defaults inventory to an empty file when inventory.json is absent', () => {
+    tmpDir = copyFixture();
+    fs.rmSync(path.join(tmpDir, 'inventory.json'));
+
+    const data = loadShopData(tmpDir);
+    expect(data.inventory).toEqual({});
+    expect(data.inventoryByVariantId.size).toBe(0);
+  });
+
+  it('throws InvalidDatasetError when an inventory key is not an integer', () => {
+    tmpDir = copyFixture();
+    fs.writeFileSync(
+      path.join(tmpDir, 'inventory.json'),
+      JSON.stringify({ 'not-an-int': { quantity_available: 1 } }),
+    );
+
+    expect(() => loadShopData(tmpDir)).toThrow(InvalidDatasetError);
+  });
+
+  it('throws InvalidDatasetError when quantity_available is not a number or null', () => {
+    tmpDir = copyFixture();
+    fs.writeFileSync(
+      path.join(tmpDir, 'inventory.json'),
+      JSON.stringify({ '47242666836142': { quantity_available: 'lots' } }),
+    );
+
+    expect(() => loadShopData(tmpDir)).toThrow(InvalidDatasetError);
   });
 });
