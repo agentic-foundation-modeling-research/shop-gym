@@ -234,7 +234,7 @@ no metafields → `null` on every query.
   §5.2 with a canonical query, assert SC2 + SC5. Image asset test
   uses a small PNG committed under
   `tests/fixtures/sandbox_shop_v0/images/`.
-- [ ] **T6.5** — Update `packages/shop_backend/README.md`: usage,
+- [x] **T6.5** — Update `packages/shop_backend/README.md`: usage,
   example query, dataset layout reference (link to spec §8.1).
   **Check:** README example query runs against the fixture.
 
