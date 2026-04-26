@@ -113,7 +113,7 @@ No GraphQL schema changes yet.
   **Check:** `product.test.ts` covers product-by-handle hit + miss,
   products pagination + sort, collection-by-handle, the synthetic
   `collection(handle: "all")`.
-- [ ] **T2.5** — `src/resolvers/content.ts`: `Query.page`,
+- [x] **T2.5** — `src/resolvers/content.ts`: `Query.page`,
   `Query.blog(s)`, `Blog.articles`, `Blog.articleByHandle`. When
   `blogs.json` is absent, `Query.blog` returns `null` and
   `Query.blogs` returns an empty connection. **Check:** unit test
