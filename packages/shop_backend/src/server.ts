@@ -25,6 +25,7 @@ import { type Server, createServer as createHttpServer } from 'node:http';
 import { type CORSOptions, createYoga } from 'graphql-yoga';
 import type { SandboxShopData } from './data/types.js';
 import { buildHttpHandler } from './http.js';
+import { createInContextValidationPlugin } from './in-context.js';
 import { CartStore } from './resolvers/cart.js';
 import type { ResolverContext } from './resolvers/index.js';
 import { createSandboxSchema } from './schema.js';
@@ -86,6 +87,7 @@ export function createSandboxServer(options: ServerOptions): SandboxServer {
     schema,
     graphqlEndpoint: '/graphql',
     cors: CORS,
+    plugins: [createInContextValidationPlugin(data)],
     context: (): ResolverContext => ({
       data,
       carts,

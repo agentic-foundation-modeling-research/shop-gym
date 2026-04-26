@@ -256,7 +256,7 @@ needs the SDL stable). T7.3 and T7.4 are independent.
   dataset contract, plumb through `ProductVariant.quantityAvailable`
   and `availableForSale` reads inventory levels. **Check:** spec
   appendix updated; test covers a low-stock variant.
-- [ ] **T7.3** — `@inContext` directive enforcement. Validate
+- [x] **T7.3** — `@inContext` directive enforcement. Validate
   `country`/`language` against `Query.localization`; return
   `null`/`UnsupportedLocale` for mismatches. **Check:** test fires a
   query with `@inContext(country: GB)` against a US-only dataset and

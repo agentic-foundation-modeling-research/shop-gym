@@ -194,9 +194,12 @@ it. The full SDL lives in §8.2; the surface is:
 | **Metafields**    | `Product.metafield(s)`, `Collection.metafield(s)` (only if `metafields.json` present)                  | —         |
 
 Out of this subset (deferred): `Customer`, `Article` standalone (only
-via blog), `selling_plan`, `Variant.metafield(s)` beyond what
-`metafields.json` covers, and the `@inContext` directive (parsed but
-ignored — the dataset is single-locale).
+via blog), `selling_plan`, and `Variant.metafield(s)` beyond what
+`metafields.json` covers.
+
+The `@inContext` directive is declared in the SDL on `QUERY` /
+`MUTATION` and validated against the dataset locale (see §5.3
+"Localization & `@inContext`").
 
 ### 5.3 Resolver semantics
 
@@ -225,6 +228,17 @@ ignored — the dataset is single-locale).
   `<base-url>/images/<path>`.
 - **Brand colors.** Plumbed from `store.brand.colors.{primary,secondary}`
   (mock-api hardcodes `#000000`/`#ffffff` — fix here).
+- **Localization & `@inContext`** (since v0.2). The dataset is
+  single-locale: `Query.localization` returns `Store.country_code` /
+  `Store.currency_code` and a static `EN` language. Operations that
+  carry an `@inContext(country:, language:)` directive are validated
+  against that locale at validation time. A `country` enum that does
+  not match `Store.country_code`, or a `language` enum that is not
+  `EN`, fails validation with a `GraphQLError` whose
+  `extensions.code` is `UNSUPPORTED_LOCALE`; the response carries no
+  `data` field. `visitorConsent` is accepted without locale checks.
+  Operations with no `@inContext` directive, or with arg values
+  expressed via variables, are unaffected.
 - **Inventory** (since v0.2). When `inventory.json` provides a tracked
   count for a variant, `ProductVariant.quantityAvailable` reads that
   count and `availableForSale` derives from `count > 0`. When the file
