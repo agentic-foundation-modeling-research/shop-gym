@@ -88,6 +88,28 @@ describe('createSandboxServer — HTTP wiring', () => {
   });
 });
 
+describe('createSandboxServer — @inContext enforcement (T7.3)', () => {
+  it('rejects @inContext with a country the dataset does not serve', async () => {
+    const data = loadShopData(FIXTURE_DIR);
+    const server = createSandboxServer({ data, dataDir: FIXTURE_DIR, port: 0 });
+    await server.listen();
+    try {
+      const result = await gql<ShopQueryData>(
+        server.url,
+        /* GraphQL */ 'query Q @inContext(country: GB) { shop { name } }',
+      );
+      expect(result.data).toBeUndefined();
+      expect(result.errors).toBeDefined();
+      const errors = result.errors as ReadonlyArray<{
+        extensions?: { code?: string };
+      }>;
+      expect(errors[0]?.extensions?.code).toBe('UNSUPPORTED_LOCALE');
+    } finally {
+      await server.close();
+    }
+  });
+});
+
 describe('createSandboxServer — cart-store isolation', () => {
   it('does not share cart ids across two server instances', async () => {
     const data = loadShopData(FIXTURE_DIR);
