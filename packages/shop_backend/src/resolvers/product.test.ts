@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { loadShopData } from '../data/loader.js';
 import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
+import { CartStore } from './cart.js';
 import type { ResolverContext } from './index.js';
 import { productResolvers } from './product.js';
 
@@ -17,6 +18,7 @@ const FIXTURE_DIR = path.resolve(
 const BASE_URL = 'https://shop.example';
 
 const data = loadShopData(FIXTURE_DIR);
+const carts = new CartStore();
 
 const resolvers: SandboxSchemaResolvers = {
   Query: productResolvers.Query,
@@ -26,7 +28,7 @@ const resolvers: SandboxSchemaResolvers = {
 
 const yoga = createYoga({
   schema: createSandboxSchema(resolvers),
-  context: (): ResolverContext => ({ data, baseUrl: BASE_URL }),
+  context: (): ResolverContext => ({ data, carts, baseUrl: BASE_URL }),
 });
 
 interface ExecutionResult {

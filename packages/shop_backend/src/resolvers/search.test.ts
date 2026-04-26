@@ -9,6 +9,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { loadShopData } from '../data/loader.js';
 import type { Product, SandboxShopData, Store } from '../data/types.js';
 import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
+import { CartStore } from './cart.js';
 import type { ResolverContext } from './index.js';
 import { searchResolvers } from './search.js';
 
@@ -20,6 +21,7 @@ const FIXTURE_DIR = path.resolve(
 const BASE_URL = 'https://shop.example';
 
 const data = loadShopData(FIXTURE_DIR);
+const carts = new CartStore();
 
 const resolvers: SandboxSchemaResolvers = {
   Query: searchResolvers.Query,
@@ -28,7 +30,7 @@ const resolvers: SandboxSchemaResolvers = {
 
 const yoga = createYoga({
   schema: createSandboxSchema(resolvers),
-  context: (): ResolverContext => ({ data, baseUrl: BASE_URL }),
+  context: (): ResolverContext => ({ data, carts, baseUrl: BASE_URL }),
 });
 
 interface ExecutionResult {
@@ -482,7 +484,7 @@ describe('searchResolvers — Query.productRecommendations', () => {
   const syntheticData = makeData(synthetic);
   const syntheticYoga = createYoga({
     schema: createSandboxSchema(resolvers),
-    context: (): ResolverContext => ({ data: syntheticData, baseUrl: BASE_URL }),
+    context: (): ResolverContext => ({ data: syntheticData, carts, baseUrl: BASE_URL }),
   });
 
   it('prefers same-type products, then tag overlap, then dataset order', async () => {
@@ -508,7 +510,7 @@ describe('searchResolvers — Query.productRecommendations', () => {
     const sixProductData = makeData([...synthetic, makeProduct(6, 'zeta', 'cat', ['red'])]);
     const sixYoga = createYoga({
       schema: createSandboxSchema(resolvers),
-      context: (): ResolverContext => ({ data: sixProductData, baseUrl: BASE_URL }),
+      context: (): ResolverContext => ({ data: sixProductData, carts, baseUrl: BASE_URL }),
     });
     const result = await recommend(sixYoga, 'gid://shopify/Product/1');
     expect(result).toEqual([
@@ -527,7 +529,7 @@ describe('searchResolvers — Query.productRecommendations', () => {
     ]);
     const tinyYoga = createYoga({
       schema: createSandboxSchema(resolvers),
-      context: (): ResolverContext => ({ data: tinyData, baseUrl: BASE_URL }),
+      context: (): ResolverContext => ({ data: tinyData, carts, baseUrl: BASE_URL }),
     });
     const result = await recommend(tinyYoga, 'gid://shopify/Product/1');
     expect(result).toEqual([{ handle: 'beta' }, { handle: 'gamma' }]);
@@ -544,7 +546,7 @@ describe('searchResolvers — Query.productRecommendations', () => {
     ]);
     const targetYoga = createYoga({
       schema: createSandboxSchema(resolvers),
-      context: (): ResolverContext => ({ data, baseUrl: BASE_URL }),
+      context: (): ResolverContext => ({ data, carts, baseUrl: BASE_URL }),
     });
     const result = await recommend(targetYoga, 'gid://shopify/Product/1');
     expect(result).toEqual([{ handle: 'beta' }, { handle: 'gamma' }]);
@@ -582,7 +584,7 @@ describe('searchResolvers — Query.predictiveSearch with no blogs.json', () => 
   const noBlogsData = loadShopData(tmpDir);
   const noBlogsYoga = createYoga({
     schema: createSandboxSchema(resolvers),
-    context: (): ResolverContext => ({ data: noBlogsData, baseUrl: BASE_URL }),
+    context: (): ResolverContext => ({ data: noBlogsData, carts, baseUrl: BASE_URL }),
   });
 
   afterAll(() => {
