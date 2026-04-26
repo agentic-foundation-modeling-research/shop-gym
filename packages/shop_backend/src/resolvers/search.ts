@@ -32,9 +32,11 @@
  *     `types` argument may also include `QUERY`, which gates whether the
  *     suggestion is emitted; omitting `types` defaults to all five types.
  *     Articles are empty when `blogs.json` is absent.
- *
- * `Query.productRecommendations` lands in T3.3 and is intentionally omitted
- * from this map.
+ *   - `Query.productRecommendations(productId)` returns up to 4 other products,
+ *     prioritised by the spec §5.3 / plan T3.3 cascade: shared
+ *     (non-empty) `product_type` first, then descending tag-overlap count,
+ *     then dataset insertion order. The requesting product is excluded;
+ *     unknown product GIDs resolve to `null`.
  */
 
 import { type Connection, type PaginationArgs, paginate } from '../data/pagination.js';
@@ -119,6 +121,16 @@ const DEFAULT_PREDICTIVE_LIMIT = 10;
 const PRODUCT_GID_PREFIX = 'gid://shopify/Product/';
 const PAGE_GID_PREFIX = 'gid://shopify/Page/';
 
+/** Maximum number of recommendations returned by `Query.productRecommendations`. */
+const MAX_RECOMMENDATIONS = 4;
+
+/**
+ * Score awarded for a shared, non-empty `product_type`. Set high enough to
+ * dominate any plausible tag-overlap count so same-type candidates always
+ * sort ahead of products that only share tags.
+ */
+const SAME_TYPE_BONUS = 1000;
+
 // ── Internal scored entry ─────────────────────────────────────────────────
 
 /** Pre-pagination scored entry used while sorting. */
@@ -131,9 +143,9 @@ interface ScoredEntry {
 // ── Resolvers ─────────────────────────────────────────────────────────────
 
 /**
- * Resolver map for the Search area. `Query.search` only at this milestone;
- * `Query.predictiveSearch` (T3.2) and `Query.productRecommendations` (T3.3)
- * extend this map in subsequent tasks.
+ * Resolver map for the Search area. Covers `Query.search` (T3.1),
+ * `Query.predictiveSearch` (T3.2), and `Query.productRecommendations` (T3.3),
+ * plus the `SearchResultItem` union discriminator.
  */
 export const searchResolvers = {
   Query: {
@@ -154,6 +166,19 @@ export const searchResolvers = {
       const nodes = sorted.map((entry) => entry.node);
       const connection = paginate(nodes, args);
       return { ...connection, totalCount: nodes.length };
+    },
+
+    productRecommendations: (
+      _parent: unknown,
+      args: { readonly productId: string },
+      ctx: ResolverContext,
+    ): readonly ProductNode[] | null => {
+      const target = findProductByGid(ctx.data.products, args.productId);
+      if (target === null) return null;
+      const ranked = rankRecommendations(ctx.data.products, target);
+      return ranked
+        .slice(0, MAX_RECOMMENDATIONS)
+        .map((p) => buildProductNode(p, ctx.data.store, ctx.baseUrl));
     },
 
     predictiveSearch: (
@@ -302,6 +327,64 @@ function sortResults(
 function normalizeTypes(types: readonly SearchType[] | null | undefined): ReadonlySet<SearchType> {
   const list = types ?? DEFAULT_TYPES;
   return new Set(list);
+}
+
+// ── Product recommendation helpers ────────────────────────────────────────
+
+/**
+ * Look up a product by its Storefront-API GID (`gid://shopify/Product/<id>`).
+ * Returns `null` when the prefix does not match, the suffix is not a positive
+ * integer, or no product in the dataset has that id.
+ */
+function findProductByGid(products: readonly Product[], productId: string): Product | null {
+  if (!productId.startsWith(PRODUCT_GID_PREFIX)) return null;
+  const suffix = productId.slice(PRODUCT_GID_PREFIX.length);
+  const numericId = Number.parseInt(suffix, 10);
+  if (!Number.isFinite(numericId) || String(numericId) !== suffix) return null;
+  for (const product of products) {
+    if (product.id === numericId) return product;
+  }
+  return null;
+}
+
+/**
+ * Rank candidate products against `target` for `productRecommendations`.
+ * The requesting product is excluded; remaining products sort by descending
+ * similarity score with a stable secondary key on dataset position so ties
+ * preserve insertion order. Score = `SAME_TYPE_BONUS` when both products
+ * share a non-empty `product_type`, plus one point per overlapping tag
+ * (case-insensitive). Empty `product_type` is treated as "unspecified" — two
+ * unspecified products do not earn the bonus.
+ */
+function rankRecommendations(products: readonly Product[], target: Product): readonly Product[] {
+  const targetTags = new Set(target.tags.map((t) => t.toLowerCase()));
+  const ranked = products
+    .filter((p) => p.id !== target.id)
+    .map((product, index) => ({
+      product,
+      index,
+      score: similarityScore(target, product, targetTags),
+    }));
+  ranked.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.index - b.index;
+  });
+  return ranked.map((entry) => entry.product);
+}
+
+function similarityScore(
+  target: Product,
+  candidate: Product,
+  targetTags: ReadonlySet<string>,
+): number {
+  let score = 0;
+  if (target.product_type !== '' && target.product_type === candidate.product_type) {
+    score += SAME_TYPE_BONUS;
+  }
+  for (const tag of candidate.tags) {
+    if (targetTags.has(tag.toLowerCase())) score += 1;
+  }
+  return score;
 }
 
 // ── Predictive search helpers ─────────────────────────────────────────────
