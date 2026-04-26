@@ -72,7 +72,7 @@ are clean. SC1–SC6 from the spec satisfied.
   with strict types. **Check:** `pagination.test.ts` covers
   `first`/`after`, `last`/`before`, both, neither, cursor round-trip,
   empty input.
-- [ ] **T1.5** — `src/index.ts`: re-export `loadShopData`,
+- [x] **T1.5** — `src/index.ts`: re-export `loadShopData`,
   `SandboxShopData`. Update `src/cli.ts` to take `<data-dir>` arg and
   log loaded counts before calling the (still-placeholder) server.
   **Check:** `pnpm shop-backend tests/fixtures/sandbox_shop_v0` prints

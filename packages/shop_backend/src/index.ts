@@ -1,3 +1,4 @@
+export { loadShopData } from './data/loader.js';
 export { createSchema } from './schema.js';
 export { createServer } from './server.js';
 export type {
