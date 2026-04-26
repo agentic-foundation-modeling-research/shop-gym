@@ -171,7 +171,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
   `cartLinesAdd` → `cartLinesUpdate { quantity: 0 }` removes line →
   `cartLinesRemove`) and asserts totals + line counts at each step.
   Satisfies SC3.
-- [ ] **T4.4** — `cartDiscountCodesUpdate`,
+- [x] **T4.4** — `cartDiscountCodesUpdate`,
   `cartBuyerIdentityUpdate`, `cartNoteUpdate`,
   `cartAttributesUpdate`, `cartGiftCardCodesUpdate`. Stored on the
   cart, returned in `Cart` shape; no real validation. **Check**:
