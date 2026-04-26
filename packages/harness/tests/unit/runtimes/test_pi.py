@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from harness.runtimes import AgentRuntime, get_runtime
-from harness.runtimes.pi import PiRuntime, parse_native_log
+from harness.runtimes.pi import PiRuntime, build_argv, parse_native_log
 from harness.trajectory import (
     MessageStep,
     ThoughtStep,
@@ -201,6 +201,31 @@ def test_runtime_satisfies_agent_runtime_protocol() -> None:
 
     assert isinstance(runtime, AgentRuntime)
     assert runtime.binary == "pi"
+    assert runtime.model is None
+
+
+def test_build_argv_omits_model_flag_by_default() -> None:
+    """Default invocation preserves the pre-T6.1 argv (no ``--model``)."""
+    assert build_argv(binary="pi", model=None) == ["pi", "--print", "--mode", "json"]
+
+
+def test_build_argv_appends_model_flag_when_set() -> None:
+    """A configured model threads through as ``--model <model>`` on the CLI."""
+    assert build_argv(binary="pi", model="anthropic/claude-sonnet-4-6") == [
+        "pi",
+        "--print",
+        "--mode",
+        "json",
+        "--model",
+        "anthropic/claude-sonnet-4-6",
+    ]
+
+
+def test_runtime_exposes_configured_model() -> None:
+    """`PiRuntime(model=...)` round-trips the identifier through `runtime.model`."""
+    runtime = PiRuntime(model="sonnet:high")
+
+    assert runtime.model == "sonnet:high"
 
 
 def test_get_runtime_resolves_pi() -> None:
@@ -216,6 +241,23 @@ def test_get_runtime_pi_forwards_kwargs() -> None:
 
     assert isinstance(runtime, PiRuntime)
     assert runtime.binary == "/opt/bin/pi"
+
+
+def test_get_runtime_pi_forwards_model_kwarg() -> None:
+    """`model` threads through `get_runtime("pi", model=...)` to `PiRuntime`.
+
+    Mirrors the T6.1 acceptance: callers (synthesis, smoke tests) can
+    pin the underlying Claude model via the registry without editing
+    harness internals, and the value reaches the CLI argv builder.
+    """
+    runtime = get_runtime("pi", model="anthropic/claude-opus-4-7")
+
+    assert isinstance(runtime, PiRuntime)
+    assert runtime.model == "anthropic/claude-opus-4-7"
+    assert build_argv(binary=runtime.binary, model=runtime.model)[-2:] == [
+        "--model",
+        "anthropic/claude-opus-4-7",
+    ]
 
 
 @pytest.mark.parametrize("bad_kw", [{"unknown_arg": 1}])

@@ -62,26 +62,46 @@ _KILL_GRACE_SECONDS: Final[float] = 5.0
 class PiRuntime:
     """`AgentRuntime` adapter wrapping the ``pi`` CLI.
 
-    The constructor takes no required arguments; ``binary`` is exposed so
-    tests and packaging can override the executable name without forking.
+    The constructor takes no required arguments; ``binary`` and ``model``
+    are exposed so tests, packaging, and synthesis callers can override
+    the executable name and pin the underlying model without forking.
 
     Attributes:
         binary: Executable name or absolute path of the ``pi`` CLI.
+        model: Model identifier forwarded to the CLI as ``--model``, or
+            ``None`` to let ``pi`` pick its default. ``pi`` accepts
+            patterns (``sonnet:high``), provider-prefixed IDs
+            (``anthropic/claude-sonnet-4-6``), and bare names.
     """
 
-    def __init__(self, *, binary: str = _DEFAULT_BIN) -> None:
+    def __init__(
+        self,
+        *,
+        binary: str = _DEFAULT_BIN,
+        model: str | None = None,
+    ) -> None:
         """Initialise a runtime backed by ``binary``.
 
         Args:
             binary: Executable name or absolute path of the ``pi`` CLI.
                 Defaults to ``"pi"`` (resolved via ``PATH``).
+            model: Optional model identifier forwarded to ``pi`` as
+                ``--model <model>``. Defaults to ``None``, which lets
+                ``pi`` pick its built-in default and preserves the
+                pre-T6.1 invocation shape.
         """
         self._binary = binary
+        self._model = model
 
     @property
     def binary(self) -> str:
         """Executable name or path of the ``pi`` CLI."""
         return self._binary
+
+    @property
+    def model(self) -> str | None:
+        """Model identifier forwarded as ``--model``, or ``None`` for default."""
+        return self._model
 
     def run_iteration(
         self,
@@ -109,12 +129,7 @@ class PiRuntime:
                 The harness loop maps this to ``final_status=timeout``.
         """
         log_path = iter_dir / _NATIVE_LOG_FILENAME
-        argv = [
-            self._binary,
-            "--print",
-            "--mode",
-            "json",
-        ]
+        argv = build_argv(binary=self._binary, model=self._model)
         started_at = _utcnow()
         exit_code = _spawn_and_capture(
             argv=argv,
@@ -137,6 +152,29 @@ class PiRuntime:
             steps=tuple(steps),
         )
         return RuntimeIterationResult(trajectory=trajectory)
+
+
+# ---------------------------------------------------------------------------
+# CLI argv builder
+# ---------------------------------------------------------------------------
+
+
+def build_argv(*, binary: str, model: str | None) -> list[str]:
+    """Build the ``pi`` invocation argv for a single non-interactive iteration.
+
+    Args:
+        binary: Executable name or absolute path of the ``pi`` CLI.
+        model: Optional model identifier forwarded as ``--model``. When
+            ``None``, the flag is omitted and ``pi`` uses its built-in
+            default (preserving the pre-T6.1 invocation shape).
+
+    Returns:
+        The argv list ready to pass to `subprocess.Popen`.
+    """
+    argv = [binary, "--print", "--mode", "json"]
+    if model is not None:
+        argv.extend(["--model", model])
+    return argv
 
 
 # ---------------------------------------------------------------------------
