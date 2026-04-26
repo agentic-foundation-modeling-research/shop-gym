@@ -24,6 +24,7 @@ import httpx
 import pytest
 import respx
 
+from shop_explore import cli as cli_mod
 from shop_explore.cli import EXIT_OK, EXIT_USAGE, main
 
 BASE_URL = "https://example-shop.com"
@@ -141,10 +142,28 @@ def test_prefetch_only_returns_nonzero_on_bot_block(
 
 
 def test_synthesize_only_publishes_manual_against_existing_run_dir(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``--synthesize-only PATH`` runs §5.10 against an existing run_dir."""
+    """``--synthesize-only PATH`` runs §5.10 against an existing run_dir.
+
+    The configured runtime is replaced with a non-completer stub so the
+    CLI's T6.2 wiring falls back to the no-op LLM client and the manual
+    is rendered as the deterministic concatenation of ``parts/*.md``
+    (``manifest.manual_fallback == True``). Exercises the
+    ``isinstance(runtime, LLMCompleter)`` branch in
+    :func:`shop_explore.pipeline.build_runtime_llm`.
+    """
     run_dir = _seed_minimal_run_dir(tmp_path)
+
+    class _NoCompleterRuntime:
+        """Stand-in runtime missing the optional ``complete`` method."""
+
+    def fake_get_runtime(_name: str) -> _NoCompleterRuntime:
+        return _NoCompleterRuntime()
+
+    monkeypatch.setattr(cli_mod, "get_runtime", fake_get_runtime)
 
     rc = main(["--synthesize-only", str(run_dir), BASE_URL])
 
@@ -155,8 +174,6 @@ def test_synthesize_only_publishes_manual_against_existing_run_dir(
     assert (artifact / "stats.json").is_file()
     assert (artifact / "manifest.json").is_file()
 
-    # Without a real LLM client wired the CLI uses the no-op fallback,
-    # so the manual is the deterministic concatenation of parts/*.md.
     manifest = json.loads((artifact / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["manual_fallback"] is True
     manual_text = (artifact / "manual.md").read_text(encoding="utf-8")
@@ -164,6 +181,55 @@ def test_synthesize_only_publishes_manual_against_existing_run_dir(
 
     out = capsys.readouterr().out
     assert "manual_fallback=true" in out
+
+
+def test_synthesize_only_routes_manual_call_through_completer_runtime(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A runtime satisfying ``LLMCompleter`` receives the manual-merge prompt.
+
+    Asserts impl plan T6.2: the CLI's ``--synthesize-only`` path
+    delegates the §5.10 LLM call to the configured runtime instead of
+    the no-op fallback. The stub returns a non-empty completion so
+    ``manifest.manual_fallback`` flips to ``False``.
+    """
+    run_dir = _seed_minimal_run_dir(tmp_path)
+    captured: dict[str, object] = {}
+    expected_timeout = 9.0
+
+    sentinel_body = (
+        "Real model output for the merged manual. " * 8
+    )  # > 200 chars; clears spec §5.10 minimum length
+
+    class _CompleterRuntime:
+        def complete(self, prompt: str, *, timeout: float) -> str:
+            captured["prompt"] = prompt
+            captured["timeout"] = timeout
+            return f"# Shop Manual\n\n{sentinel_body}\n"
+
+    def fake_get_runtime(_name: str) -> _CompleterRuntime:
+        return _CompleterRuntime()
+
+    monkeypatch.setattr(cli_mod, "get_runtime", fake_get_runtime)
+
+    rc = main(["--synthesize-only", str(run_dir), "--timeout", str(expected_timeout), BASE_URL])
+
+    assert rc == EXIT_OK
+    artifact = run_dir / "artifact"
+    manifest = json.loads((artifact / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["manual_fallback"] is False
+    manual_text = (artifact / "manual.md").read_text(encoding="utf-8")
+    assert "Real model output for the merged manual." in manual_text
+
+    # The runtime really did receive the manual-merge prompt with the
+    # CLI's configured per-iteration timeout.
+    assert "placeholder body" in str(captured["prompt"])
+    assert captured["timeout"] == expected_timeout
+
+    out = capsys.readouterr().out
+    assert "manual_fallback=false" in out
 
 
 def test_synthesize_only_rejects_missing_run_dir(

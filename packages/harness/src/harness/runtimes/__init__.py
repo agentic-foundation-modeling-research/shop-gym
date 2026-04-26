@@ -12,9 +12,9 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-from harness.runtimes.base import AgentRuntime, RuntimeIterationResult
+from harness.runtimes.base import AgentRuntime, LLMCompleter, RuntimeIterationResult
 
-__all__ = ["AgentRuntime", "RuntimeIterationResult", "get_runtime"]
+__all__ = ["AgentRuntime", "LLMCompleter", "RuntimeIterationResult", "get_runtime"]
 
 # Maps a public runtime name to a `"module:attr"` import target. The
 # attribute must be a callable returning an `AgentRuntime` (typically

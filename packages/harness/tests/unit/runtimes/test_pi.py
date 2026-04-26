@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.runtimes import AgentRuntime, get_runtime
-from harness.runtimes.pi import PiRuntime, build_argv, parse_native_log
+from harness.runtimes import AgentRuntime, LLMCompleter, get_runtime
+from harness.runtimes.pi import PiRuntime, build_argv, build_complete_argv, parse_native_log
 from harness.trajectory import (
     MessageStep,
     ThoughtStep,
@@ -267,3 +267,38 @@ def test_get_runtime_pi_rejects_unknown_kwargs(
     """Forwarding garbage to the constructor surfaces a `TypeError`."""
     with pytest.raises(TypeError):
         get_runtime("pi", **bad_kw)
+
+
+def test_build_complete_argv_omits_model_flag_by_default() -> None:
+    """One-shot completion argv defaults to ``pi`` text mode without ``--model``."""
+    assert build_complete_argv(binary="pi", model=None) == [
+        "pi",
+        "--print",
+        "--mode",
+        "text",
+        "--no-tools",
+        "--no-context-files",
+        "--no-session",
+    ]
+
+
+def test_build_complete_argv_appends_model_flag_when_set() -> None:
+    """A configured model threads through the one-shot completion argv."""
+    assert build_complete_argv(binary="pi", model="anthropic/claude-opus-4-7") == [
+        "pi",
+        "--print",
+        "--mode",
+        "text",
+        "--no-tools",
+        "--no-context-files",
+        "--no-session",
+        "--model",
+        "anthropic/claude-opus-4-7",
+    ]
+
+
+def test_runtime_satisfies_llm_completer_protocol() -> None:
+    """`PiRuntime` exposes ``complete`` and so satisfies `LLMCompleter` (T6.2)."""
+    runtime = PiRuntime(binary="pi")
+
+    assert isinstance(runtime, LLMCompleter)
