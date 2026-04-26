@@ -37,6 +37,8 @@ from shop_explore.prefetch.runner import (
     DEFAULT_RATE_LIMIT_MS,
     DEFAULT_TIMEOUT_SECONDS,
     DEFAULT_USER_AGENT,
+    PRODUCTS_MAX_PAGES,
+    PRODUCTS_PAGE_LIMIT,
     run,
 )
 
@@ -44,6 +46,8 @@ __all__ = [
     "DEFAULT_RATE_LIMIT_MS",
     "DEFAULT_TIMEOUT_SECONDS",
     "DEFAULT_USER_AGENT",
+    "PRODUCTS_MAX_PAGES",
+    "PRODUCTS_PAGE_LIMIT",
     "PrefetchEntry",
     "PrefetchResult",
     "ShopUnreachableError",

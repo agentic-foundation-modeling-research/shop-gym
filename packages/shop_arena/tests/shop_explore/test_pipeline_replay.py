@@ -63,7 +63,7 @@ def _stub_storefront(mock: respx.MockRouter) -> None:
             content_type="application/xml",
         )
     )
-    mock.get(f"{_BASE_URL}/products.json", params={"limit": "50"}).mock(
+    mock.get(f"{_BASE_URL}/products.json", params={"page": "1", "limit": "250"}).mock(
         return_value=_ok('{"products": []}', content_type="application/json")
     )
     mock.get(f"{_BASE_URL}/collections.json", params={"limit": "50"}).mock(
@@ -251,7 +251,7 @@ def _stub_storefront_at(mock: respx.MockRouter, base_url: str) -> None:
             content_type="application/xml",
         )
     )
-    mock.get(f"{base_url}/products.json", params={"limit": "50"}).mock(
+    mock.get(f"{base_url}/products.json", params={"page": "1", "limit": "250"}).mock(
         return_value=_ok('{"products": []}', content_type="application/json")
     )
     mock.get(f"{base_url}/collections.json", params={"limit": "50"}).mock(

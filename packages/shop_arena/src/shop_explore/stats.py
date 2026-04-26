@@ -17,10 +17,11 @@ Public surface:
 
 Spec contract worth calling out explicitly:
 
-* ``products_truncated`` is set when ``prefetch/products.json`` returned
-  ≥ 50 products (the limit we request, see
-  :data:`shop_explore.prefetch.runner._FETCH_PLAN`). Per spec §8.2 this is the
-  v0.1 sampling caveat — no pagination.
+* ``products_total`` is the exact count from
+  :func:`shop_explore.prefetch.run`'s paginated walk of
+  ``/products.json?page=N&limit=250``. There is no truncation flag —
+  pagination terminates only on the storefront's last (short) page or
+  the safety cap in :mod:`shop_explore.prefetch.runner`.
 * ``feature_count`` is derived from ``capabilities``: every truthy bool
   contributes ``1`` and every non-empty list contributes its length.
   Numeric leaves (e.g. ``nav_depth``) are not counted; they surface
@@ -41,9 +42,6 @@ from typing import Any, cast
 from pydantic import BaseModel, ConfigDict, Field
 
 from shop_explore.capabilities import Capabilities
-
-PRODUCTS_LIMIT = 50
-"""``/products.json?limit=`` value used by the prefetch step (spec §5.9)."""
 
 
 class ProductsPerCollection(BaseModel):
@@ -95,7 +93,6 @@ class Stats(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     products_total: int = 0
-    products_truncated: bool = False
     collections_total: int = 0
     products_per_collection: ProductsPerCollection = Field(default_factory=ProductsPerCollection)
     price: PriceStats = Field(default_factory=PriceStats)
@@ -140,10 +137,8 @@ def compute(prefetch_dir: Path, capabilities: Capabilities) -> Stats:
     products = _load_array(prefetch_dir / "products.json", "products")
     collections = _load_array(prefetch_dir / "collections.json", "collections")
 
-    products_total = len(products)
     return Stats(
-        products_total=products_total,
-        products_truncated=products_total >= PRODUCTS_LIMIT,
+        products_total=len(products),
         collections_total=len(collections),
         products_per_collection=_products_per_collection(collections),
         price=_price_stats(products, capabilities, prefetch_dir),

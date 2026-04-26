@@ -18,6 +18,7 @@ import urllib.robotparser
 from datetime import UTC, datetime
 from http import HTTPStatus
 from pathlib import Path
+from typing import Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -38,6 +39,17 @@ DEFAULT_RATE_LIMIT_MS = 500
 DEFAULT_TIMEOUT_SECONDS = 30.0
 """Per-request timeout (not the global run timeout)."""
 
+PRODUCTS_PAGE_LIMIT = 250
+"""Page size requested from ``/products.json`` (Shopify storefront max).
+
+Used by :func:`_fetch_products_paginated` to walk every page of the
+public products feed. Pagination stops when a page returns fewer than
+this many products.
+"""
+
+PRODUCTS_MAX_PAGES = 200
+"""Safety cap on ``/products.json`` pagination — 200 pages * 250 products."""
+
 _BOT_BLOCK_STATUS = frozenset({403, 429, 503})
 """HTTP statuses on ``/`` treated as bot-block signals."""
 
@@ -55,11 +67,15 @@ _CLOUDFLARE_MARKERS: tuple[str, ...] = (
 # (robots.txt, then "/") are the gating fetches; everything afterwards
 # is best-effort. ``dest filename`` is relative to ``dest_dir`` and may
 # contain a single subdirectory level (``policies/`` or ``pages/``).
+#
+# ``/products.json`` is intentionally absent: it is paginated into
+# ``products.json`` by :func:`_fetch_products_paginated`, scheduled
+# right after ``/sitemap.xml`` so the on-disk fetch order stays
+# robots → / → sitemap → products → collections → ….
 _FETCH_PLAN: tuple[tuple[str, str], ...] = (
     ("/robots.txt", "robots.txt"),
     ("/", "index.html"),
     ("/sitemap.xml", "sitemap.xml"),
-    ("/products.json?limit=50", "products.json"),
     ("/collections.json?limit=50", "collections.json"),
     ("/search/suggest.json?q=a&resources[type]=product", "search_suggest.json"),
     ("/cart.js", "cart.js"),
@@ -73,6 +89,10 @@ _FETCH_PLAN: tuple[tuple[str, str], ...] = (
     ("/pages/contact", "pages/contact.html"),
     ("/pages/faq", "pages/faq.html"),
 )
+
+_PRODUCTS_AFTER_INDEX = 2
+"""Index in :data:`_FETCH_PLAN` whose entry — ``/sitemap.xml`` — paginated
+``/products.json`` is scheduled to follow."""
 
 
 def run(
@@ -152,6 +172,21 @@ def run(
                 _enforce_robots(entry, dest_dir=dest_dir, base_root=base_root)
             elif index == 1:
                 _enforce_index(entry, dest_dir=dest_dir)
+
+            # After /sitemap.xml, paginate /products.json into products.json
+            # so prefetch.json's per-URL log preserves the natural fetch order:
+            # robots → / → sitemap → products(page=1..N) → collections → ….
+            if index == _PRODUCTS_AFTER_INDEX:
+                entries.extend(
+                    _fetch_products_paginated(
+                        http_client,
+                        base_root=base_root,
+                        dest_dir=dest_dir,
+                        pacer=pacer,
+                        user_agent=user_agent,
+                        timeout=timeout,
+                    )
+                )
     finally:
         if owns_client:
             http_client.close()
@@ -294,3 +329,125 @@ def _enforce_index(entry: PrefetchEntry, *, dest_dir: Path) -> None:
                 "cloudflare_challenge",
                 detail=f"/ contains Cloudflare marker {marker!r}",
             )
+
+
+def _fetch_products_paginated(
+    client: httpx.Client,
+    *,
+    base_root: str,
+    dest_dir: Path,
+    pacer: _RatePacer,
+    user_agent: str,
+    timeout: float,
+) -> list[PrefetchEntry]:
+    """Walk every page of ``/products.json`` and merge results to disk.
+
+    Each page request becomes its own :class:`PrefetchEntry` so
+    ``prefetch.json`` shows exactly which URLs were hit. Per-page bodies
+    are not persisted; only the merged ``{"products": [...]}`` document
+    is written to ``dest_dir/products.json``. The first page that
+    contributes to the merge carries ``saved_to="products.json"`` so the
+    artifact still has a discoverable origin in ``prefetch.json``.
+
+    Pagination terminates on the first of:
+
+    * a page returning fewer than :data:`PRODUCTS_PAGE_LIMIT` products
+      (the storefront's last page),
+    * a non-200 response, transport error, or malformed/wrong-shaped
+      JSON body (recorded; treated as a non-fatal stop, consistent with
+      the rest of the post-gate prefetch),
+    * :data:`PRODUCTS_MAX_PAGES` reached.
+
+    Args:
+        client: Pre-configured ``httpx.Client``; not closed here.
+        base_root: ``scheme://host`` root from :func:`_normalize_base`.
+        dest_dir: Destination directory; ``products.json`` is written
+            here when at least one page parses successfully.
+        pacer: Shared rate pacer used by the parent run.
+        user_agent: ``User-Agent`` header for every page request.
+        timeout: Per-request timeout in seconds.
+
+    Returns:
+        One :class:`PrefetchEntry` per page actually requested.
+    """
+    entries: list[PrefetchEntry] = []
+    merged: list[dict[str, Any]] = []
+    saved_marked = False
+
+    for page in range(1, PRODUCTS_MAX_PAGES + 1):
+        pacer.wait()
+        path = f"/products.json?page={page}&limit={PRODUCTS_PAGE_LIMIT}"
+        absolute = base_root + path
+        try:
+            response = client.get(
+                absolute,
+                headers={"User-Agent": user_agent},
+                timeout=timeout,
+            )
+        except httpx.HTTPError as exc:
+            entries.append(
+                PrefetchEntry(
+                    url=absolute,
+                    path=path,
+                    status=None,
+                    content_type=None,
+                    bytes=0,
+                    saved_to=None,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            break
+
+        body = response.content
+        base_entry = PrefetchEntry(
+            url=absolute,
+            path=path,
+            status=response.status_code,
+            content_type=response.headers.get("content-type"),
+            bytes=len(body),
+            saved_to=None,
+        )
+
+        page_products = (
+            _parse_products_page(body) if response.status_code == HTTPStatus.OK else None
+        )
+        if page_products is None:
+            entries.append(base_entry)
+            break
+
+        if not saved_marked:
+            entries.append(base_entry.model_copy(update={"saved_to": "products.json"}))
+            saved_marked = True
+        else:
+            entries.append(base_entry)
+
+        merged.extend(page_products)
+        if len(page_products) < PRODUCTS_PAGE_LIMIT:
+            break
+
+    if saved_marked:
+        target = dest_dir / "products.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((json.dumps({"products": merged}) + "\n").encode("utf-8"))
+
+    return entries
+
+
+def _parse_products_page(body: bytes) -> list[dict[str, Any]] | None:
+    """Return the ``products`` list of a page body, or ``None`` on any error.
+
+    Treats every malformed shape (decode error, non-dict root, missing or
+    non-list ``products`` key) as a stop signal. Non-dict items inside the
+    list are silently dropped — they would have been ignored downstream by
+    :mod:`shop_explore.stats` anyway.
+    """
+    try:
+        raw = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    items = cast(dict[str, Any], raw).get("products")
+    if not isinstance(items, list):
+        return None
+    return [item for item in cast(list[Any], items) if isinstance(item, dict)]

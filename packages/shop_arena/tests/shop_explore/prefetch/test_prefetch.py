@@ -1,6 +1,6 @@
 """Unit tests for :mod:`shop_explore.prefetch`.
 
-Covers T1.3 of ``docs/impl/shop_explore_implementation.md``:
+Covers T1.3 and T6.4 of ``docs/impl/shop_explore_implementation.md``:
 
 * Happy path — every URL in §5.9's plan is fetched, persisted under
   ``dest_dir`` per the §5.4 layout, and summarized in
@@ -11,6 +11,8 @@ Covers T1.3 of ``docs/impl/shop_explore_implementation.md``:
   ``cloudflare_challenge`` reason.
 * ``robots.txt`` disallowing ``*`` on ``/`` raises with the
   ``robots_disallow`` reason and aborts before fetching any other URL.
+* T6.4 — paginated ``/products.json`` walk merges every page into
+  ``products.json`` and stops on the first short page.
 """
 
 from __future__ import annotations
@@ -18,20 +20,35 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 import pytest
 import respx
 
+from shop_explore.capabilities import Capabilities
 from shop_explore.prefetch import (
     DEFAULT_USER_AGENT,
+    PRODUCTS_PAGE_LIMIT,
     PrefetchResult,
     ShopUnreachableError,
     run,
 )
+from shop_explore.stats import compute as compute_stats
 
 BASE_URL = "https://example-shop.com"
-EXPECTED_FETCH_COUNT = 16  # See ``shop_explore.prefetch._FETCH_PLAN``.
+EXPECTED_FETCH_COUNT = 16
+"""15 static plan URLs + 1 ``/products.json`` page (terminates immediately
+when the storefront has zero products). See ``_FETCH_PLAN`` and
+``_fetch_products_paginated`` in ``shop_explore.prefetch.runner``."""
+
+# Constants for the multi-page pagination test. Picked so that:
+# - page 1 returns exactly PRODUCTS_PAGE_LIMIT products → the runner
+#   schedules another page;
+# - page 2 returns < PRODUCTS_PAGE_LIMIT products → the runner stops.
+_PAGE_TWO_PRODUCT_START_ID = 10_000
+_PAGE_TWO_PRODUCT_COUNT = 50
+_EXPECTED_PAGES_FETCHED = 2
 
 
 def _ok(content: str | bytes, *, content_type: str = "text/html; charset=utf-8") -> httpx.Response:
@@ -60,9 +77,10 @@ def _stub_storefront(
             content_type="application/xml",
         )
     )
-    mock.get(f"{BASE_URL}/products.json", params={"limit": "50"}).mock(
-        return_value=_ok('{"products": []}', content_type="application/json")
-    )
+    mock.get(
+        f"{BASE_URL}/products.json",
+        params={"page": "1", "limit": str(PRODUCTS_PAGE_LIMIT)},
+    ).mock(return_value=_ok('{"products": []}', content_type="application/json"))
     mock.get(f"{BASE_URL}/collections.json", params={"limit": "50"}).mock(
         return_value=_ok('{"collections": []}', content_type="application/json")
     )
@@ -203,3 +221,64 @@ def test_run_records_non_fatal_errors_for_optional_endpoints(tmp_path: Path) -> 
 def test_run_rejects_negative_rate_limit(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="rate_limit_ms"):
         run(BASE_URL, dest_dir=tmp_path, rate_limit_ms=-1)
+
+
+def _make_products(start: int, count: int) -> list[dict[str, Any]]:
+    """Build ``count`` Shopify-shaped product dicts, ids starting at ``start``."""
+    return [
+        {
+            "id": start + i,
+            "title": f"Product {start + i}",
+            "options": [{"name": "Title"}],
+            "variants": [{"id": (start + i) * 10, "price": "9.99"}],
+        }
+        for i in range(count)
+    ]
+
+
+@respx.mock
+def test_run_paginates_products_until_short_page(tmp_path: Path) -> None:
+    """T6.4 — paginated walk merges every page and stops on the first short page."""
+    _stub_storefront(respx.mock)
+
+    page_one = _make_products(start=1, count=PRODUCTS_PAGE_LIMIT)
+    page_two = _make_products(start=_PAGE_TWO_PRODUCT_START_ID, count=_PAGE_TWO_PRODUCT_COUNT)
+    expected_total = PRODUCTS_PAGE_LIMIT + _PAGE_TWO_PRODUCT_COUNT
+    expected_last_id = _PAGE_TWO_PRODUCT_START_ID + _PAGE_TWO_PRODUCT_COUNT - 1
+
+    respx.mock.get(
+        f"{BASE_URL}/products.json",
+        params={"page": "1", "limit": str(PRODUCTS_PAGE_LIMIT)},
+    ).mock(return_value=_ok(json.dumps({"products": page_one}), content_type="application/json"))
+    respx.mock.get(
+        f"{BASE_URL}/products.json",
+        params={"page": "2", "limit": str(PRODUCTS_PAGE_LIMIT)},
+    ).mock(return_value=_ok(json.dumps({"products": page_two}), content_type="application/json"))
+
+    result = run(BASE_URL, dest_dir=tmp_path, rate_limit_ms=0)
+
+    # The merged file on disk has every product from both pages.
+    merged_raw: Any = json.loads((tmp_path / "products.json").read_text(encoding="utf-8"))
+    merged_products = cast(list[dict[str, Any]], merged_raw["products"])
+    assert len(merged_products) == expected_total
+    assert merged_products[0]["id"] == 1
+    assert merged_products[-1]["id"] == expected_last_id
+
+    # Both pages appear as their own entries in prefetch.json. Only the
+    # first page is the on-disk origin; later pages have saved_to=None.
+    page_entries = [e for e in result.entries if e.path.startswith("/products.json?")]
+    assert [e.path for e in page_entries] == [
+        f"/products.json?page=1&limit={PRODUCTS_PAGE_LIMIT}",
+        f"/products.json?page=2&limit={PRODUCTS_PAGE_LIMIT}",
+    ]
+    assert page_entries[0].saved_to == "products.json"
+    assert page_entries[1].saved_to is None
+    assert all(e.status == HTTPStatus.OK for e in page_entries)
+
+    # No third page request — the short page two ended pagination.
+    fetched_paths = [call.request.url.path for call in respx.mock.calls]
+    assert fetched_paths.count("/products.json") == _EXPECTED_PAGES_FETCHED
+
+    # stats.compute reads the merged file and reports the exact total.
+    stats = compute_stats(tmp_path, Capabilities())
+    assert stats.products_total == expected_total
