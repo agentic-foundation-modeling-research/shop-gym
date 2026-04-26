@@ -2,6 +2,16 @@ import type { GraphQLSchema } from 'graphql';
 import { createSchema as createYogaSchema } from 'graphql-yoga';
 
 /**
+ * Resolvers parameter accepted by `createSandboxSchema`. Inferred from
+ * graphql-yoga's `createSchema` signature so tests and future callers can
+ * pass per-area resolver maps without depending on `@graphql-tools/schema`
+ * directly. T2.6 will combine and pass the full set internally.
+ */
+export type SandboxSchemaResolvers = NonNullable<
+  Parameters<typeof createYogaSchema>[0]['resolvers']
+>;
+
+/**
  * Storefront API SDL (v0.1).
  *
  * Mirrors the subset enumerated in `docs/specs/shop_backend/storefront_api.md`
@@ -796,12 +806,13 @@ const typeDefs = /* GraphQL */ `
 /**
  * Builds the SandboxShop GraphQL schema.
  *
- * Resolvers are intentionally absent at this milestone — T2.1 lands the SDL
- * only, and later tasks (T2.2 onward) attach typed resolvers per area. With
- * no resolvers wired, runtime queries against the schema rely on default
- * field resolution and will return `null` for non-leaf fields; the schema
- * itself is fully introspectable.
+ * Pass `resolvers` to attach per-area resolver maps (e.g. `shopResolvers` from
+ * T2.3). With no resolvers wired, the schema is still fully introspectable
+ * but runtime queries fall back to default field resolution and will return
+ * `null` for non-leaf fields. T2.6 will combine the per-area maps internally
+ * so callers no longer need to pass them explicitly.
  */
-export function createSandboxSchema(): GraphQLSchema {
-  return createYogaSchema({ typeDefs });
+export function createSandboxSchema(resolvers?: SandboxSchemaResolvers): GraphQLSchema {
+  // exactOptionalPropertyTypes: only set the field when the caller supplied one.
+  return createYogaSchema(resolvers === undefined ? { typeDefs } : { typeDefs, resolvers });
 }
