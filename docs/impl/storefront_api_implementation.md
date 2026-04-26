@@ -119,7 +119,7 @@ No GraphQL schema changes yet.
   `Query.blogs` returns an empty connection. **Check:** unit test
   covers fixture blog with 1 article + missing-blogs case (separate
   fixture variant or stripped data dir).
-- [ ] **T2.6** — `src/resolvers/index.ts`: combine resolver modules,
+- [x] **T2.6** — `src/resolvers/index.ts`: combine resolver modules,
   export the typed `ResolverContext`. Wire into `createSandboxSchema`.
   **Check:** end-to-end test in `schema.test.ts` issues a multi-area
   query (`{ shop { name } products(first: 2) { nodes { handle } }
