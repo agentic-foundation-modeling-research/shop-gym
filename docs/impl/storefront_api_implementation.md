@@ -67,7 +67,7 @@ are clean. SC1–SC6 from the spec satisfied.
   `InvalidDatasetError`. **Check:** `loader.test.ts` covers happy
   path on the fixture, missing required file → throw, malformed JSON
   → throw, optional files default to empty.
-- [ ] **T1.4** — `src/data/pagination.ts`: `paginate(items, args)`
+- [x] **T1.4** — `src/data/pagination.ts`: `paginate(items, args)`
   helper porting mock-api's cursor scheme (base64 of `cursor:<index>`)
   with strict types. **Check:** `pagination.test.ts` covers
   `first`/`after`, `last`/`before`, both, neither, cursor round-trip,
