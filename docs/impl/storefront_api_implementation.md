@@ -89,7 +89,7 @@ No GraphQL schema changes yet.
   country enums, document `requiresShipping`). **Check:** `tsc` clean;
   `createSandboxSchema()` returns a non-null `GraphQLSchema`; existing
   `schema.test.ts` updated to assert `Query.shop` is in the schema.
-- [ ] **T2.2** — `src/resolvers/builders.ts`: pure builders ported
+- [x] **T2.2** — `src/resolvers/builders.ts`: pure builders ported
   from mock-api `data.ts` under strict types. `gid`,
   `buildImageNode`, `buildMoneyV2`, `buildProductVariantNode`,
   `buildProductNode`, `buildCollectionNode`, `buildMenuItemNode`,
