@@ -92,6 +92,94 @@ hand-editing `parts/*.caps.json`.
 
 ---
 
+## Workflow
+
+`shop_explore` is split across three planes: an orchestrator (this
+package), the harness (`packages/harness`), and the agent runtime
+(`pi` / `claude_code`). The agent runs as a subprocess and does **not**
+have access to the codebase — anything that needs Python-side logic
+runs in the orchestrator before or after the harness loop.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. Orchestrator (shop_explore.pipeline.explore)                     │
+│    Runs in your Python process — has full codebase access.          │
+│    ─────────────────────────────────────────────────────────        │
+│    a. Resolve run_dir                                               │
+│    b. Read prompt files from disk (agents.md, planner.md, …)        │
+│    c. Call shop_explore.prefetch.run(url, dest_dir=…)               │
+│       Writes deterministic HTTP fetches to a temp seed dir:         │
+│         /tmp/shop-explore-seed-XXXX/artifact_seed/prefetch/         │
+│       (httpx calls: index.html, sitemap.xml, products.json, …)      │
+│    d. Build PlanExecLoopConfig with artifact_seed_dir=seed_dir      │
+│    e. Hand off to harness ↓                                         │
+└─────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 2. Harness (run_plan_exec_loop) — control plane                     │
+│    Pure orchestration. No LLM, no codebase access for agent.        │
+│    ─────────────────────────────────────────────────────────        │
+│    a. Workspace.create():                                           │
+│       - mkdir run_dir/                                              │
+│       - copy artifact_seed_dir/* → run_dir/artifact/                │
+│         (so prefetch/ shows up inside the workspace)                │
+│       - snapshot SeedManifest (sha256 of every seeded file)         │
+│    b. Planner iter: spawn `pi --print --mode json` with cwd=run_dir │
+│       stdin = planner.md prompt → writes plan.md                    │
+│    c. Loop up to max_iters:                                         │
+│       - parse plan.md, pick next PENDING task                       │
+│       - spawn `pi …` with cwd=run_dir, prompt = execute.md          │
+│         + <<<harness-control>>> task header                         │
+│       - snapshot trajectory, run protocol checks (incl.             │
+│         seed_immutability — agent must NOT mutate prefetch/)        │
+│    d. Return when COMPLETED / BUDGET_EXHAUSTED / failure            │
+└─────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 3. Agent (`pi` subprocess) — data plane                             │
+│    cwd = run_dir/. AGENTS.md anchors its instructions.              │
+│    ─────────────────────────────────────────────────────────        │
+│    Accessible:                                                      │
+│      + run_dir/ (plan.md it edits, prompts/, AGENTS.md)             │
+│      + run_dir/artifact/prefetch/ (seeded by step 1)                │
+│      + whatever tools `pi` ships with (browser, file I/O, etc.)     │
+│    Not accessible:                                                  │
+│      − shop_explore source code                                     │
+│      − shop_explore.prefetch module / any Python codebase APIs      │
+│    ─────────────────────────────────────────────────────────        │
+│    Each iteration writes parts/<task_id>.md and                     │
+│    parts/<task_id>.caps.json into run_dir/artifact/.                │
+└─────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 4. Synthesis (shop_explore.synthesize.synthesize)                   │
+│    Back in your Python process — full codebase access again.        │
+│    ─────────────────────────────────────────────────────────        │
+│    a. Read parts/*.caps.json, deep-merge → capabilities.json        │
+│    b. One LLM call (synthesize_manual.md prompt + capabilities +    │
+│       parts concat) → manual.md (or fallback to concat)             │
+│    c. Compute stats.json, manifest.json                             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+The bridge between the orchestrator and the agent is
+`PlanExecLoopConfig.artifact_seed_dir`. `pipeline.explore` runs
+`prefetch.run` into a temp seed directory, hands the path to the
+harness, and `Workspace.create` copies the tree into
+`run_dir/artifact/` while fingerprinting it. The post-iteration
+**seed-immutability protocol check** rejects any iteration that
+mutates, deletes, or extends the prefetched files — so the agent
+treats `prefetch/` as read-only ground truth. See
+[`docs/specs/harness/plan_exec_loop.md`](../../../../docs/specs/harness/plan_exec_loop.md)
+§5.4 and
+[`docs/specs/harness/seed_immutability.md`](../../../../docs/specs/harness/seed_immutability.md)
+for details.
+
+---
+
 ## Runtime selection
 
 `--runtime` chooses the agent runtime that drives the harness
