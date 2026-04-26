@@ -52,32 +52,49 @@ _NATIVE_LOG_FILENAME: Final[str] = "native.log"
 _AGENTS_FILENAME: Final[str] = "AGENTS.md"
 _CLAUDE_FILENAME: Final[str] = "CLAUDE.md"
 _DEFAULT_BIN: Final[str] = "claude"
+_DEFAULT_MODEL: Final[str] = "claude-opus-4-7"
 _KILL_GRACE_SECONDS: Final[float] = 5.0
 
 
 class ClaudeCodeRuntime:
     """`AgentRuntime` adapter wrapping the Claude Code CLI.
 
-    The constructor takes no required arguments; ``binary`` is exposed so
-    tests and packaging can override the executable name without forking.
+    The constructor takes no required arguments; ``binary`` and ``model``
+    are exposed so tests and packaging can override them without forking.
 
     Attributes:
         binary: Executable name or absolute path of the ``claude`` CLI.
+        model: Model identifier passed via ``--model`` (full name like
+            ``claude-opus-4-7`` or alias like ``opus``).
     """
 
-    def __init__(self, *, binary: str = _DEFAULT_BIN) -> None:
-        """Initialise a runtime backed by ``binary``.
+    def __init__(
+        self,
+        *,
+        binary: str = _DEFAULT_BIN,
+        model: str = _DEFAULT_MODEL,
+    ) -> None:
+        """Initialise a runtime backed by ``binary`` and ``model``.
 
         Args:
             binary: Executable name or absolute path of the ``claude`` CLI.
                 Defaults to ``"claude"`` (resolved via ``PATH``).
+            model: Model identifier passed to ``claude --model``. Defaults
+                to ``"claude-opus-4-7"``. Accepts a full model name or an
+                alias supported by the CLI (e.g. ``"opus"``, ``"sonnet"``).
         """
         self._binary = binary
+        self._model = model
 
     @property
     def binary(self) -> str:
         """Executable name or path of the ``claude`` CLI."""
         return self._binary
+
+    @property
+    def model(self) -> str:
+        """Model identifier passed via ``--model``."""
+        return self._model
 
     def run_iteration(
         self,
@@ -112,12 +129,13 @@ class ClaudeCodeRuntime:
             "--output-format",
             "stream-json",
             "--verbose",
+            "--model",
+            self._model,
             # Headless runs cannot answer interactive permission prompts;
             # auto-accept edits so file writes inside the workspace land
             # without blocking. The harness still gates everything by the
             # subprocess-level timeout.
-            "--permission-mode",
-            "acceptEdits",
+            "--dangerously-skip-permissions",
         ]
         started_at = _utcnow()
         exit_code = _spawn_and_capture(
