@@ -218,7 +218,7 @@ no metafields → `null` on every query.
      `/graphql` before forwarding to yoga.
   4. Falls through to yoga for everything else.
   **Check:** `http.test.ts` covers each path with a request fixture.
-- [ ] **T6.2** — `src/server.ts`: replace the placeholder
+- [x] **T6.2** — `src/server.ts`: replace the placeholder
   `createServer` with `createSandboxServer({ data, port?, host? })`.
   Wires `createSandboxSchema()`, `CartStore`, `buildHttpHandler`.
   Returns `{ listen, close, url }` (matching the existing scaffold's
