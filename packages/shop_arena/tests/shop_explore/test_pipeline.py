@@ -27,7 +27,8 @@ from harness.config import FinalStatus, PlanExecLoopConfig, PlanExecLoopResult
 from harness.runtimes import RuntimeIterationResult
 from shop_explore import pipeline as pipeline_mod
 from shop_explore.config import ExploreConfig
-from shop_explore.pipeline import _RUN_ID_HASH_LEN, build_runtime_llm
+from shop_explore.pipeline import RUN_ID_HASH_LEN, build_runtime_llm
+from shop_explore.prefetch import PrefetchResult
 
 BASE_URL = "https://example-shop.com"
 MAX_ITERS = 4
@@ -154,6 +155,7 @@ def test_explore_passes_seeded_config_to_harness(
     assert result.final_status == FinalStatus.COMPLETED
 
     # Pipeline cleaned the temporary seed root after the harness call.
+    assert loop_config.artifact_seed_dir is not None
     assert not loop_config.artifact_seed_dir.exists()
 
 
@@ -180,11 +182,17 @@ def test_explore_uses_default_run_dir_when_out_dir_missing(
             exec_iter_count=0,
         )
 
-    def fake_prefetch(url: str, *, dest_dir: Path, **_: Any) -> Any:
+    def fake_prefetch(url: str, *, dest_dir: Path, **_: Any) -> PrefetchResult:
         # Stand-in for prefetch.run: just create a non-empty dest dir.
         dest_dir.mkdir(parents=True, exist_ok=True)
         (dest_dir / "prefetch.json").write_text("{}", encoding="utf-8")
-        return object()
+        return PrefetchResult(
+            base_url=url,
+            user_agent="test",
+            started_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T00:00:00Z",
+            entries=(),
+        )
 
     monkeypatch.setattr(pipeline_mod, "get_runtime", fake_get_runtime)
     monkeypatch.setattr(pipeline_mod, "run_plan_exec_loop", fake_run_plan_exec_loop)
@@ -203,7 +211,7 @@ def test_explore_uses_default_run_dir_when_out_dir_missing(
     assert sep == "-"
     # YYYYMMDDTHHMMSSZ
     assert len(timestamp) == RUN_ID_TIMESTAMP_LEN and timestamp.endswith("Z")
-    assert len(short_hash) == _RUN_ID_HASH_LEN
+    assert len(short_hash) == RUN_ID_HASH_LEN
     int(short_hash, 16)  # short_hash must be valid hex; raises otherwise.
 
 

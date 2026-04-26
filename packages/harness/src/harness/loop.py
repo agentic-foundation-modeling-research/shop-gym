@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any, Final
@@ -37,6 +38,8 @@ from harness.telemetry import (
 )
 from harness.trajectory import IterationMetadata, ProtocolCheckResult, Trajectory
 from harness.workspace import Workspace
+
+_log = logging.getLogger(__name__)
 
 _HARNESS_CONTROL_HEADER_TEMPLATE: Final[str] = (
     "<<<harness-control>>>\nselected_task_id: {selected_task_id}\n<<<end>>>\n\n"
@@ -122,6 +125,7 @@ class _LoopState:
         self._workspace.snapshot_plan(plan_dir / _PLAN_BEFORE_FILENAME)
 
         prompt = self._config.prompts.planner
+        _log.info("invoking %s for plan iter", type(self._runtime).__name__)
         outcome = self._invoke_runtime(iter_dir_path=plan_dir, prompt=prompt)
         if outcome.error_status is not None:
             self._final_status = outcome.error_status
@@ -222,14 +226,20 @@ class _LoopState:
 
     def _run_one_executor(self, *, before: TaskList, selected: Task) -> bool:
         """Run a single executor iteration. Returns False on terminal failure."""
-        self._exec_iter_count += 1
-        exec_id = exec_iter_id(self._exec_iter_count)
+        next_count = self._exec_iter_count + 1
+        exec_id = exec_iter_id(next_count)
         exec_dir = iter_dir(self._workspace, exec_id)
         exec_dir.mkdir(parents=True)
 
         self._workspace.snapshot_plan(exec_dir / _PLAN_BEFORE_FILENAME)
 
         prompt = _compose_executor_prompt(self._config.prompts.execute, selected.id)
+        _log.info(
+            "invoking %s for %s (task=%s)",
+            type(self._runtime).__name__,
+            exec_id,
+            selected.id,
+        )
         outcome = self._invoke_runtime(iter_dir_path=exec_dir, prompt=prompt)
         if outcome.error_status is not None:
             self._final_status = outcome.error_status
@@ -239,6 +249,7 @@ class _LoopState:
         assert outcome.trajectory is not None
         self._workspace.snapshot_plan(exec_dir / _PLAN_AFTER_FILENAME)
         _write_trajectory(exec_dir, outcome.trajectory)
+        self._exec_iter_count = next_count
         self._trajectory_paths.append(f"iters/{exec_id}/{_TRAJECTORY_FILENAME}")
 
         try:
