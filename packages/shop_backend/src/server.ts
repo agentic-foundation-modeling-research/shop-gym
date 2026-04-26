@@ -56,6 +56,13 @@ export interface ServerOptions {
    * pin this to a stable value.
    */
   readonly baseUrl?: string;
+  /**
+   * File path to back the cart store (T7.4). When set, the store rehydrates
+   * from the file on startup and writes the full snapshot back after every
+   * cart mutation, so cart state survives across server restarts pointed at
+   * the same path. Omit for the default in-memory-only store.
+   */
+  readonly cartStorePath?: string;
 }
 
 /** Handle returned by `createSandboxServer`. */
@@ -76,8 +83,9 @@ export interface SandboxServer {
  * return `null` (spec §5.3).
  */
 export function createSandboxServer(options: ServerOptions): SandboxServer {
-  const { data, dataDir, port = 4000, host = '127.0.0.1' } = options;
-  const carts = new CartStore();
+  const { data, dataDir, port = 4000, host = '127.0.0.1', cartStorePath } = options;
+  const carts =
+    cartStorePath === undefined ? new CartStore() : new CartStore({ persistencePath: cartStorePath });
   const schema = createSandboxSchema();
 
   let resolvedUrl = formatBaseUrl(host, port);
@@ -119,7 +127,13 @@ export function createSandboxServer(options: ServerOptions): SandboxServer {
       }),
     close: () =>
       new Promise<void>((resolve, reject) => {
-        carts.clear();
+        // With persistence enabled, leave the in-memory state alone so a
+        // close → listen cycle on the same instance still sees prior carts.
+        // The persistence file is the source of truth across processes; a
+        // fresh `CartStore` reloads it on construction (T7.4).
+        if (cartStorePath === undefined) {
+          carts.clear();
+        }
         if (!http.listening) {
           resolve();
           return;

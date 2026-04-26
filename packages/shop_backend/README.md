@@ -16,7 +16,7 @@ answers canonical Storefront-API queries across `shop`, `product`,
 `collection`, `menu`, `page`, `blog`, `search`, `predictiveSearch`,
 `localization`, plus a full cart lifecycle (`cartCreate` → `cartLinesAdd` →
 `cartLinesUpdate` → `cartLinesRemove`). v0.2 follow-ups (resolver codegen,
-inventory queries, `@inContext` enforcement, persisted carts) tracked in
+inventory queries, `@inContext` enforcement) tracked in
 [`docs/impl/storefront_api_implementation.md`](../../docs/impl/storefront_api_implementation.md).
 
 ## Install (dev)
@@ -60,6 +60,22 @@ curl -s -X POST http://127.0.0.1:4000/graphql \
 Returns the `Mock Pet Foods` shop, the first two products, and the
 `dog-essentials` collection's members. The same multi-area query is
 exercised end-to-end in `src/storefront_api.e2e.test.ts`.
+
+### Persisted carts
+
+By default the cart store lives in-memory only — restarting the server
+resets every cart to "not found". Pass `--cart-store <path>` to back the
+store with a JSON snapshot file:
+
+```bash
+pnpm --filter @shop-gym/shop-backend shop-backend \
+  tests/fixtures/sandbox_shop_v0 4000 \
+  --cart-store ./outputs/cart-store.json
+```
+
+The file is rewritten synchronously after every cart mutation. Pointing a
+later run at the same path rehydrates carts (and the cart-id counter) so
+ids minted in run A remain queryable from run B.
 
 ## Dataset layout
 

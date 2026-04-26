@@ -1,12 +1,14 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createYoga } from 'graphql-yoga';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { loadShopData } from '../data/loader.js';
 import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
-import { CartStore, cartResolvers } from './cart.js';
+import { CartStore, InvalidCartStoreFileError, cartResolvers } from './cart.js';
 import type { ResolverContext } from './index.js';
 
 const VARIANT_A = 'gid://shopify/ProductVariant/100';
@@ -871,5 +873,189 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
         userErrors: [{ code: 'INVALID', field: ['cartId'], message: 'Cart not found' }],
       },
     });
+  });
+});
+
+describe('CartStore — persistence (T7.4)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cart-store-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writes the snapshot file on cart creation', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+    const store = new CartStore({ persistencePath: filePath });
+    const cart = store.create();
+
+    expect(fs.existsSync(filePath)).toBe(true);
+    const snapshot = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as {
+      version: number;
+      cartCounter: number;
+      lineCounters: Record<string, number>;
+      carts: Record<string, unknown>;
+    };
+    expect(snapshot.version).toBe(1);
+    expect(snapshot.cartCounter).toBe(1);
+    expect(snapshot.carts).toHaveProperty(cart.id);
+  });
+
+  it('persists line mutations through addLines / updateLines / removeLines', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+    const storeA = new CartStore({ persistencePath: filePath });
+    const cart = storeA.create();
+    storeA.addLines(cart, [{ merchandiseId: VARIANT_A, quantity: 2 }]);
+    const lineId = cart.lines[0]?.id;
+    expect(lineId).toBeDefined();
+
+    const storeB = new CartStore({ persistencePath: filePath });
+    const reloaded = storeB.get(cart.id);
+    expect(reloaded?.lines).toHaveLength(1);
+    expect(reloaded?.lines[0]).toMatchObject({ merchandiseId: VARIANT_A, quantity: 2 });
+
+    storeA.updateLines(cart, [{ id: lineId as string, quantity: 5 }]);
+    const storeC = new CartStore({ persistencePath: filePath });
+    expect(storeC.get(cart.id)?.lines[0]?.quantity).toBe(5);
+
+    storeA.removeLines(cart, [lineId as string]);
+    const storeD = new CartStore({ persistencePath: filePath });
+    expect(storeD.get(cart.id)?.lines).toEqual([]);
+  });
+
+  it('round-trips a cart between store instances (the T7.4 acceptance check)', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+
+    // Run A: create the cart.
+    const runA = new CartStore({ persistencePath: filePath });
+    const cart = runA.create();
+    runA.addLines(cart, [
+      { merchandiseId: VARIANT_A, quantity: 3 },
+      { merchandiseId: VARIANT_B, quantity: 1 },
+    ]);
+    runA.setNote(cart, 'gift wrap please');
+    runA.setDiscountCodes(cart, ['SAVE10']);
+    runA.setBuyerIdentity(cart, { email: 'buyer@example.com', countryCode: 'US' });
+
+    // Run B: brand-new CartStore pointed at the same path.
+    const runB = new CartStore({ persistencePath: filePath });
+    const seen = runB.get(cart.id);
+    expect(seen).toBeDefined();
+    expect(seen?.id).toBe(cart.id);
+    expect(seen?.lines).toHaveLength(2);
+    expect(seen?.lines.map((l) => l.merchandiseId)).toEqual([VARIANT_A, VARIANT_B]);
+    expect(seen?.lines.map((l) => l.quantity)).toEqual([3, 1]);
+    expect(seen?.note).toBe('gift wrap please');
+    expect(seen?.discountCodes).toEqual(['SAVE10']);
+    expect(seen?.buyerIdentity).toEqual({
+      countryCode: 'US',
+      email: 'buyer@example.com',
+      phone: null,
+    });
+  });
+
+  it('preserves the cart counter so new carts in run B continue the sequence', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+    const runA = new CartStore({ persistencePath: filePath });
+    runA.create();
+    runA.create();
+    expect(runA.create().id).toBe('gid://shopify/Cart/cart-3');
+
+    const runB = new CartStore({ persistencePath: filePath });
+    expect(runB.create().id).toBe('gid://shopify/Cart/cart-4');
+  });
+
+  it('preserves line counters so re-loaded carts mint distinct line ids', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+    const runA = new CartStore({ persistencePath: filePath });
+    const cart = runA.create();
+    runA.addLines(cart, [{ merchandiseId: VARIANT_A, quantity: 1 }]);
+    const firstLineId = cart.lines[0]?.id;
+    expect(firstLineId).toBeDefined();
+
+    const runB = new CartStore({ persistencePath: filePath });
+    const seen = runB.get(cart.id);
+    if (seen === undefined) throw new Error('expected cart to be reloaded');
+    runB.addLines(seen, [{ merchandiseId: VARIANT_B, quantity: 1 }]);
+    expect(seen.lines).toHaveLength(2);
+    expect(seen.lines[1]?.id).not.toBe(firstLineId);
+    expect(seen.lines[1]?.id).toBe('gid://shopify/CartLine/cart-1-line-2');
+  });
+
+  it('clear() resets in-memory state without deleting the persistence file', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+    const store = new CartStore({ persistencePath: filePath });
+    const cart = store.create();
+    expect(fs.existsSync(filePath)).toBe(true);
+
+    store.clear();
+    expect(store.get(cart.id)).toBeUndefined();
+    expect(fs.existsSync(filePath)).toBe(true);
+
+    // A new store at the same path still sees the cart.
+    const reloaded = new CartStore({ persistencePath: filePath });
+    expect(reloaded.get(cart.id)?.id).toBe(cart.id);
+  });
+
+  it('creates the parent directory when the persistence path lives under a missing folder', () => {
+    const filePath = path.join(tmpDir, 'nested', 'subdir', 'carts.json');
+    const store = new CartStore({ persistencePath: filePath });
+    store.create();
+    expect(fs.existsSync(filePath)).toBe(true);
+  });
+
+  it('treats an absent persistence file as an empty store', () => {
+    const filePath = path.join(tmpDir, 'does-not-exist.json');
+    expect(fs.existsSync(filePath)).toBe(false);
+    const store = new CartStore({ persistencePath: filePath });
+    expect(store.create().id).toBe('gid://shopify/Cart/cart-1');
+  });
+
+  it('throws InvalidCartStoreFileError on malformed JSON', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+    fs.writeFileSync(filePath, '{ not valid json');
+    expect(() => new CartStore({ persistencePath: filePath })).toThrowError(
+      InvalidCartStoreFileError,
+    );
+  });
+
+  it('throws InvalidCartStoreFileError when the snapshot version is wrong', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({ version: 99, cartCounter: 0, lineCounters: {}, carts: {} }),
+    );
+    expect(() => new CartStore({ persistencePath: filePath })).toThrowError(
+      /unsupported snapshot version/,
+    );
+  });
+
+  it('throws InvalidCartStoreFileError when the cart id does not match its map key', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        cartCounter: 1,
+        lineCounters: { 'gid://shopify/Cart/cart-1': 0 },
+        carts: {
+          'gid://shopify/Cart/cart-1': {
+            id: 'gid://shopify/Cart/cart-99',
+            lines: [],
+            discountCodes: [],
+            giftCardCodes: [],
+            buyerIdentity: { countryCode: null, email: null, phone: null },
+            note: '',
+            attributes: [],
+          },
+        },
+      }),
+    );
+    expect(() => new CartStore({ persistencePath: filePath })).toThrowError(
+      /must match the map key/,
+    );
   });
 });
