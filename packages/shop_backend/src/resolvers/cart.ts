@@ -1,12 +1,13 @@
 /**
- * In-memory cart store for a single SandboxShop instance.
+ * In-memory cart store + `Query.cart` resolver for a single SandboxShop
+ * instance.
  *
- * Implements the `CartStore` surface from
+ * `CartStore` implements the surface from
  * `docs/specs/shop_backend/storefront_api.md` §5.5 — a per-server `Map<cartId,
- * CartState>` plus the line-mutation methods used by the cart resolvers
- * (T4.2+). Replaces the module-level `Map` + `cartCounter` globals from the
- * mock-api reference so concurrent server instances (e.g. parallel tests)
- * stay isolated.
+ * CartState>` plus the line-mutation methods used by the cart resolvers.
+ * Replaces the module-level `Map` + `cartCounter` globals from the mock-api
+ * reference so concurrent server instances (e.g. parallel tests) stay
+ * isolated.
  *
  * GIDs follow the spec §5.3 / T4.1 convention `gid://shopify/Cart/cart-<n>`,
  * where `<n>` is the per-store creation counter. Cart line ids share that
@@ -15,11 +16,25 @@
  *
  * The state types are intentionally mutable: every method either appends to
  * or rewrites `cart.lines`, and resolvers materialize GraphQL nodes from this
- * raw state on demand. T4.2/T4.3 wire `CartStore` into `ResolverContext` and
- * add the `Query.cart` + `cartCreate`/`cartLines*` resolvers; T4.4 extends
- * the surface with the discount-code / buyer-identity / note / attribute /
- * gift-card mutations against fields added then.
+ * raw state on demand.
+ *
+ * `cartResolvers` (T4.2) handles the read half — `Query.cart(id)` looks up a
+ * cart in the store, materializes its lines through `data.variantsByGid` so
+ * each line resolves to a typed `ProductVariant` merchandise node, and
+ * returns `null` for unknown ids (spec §5.3 — diverges from mock-api which
+ * auto-creates). T4.3 adds the cart mutations on top of this surface; T4.4
+ * extends it with discount-code / buyer-identity / note / attribute /
+ * gift-card fields stored on the cart.
  */
+
+import type { ProductVariant, SandboxShopData, VariantLookup } from '../data/types.js';
+import {
+  type MoneyV2Node,
+  type ProductVariantNode,
+  buildMoneyV2,
+  buildProductVariantNode,
+} from './builders.js';
+import type { ResolverContext } from './index.js';
 
 // ── Input shapes ───────────────────────────────────────────────────────────
 // Hand-typed until graphql-codegen lands in M7 (T7.1). Mirrors the SDL
@@ -176,4 +191,209 @@ export class CartStore {
     const cartSuffix = cartId.slice(cartId.lastIndexOf('/') + 1);
     return `gid://shopify/CartLine/${cartSuffix}-line-${next}`;
   }
+}
+
+// ── Cart node shapes ──────────────────────────────────────────────────────
+// Hand-typed parent shapes for the Cart area. Types from `@graphql-codegen`
+// will replace these in M7 (T7.1).
+
+export interface AttributeNode {
+  readonly key: string;
+  readonly value: string;
+}
+
+export interface CartCostNode {
+  readonly subtotalAmount: MoneyV2Node;
+  readonly totalAmount: MoneyV2Node;
+  readonly totalTaxAmount: MoneyV2Node | null;
+  readonly totalDutyAmount: MoneyV2Node | null;
+}
+
+export interface CartLineCostNode {
+  readonly amountPerQuantity: MoneyV2Node;
+  readonly compareAtAmountPerQuantity: MoneyV2Node | null;
+  readonly totalAmount: MoneyV2Node;
+  readonly subtotalAmount: MoneyV2Node;
+}
+
+export interface CartLineNode {
+  readonly id: string;
+  readonly quantity: number;
+  readonly attributes: readonly AttributeNode[];
+  readonly cost: CartLineCostNode;
+  readonly merchandise: ProductVariantNode;
+  readonly parentRelationship: null;
+}
+
+export interface CartLineConnectionNode {
+  readonly nodes: readonly CartLineNode[];
+  readonly edges: readonly { readonly node: CartLineNode }[];
+}
+
+export interface CartBuyerIdentityNode {
+  readonly countryCode: string | null;
+  readonly customer: null;
+  readonly email: string | null;
+  readonly phone: string | null;
+}
+
+export interface CartNode {
+  readonly id: string;
+  readonly checkoutUrl: string;
+  readonly totalQuantity: number;
+  readonly updatedAt: string;
+  readonly cost: CartCostNode;
+  readonly attributes: readonly AttributeNode[];
+  readonly discountCodes: readonly { readonly code: string; readonly applicable: boolean }[];
+  readonly appliedGiftCards: readonly never[];
+  readonly buyerIdentity: CartBuyerIdentityNode;
+  readonly note: string;
+  /** Internal: materialized lines used by the `Cart.lines(first)` resolver. */
+  readonly lineNodes: readonly CartLineNode[];
+}
+
+// ── Resolvers ─────────────────────────────────────────────────────────────
+
+/**
+ * Resolver map for the Cart area. Covers `Query.cart(id)` (T4.2) plus the
+ * `BaseCartLine` / `Merchandise` union discriminators and the `Cart.lines`
+ * connection field. The cart mutations (T4.3) and the discount-code /
+ * buyer-identity / note / attribute / gift-card fields (T4.4) merge into
+ * this map as they ship.
+ */
+export const cartResolvers = {
+  Query: {
+    cart: (
+      _parent: unknown,
+      args: { readonly id: string },
+      ctx: ResolverContext,
+    ): CartNode | null => {
+      const state = ctx.carts.get(args.id);
+      if (state === undefined) return null;
+      return buildCartNode(state, ctx.data, ctx.baseUrl);
+    },
+  },
+
+  Cart: {
+    lines: (parent: CartNode, args: { readonly first?: number | null }): CartLineConnectionNode => {
+      const all = parent.lineNodes;
+      const first = args.first ?? null;
+      const slice = first === null || first < 0 ? all : all.slice(0, Math.min(first, all.length));
+      return {
+        nodes: slice,
+        edges: slice.map((node) => ({ node })),
+      };
+    },
+  },
+
+  BaseCartLine: {
+    __resolveType: (): 'CartLine' => 'CartLine',
+  },
+
+  Merchandise: {
+    __resolveType: (): 'ProductVariant' => 'ProductVariant',
+  },
+};
+
+// ── Cart materialization ──────────────────────────────────────────────────
+
+/**
+ * Materialize a `CartState` into the `CartNode` shape consumed by the
+ * GraphQL Cart type. Each stored line is resolved against
+ * `data.variantsByGid` so the `merchandise` field carries a fully-populated
+ * `ProductVariant` node. Lines whose `merchandiseId` is no longer in the
+ * dataset (e.g. seeded with a fake id) are skipped — they are invisible to
+ * the schema rather than 500-ing the query.
+ *
+ * `updatedAt` reflects materialization time. Per-cart timestamp tracking
+ * lands with the mutations + extra-field milestones (T4.3 / T4.4); v0.1
+ * Cart consumers that read `updatedAt` get the resolution timestamp.
+ */
+function buildCartNode(state: CartState, data: SandboxShopData, baseUrl: string): CartNode {
+  const lineNodes = materializeLines(state, data, baseUrl);
+  const totalQuantity = lineNodes.reduce((sum, line) => sum + line.quantity, 0);
+  const subtotalCents = lineNodes.reduce(
+    (sum, line) => sum + parsePriceCents(line.merchandise.price.amount) * line.quantity,
+    0,
+  );
+  const subtotal = buildMoneyV2(centsToAmount(subtotalCents), data.store.currency_code);
+  return {
+    id: state.id,
+    checkoutUrl: '#',
+    totalQuantity,
+    updatedAt: new Date().toISOString(),
+    cost: {
+      subtotalAmount: subtotal,
+      totalAmount: subtotal,
+      totalTaxAmount: null,
+      totalDutyAmount: null,
+    },
+    attributes: [],
+    discountCodes: [],
+    appliedGiftCards: [],
+    buyerIdentity: { countryCode: null, customer: null, email: null, phone: null },
+    note: '',
+    lineNodes,
+  };
+}
+
+function materializeLines(
+  state: CartState,
+  data: SandboxShopData,
+  baseUrl: string,
+): readonly CartLineNode[] {
+  const nodes: CartLineNode[] = [];
+  for (const line of state.lines) {
+    const lookup = data.variantsByGid.get(line.merchandiseId);
+    if (lookup === undefined) continue;
+    nodes.push(buildCartLineNode(line, lookup, data, baseUrl));
+  }
+  return nodes;
+}
+
+function buildCartLineNode(
+  line: CartLineState,
+  lookup: VariantLookup,
+  data: SandboxShopData,
+  baseUrl: string,
+): CartLineNode {
+  const merchandise = buildProductVariantNode(lookup.product, lookup.variant, data.store, baseUrl);
+  return {
+    id: line.id,
+    quantity: line.quantity,
+    attributes: line.attributes.map((a) => ({ key: a.key, value: a.value })),
+    cost: buildCartLineCost(merchandise.price, lookup.variant, line.quantity, data),
+    merchandise,
+    parentRelationship: null,
+  };
+}
+
+function buildCartLineCost(
+  price: MoneyV2Node,
+  variant: ProductVariant,
+  quantity: number,
+  data: SandboxShopData,
+): CartLineCostNode {
+  const lineTotalCents = parsePriceCents(price.amount) * quantity;
+  const totalAmount = buildMoneyV2(centsToAmount(lineTotalCents), data.store.currency_code);
+  return {
+    amountPerQuantity: price,
+    compareAtAmountPerQuantity:
+      variant.compare_at_price === null
+        ? null
+        : buildMoneyV2(variant.compare_at_price, data.store.currency_code),
+    totalAmount,
+    subtotalAmount: totalAmount,
+  };
+}
+
+/** Parse a fixed-decimal money string (e.g. "12.99") into integer cents. */
+function parsePriceCents(amount: string): number {
+  const value = Number.parseFloat(amount);
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 100);
+}
+
+function centsToAmount(cents: number): string {
+  return (cents / 100).toFixed(2);
 }

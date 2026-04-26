@@ -1,6 +1,13 @@
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { createYoga } from 'graphql-yoga';
 import { describe, expect, it } from 'vitest';
 
-import { CartStore } from './cart.js';
+import { loadShopData } from '../data/loader.js';
+import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
+import { CartStore, cartResolvers } from './cart.js';
+import type { ResolverContext } from './index.js';
 
 const VARIANT_A = 'gid://shopify/ProductVariant/100';
 const VARIANT_B = 'gid://shopify/ProductVariant/200';
@@ -206,5 +213,217 @@ describe('CartStore.clear', () => {
     expect(store.get(first.id)).toBeUndefined();
     const fresh = store.create();
     expect(fresh.id).toBe('gid://shopify/Cart/cart-1');
+  });
+});
+
+// ── Query.cart resolver (T4.2) ────────────────────────────────────────────
+
+const FIXTURE_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../tests/fixtures/sandbox_shop_v0',
+);
+const BASE_URL = 'https://shop.example';
+const TICKLESS_VARIANT = 'gid://shopify/ProductVariant/47642512195758'; // $79.99
+const FUZZYARD_VARIANT = 'gid://shopify/ProductVariant/47242666836142'; // $19.99
+
+const resolvers: SandboxSchemaResolvers = {
+  Query: cartResolvers.Query,
+  Cart: cartResolvers.Cart,
+  BaseCartLine: cartResolvers.BaseCartLine,
+  Merchandise: cartResolvers.Merchandise,
+};
+
+interface ExecutionResult {
+  readonly data?: unknown;
+  readonly errors?: readonly unknown[];
+}
+
+function runWith(carts: CartStore) {
+  const data = loadShopData(FIXTURE_DIR);
+  const yoga = createYoga({
+    schema: createSandboxSchema(resolvers),
+    context: (): ResolverContext => ({ data, carts, baseUrl: BASE_URL }),
+  });
+  return async (source: string): Promise<ExecutionResult> => {
+    const response = await yoga.fetch(`${BASE_URL}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: source }),
+    });
+    return (await response.json()) as ExecutionResult;
+  };
+}
+
+describe('cartResolvers — Query.cart', () => {
+  it('returns null for an unknown cart id', async () => {
+    const run = runWith(new CartStore());
+    const result = await run(/* GraphQL */ `
+      {
+        cart(id: "gid://shopify/Cart/cart-999") {
+          id
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({ cart: null });
+  });
+
+  it('round-trips a known cart with materialized lines, totals, and merchandise', async () => {
+    const carts = new CartStore();
+    const cart = carts.create({
+      lines: [
+        { merchandiseId: TICKLESS_VARIANT, quantity: 2 },
+        { merchandiseId: FUZZYARD_VARIANT, quantity: 3 },
+      ],
+    });
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      {
+        cart(id: "${cart.id}") {
+          id
+          checkoutUrl
+          totalQuantity
+          note
+          cost {
+            subtotalAmount {
+              amount
+              currencyCode
+            }
+            totalAmount {
+              amount
+            }
+            totalTaxAmount {
+              amount
+            }
+          }
+          lines(first: 10) {
+            nodes {
+              ... on CartLine {
+                id
+                quantity
+                cost {
+                  amountPerQuantity {
+                    amount
+                  }
+                  totalAmount {
+                    amount
+                  }
+                }
+                merchandise {
+                  ... on ProductVariant {
+                    id
+                    product {
+                      handle
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      cart: {
+        id: cart.id,
+        checkoutUrl: '#',
+        totalQuantity: 5,
+        note: '',
+        // 2 * 79.99 + 3 * 19.99 = 159.98 + 59.97 = 219.95.
+        cost: {
+          subtotalAmount: { amount: '219.95', currencyCode: 'CAD' },
+          totalAmount: { amount: '219.95' },
+          totalTaxAmount: null,
+        },
+        lines: {
+          nodes: [
+            {
+              id: 'gid://shopify/CartLine/cart-1-line-1',
+              quantity: 2,
+              cost: {
+                amountPerQuantity: { amount: '79.99' },
+                totalAmount: { amount: '159.98' },
+              },
+              merchandise: {
+                id: TICKLESS_VARIANT,
+                product: { handle: 'tickless-anti-tick-collar' },
+              },
+            },
+            {
+              id: 'gid://shopify/CartLine/cart-1-line-2',
+              quantity: 3,
+              cost: {
+                amountPerQuantity: { amount: '19.99' },
+                totalAmount: { amount: '59.97' },
+              },
+              merchandise: {
+                id: FUZZYARD_VARIANT,
+                product: { handle: 'fuzzyard-mushroom-dog-toys' },
+              },
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it('honors Cart.lines(first: N) by trimming the materialized list', async () => {
+    const carts = new CartStore();
+    const cart = carts.create({
+      lines: [
+        { merchandiseId: TICKLESS_VARIANT, quantity: 1 },
+        { merchandiseId: FUZZYARD_VARIANT, quantity: 1 },
+      ],
+    });
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      {
+        cart(id: "${cart.id}") {
+          lines(first: 1) {
+            nodes {
+              ... on CartLine {
+                quantity
+              }
+            }
+          }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({ cart: { lines: { nodes: [{ quantity: 1 }] } } });
+  });
+
+  it('returns an empty cart with zero totals when no lines have been added', async () => {
+    const carts = new CartStore();
+    const cart = carts.create();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      {
+        cart(id: "${cart.id}") {
+          totalQuantity
+          cost {
+            subtotalAmount {
+              amount
+            }
+          }
+          lines {
+            nodes {
+              ... on CartLine {
+                id
+              }
+            }
+          }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      cart: {
+        totalQuantity: 0,
+        cost: { subtotalAmount: { amount: '0.00' } },
+        lines: { nodes: [] },
+      },
+    });
   });
 });

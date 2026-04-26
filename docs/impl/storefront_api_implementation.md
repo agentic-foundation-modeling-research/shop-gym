@@ -159,7 +159,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
   **Check:** unit test covers create/get/addLines/updateLines/
   removeLines round-trip including line merge on duplicate
   merchandiseId.
-- [ ] **T4.2** — `Query.cart(id)` resolver: returns existing cart
+- [x] **T4.2** — `Query.cart(id)` resolver: returns existing cart
   resolved against the dataset (line items materialize through
   `variantsByGid`), or `null` for unknown ids. **Diverges from
   mock-api**, which auto-creates on miss; spec §5.3 mandates `null`.

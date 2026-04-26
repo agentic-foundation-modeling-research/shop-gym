@@ -6,6 +6,7 @@ import { createYoga } from 'graphql-yoga';
 import { describe, expect, it } from 'vitest';
 
 import { loadShopData } from './data/loader.js';
+import { CartStore } from './resolvers/cart.js';
 import type { ResolverContext } from './resolvers/index.js';
 import { createSandboxSchema } from './schema.js';
 
@@ -76,9 +77,10 @@ describe('createSandboxSchema — combined resolvers', () => {
   // all come from a single realm — vitest otherwise hits the dual-package
   // (CJS/ESM) hazard when calling `graphql()` directly on a yoga-built schema.
   const data = loadShopData(FIXTURE_DIR);
+  const carts = new CartStore();
   const yoga = createYoga({
     schema: createSandboxSchema(),
-    context: (): ResolverContext => ({ data, baseUrl: BASE_URL }),
+    context: (): ResolverContext => ({ data, carts, baseUrl: BASE_URL }),
   });
 
   interface ExecutionResult {

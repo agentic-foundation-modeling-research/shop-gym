@@ -5,14 +5,15 @@
  *
  * Resolver areas covered to date: shop / menu / localization (T2.3),
  * product / collection (T2.4), page / blog / article (T2.5), search
- * (T3.1 + T3.2 + T3.3 — `Query.search`, `Query.predictiveSearch`,
- * `Query.productRecommendations`). Cart (M4) and metafield (M5) maps land
- * in subsequent milestones and are merged into `sandboxResolvers` as they
- * ship.
+ * (T3.1 + T3.2 + T3.3), cart-read (T4.2 — `Query.cart` + the
+ * `BaseCartLine` / `Merchandise` discriminators). Cart mutations (T4.3+)
+ * and metafield (M5) maps land in subsequent milestones and merge into
+ * `sandboxResolvers` as they ship.
  */
 
 import type { SandboxShopData } from '../data/types.js';
 import type { SandboxSchemaResolvers } from '../schema.js';
+import { type CartStore, cartResolvers } from './cart.js';
 import { contentResolvers } from './content.js';
 import { productResolvers } from './product.js';
 import { searchResolvers } from './search.js';
@@ -20,14 +21,13 @@ import { shopResolvers } from './shop.js';
 
 /**
  * Per-request context passed to every resolver. `data` is the loaded dataset
- * snapshot; `baseUrl` is the public origin (e.g. `https://shop.example`) used
- * when rewriting relative image paths into absolute URLs (see spec §5.3).
- *
- * The cart store is intentionally absent at this milestone; it lands with the
- * cart resolvers in M4.
+ * snapshot; `carts` is the per-server in-memory cart store (spec §5.5);
+ * `baseUrl` is the public origin (e.g. `https://shop.example`) used when
+ * rewriting relative image paths into absolute URLs (see spec §5.3).
  */
 export interface ResolverContext {
   readonly data: SandboxShopData;
+  readonly carts: CartStore;
   readonly baseUrl: string;
 }
 
@@ -47,10 +47,14 @@ export const sandboxResolvers: SandboxSchemaResolvers = {
     ...productResolvers.Query,
     ...contentResolvers.Query,
     ...searchResolvers.Query,
+    ...cartResolvers.Query,
   },
   Shop: shopResolvers.Shop,
   Product: productResolvers.Product,
   Collection: productResolvers.Collection,
   Blog: contentResolvers.Blog,
   SearchResultItem: searchResolvers.SearchResultItem,
+  Cart: cartResolvers.Cart,
+  BaseCartLine: cartResolvers.BaseCartLine,
+  Merchandise: cartResolvers.Merchandise,
 };
