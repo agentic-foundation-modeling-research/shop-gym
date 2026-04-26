@@ -30,6 +30,7 @@ read from disk only when :func:`explore` is invoked.
 from __future__ import annotations
 
 import hashlib
+import logging
 import shutil
 import tempfile
 from datetime import UTC, datetime
@@ -55,8 +56,10 @@ _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 _DEFAULT_OUTPUT_ROOT = Path("outputs") / "shop_manuals"
 """Default parent of ``<domain>/<run_id>/`` when ``ExploreConfig.out_dir`` is omitted."""
 
-_RUN_ID_HASH_LEN = 8
+RUN_ID_HASH_LEN = 8
 """Length of the SHA-256 prefix appended to the timestamp in a ``run_id`` (spec §5.4)."""
+
+_log = logging.getLogger(__name__)
 
 
 def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreResult:
@@ -100,6 +103,8 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
             validation.
     """
     run_dir = config.out_dir if config.out_dir is not None else _default_run_dir(config)
+    _log.info("run_dir=%s", run_dir)
+    _log.info("tail %s/iters/*/native.log for progress", run_dir)
 
     agents_md = (_PROMPTS_DIR / "agents.md").read_text(encoding="utf-8")
     planner_prompt = (_PROMPTS_DIR / "planner.md").read_text(encoding="utf-8")
@@ -110,7 +115,9 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
     try:
         seed_dir = seed_root / "artifact_seed"
         seed_dir.mkdir()
-        run_prefetch(config.url, dest_dir=seed_dir / "prefetch")
+        _log.info("prefetching from %s", config.url)
+        prefetch_result = run_prefetch(config.url, dest_dir=seed_dir / "prefetch")
+        _log.info("prefetched %d entries", len(prefetch_result.entries))
 
         loop_config = PlanExecLoopConfig(
             run_dir=run_dir,
@@ -121,14 +128,32 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
             timeout=config.timeout,
         )
         runtime = get_runtime(config.runtime)
+        _log.info(
+            "starting plan/exec loop (runtime=%s, max_iters=%d, timeout=%.0fs)",
+            config.runtime,
+            config.max_iters,
+            config.timeout,
+        )
         loop_result = run_plan_exec_loop(loop_config, runtime)
+        _log.info(
+            "plan/exec loop done: final_status=%s, plan_iters=%d, exec_iters=%d",
+            loop_result.final_status.value,
+            loop_result.plan_iter_count,
+            loop_result.exec_iter_count,
+        )
     finally:
         shutil.rmtree(seed_root, ignore_errors=True)
 
-    synthesize(
+    _log.info("synthesizing manual")
+    synthesis = synthesize(
         run_dir,
         llm=llm if llm is not None else build_runtime_llm(runtime, timeout=config.timeout),
         manual_prompt=manual_prompt,
+    )
+    _log.info(
+        "synthesis done: manual_fallback=%s, capability_conflicts=%d",
+        str(synthesis.manual_fallback).lower(),
+        len(synthesis.capability_conflicts),
     )
 
     artifact_dir = run_dir / "artifact"
@@ -233,5 +258,5 @@ def _derive_run_id(config: ExploreConfig) -> str:
     """
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     payload = f"{config.url}|{config.runtime}|{__version__}".encode()
-    short = hashlib.sha256(payload).hexdigest()[:_RUN_ID_HASH_LEN]
+    short = hashlib.sha256(payload).hexdigest()[:RUN_ID_HASH_LEN]
     return f"{timestamp}-{short}"
