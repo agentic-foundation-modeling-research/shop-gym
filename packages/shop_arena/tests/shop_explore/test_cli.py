@@ -1,6 +1,8 @@
 """Unit tests for :mod:`shop_explore.cli`.
 
-Covers T1.6 of ``docs/impl/shop_explore_implementation.md``:
+Covers T1.6 of ``docs/impl/shop_explore_implementation.md`` plus the
+``--out``-as-resume affordance from
+``docs/specs/harness/resume.md`` §5.6:
 
 * ``shop-explore --prefetch-only <url>`` runs :func:`shop_explore.prefetch.run`
   against the supplied URL and writes the §5.4 ``prefetch/`` layout
@@ -13,6 +15,11 @@ Covers T1.6 of ``docs/impl/shop_explore_implementation.md``:
   is wired in a later milestone).
 * Argparse rejects a missing ``url`` positional with a non-zero exit
   via ``SystemExit``.
+* When ``--out`` points at a run_dir whose ``run.json`` records a
+  prior ``config_snapshot``, the CLI defaults ``--max-iters`` /
+  ``--timeout`` / ``--runtime`` from that snapshot, rejects mismatched
+  ``url`` / ``--runtime`` values, and forwards ``--force-resume`` to
+  :class:`shop_explore.config.ExploreConfig`.
 """
 
 from __future__ import annotations
@@ -24,8 +31,15 @@ import httpx
 import pytest
 import respx
 
+from harness.config import FinalStatus
 from shop_explore import cli as cli_mod
 from shop_explore.cli import EXIT_OK, EXIT_USAGE, main
+from shop_explore.config import (
+    DEFAULT_MAX_ITERS,
+    DEFAULT_TIMEOUT_SECONDS,
+    ExploreConfig,
+    ExploreResult,
+)
 
 BASE_URL = "https://example-shop.com"
 
@@ -268,3 +282,176 @@ def test_missing_url_exits_with_usage_error() -> None:
         main([])
     # argparse's standard usage-error exit code.
     assert exc_info.value.code == EXIT_USAGE
+
+
+def _seed_prior_run_summary(
+    run_dir: Path,
+    *,
+    url: str = BASE_URL,
+    runtime: str = "claude_code",
+    max_iters: int = 7,
+    timeout: float = 12.5,
+) -> dict[str, object]:
+    """Lay down a ``run.json`` matching :class:`harness.summary.RunSummaryWriter`.
+
+    Returns the persisted ``config_snapshot`` dict so callers can assert
+    against it. Only the fields the CLI consults are populated; the
+    harness's own validation lives outside this test surface.
+    """
+    run_dir.mkdir(parents=True, exist_ok=True)
+    snapshot: dict[str, object] = {
+        "url": url,
+        "runtime": runtime,
+        "max_iters": max_iters,
+        "timeout": timeout,
+        "resume_history": [],
+    }
+    payload = {
+        "schema_version": "1",
+        "final_status": "completed",
+        "config_snapshot": snapshot,
+    }
+    (run_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
+    return snapshot
+
+
+def _stub_explore(
+    monkeypatch: pytest.MonkeyPatch,
+    captured: dict[str, ExploreConfig],
+) -> None:
+    """Replace :func:`shop_explore.cli.explore` with a config-capturing stub."""
+
+    def fake_explore(config: ExploreConfig) -> ExploreResult:
+        captured["config"] = config
+        artifact = (config.out_dir or Path("/tmp/fake")) / "artifact"
+        return ExploreResult(
+            run_dir=config.out_dir or Path("/tmp/fake"),
+            manual_path=artifact / "manual.md",
+            capabilities_path=artifact / "capabilities.json",
+            stats_path=artifact / "stats.json",
+            manifest_path=artifact / "manifest.json",
+            prefetch_dir=artifact / "prefetch",
+            final_status=FinalStatus.COMPLETED,
+        )
+
+    monkeypatch.setattr(cli_mod, "explore", fake_explore)
+
+
+def test_explore_resume_inherits_prior_runtime_iters_and_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "prior"
+    _seed_prior_run_summary(run_dir, runtime="claude_code", max_iters=7, timeout=12.5)
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    expected_max_iters = 7
+    expected_timeout = 12.5
+    rc = main(["--out", str(run_dir), BASE_URL])
+
+    assert rc == EXIT_OK
+    config = captured["config"]
+    assert config.runtime == "claude_code"
+    assert config.max_iters == expected_max_iters
+    assert config.timeout == expected_timeout
+    assert config.force_resume is False
+
+
+def test_explore_resume_explicit_flags_override_prior(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "prior"
+    _seed_prior_run_summary(run_dir, runtime="claude_code", max_iters=7, timeout=12.5)
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    expected_max_iters = 3
+    expected_timeout = 60.0
+    rc = main(
+        [
+            "--out",
+            str(run_dir),
+            "--max-iters",
+            str(expected_max_iters),
+            "--timeout",
+            str(int(expected_timeout)),
+            "--runtime",
+            "claude_code",
+            BASE_URL,
+        ]
+    )
+
+    assert rc == EXIT_OK
+    config = captured["config"]
+    assert config.max_iters == expected_max_iters
+    assert config.timeout == expected_timeout
+
+
+def test_explore_resume_rejects_runtime_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_dir = tmp_path / "prior"
+    _seed_prior_run_summary(run_dir, runtime="claude_code")
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    rc = main(["--out", str(run_dir), "--runtime", "pi", BASE_URL])
+
+    assert rc == EXIT_USAGE
+    assert "config" not in captured
+    err = capsys.readouterr().err
+    assert "--runtime" in err
+    assert "claude_code" in err
+
+
+def test_explore_resume_rejects_url_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_dir = tmp_path / "prior"
+    _seed_prior_run_summary(run_dir, url="https://other-shop.com")
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    rc = main(["--out", str(run_dir), BASE_URL])
+
+    assert rc == EXIT_USAGE
+    assert "config" not in captured
+    err = capsys.readouterr().err
+    assert "url" in err
+    assert "other-shop.com" in err
+
+
+def test_explore_force_resume_flag_propagates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "prior"
+    _seed_prior_run_summary(run_dir)
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    rc = main(["--out", str(run_dir), "--force-resume", BASE_URL])
+
+    assert rc == EXIT_OK
+    assert captured["config"].force_resume is True
+
+
+def test_explore_fresh_run_uses_spec_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No prior ``run.json`` ⇒ argparse defaults fall back to spec values."""
+    fresh_dir = tmp_path / "fresh"
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    rc = main(["--out", str(fresh_dir), BASE_URL])
+
+    assert rc == EXIT_OK
+    config = captured["config"]
+    assert config.runtime == "pi"
+    assert config.max_iters == DEFAULT_MAX_ITERS
+    assert config.timeout == DEFAULT_TIMEOUT_SECONDS
+    assert config.force_resume is False

@@ -16,6 +16,11 @@ or extension of files inside the seeded subtree.
   `ProtocolCheckResult` whose violations encode `seed_mutated:`,
   `seed_deleted:`, and `seed_extended:` deviations.
 
+`SeedManifest.to_json` / `SeedManifest.from_json` round-trip the
+fingerprint to a plain JSON-friendly dict so the manifest can be
+persisted to `<run_dir>/.harness/seed_manifest.json` and loaded back on
+resume (`docs/specs/harness/resume.md` §5.1).
+
 Plan-domain concerns (`plan.md` invariants) live in `harness.plan.protocol`
 and are kept independent of seed checks.
 """
@@ -26,6 +31,7 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from harness.trajectory import ProtocolCheckResult
 
@@ -49,6 +55,49 @@ class SeedManifest:
 
     files: Mapping[PurePosixPath, str]
     seeded_roots: frozenset[PurePosixPath]
+
+    def to_json(self) -> dict[str, Any]:
+        """Return a JSON-serialisable dict representation of this manifest.
+
+        The serialised form is stable across runs: `seeded_roots` and
+        `files` keys are sorted by POSIX relpath so the on-disk bytes
+        for a given seed are deterministic.
+        """
+        return {
+            "seeded_roots": sorted(p.as_posix() for p in self.seeded_roots),
+            "files": {p.as_posix(): self.files[p] for p in sorted(self.files)},
+        }
+
+    @classmethod
+    def from_json(cls, payload: Mapping[str, Any]) -> SeedManifest:
+        """Rebuild a `SeedManifest` from its `to_json` representation.
+
+        Args:
+            payload: Mapping with ``seeded_roots`` (list of POSIX
+                relpaths) and ``files`` (mapping of POSIX relpath to
+                sha256 hex digest).
+
+        Returns:
+            A `SeedManifest` equivalent to the one originally serialised.
+
+        Raises:
+            SeedError: If required keys are missing or values have the
+                wrong shape.
+        """
+        try:
+            roots_raw = payload["seeded_roots"]
+            files_raw = payload["files"]
+        except KeyError as exc:
+            raise SeedError(f"seed manifest missing key: {exc.args[0]!r}") from exc
+        if not isinstance(roots_raw, list) or not isinstance(files_raw, dict):
+            raise SeedError("seed manifest has wrong shape (expected list + dict)")
+        seeded_roots = frozenset(PurePosixPath(r) for r in roots_raw)
+        files: dict[PurePosixPath, str] = {}
+        for rel, digest in files_raw.items():
+            if not isinstance(rel, str) or not isinstance(digest, str):
+                raise SeedError("seed manifest entries must be string→string")
+            files[PurePosixPath(rel)] = digest
+        return cls(files=files, seeded_roots=seeded_roots)
 
 
 def snapshot_seed(

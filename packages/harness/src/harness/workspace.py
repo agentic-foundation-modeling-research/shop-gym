@@ -5,6 +5,9 @@ The harness owns the `run_dir/` layout. This module is responsible for:
 * `Workspace.create(config)` — materialising the §5.3 directory layout from
   a `PlanExecLoopConfig`. Refuses to overwrite an existing non-empty
   workspace.
+* `Workspace.open(run_dir, *, config)` — adopt an existing workspace for
+  resume after validating the §5.2 identity tuple
+  (``docs/specs/harness/resume.md``).
 * `Workspace.snapshot_plan(target)` — copy the live `plan.md` byte for
   byte to a per-iteration sidecar (`plan.before.md` / `plan.after.md`).
 * `atomic_write_json(path, data)` — write a JSON document via temp file +
@@ -26,6 +29,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from harness.config import PlanExecLoopConfig
+from harness.plan.parser import parse as parse_plan
 from harness.seed import SeedError, SeedManifest, snapshot_seed
 
 _AGENTS_FILENAME = "AGENTS.md"
@@ -36,10 +40,47 @@ _ARTIFACT_DIRNAME = "artifact"
 _PLAN_FILENAME = "plan.md"
 _ITERS_DIRNAME = "iters"
 _RUN_SUMMARY_FILENAME = "run.json"
+_HARNESS_INTERNAL_DIRNAME = ".harness"
+_SEED_MANIFEST_FILENAME = "seed_manifest.json"
 
 
 class WorkspaceError(Exception):
     """Raised when the harness refuses to create or write a workspace."""
+
+
+class ResumeMismatchError(Exception):
+    """Raised when an existing `run_dir` is not continuation-compatible with `config`.
+
+    Carried fields are stable strings so callers and tests can match on
+    them without parsing the human-readable message
+    (``docs/specs/harness/resume.md`` §5.2).
+
+    Attributes:
+        field: One of ``agents_md``, ``prompts.planner``,
+            ``prompts.execute``, ``seed_manifest``, ``plan_md``, or
+            ``iters_dir`` (for the missing-`iters/` precondition).
+        run_dir: The workspace path being adopted.
+        prior_repr: Compact representation of the on-disk value.
+        current_repr: Compact representation of the value derived from
+            `config`.
+    """
+
+    def __init__(
+        self,
+        *,
+        field: str,
+        run_dir: Path,
+        prior_repr: str,
+        current_repr: str,
+    ) -> None:
+        self.field = field
+        self.run_dir = run_dir
+        self.prior_repr = prior_repr
+        self.current_repr = current_repr
+        super().__init__(
+            f"resume identity mismatch on {field} for run_dir={run_dir}: "
+            f"prior={prior_repr!r} current={current_repr!r}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +145,21 @@ class Workspace:
         """Path to the atomically rewritten `run.json` summary."""
         return self.run_dir / _RUN_SUMMARY_FILENAME
 
+    @property
+    def harness_internal_dir(self) -> Path:
+        """Path to the harness-internal `.harness/` directory.
+
+        Sibling of `artifact/` so internal state (e.g. the persisted
+        seed manifest) never lands inside the seeded subtree
+        (``docs/specs/harness/resume.md`` §5.1).
+        """
+        return self.run_dir / _HARNESS_INTERNAL_DIRNAME
+
+    @property
+    def seed_manifest_path(self) -> Path:
+        """Path to the persisted `.harness/seed_manifest.json`."""
+        return self.harness_internal_dir / _SEED_MANIFEST_FILENAME
+
     @classmethod
     def create(cls, config: PlanExecLoopConfig) -> Workspace:
         """Materialise the §5.3 layout for `config` and return its handle.
@@ -151,8 +207,81 @@ class Workspace:
         if config.artifact_seed_dir is not None:
             seeded_roots = _copy_tree_into(config.artifact_seed_dir, bare.artifact_dir)
             seed_manifest = snapshot_seed(bare.artifact_dir, seeded_roots)
+            bare.harness_internal_dir.mkdir()
+            atomic_write_json(bare.seed_manifest_path, seed_manifest.to_json())
         bare.plan_md.write_text("", encoding="utf-8")
         bare.iters_dir.mkdir()
+        return cls(run_dir=run_dir, seed_manifest=seed_manifest)
+
+    @classmethod
+    def open(cls, run_dir: Path, *, config: PlanExecLoopConfig) -> Workspace:
+        """Adopt an existing `run_dir` for resume after validating identity (§5.2).
+
+        The caller (loop) selects this entry point when `run_dir` exists
+        and is non-empty. Validation is read-only: nothing under
+        `run_dir` is created, renamed, or rewritten by `open`. The first
+        identity-tuple violation raises `ResumeMismatchError`; structural
+        problems with `plan.md` propagate `InvalidPlanError`.
+
+        Validation order (first failure wins):
+
+        1. Required files exist: `AGENTS.md`, `prompts/planner.md`,
+           `prompts/execute.md`, `plan.md`, `iters/`.
+        2. `AGENTS.md` bytes equal `config.agents_md`.
+        3. `prompts/planner.md` bytes equal `config.prompts.planner`.
+        4. `prompts/execute.md` bytes equal `config.prompts.execute`.
+        5. Seed manifest matches `config.artifact_seed_dir`. If
+           `artifact_seed_dir` is set, the persisted
+           `.harness/seed_manifest.json` must equal a freshly-computed
+           manifest of `artifact_seed_dir`. If `artifact_seed_dir` is
+           ``None``, no manifest file may exist.
+        6. `plan.md` parses without `InvalidPlanError`.
+
+        Args:
+            run_dir: Existing workspace root to adopt.
+            config: Caller's run configuration. Provides the prior
+                identity tuple to compare on-disk values against.
+
+        Returns:
+            A `Workspace` rooted at `run_dir`, with `seed_manifest`
+            populated from `.harness/seed_manifest.json` when present.
+
+        Raises:
+            ResumeMismatchError: On any missing required file or
+                identity-tuple mismatch.
+            InvalidPlanError: If `plan.md` fails to parse.
+        """
+        bare = cls(run_dir=run_dir)
+
+        _require_path(bare.agents_md, "agents_md", run_dir, kind="file")
+        _require_path(bare.planner_prompt, "prompts.planner", run_dir, kind="file")
+        _require_path(bare.execute_prompt, "prompts.execute", run_dir, kind="file")
+        _require_path(bare.plan_md, "plan_md", run_dir, kind="file")
+        _require_path(bare.iters_dir, "iters_dir", run_dir, kind="dir")
+
+        _check_text_match(
+            bare.agents_md.read_text(encoding="utf-8"),
+            config.agents_md,
+            field="agents_md",
+            run_dir=run_dir,
+        )
+        _check_text_match(
+            bare.planner_prompt.read_text(encoding="utf-8"),
+            config.prompts.planner,
+            field="prompts.planner",
+            run_dir=run_dir,
+        )
+        _check_text_match(
+            bare.execute_prompt.read_text(encoding="utf-8"),
+            config.prompts.execute,
+            field="prompts.execute",
+            run_dir=run_dir,
+        )
+
+        seed_manifest = _validate_seed_manifest(bare, config)
+
+        parse_plan(bare.plan_md.read_text(encoding="utf-8"))
+
         return cls(run_dir=run_dir, seed_manifest=seed_manifest)
 
     def snapshot_plan(self, target: Path) -> None:
@@ -251,3 +380,141 @@ def _reject_symlinks_at(entry: Path, rel: PurePosixPath) -> None:
     if entry.is_dir():
         for child in entry.iterdir():
             _reject_symlinks_at(child, rel / child.name)
+
+
+# ---------------------------------------------------------------------------
+# Workspace.open helpers (resume.md §5.2)
+# ---------------------------------------------------------------------------
+
+
+_REPR_LIMIT = 80
+
+
+def _truncate_repr(text: str) -> str:
+    """Return a single-line repr-friendly summary of `text`, capped for messages."""
+    flat = text.replace("\n", "\\n")
+    if len(flat) <= _REPR_LIMIT:
+        return flat
+    return flat[:_REPR_LIMIT] + "…"
+
+
+def _require_path(path: Path, field_name: str, run_dir: Path, *, kind: str) -> None:
+    """Raise `ResumeMismatchError` if `path` is missing or the wrong kind."""
+    if kind == "file":
+        if path.is_file():
+            return
+        current = "<missing>" if not path.exists() else "<not a regular file>"
+    elif kind == "dir":
+        if path.is_dir():
+            return
+        current = "<missing>" if not path.exists() else "<not a directory>"
+    else:  # pragma: no cover — guarded by the call sites
+        raise AssertionError(f"unknown kind: {kind!r}")
+    raise ResumeMismatchError(
+        field=field_name,
+        run_dir=run_dir,
+        prior_repr=current,
+        current_repr=f"<expected {kind}>",
+    )
+
+
+def _check_text_match(
+    actual: str,
+    expected: str,
+    *,
+    field: str,
+    run_dir: Path,
+) -> None:
+    """Raise `ResumeMismatchError(field=...)` if the two strings differ."""
+    if actual == expected:
+        return
+    raise ResumeMismatchError(
+        field=field,
+        run_dir=run_dir,
+        prior_repr=_truncate_repr(actual),
+        current_repr=_truncate_repr(expected),
+    )
+
+
+def _validate_seed_manifest(
+    bare: Workspace,
+    config: PlanExecLoopConfig,
+) -> SeedManifest | None:
+    """Return the persisted seed manifest after confirming it matches `config`.
+
+    Three valid configurations:
+
+    * `config.artifact_seed_dir is None` and no persisted manifest:
+      ``return None`` (unseeded run; resume continues unseeded).
+    * `config.artifact_seed_dir` is set and a persisted manifest matches:
+      return the persisted manifest.
+    * `config.artifact_seed_dir is None` *and* a persisted manifest
+      exists, or the seed dir is set but the persisted manifest is
+      missing or differs: raise ``ResumeMismatchError(field="seed_manifest")``.
+    """
+    persisted_path = bare.seed_manifest_path
+    persisted_exists = persisted_path.is_file()
+
+    if config.artifact_seed_dir is None:
+        if persisted_exists:
+            raise ResumeMismatchError(
+                field="seed_manifest",
+                run_dir=bare.run_dir,
+                prior_repr="<seeded run>",
+                current_repr="<artifact_seed_dir is None>",
+            )
+        return None
+
+    if not persisted_exists:
+        raise ResumeMismatchError(
+            field="seed_manifest",
+            run_dir=bare.run_dir,
+            prior_repr="<no .harness/seed_manifest.json>",
+            current_repr="<artifact_seed_dir is set>",
+        )
+
+    try:
+        persisted_payload = json.loads(persisted_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ResumeMismatchError(
+            field="seed_manifest",
+            run_dir=bare.run_dir,
+            prior_repr=f"<unreadable: {exc.msg}>",
+            current_repr="<valid manifest>",
+        ) from exc
+    persisted_manifest = SeedManifest.from_json(persisted_payload)
+
+    fresh_manifest = _compute_seed_manifest(config.artifact_seed_dir)
+
+    if (
+        persisted_manifest.seeded_roots != fresh_manifest.seeded_roots
+        or dict(persisted_manifest.files) != dict(fresh_manifest.files)
+    ):
+        raise ResumeMismatchError(
+            field="seed_manifest",
+            run_dir=bare.run_dir,
+            prior_repr=_summarise_manifest(persisted_manifest),
+            current_repr=_summarise_manifest(fresh_manifest),
+        )
+    return persisted_manifest
+
+
+def _compute_seed_manifest(seed_dir: Path) -> SeedManifest:
+    """Build a `SeedManifest` for `seed_dir` without copying it.
+
+    Mirrors `Workspace.create`'s seeding step: top-level entries become
+    `seeded_roots`, sha256 fingerprints are taken in place. Any symlink
+    raises a `WorkspaceError` so resume cannot adopt a manifest derived
+    from outside the literal seed tree.
+    """
+    _reject_symlinks(seed_dir)
+    seeded_roots = frozenset(PurePosixPath(entry.name) for entry in seed_dir.iterdir())
+    return snapshot_seed(seed_dir, seeded_roots)
+
+
+def _summarise_manifest(manifest: SeedManifest) -> str:
+    """Compact string representation of a manifest for error messages."""
+    return (
+        f"<roots={sorted(p.as_posix() for p in manifest.seeded_roots)} "
+        f"files={len(manifest.files)}>"
+    )

@@ -89,7 +89,7 @@ def test_explore_passes_seeded_config_to_harness(
         return stub_runtime
 
     def fake_run_plan_exec_loop(
-        loop_config: PlanExecLoopConfig, runtime: Any
+        loop_config: PlanExecLoopConfig, runtime: Any, **_kwargs: Any
     ) -> PlanExecLoopResult:
         captured["config"] = loop_config
         captured["runtime"] = runtime
@@ -170,7 +170,7 @@ def test_explore_uses_default_run_dir_when_out_dir_missing(
         return object()
 
     def fake_run_plan_exec_loop(
-        loop_config: PlanExecLoopConfig, runtime: Any
+        loop_config: PlanExecLoopConfig, runtime: Any, **_kwargs: Any
     ) -> PlanExecLoopResult:
         captured["run_dir"] = loop_config.run_dir
         loop_config.run_dir.mkdir(parents=True, exist_ok=True)
@@ -256,7 +256,7 @@ def test_explore_routes_synthesis_call_through_completer_runtime(
         return runtime
 
     def fake_run_plan_exec_loop(
-        loop_config: PlanExecLoopConfig, runtime_arg: Any
+        loop_config: PlanExecLoopConfig, runtime_arg: Any, **_kwargs: Any
     ) -> PlanExecLoopResult:
         captured["runtime_passed"] = runtime_arg
         loop_config.run_dir.mkdir(parents=True, exist_ok=True)

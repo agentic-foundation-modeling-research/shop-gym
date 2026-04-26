@@ -9,7 +9,14 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from harness.config import PlanExecLoopConfig, Prompts
-from harness.workspace import Workspace, WorkspaceError, atomic_write_json
+from harness.plan.parser import InvalidPlanError
+from harness.seed import SeedManifest
+from harness.workspace import (
+    ResumeMismatchError,
+    Workspace,
+    WorkspaceError,
+    atomic_write_json,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -196,6 +203,66 @@ def test_create_seed_manifest_is_none_when_no_seed_dir(tmp_path: Path) -> None:
     assert ws.seed_manifest is None
 
 
+# ---------------------------------------------------------------------------
+# Workspace.create — persisted seed manifest (resume.md §5.1)
+# ---------------------------------------------------------------------------
+
+
+def test_create_persists_seed_manifest_when_seed_dir_provided(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    (seed / "prefetch").mkdir(parents=True)
+    (seed / "prefetch" / "robots.txt").write_text("ok", encoding="utf-8")
+
+    ws = Workspace.create(_config(tmp_path, seed=seed))
+
+    assert ws.harness_internal_dir.is_dir()
+    assert ws.seed_manifest_path.is_file()
+    payload = json.loads(ws.seed_manifest_path.read_text(encoding="utf-8"))
+    assert payload["seeded_roots"] == ["prefetch"]
+    assert "prefetch/robots.txt" in payload["files"]
+
+
+def test_create_does_not_persist_seed_manifest_when_no_seed_dir(tmp_path: Path) -> None:
+    ws = Workspace.create(_config(tmp_path))
+
+    assert not ws.harness_internal_dir.exists()
+    assert not ws.seed_manifest_path.exists()
+
+
+def test_persisted_seed_manifest_round_trips_to_in_memory(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    (seed / "prefetch").mkdir(parents=True)
+    (seed / "prefetch" / "robots.txt").write_text("ok", encoding="utf-8")
+    (seed / "policy.md").write_text("be nice", encoding="utf-8")
+
+    ws = Workspace.create(_config(tmp_path, seed=seed))
+
+    assert ws.seed_manifest is not None
+    payload = json.loads(ws.seed_manifest_path.read_text(encoding="utf-8"))
+    restored = SeedManifest.from_json(payload)
+    assert restored.files == dict(ws.seed_manifest.files)
+    assert restored.seeded_roots == ws.seed_manifest.seeded_roots
+
+
+def test_harness_internal_dir_is_sibling_of_artifact_not_inside(tmp_path: Path) -> None:
+    """`.harness/` lives at run_dir root, never inside `artifact/`."""
+    seed = tmp_path / "seed"
+    (seed / "prefetch").mkdir(parents=True)
+    (seed / "prefetch" / "robots.txt").write_text("ok", encoding="utf-8")
+
+    ws = Workspace.create(_config(tmp_path, seed=seed))
+
+    # `.harness/` is at run_dir root.
+    assert (ws.run_dir / ".harness").is_dir()
+    # `.harness/` is not under artifact/, so the seeded subtree scan
+    # naturally excludes it without any explicit filtering.
+    assert not (ws.artifact_dir / ".harness").exists()
+    assert ws.seed_manifest is not None
+    # No manifest entry references `.harness/`.
+    assert all(".harness" not in p.as_posix() for p in ws.seed_manifest.files)
+    assert all(".harness" not in p.as_posix() for p in ws.seed_manifest.seeded_roots)
+
+
 def test_create_rejects_symlink_in_seed_top_level(tmp_path: Path) -> None:
     seed = tmp_path / "seed"
     seed.mkdir()
@@ -356,3 +423,319 @@ def test_atomic_write_json_replaces_atomically(
 
     assert json.loads(snapshots[0]) == {"v": 1}
     assert json.loads(target.read_text(encoding="utf-8")) == {"v": 2}
+
+
+# ---------------------------------------------------------------------------
+# Workspace.open — happy path
+# ---------------------------------------------------------------------------
+
+
+_PARSEABLE_PLAN = "## Tasks\n- [ ] homepage\n"
+
+
+def _seed_dir_with_one_file(tmp_path: Path) -> Path:
+    seed = tmp_path / "seed"
+    (seed / "prefetch").mkdir(parents=True)
+    (seed / "prefetch" / "robots.txt").write_text("ok", encoding="utf-8")
+    return seed
+
+
+def test_open_returns_workspace_when_unseeded_identity_matches(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+
+    ws = Workspace.open(cfg.run_dir, config=cfg)
+
+    assert ws.run_dir == cfg.run_dir
+    assert ws.seed_manifest is None
+    assert ws.agents_md.read_text(encoding="utf-8") == _AGENTS_MD
+
+
+def test_open_returns_workspace_with_persisted_manifest_when_seeded(tmp_path: Path) -> None:
+    seed = _seed_dir_with_one_file(tmp_path)
+    cfg = _config(tmp_path, seed=seed)
+    created = Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+
+    ws = Workspace.open(cfg.run_dir, config=cfg)
+
+    assert ws.seed_manifest is not None
+    assert created.seed_manifest is not None
+    assert ws.seed_manifest.seeded_roots == created.seed_manifest.seeded_roots
+    assert dict(ws.seed_manifest.files) == dict(created.seed_manifest.files)
+
+
+def test_open_does_not_mutate_the_workspace(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    before = {p.relative_to(cfg.run_dir): p.stat().st_mtime_ns for p in _walk(cfg.run_dir)}
+
+    Workspace.open(cfg.run_dir, config=cfg)
+
+    after = {p.relative_to(cfg.run_dir): p.stat().st_mtime_ns for p in _walk(cfg.run_dir)}
+    assert set(before) == set(after)
+
+
+def _walk(root: Path) -> list[Path]:
+    return [p for p in root.rglob("*") if p.is_file()]
+
+
+# ---------------------------------------------------------------------------
+# Workspace.open — missing files
+# ---------------------------------------------------------------------------
+
+
+def test_open_raises_for_missing_agents_md(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    (cfg.run_dir / "AGENTS.md").unlink()
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "agents_md"
+    assert exc_info.value.run_dir == cfg.run_dir
+    assert "missing" in exc_info.value.prior_repr
+
+
+def test_open_raises_for_missing_planner_prompt(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    (cfg.run_dir / "prompts" / "planner.md").unlink()
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "prompts.planner"
+
+
+def test_open_raises_for_missing_execute_prompt(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    (cfg.run_dir / "prompts" / "execute.md").unlink()
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "prompts.execute"
+
+
+def test_open_raises_for_missing_plan_md(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    # plan.md was created empty by `Workspace.create`; remove it.
+    (cfg.run_dir / "plan.md").unlink()
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "plan_md"
+
+
+def test_open_raises_for_missing_iters_dir(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    iters = cfg.run_dir / "iters"
+    iters.rmdir()
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "iters_dir"
+
+
+# ---------------------------------------------------------------------------
+# Workspace.open — content mismatches
+# ---------------------------------------------------------------------------
+
+
+def test_open_raises_on_agents_md_mismatch(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    (cfg.run_dir / "AGENTS.md").write_text("# Different\n", encoding="utf-8")
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "agents_md"
+
+
+def test_open_raises_on_planner_prompt_mismatch(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    (cfg.run_dir / "prompts" / "planner.md").write_text("changed.\n", encoding="utf-8")
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "prompts.planner"
+
+
+def test_open_raises_on_execute_prompt_mismatch(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    (cfg.run_dir / "prompts" / "execute.md").write_text("changed.\n", encoding="utf-8")
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "prompts.execute"
+
+
+def test_open_validates_in_documented_order(tmp_path: Path) -> None:
+    """When several fields differ, the first one in §5.2 order wins."""
+    seed = _seed_dir_with_one_file(tmp_path)
+    cfg = _config(tmp_path, seed=seed)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    # Mutate every identity component except the first; the first one
+    # listed in §5.2 (agents_md) is the only one we *also* mutate, and
+    # we expect that to be the field reported.
+    (cfg.run_dir / "AGENTS.md").write_text("# X\n", encoding="utf-8")
+    (cfg.run_dir / "prompts" / "planner.md").write_text("Y\n", encoding="utf-8")
+    (cfg.run_dir / "prompts" / "execute.md").write_text("Z\n", encoding="utf-8")
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "agents_md"
+
+
+# ---------------------------------------------------------------------------
+# Workspace.open — seed manifest
+# ---------------------------------------------------------------------------
+
+
+def test_open_raises_when_seeded_run_has_no_persisted_manifest(tmp_path: Path) -> None:
+    seed = _seed_dir_with_one_file(tmp_path)
+    cfg = _config(tmp_path, seed=seed)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    # Simulate a workspace produced before M1 added persistence.
+    (cfg.run_dir / ".harness" / "seed_manifest.json").unlink()
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "seed_manifest"
+
+
+def test_open_raises_when_unseeded_config_meets_persisted_manifest(tmp_path: Path) -> None:
+    seed = _seed_dir_with_one_file(tmp_path)
+    seeded_cfg = _config(tmp_path, seed=seed)
+    Workspace.create(seeded_cfg)
+    seeded_cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    # Caller resumes with no `artifact_seed_dir`.
+    unseeded_cfg = _config(tmp_path)
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(seeded_cfg.run_dir, config=unseeded_cfg)
+    assert exc_info.value.field == "seed_manifest"
+
+
+def test_open_raises_when_seed_dir_contents_changed_between_attempts(tmp_path: Path) -> None:
+    seed = _seed_dir_with_one_file(tmp_path)
+    cfg = _config(tmp_path, seed=seed)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    # Caller modifies the seed dir before resuming.
+    (seed / "prefetch" / "robots.txt").write_text("DIFFERENT", encoding="utf-8")
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "seed_manifest"
+
+
+def test_open_raises_when_seed_dir_grows_extra_top_level(tmp_path: Path) -> None:
+    seed = _seed_dir_with_one_file(tmp_path)
+    cfg = _config(tmp_path, seed=seed)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    (seed / "policy.md").write_text("be nice", encoding="utf-8")
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "seed_manifest"
+
+
+def test_open_succeeds_when_seed_dir_is_byte_identical(tmp_path: Path) -> None:
+    seed = _seed_dir_with_one_file(tmp_path)
+    cfg = _config(tmp_path, seed=seed)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+
+    ws = Workspace.open(cfg.run_dir, config=cfg)
+
+    assert ws.seed_manifest is not None
+
+
+def test_open_succeeds_when_unseeded_and_no_persisted_manifest(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    assert not (cfg.run_dir / ".harness" / "seed_manifest.json").exists()
+
+    ws = Workspace.open(cfg.run_dir, config=cfg)
+
+    assert ws.seed_manifest is None
+
+
+def test_open_raises_for_corrupt_persisted_manifest(tmp_path: Path) -> None:
+    seed = _seed_dir_with_one_file(tmp_path)
+    cfg = _config(tmp_path, seed=seed)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(_PARSEABLE_PLAN, encoding="utf-8")
+    (cfg.run_dir / ".harness" / "seed_manifest.json").write_text(
+        "not json{", encoding="utf-8"
+    )
+
+    with pytest.raises(ResumeMismatchError) as exc_info:
+        Workspace.open(cfg.run_dir, config=cfg)
+    assert exc_info.value.field == "seed_manifest"
+
+
+# ---------------------------------------------------------------------------
+# Workspace.open — plan parsing
+# ---------------------------------------------------------------------------
+
+
+def test_open_propagates_invalid_plan_error(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+    cfg.run_dir.joinpath("plan.md").write_text(
+        "## Tasks\n- [ ] BADID with spaces\n", encoding="utf-8"
+    )
+
+    with pytest.raises(InvalidPlanError):
+        Workspace.open(cfg.run_dir, config=cfg)
+
+
+def test_open_accepts_empty_plan_md_as_invalid_plan(tmp_path: Path) -> None:
+    """`Workspace.create` writes an empty plan.md; resuming before the planner
+    has run is not a supported state and should surface as `InvalidPlanError`
+    (no `## Tasks` section).
+    """
+    cfg = _config(tmp_path)
+    Workspace.create(cfg)
+
+    with pytest.raises(InvalidPlanError):
+        Workspace.open(cfg.run_dir, config=cfg)
+
+
+# ---------------------------------------------------------------------------
+# ResumeMismatchError shape
+# ---------------------------------------------------------------------------
+
+
+def test_resume_mismatch_error_carries_typed_fields(tmp_path: Path) -> None:
+    err = ResumeMismatchError(
+        field="agents_md",
+        run_dir=tmp_path / "run",
+        prior_repr="A",
+        current_repr="B",
+    )
+
+    assert err.field == "agents_md"
+    assert err.run_dir == tmp_path / "run"
+    assert err.prior_repr == "A"
+    assert err.current_repr == "B"
+    assert "agents_md" in str(err)

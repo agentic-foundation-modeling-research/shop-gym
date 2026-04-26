@@ -1,6 +1,6 @@
 # Plan + Exec Harness (`packages/harness`)
 
-Status: **Spec (proposed)** · Version: **0.1**
+Status: **Implemented** · Version: **0.1**
 Owners: ShopGym
 
 > A self-contained, runtime-agnostic engine for orchestrating LLM agents
