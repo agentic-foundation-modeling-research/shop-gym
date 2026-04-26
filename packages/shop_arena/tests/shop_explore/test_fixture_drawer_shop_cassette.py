@@ -5,7 +5,7 @@ Asserts the hand-crafted cassette under
 §5.6 minimal cassette shape (a `Trajectory` JSON + an evolving
 ``workspace_after/`` overlay) and the ShopExplore §5.5 / §5.7 contracts:
 
-* every iteration parses as a valid :class:`harness.types.Trajectory`,
+* every iteration parses as a valid :class:`harness.trajectory.Trajectory`,
 * the planner ``workspace_after/plan.md`` is parseable and contains the
   four expected tasks in priority order,
 * every executor iteration's ``workspace_after/`` flips its selected
@@ -24,8 +24,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from harness.plan_parser import parse as parse_plan
-from harness.types import TaskStatus, Trajectory
+from harness.plan import parse as parse_plan
+from harness.plan.tasks import TaskStatus
+from harness.trajectory import Trajectory
 from shop_explore.capabilities import Capabilities, merge_fragments
 
 CASSETTE_DIR = Path(__file__).resolve().parent / "cassettes" / "fixture_drawer_shop"
@@ -67,7 +68,7 @@ def test_cassette_root_layout_is_complete() -> None:
 
 
 def test_every_trajectory_parses_as_harness_trajectory() -> None:
-    """All five `trajectory.json` files validate against `harness.types.Trajectory`."""
+    """All five `trajectory.json` files validate against `harness.trajectory.Trajectory`."""
     for iter_id in ("plan", *EXEC_TASK_BY_ITER.keys()):
         traj = _load_trajectory(CASSETTE_DIR / iter_id)
         assert traj.iter_id == iter_id

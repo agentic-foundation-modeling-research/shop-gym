@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any, Final, cast
 
 from harness.runtimes.base import RuntimeIterationResult
-from harness.types import (
+from harness.trajectory import (
     MessageStep,
     ThoughtStep,
     ToolCallStep,

@@ -20,7 +20,7 @@ from harness.config import FinalStatus, PlanExecLoopConfig, Prompts
 from harness.loop import run_plan_exec_loop
 from harness.runtimes.base import RuntimeIterationResult
 from harness.runtimes.replay import ReplayRuntime
-from harness.types import Trajectory
+from harness.trajectory import Trajectory
 
 _TS: Final[dt.datetime] = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
 _PROMPT_SHA_PLACEHOLDER: Final[str] = "0" * 64

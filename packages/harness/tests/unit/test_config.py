@@ -13,7 +13,7 @@ from harness.config import (
     PlanExecLoopResult,
     Prompts,
 )
-from harness.types import Task, TaskStatus
+from harness.plan.tasks import Task, TaskStatus
 
 # ---------------------------------------------------------------------------
 # Prompts

@@ -24,7 +24,7 @@ import pytest
 
 from harness.runtimes.base import RuntimeIterationResult
 from harness.runtimes.replay import ReplayError, ReplayRuntime
-from harness.types import Trajectory
+from harness.trajectory import Trajectory
 
 _TS = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
 

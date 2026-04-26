@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from harness.types import Trajectory
+from harness.trajectory import Trajectory
 
 
 @dataclass(frozen=True, slots=True)

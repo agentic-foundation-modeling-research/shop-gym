@@ -18,7 +18,7 @@ from typing import Final
 from harness.config import FinalStatus, PlanExecLoopConfig, PlanExecLoopResult, Prompts
 from harness.loop import run_plan_exec_loop
 from harness.runtimes.base import AgentRuntime
-from harness.types import Trajectory
+from harness.trajectory import Trajectory
 
 # Expected terminal task list (ids and statuses) for the toy scenario.
 EXPECTED_TASK_IDS: Final[tuple[str, ...]] = ("homepage", "product_detail")

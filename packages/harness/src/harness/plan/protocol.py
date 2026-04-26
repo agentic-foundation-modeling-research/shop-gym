@@ -29,7 +29,8 @@ from __future__ import annotations
 
 from collections import Counter
 
-from harness.types import ProtocolCheckResult, Task, TaskList, TaskStatus
+from harness.plan.tasks import Task, TaskList, TaskStatus
+from harness.trajectory import ProtocolCheckResult
 
 _TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset({TaskStatus.DONE, TaskStatus.BLOCKED})
 

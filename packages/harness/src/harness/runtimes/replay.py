@@ -37,7 +37,7 @@ import shutil
 from pathlib import Path
 
 from harness.runtimes.base import AgentRuntime, RuntimeIterationResult
-from harness.types import Trajectory
+from harness.trajectory import Trajectory
 
 _RECORD_ENV_VAR = "HARNESS_RECORD"
 _TRAJECTORY_FILENAME = "trajectory.json"
