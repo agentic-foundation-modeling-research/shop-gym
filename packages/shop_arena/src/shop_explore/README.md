@@ -6,8 +6,9 @@ live storefront's UX, IA, and feature set.
 
 - Spec: [`docs/specs/shop_arena/shop_explore.md`](../../../../docs/specs/shop_arena/shop_explore.md)
 - Implementation plan: [`docs/impl/shop_explore_implementation.md`](../../../../docs/impl/shop_explore_implementation.md)
-- Status: **v0.1 (in progress)** — M1–M3 + T5.1 landed; M4 live-runtime
-  smoke + M5 release pending.
+- Status: **v0.1.0 released** — M1–M5 landed (tag `shop-explore-v0.1.0`).
+  v0.2 follow-ups (real-LLM synthesis, live `fixture_dawn_demo`
+  cassette, exact `products_total`) tracked in M6 of the impl plan.
 
 ---
 
