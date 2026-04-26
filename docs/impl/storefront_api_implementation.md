@@ -164,7 +164,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
   `variantsByGid`), or `null` for unknown ids. **Diverges from
   mock-api**, which auto-creates on miss; spec §5.3 mandates `null`.
   **Check:** test covers known id round-trip and unknown id → null.
-- [ ] **T4.3** — `cartCreate`, `cartLinesAdd`, `cartLinesUpdate`,
+- [x] **T4.3** — `cartCreate`, `cartLinesAdd`, `cartLinesUpdate`,
   `cartLinesRemove` mutations. Resolve cart after each mutation
   (totals, GIDs, merchandise nodes). **Check:** end-to-end test
   fires the canonical lifecycle (`cartCreate { lines: [...] }` →
