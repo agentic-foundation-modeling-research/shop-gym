@@ -4,6 +4,34 @@ All notable changes to `harness` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-04-25
+
+Implements the
+[seed immutability spec](../../docs/specs/harness/seed_immutability.md).
+Treated as a minor release because runs that previously silently
+corrupted `artifact_seed_dir` contents now abort with
+`PROTOCOL_VIOLATION`.
+
+### Added
+
+- **Seed module** (`harness.seed`): `SeedManifest`,
+  `snapshot_seed(artifact_dir, seeded_roots)`, and
+  `check_seed(manifest, artifact_dir, *, iter_id)` — deterministic
+  post-iteration diff that emits `seed_mutated:`, `seed_deleted:`, and
+  `seed_extended:` violations.
+- **Workspace seed snapshot**: `Workspace.create` now hashes every
+  regular file copied from `artifact_seed_dir` and stores a
+  `SeedManifest` on the returned handle. Symlinks anywhere in the seed
+  are rejected before any copy occurs, so the destination is never
+  partially populated.
+- **Loop wiring**: planner and every executor iteration invoke
+  `check_seed`. Planner emits `iters/plan/checks/protocol.json` only
+  when a seed is configured; executor merges seed violations into the
+  existing plan-protocol result. Any seed violation is terminal:
+  `final_status` becomes `protocol_violation` and the loop stops.
+
+[0.2.0]: https://github.com/Shopify/shop-gym/releases/tag/harness-v0.2.0
+
 ## [0.1.0] — 2026-04-25
 
 Initial release. Implements the

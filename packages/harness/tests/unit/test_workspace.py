@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -165,6 +165,80 @@ def test_create_artifact_seed_does_not_leak_into_run_root(tmp_path: Path) -> Non
     # Seed entries land under artifact/, not at run_dir root.
     assert not (ws.run_dir / "marker").exists()
     assert (ws.artifact_dir / "marker").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Workspace.create — seed manifest
+# ---------------------------------------------------------------------------
+
+
+def test_create_records_seed_manifest_for_each_seeded_top_level(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    (seed / "prefetch").mkdir(parents=True)
+    (seed / "prefetch" / "robots.txt").write_text("ok", encoding="utf-8")
+    (seed / "policy.md").write_text("be nice", encoding="utf-8")
+
+    ws = Workspace.create(_config(tmp_path, seed=seed))
+
+    assert ws.seed_manifest is not None
+    assert ws.seed_manifest.seeded_roots == frozenset(
+        {PurePosixPath("prefetch"), PurePosixPath("policy.md")}
+    )
+    assert set(ws.seed_manifest.files) == {
+        PurePosixPath("prefetch/robots.txt"),
+        PurePosixPath("policy.md"),
+    }
+
+
+def test_create_seed_manifest_is_none_when_no_seed_dir(tmp_path: Path) -> None:
+    ws = Workspace.create(_config(tmp_path))
+
+    assert ws.seed_manifest is None
+
+
+def test_create_rejects_symlink_in_seed_top_level(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    target = tmp_path / "target_dir"
+    target.mkdir()
+    (target / "data.txt").write_text("data", encoding="utf-8")
+    (seed / "shortcut").symlink_to(target)
+
+    cfg = _config(tmp_path, seed=seed)
+
+    with pytest.raises(WorkspaceError, match="symlink in seed not supported"):
+        Workspace.create(cfg)
+
+
+def test_create_rejects_nested_symlink_in_seed(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    (seed / "prefetch").mkdir(parents=True)
+    target = tmp_path / "leaked.txt"
+    target.write_text("nope", encoding="utf-8")
+    (seed / "prefetch" / "shortcut").symlink_to(target)
+
+    cfg = _config(tmp_path, seed=seed)
+
+    with pytest.raises(WorkspaceError, match="symlink in seed not supported"):
+        Workspace.create(cfg)
+
+
+def test_create_symlink_rejection_does_not_leave_partial_artifact(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    (seed / "prefetch").mkdir(parents=True)
+    (seed / "prefetch" / "valid.txt").write_text("ok", encoding="utf-8")
+    target = tmp_path / "leaked.txt"
+    target.write_text("nope", encoding="utf-8")
+    (seed / "prefetch" / "shortcut").symlink_to(target)
+
+    cfg = _config(tmp_path, seed=seed)
+
+    with pytest.raises(WorkspaceError):
+        Workspace.create(cfg)
+
+    # Validation runs before any copy, so the artifact dir was never seeded.
+    artifact_dir = cfg.run_dir / "artifact"
+    assert not artifact_dir.exists() or list(artifact_dir.iterdir()) == []
 
 
 # ---------------------------------------------------------------------------

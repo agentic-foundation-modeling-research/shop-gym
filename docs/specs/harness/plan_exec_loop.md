@@ -215,7 +215,10 @@ have full access and decide what to read or write. Memory is
 per-run; `plan.md` starts empty each run.
 Callers do not write inside `run_dir` after the run starts. If initial
 artifacts are needed, the caller passes `artifact_seed_dir`; the harness
-copies it into `run_dir/artifact/` before `plan()`.
+copies it into `run_dir/artifact/` before `plan()`. The seeded subtree is
+treated as stable for the duration of the run and is enforced by a
+deterministic post-iteration check — see
+[seed_immutability.md](seed_immutability.md).
 
 ### 5.5 Plan file protocol (`plan.md`)
 
@@ -349,6 +352,8 @@ example:
 - `[x]` tasks are not resurrected.
 - the selected task is the only task newly marked `[x]` or `[!]`.
 - new tasks are PENDING.
+- the seeded subtree under `run_dir/artifact/` is unchanged
+  ([seed_immutability.md](seed_immutability.md)).
 
 Protocol checks are not domain-quality grading and do not produce
 advisory verdicts. They are harness-owned guardrails and write their
