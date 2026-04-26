@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shop-arena"
-version = "0.0.0"
+version = "0.1.0"
 description = "ShopArena: Environment Factory that generates deterministic sandbox SandboxShops from live storefronts."
 readme = "README.md"
 requires-python = ">=3.11"

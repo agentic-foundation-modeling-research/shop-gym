@@ -86,6 +86,18 @@ without API keys via the harness `replay` runtime.
 - [x] **T5.3** — Update `docs/specs/README.md` ShopArena row to point at this spec + impl. Update repo `README.md` ShopArena bullet to describe `shop_explore` v0.1 status. **Check:** links resolve.
 - [x] **T5.4** — Tag `shop-explore-v0.1.0`. Bump package version if shop_arena is independently versioned (currently `0.0.0` — leave unless we agree to bump). **Check:** tag pushed.
 
+### M6 · v0.2 follow-ups
+
+Gaps identified after the v0.1.0 tag landed. Sequencing: T6.1 → T6.2 (synthesis needs a model-configurable runtime); T6.3 depends on T6.2 (the recorded cassette should reflect real-LLM-driven runs). T6.4 and T6.5 are independent.
+
+- [ ] **T6.1** — `harness.runtimes.pi`: configurable model. Extend the `pi` runtime so callers can pin or swap the underlying Claude model via constructor / `RuntimeFactory` argument without editing harness internals. Default preserves existing behavior. **Check:** unit test passes a non-default model identifier into the pi runtime and asserts it threads through to the underlying LLM call; existing `pi` runtime tests remain green.
+- [ ] **T6.2** — Synthesis LLM via harness runtime. Replace `_NoOpLLMClient` in `pipeline.py` and `cli.py` with an adapter that delegates `LLMClient.complete(prompt)` to the harness runtime's LLM client (instantiated with the run's chosen model from T6.1). Resolves open question §7.2 in favor of "reuse harness runtime LLM" over the direct `anthropic` SDK path. **Check:** unit test of `pipeline.explore` against a stub harness runtime asserts the synthesis call is routed through it; a non-stub run against the M2 cassette emits `manifest.manual_fallback == False`.
+- [ ] **T6.3** — Record real `fixture_dawn_demo` cassette. Run `HARNESS_RECORD=1` with the `pi` runtime (post-T6.2) against `https://theme-dawn-demo.myshopify.com`; commit only the anonymized cassette overlay (no `_raw/`, no `native.log`); replace the synthetic placeholder under `tests/shop_explore/cassettes/fixture_dawn_demo/`. Update `cassettes/README.md` and `fixture_dawn_demo/README.md` provenance to "live recording". `fixture_feature_rich` stays synthetic. **Check:** `tests/shop_explore/test_pipeline_replay.py` and `synthesize/test_anonymization.py` stay green against the recorded cassette.
+- [ ] **T6.4** — Exact `products_total` via pagination (spec §8.2.5). Replace the boolean `products_truncated` flag with real pagination over `/products.json?page=N&limit=250` in `prefetch.runner` and update `stats.compute` to set `Stats.products_total` from the paginated total. **Check:** unit test against a `respx`-mocked storefront with > 250 products asserts `products_total` matches the sum across pages; existing fixture-based stats tests remain green.
+- [x] **T6.5** — Bump `shop_arena` package to `0.1.0` and refresh stale docs. Update `packages/shop_arena/pyproject.toml` `version` and `shop_explore/_version.py` `__version__` to `0.1.0`; refresh `packages/shop_arena/src/shop_explore/README.md` status line (currently claims "M4 + M5 release pending"). **Check:** `from shop_explore import __version__` returns `"0.1.0"`; README status matches the impl-plan checkbox state.
+
+**M6 acceptance:** synthesis no longer falls back to `parts/*.md` concatenation on real runs; live `fixture_dawn_demo` cassette replaces the synthetic placeholder; `products_total` is exact; package version matches the `shop-explore-v0.1.0` tag.
+
 ---
 
 ## 6. Milestones (summary)
@@ -97,6 +109,7 @@ without API keys via the harness `replay` runtime.
 | M3        | T3.1–T3.4   | M2 + SC1–SC4 satisfied on replay fixture                       |
 | M4        | T4.1–T4.4   | M3 + SC5 satisfied; smoke gated by env var; T4.5 deferred       |
 | M5        | T5.1–T5.4   | All prior + README + docs index + tag                          |
+| M6        | T6.1–T6.5   | Real LLM via harness runtime; live dawn_demo cassette; exact `products_total`; v0.1.0 version bump |
 
 ## 7. Appendix
 
@@ -109,8 +122,10 @@ spec §6 + §8.3.
 
 ### 7.2 Open questions
 
-- LLM client for the synthesis pass: reuse the harness runtime's LLM
-  vs. a direct `anthropic` SDK call. Lean direct.
+- ~~LLM client for the synthesis pass: reuse the harness runtime's LLM
+  vs. a direct `anthropic` SDK call.~~ **Resolved (2026-04-25):**
+  reuse harness runtime LLM (T6.2); extend `pi` runtime with a
+  configurable model identifier (T6.1).
 - Whether to ship the playwright skill as a pinned git submodule or
   rely on the user-installed copy. M2 needs a decision.
 - Fixture-storefront licensing for cassette redistribution. Block on
