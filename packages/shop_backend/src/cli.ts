@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { loadShopData } from './data/loader.js';
-import { createServer } from './server.js';
+import { createSandboxServer } from './server.js';
 
 const USAGE = 'Usage: shop-backend <data-dir> [port]';
 
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
       `${data.pages.length} pages, ${data.blogs.length} blogs, ${data.policies.length} policies`,
   );
 
-  const server = createServer({ port });
+  const server = createSandboxServer({ data, port });
   await server.listen();
   console.log(`shop-backend listening at ${server.url}`);
 }

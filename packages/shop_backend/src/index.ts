@@ -1,6 +1,7 @@
 export { loadShopData } from './data/loader.js';
 export { createSandboxSchema } from './schema.js';
-export { createServer } from './server.js';
+export { createSandboxServer } from './server.js';
+export type { SandboxServer, ServerOptions } from './server.js';
 export type {
   Article,
   Blog,
