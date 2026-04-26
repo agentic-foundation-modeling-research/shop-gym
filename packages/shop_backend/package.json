@@ -23,6 +23,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/cli.ts",
     "start": "node dist/cli.js",
+    "shop-backend": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
