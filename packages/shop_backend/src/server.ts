@@ -1,6 +1,6 @@
 import { createServer as createHttpServer } from 'node:http';
 import { createYoga } from 'graphql-yoga';
-import { createSchema } from './schema.js';
+import { createSandboxSchema } from './schema.js';
 
 export interface ServerOptions {
   port?: number;
@@ -12,7 +12,7 @@ export interface ServerOptions {
  */
 export function createServer(options: ServerOptions = {}) {
   const { port = 4000, host = '127.0.0.1' } = options;
-  const yoga = createYoga({ schema: createSchema(), graphqlEndpoint: '/graphql' });
+  const yoga = createYoga({ schema: createSandboxSchema(), graphqlEndpoint: '/graphql' });
   const http = createHttpServer(yoga);
 
   return {
