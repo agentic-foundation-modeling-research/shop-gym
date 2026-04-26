@@ -3,9 +3,15 @@
 Plan + Exec harness: a self-contained, runtime-agnostic engine for
 orchestrating LLM agents through a plan-then-loop flow.
 
-The harness owns process lifecycle, a workspace state machine, and
-normalized telemetry. It owns no prompts, no tools, and no domain
-knowledge. See
+The harness is a **control plane**. It owns process lifecycle, a
+workspace state machine, and normalized telemetry. It owns no prompts,
+no tools, and no domain knowledge — those are the **data plane**,
+provisioned by the `AgentRuntime` adapter and resident inside the
+iteration subprocess (Claude Code, `pi`). Tools, MCP servers, sandbox,
+permissions, and skills come from whichever runtime the caller picks;
+swapping runtimes swaps the data plane.
+
+See
 [`docs/specs/harness/plan_exec_loop.md`](../../docs/specs/harness/plan_exec_loop.md)
 for the full design.
 
@@ -61,12 +67,22 @@ telemetry lives under `run_dir/iters/<iter_id>/` (see spec §5.3).
 
 ## Runtimes
 
+A runtime is the plug-in seam between the control plane (this package)
+and the data plane (the agent CLI's tools, MCP, sandbox, permissions).
+The harness blocks while the subprocess runs and consumes only the
+normalized `Trajectory` it returns.
+
 Runtimes are selected by name via `get_runtime(name, **kwargs)`:
 
 - `claude_code` — runs each iteration as a `claude --print` subprocess.
-- `pi` — runs each iteration as a `pi` CLI subprocess.
+  Brings Claude Code's tool stack (Read/Write/Bash, MCP, sandbox,
+  permissions, skills).
+- `pi` — runs each iteration as a `pi` CLI subprocess. Brings `pi`'s
+  tool stack.
 - `replay` — deterministic cassette replay used by tests; takes
-  `scenario_dir=` and an optional `fallback=` runtime.
+  `scenario_dir=` and an optional `fallback=` runtime. Brings no live
+  data plane — overlays a recorded `workspace_after/` and emits a
+  recorded trajectory.
 
 To swap runtimes, change the name only — the rest of the contract is
 identical.
