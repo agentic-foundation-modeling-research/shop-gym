@@ -137,7 +137,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
   PRICE = min variant). **Check:** `search.test.ts` covers term
   matching products by title/description/tags, mixed-type result,
   empty query, `types: [PRODUCT]` filter.
-- [ ] **T3.2** — `Query.predictiveSearch` per spec §5.3. Returns up
+- [x] **T3.2** — `Query.predictiveSearch` per spec §5.3. Returns up
   to `limit` matches per type plus a single query suggestion.
   **Check:** test covers limit honoring, term echoed in the
   suggestion, missing-blog case.
