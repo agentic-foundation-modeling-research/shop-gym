@@ -230,7 +230,7 @@ no metafields → `null` on every query.
   `loadShopData`, then `createSandboxServer`. Print boot message.
   **Check:** `pnpm shop-backend tests/fixtures/sandbox_shop_v0 0`
   starts and serves `/health`.
-- [ ] **T6.4** — End-to-end test: load fixture, hit each area in
+- [x] **T6.4** — End-to-end test: load fixture, hit each area in
   §5.2 with a canonical query, assert SC2 + SC5. Image asset test
   uses a small PNG committed under
   `tests/fixtures/sandbox_shop_v0/images/`.
