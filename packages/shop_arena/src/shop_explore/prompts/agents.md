@@ -88,11 +88,11 @@ All browsing — for both planner and executor — goes through the
 requests from inside an iteration; the prefetch step has already done
 that for the URLs we need.
 
-Locate the skill once per iteration:
+The harness has already resolved the skill path. Use it directly —
+do not search for it:
 
 ```bash
-SKILL_DIR="$(node -p "require('path').dirname(require.resolve('pi-playwright/skills/playwright-browser/SKILL.md'))" 2>/dev/null \
-  || dirname "$(npm root -g)/pi-playwright/skills/playwright-browser/SKILL.md")"
+SKILL_DIR="{{PLAYWRIGHT_SKILL_DIR}}"
 ```
 
 Then invoke the wrapper for every browser action:
@@ -181,14 +181,18 @@ list above.
 
 ## 5. Capabilities schema reference
 
-The closed pydantic v2 schema for `capabilities.json` lives at
-[`shop_explore.capabilities`](../capabilities.py). The top-level
-groupings (`shop`, `site_shell`, `homepage`, `collection`, `product`,
-`cart`, `search`, `intl`, `floating`, `info_pages_present`) are the
-only valid keys for any `parts/<task_id>.caps.json` fragment. See spec
-[§5.5](../../../../../docs/specs/shop_arena/shop_explore.md#55-capabilities-schema)
-for the full shape; do not duplicate it inline here — drift is loud
-and we want one source of truth.
+The closed pydantic v2 schema for `capabilities.json` is reproduced
+below verbatim from `shop_explore.capabilities.schema` (rendered into
+this file at pipeline-time, so it cannot drift):
+
+```python
+{{CAPABILITIES_SCHEMA}}
+```
+
+The top-level groupings (`shop`, `site_shell`, `homepage`,
+`collection`, `product`, `cart`, `search`, `intl`, `floating`,
+`info_pages_present`) are the only valid keys for any
+`parts/<task_id>.caps.json` fragment.
 
 If your task observes a feature that does not fit the schema, do
 **not** invent a new key. Describe it in `parts/<task_id>.md` and
