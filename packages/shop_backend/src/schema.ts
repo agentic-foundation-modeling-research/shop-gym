@@ -116,6 +116,8 @@ const typeDefs = /* GraphQL */ `
     termsOfService: ShopPolicy
     refundPolicy: ShopPolicy
     subscriptionPolicy: ShopPolicy
+    metafield(namespace: String!, key: String!): Metafield
+    metafields(identifiers: [HasMetafieldsIdentifier!]!): [Metafield]!
   }
 
   type ShopDomain {
