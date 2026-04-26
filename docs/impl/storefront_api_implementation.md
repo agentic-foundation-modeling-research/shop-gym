@@ -153,7 +153,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
 
 ### M4 · Cart store + mutations
 
-- [ ] **T4.1** — `src/resolvers/cart.ts`: define `CartStore` class
+- [x] **T4.1** — `src/resolvers/cart.ts`: define `CartStore` class
   per spec §5.5. In-memory `Map<string, Cart>`, deterministic GIDs
   (`gid://shopify/Cart/cart-<n>`), `clear()` for test isolation.
   **Check:** unit test covers create/get/addLines/updateLines/
