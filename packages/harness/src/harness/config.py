@@ -22,7 +22,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from harness.types import Task
+from harness.plan.tasks import Task
 
 
 class Prompts(BaseModel):

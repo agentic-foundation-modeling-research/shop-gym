@@ -12,13 +12,11 @@ from __future__ import annotations
 
 from harness.config import PlanExecLoopConfig, PlanExecLoopResult, Prompts
 from harness.loop import run_plan_exec_loop
+from harness.plan.tasks import Task, TaskList, TaskStatus
 from harness.runtimes import AgentRuntime, get_runtime
-from harness.types import (
+from harness.trajectory import (
     IterationMetadata,
     ProtocolCheckResult,
-    Task,
-    TaskList,
-    TaskStatus,
     Trajectory,
     TrajectoryStep,
 )

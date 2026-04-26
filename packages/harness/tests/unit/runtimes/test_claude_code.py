@@ -19,7 +19,7 @@ from harness.runtimes.claude_code import (
     _ensure_claude_md_symlink,
     parse_native_log,
 )
-from harness.types import (
+from harness.trajectory import (
     ErrorStep,
     MessageStep,
     ThoughtStep,

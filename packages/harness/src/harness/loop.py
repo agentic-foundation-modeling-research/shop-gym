@@ -24,8 +24,9 @@ from pathlib import Path
 from typing import Any, Final
 
 from harness.config import FinalStatus, PlanExecLoopConfig, PlanExecLoopResult
-from harness.plan_parser import InvalidPlanError, PlanDiff, diff, parse, select_next
-from harness.protocol_check import run_protocol_checks
+from harness.plan.parser import InvalidPlanError, PlanDiff, diff, parse, select_next
+from harness.plan.protocol import run_protocol_checks
+from harness.plan.tasks import Task, TaskList
 from harness.runtimes.base import AgentRuntime, RuntimeIterationResult
 from harness.telemetry import (
     PLAN_ITER_ID,
@@ -33,7 +34,7 @@ from harness.telemetry import (
     exec_iter_id,
     iter_dir,
 )
-from harness.types import IterationMetadata, ProtocolCheckResult, Task, TaskList, Trajectory
+from harness.trajectory import IterationMetadata, ProtocolCheckResult, Trajectory
 from harness.workspace import Workspace
 
 _HARNESS_CONTROL_HEADER_TEMPLATE: Final[str] = (

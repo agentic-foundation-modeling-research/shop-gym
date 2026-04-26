@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from harness.types import Task, TaskList, TaskStatus
+from harness.plan.tasks import Task, TaskList, TaskStatus
 
 
 class InvalidPlanError(Exception):

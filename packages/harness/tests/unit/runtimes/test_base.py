@@ -7,7 +7,7 @@ from pathlib import Path
 
 from harness.runtimes import AgentRuntime, RuntimeIterationResult
 from harness.runtimes.base import AgentRuntime as AgentRuntimeFromBase
-from harness.types import Trajectory
+from harness.trajectory import Trajectory
 
 
 def test_agent_runtime_reexported_from_package() -> None:

@@ -1,12 +1,12 @@
-"""Tests for `harness.protocol_check`.
+"""Tests for `harness.plan.protocol`.
 
 One test per violation listed in spec §5.8, plus a clean-pass case.
 """
 
 from __future__ import annotations
 
-from harness.protocol_check import run_protocol_checks
-from harness.types import Task, TaskList, TaskStatus
+from harness.plan.protocol import run_protocol_checks
+from harness.plan.tasks import Task, TaskList, TaskStatus
 
 
 def _tl(*tasks: Task) -> TaskList:

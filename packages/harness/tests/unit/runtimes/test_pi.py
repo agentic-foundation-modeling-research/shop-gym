@@ -14,7 +14,7 @@ import pytest
 
 from harness.runtimes import AgentRuntime, get_runtime
 from harness.runtimes.pi import PiRuntime, parse_native_log
-from harness.types import (
+from harness.trajectory import (
     MessageStep,
     ThoughtStep,
     ToolCallStep,

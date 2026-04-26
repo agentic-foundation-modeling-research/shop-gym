@@ -1,4 +1,4 @@
-"""Tests for `harness.telemetry`."""
+"""Tests for `harness.telemetry.recovery.reconstruct`."""
 
 from __future__ import annotations
 
@@ -9,32 +9,14 @@ from pathlib import Path
 import pytest
 
 from harness.config import FinalStatus, PlanExecLoopConfig, PlanExecLoopResult, Prompts
-from harness.telemetry import (
-    PLAN_ITER_ID,
-    RunSummaryWriter,
-    exec_iter_id,
-    iter_dir,
-    reconstruct,
-    scrub_secrets,
-)
-from harness.types import (
-    IterationMetadata,
-    ProtocolCheckResult,
-    Task,
-    TaskStatus,
-    Trajectory,
-)
+from harness.telemetry import RunSummaryWriter, reconstruct
+from harness.trajectory import IterationMetadata, ProtocolCheckResult, Trajectory
 from harness.workspace import Workspace
 
-# ---------------------------------------------------------------------------
-# Fixtures / helpers
-# ---------------------------------------------------------------------------
-
 _TWO_EXEC_ITERS = 2
-_SAMPLE_MAX_ITERS = 3
-_SCRUB_SAMPLE_INT = 42
-
 _TS = dt.datetime(2025, 1, 1, 12, 0, 0, tzinfo=dt.UTC)
+
+_PLAN_TWO_DONE = "# Plan\n\n## Tasks\n- [x] homepage\n- [x] checkout — auth wall handled\n"
 
 
 def _config(tmp_path: Path) -> PlanExecLoopConfig:
@@ -101,197 +83,6 @@ def _write_iter(
         (d / "checks").mkdir()
         (d / "checks" / "protocol.json").write_text(protocol.model_dump_json(), encoding="utf-8")
     return d
-
-
-# ---------------------------------------------------------------------------
-# iteration id helpers
-# ---------------------------------------------------------------------------
-
-
-def test_exec_iter_id_zero_pads_to_four_digits() -> None:
-    assert exec_iter_id(1) == "exec-0001"
-    assert exec_iter_id(42) == "exec-0042"
-    assert exec_iter_id(9999) == "exec-9999"
-
-
-def test_exec_iter_id_rejects_non_positive() -> None:
-    with pytest.raises(ValueError):
-        exec_iter_id(0)
-    with pytest.raises(ValueError):
-        exec_iter_id(-1)
-
-
-def test_iter_dir_resolves_planner(tmp_path: Path) -> None:
-    ws = Workspace.create(_config(tmp_path))
-    assert iter_dir(ws, PLAN_ITER_ID) == ws.iters_dir / "plan"
-
-
-def test_iter_dir_resolves_executor(tmp_path: Path) -> None:
-    ws = Workspace.create(_config(tmp_path))
-    assert iter_dir(ws, "exec-0007") == ws.iters_dir / "exec-0007"
-
-
-def test_iter_dir_does_not_create_directory(tmp_path: Path) -> None:
-    ws = Workspace.create(_config(tmp_path))
-    path = iter_dir(ws, "exec-0001")
-    assert not path.exists()
-
-
-def test_iter_dir_rejects_unknown_iter_id(tmp_path: Path) -> None:
-    ws = Workspace.create(_config(tmp_path))
-    with pytest.raises(ValueError):
-        iter_dir(ws, "exec-1")  # not zero-padded
-    with pytest.raises(ValueError):
-        iter_dir(ws, "planner")
-    with pytest.raises(ValueError):
-        iter_dir(ws, "../escape")
-
-
-# ---------------------------------------------------------------------------
-# scrub_secrets
-# ---------------------------------------------------------------------------
-
-
-def test_scrub_secrets_redacts_top_level_secret_keys() -> None:
-    out = scrub_secrets({"api_key": "sk-abc", "model": "gpt-5"})
-    assert out == {"api_key": "***REDACTED***", "model": "gpt-5"}
-
-
-def test_scrub_secrets_handles_common_secret_names() -> None:
-    payload = {
-        "api_key": "x",
-        "API_KEY": "x",
-        "ApiKey": "x",
-        "api-key": "x",
-        "openai_api_key": "x",
-        "secret": "x",
-        "client_secret": "x",
-        "password": "x",
-        "auth_token": "x",
-        "access_key": "x",
-    }
-    redacted = scrub_secrets(payload)
-    assert all(v == "***REDACTED***" for v in redacted.values())
-
-
-def test_scrub_secrets_does_not_redact_innocent_keys() -> None:
-    out = scrub_secrets({"runtime": "replay", "max_iters": 3, "timeout": 60.0})
-    assert out == {"runtime": "replay", "max_iters": 3, "timeout": 60.0}
-
-
-def test_scrub_secrets_recurses_into_nested_mappings() -> None:
-    out = scrub_secrets(
-        {
-            "runtime": {"name": "claude_code", "api_key": "sk-abc"},
-            "config": {"max_iters": 3, "secrets": {"token": "t"}},
-        }
-    )
-    assert out == {
-        "runtime": {"name": "claude_code", "api_key": "***REDACTED***"},
-        "config": {"max_iters": 3, "secrets": "***REDACTED***"},
-    }
-
-
-def test_scrub_secrets_recurses_into_lists() -> None:
-    out = scrub_secrets({"runtimes": [{"api_key": "k1"}, {"api_key": "k2"}]})
-    assert out == {"runtimes": [{"api_key": "***REDACTED***"}, {"api_key": "***REDACTED***"}]}
-
-
-def test_scrub_secrets_returns_scalars_unchanged() -> None:
-    assert scrub_secrets("hello") == "hello"
-    assert scrub_secrets(_SCRUB_SAMPLE_INT) == _SCRUB_SAMPLE_INT
-    assert scrub_secrets(None) is None
-
-
-# ---------------------------------------------------------------------------
-# RunSummaryWriter.rewrite
-# ---------------------------------------------------------------------------
-
-
-_PLAN_TWO_DONE = "# Plan\n\n## Tasks\n- [x] homepage\n- [x] checkout — auth wall handled\n"
-
-
-def _make_result(run_dir: Path) -> PlanExecLoopResult:
-    return PlanExecLoopResult(
-        run_dir=run_dir,
-        final_status=FinalStatus.COMPLETED,
-        plan_iter_count=1,
-        exec_iter_count=2,
-        trajectory_paths=(
-            "iters/plan/trajectory.json",
-            "iters/exec-0001/trajectory.json",
-            "iters/exec-0002/trajectory.json",
-        ),
-        tasks_final=(
-            Task(id="homepage", status=TaskStatus.DONE),
-            Task(id="checkout", status=TaskStatus.DONE, note="auth wall handled"),
-        ),
-    )
-
-
-def test_rewrite_writes_result_payload(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    result = _make_result(run_dir)
-
-    RunSummaryWriter.rewrite(run_dir, result=result)
-
-    payload = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    assert payload["final_status"] == "completed"
-    assert payload["exec_iter_count"] == _TWO_EXEC_ITERS
-    assert payload["trajectory_paths"] == [
-        "iters/plan/trajectory.json",
-        "iters/exec-0001/trajectory.json",
-        "iters/exec-0002/trajectory.json",
-    ]
-    # Result reloads cleanly when no config_snapshot is attached.
-    assert "config_snapshot" not in payload
-    restored = PlanExecLoopResult.model_validate(payload)
-    assert restored == result
-
-
-def test_rewrite_attaches_scrubbed_config_snapshot(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    result = _make_result(run_dir)
-
-    RunSummaryWriter.rewrite(
-        run_dir,
-        result=result,
-        config_snapshot={
-            "runtime": "claude_code",
-            "max_iters": 3,
-            "api_key": "sk-secret-do-not-leak",
-            "runtime_kwargs": {"auth_token": "leak-too"},
-        },
-    )
-
-    payload = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    snapshot = payload["config_snapshot"]
-    assert snapshot["runtime"] == "claude_code"
-    assert snapshot["max_iters"] == _SAMPLE_MAX_ITERS
-    assert snapshot["api_key"] == "***REDACTED***"
-    assert snapshot["runtime_kwargs"]["auth_token"] == "***REDACTED***"
-    raw = (run_dir / "run.json").read_text(encoding="utf-8")
-    assert "sk-secret-do-not-leak" not in raw
-    assert "leak-too" not in raw
-
-
-def test_rewrite_overwrites_existing_run_json(tmp_path: Path) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    (run_dir / "run.json").write_text("stale", encoding="utf-8")
-    result = _make_result(run_dir)
-
-    RunSummaryWriter.rewrite(run_dir, result=result)
-
-    payload = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    assert payload["final_status"] == "completed"
-
-
-# ---------------------------------------------------------------------------
-# reconstruct
-# ---------------------------------------------------------------------------
 
 
 def test_reconstruct_rebuilds_completed_run_from_iters_tree(tmp_path: Path) -> None:

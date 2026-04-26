@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 
 from harness.config import FinalStatus
-from harness.plan_parser import parse as parse_plan
+from harness.plan import parse as parse_plan
 from shop_explore import Capabilities, ExploreConfig, Stats, explore
 
 _SMOKE_ENV_VAR = "SHOP_EXPLORE_SMOKE_PI"

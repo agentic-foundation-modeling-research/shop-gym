@@ -28,9 +28,9 @@ import pytest
 import respx
 
 from harness.config import FinalStatus
-from harness.plan_parser import parse as parse_plan
+from harness.plan import parse as parse_plan
+from harness.plan.tasks import TaskStatus
 from harness.runtimes.replay import ReplayRuntime
-from harness.types import TaskStatus
 from shop_explore import pipeline as pipeline_mod
 from shop_explore.config import ExploreConfig
 

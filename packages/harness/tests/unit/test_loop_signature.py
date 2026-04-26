@@ -19,7 +19,7 @@ from pathlib import Path
 from harness.config import FinalStatus, PlanExecLoopConfig, Prompts
 from harness.loop import run_plan_exec_loop
 from harness.runtimes.base import AgentRuntime, RuntimeIterationResult
-from harness.types import Trajectory
+from harness.trajectory import Trajectory
 
 _TS = dt.datetime(2025, 1, 1, 12, 0, 0, tzinfo=dt.UTC)
 

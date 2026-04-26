@@ -1,4 +1,4 @@
-"""Tests for `harness.plan_parser`.
+"""Tests for `harness.plan.parser`.
 
 Covers happy-path parsing, every §5.5 invariant violation, priority
 ordering for `select_next`, and resurrection detection in `diff`.
@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from harness.plan_parser import InvalidPlanError, PlanDiff, diff, parse, select_next
-from harness.types import Task, TaskList, TaskStatus
+from harness.plan.parser import InvalidPlanError, PlanDiff, diff, parse, select_next
+from harness.plan.tasks import Task, TaskList, TaskStatus
 
 # ---------------------------------------------------------------------------
 # parse — happy path
