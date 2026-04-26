@@ -196,10 +196,17 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
   preserves request order with `null` for misses.
 - [x] **T5.2** — `Shop.metafield(s)` reading `metafields.shop`.
   **Check:** test covers single metafield read.
-- [ ] **T5.3** — `metafieldsByIdentifiers` query if convenient (a
+- [x] **T5.3** — `metafieldsByIdentifiers` query if convenient (a
   flat batch read used by Hydrogen). Defer to v0.2 if SDL bloat is
   not warranted; document the deferral in the spec §7. **Check:**
-  decision recorded, code changes minimal either way.
+  decision recorded, code changes minimal either way. **Decision:**
+  deferred — recorded in spec §7. Per-owner batch reads
+  (`Product.metafields(identifiers:)`,
+  `Collection.metafields(identifiers:)`,
+  `Shop.metafields(identifiers:)` from T5.1/T5.2) cover the
+  consumer pattern; the flat top-level variant has no concrete
+  client in v0.1 and is not part of the §5.2 surface. No code
+  changes.
 
 **M5 acceptance:** metafield queries against the fixture round-trip;
 no metafields → `null` on every query.
