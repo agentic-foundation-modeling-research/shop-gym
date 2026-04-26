@@ -1,0 +1,30 @@
+{
+  "main-menu": [
+    {
+      "title": "Shop Dogs",
+      "url": "/collections/dog-essentials",
+      "type": "COLLECTION",
+      "children": []
+    },
+    {
+      "title": "Shop Cats",
+      "url": "/collections/cat-care",
+      "type": "COLLECTION",
+      "children": []
+    },
+    {
+      "title": "About",
+      "url": "/pages/about-us",
+      "type": "PAGE",
+      "children": []
+    }
+  ],
+  "footer": [
+    {
+      "title": "Privacy Policy",
+      "url": "/policies/privacy-policy",
+      "type": "HTTP",
+      "children": []
+    }
+  ]
+}
