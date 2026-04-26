@@ -17,5 +17,14 @@
       }
     ]
   },
-  "collections": {}
+  "collections": {
+    "dog-essentials": [
+      {
+        "namespace": "merch",
+        "key": "hero_color",
+        "value": "#1f513f",
+        "type": "color"
+      }
+    ]
+  }
 }

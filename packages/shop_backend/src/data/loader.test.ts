@@ -56,7 +56,7 @@ describe('loadShopData', () => {
 
     expect(data.metafields.shop).toHaveLength(1);
     expect(data.metafields.products['go-skin-and-coat-chicken-with-grains-12lb']).toHaveLength(1);
-    expect(data.metafields.collections).toEqual({});
+    expect(data.metafields.collections['dog-essentials']).toHaveLength(1);
   });
 
   it('builds productsByHandle covering every product', () => {

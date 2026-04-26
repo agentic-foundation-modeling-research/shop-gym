@@ -8,15 +8,14 @@
  * (T3.1 + T3.2 + T3.3), cart-read (T4.2 — `Query.cart` + the
  * `BaseCartLine` / `Merchandise` discriminators), cart line mutations
  * (T4.3 — `cartCreate` / `cartLinesAdd` / `cartLinesUpdate` /
- * `cartLinesRemove`). The remaining cart mutations (T4.4) and metafield
- * (M5) maps land in subsequent milestones and merge into `sandboxResolvers`
- * as they ship.
+ * `cartLinesRemove`), product / collection metafields (T5.1).
  */
 
 import type { SandboxShopData } from '../data/types.js';
 import type { SandboxSchemaResolvers } from '../schema.js';
 import { type CartStore, cartResolvers } from './cart.js';
 import { contentResolvers } from './content.js';
+import { metafieldResolvers } from './metafields.js';
 import { productResolvers } from './product.js';
 import { searchResolvers } from './search.js';
 import { shopResolvers } from './shop.js';
@@ -55,8 +54,8 @@ export const sandboxResolvers: SandboxSchemaResolvers = {
     ...cartResolvers.Mutation,
   },
   Shop: shopResolvers.Shop,
-  Product: productResolvers.Product,
-  Collection: productResolvers.Collection,
+  Product: { ...productResolvers.Product, ...metafieldResolvers.Product },
+  Collection: { ...productResolvers.Collection, ...metafieldResolvers.Collection },
   Blog: contentResolvers.Blog,
   SearchResultItem: searchResolvers.SearchResultItem,
   Cart: cartResolvers.Cart,
