@@ -98,7 +98,7 @@ No GraphQL schema changes yet.
   **Check:** `builders.test.ts` covers GID stability, MoneyV2
   formatting, variant option mapping, image URL rewrite (absolute vs
   relative).
-- [ ] **T2.3** — `src/resolvers/shop.ts`: `Query.shop`,
+- [x] **T2.3** — `src/resolvers/shop.ts`: `Query.shop`,
   `Query.menu`, `Query.localization`, plus `Shop.{privacyPolicy,
   shippingPolicy, termsOfService, refundPolicy, subscriptionPolicy}`
   nested resolvers reading `policies.json`. **Check:** unit test
