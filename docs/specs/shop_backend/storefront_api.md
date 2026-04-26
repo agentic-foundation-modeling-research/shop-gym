@@ -376,6 +376,16 @@ without a second pass. Revisit if a benchmark shows resolver overhead.
   (e.g. `https://cdn.shopify.com/...`), do we pass it through or
   rewrite to `<server>/images/...`? Default: pass through if absolute,
   rewrite only if relative — matches mock-api behavior.
+- **Top-level `metafieldsByIdentifiers` query.** A flat batch read
+  taking owner-keyed identifiers across product/collection/shop
+  buckets in one call. **Deferred** (not in §5.2). The per-owner
+  `Product.metafields(identifiers:)`,
+  `Collection.metafields(identifiers:)`, and
+  `Shop.metafields(identifiers:)` resolvers already cover scoped batch
+  reads; adding a flat variant requires a new owner-keyed input type
+  plus a fan-out resolver and has no consumer in the v0.1 fixtures or
+  harness. Revisit only if a concrete client (e.g. a Hydrogen surface
+  that issues cross-owner batches) lands.
 
 ---
 
