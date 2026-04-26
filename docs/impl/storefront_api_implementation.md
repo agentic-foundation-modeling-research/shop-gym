@@ -60,7 +60,7 @@ are clean. SC1–SC6 from the spec satisfied.
   aggregate including the two indices (`productsByHandle`,
   `variantsByGid`). No `any`. **Check:** `tsc --noEmit` clean; types
   re-exported from `src/index.ts`.
-- [ ] **T1.3** — `src/data/loader.ts`: `loadShopData(dir)`. Reads
+- [x] **T1.3** — `src/data/loader.ts`: `loadShopData(dir)`. Reads
   required + optional files synchronously, validates shape with a
   hand-rolled type guard per file, builds indices, returns frozen
   `SandboxShopData`. Throws `MissingDatasetFileError` and
