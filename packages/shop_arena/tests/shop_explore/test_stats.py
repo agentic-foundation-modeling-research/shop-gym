@@ -1,10 +1,12 @@
 """Unit tests for :mod:`shop_explore.stats`.
 
 Covers the requirements from
-``docs/impl/shop_explore_implementation.md`` T1.5:
+``docs/impl/shop_explore_implementation.md`` T1.5 and T6.4:
 
 * Pure function over fixture ``prefetch/`` directories.
-* Truncation flag set when ``products.json`` returns ≥ 50 entries.
+* ``products_total`` is the exact ``len(products.json)``; the merged
+  pagination output produced by :func:`shop_explore.prefetch.run` feeds
+  straight in.
 * Aggregations (per-collection counts, prices, variants pct, axes).
 * ``feature_count`` derived from a closed :class:`Capabilities` model.
 * Closed schema rejects unknown fields.
@@ -20,7 +22,6 @@ import pytest
 
 from shop_explore.capabilities import Capabilities
 from shop_explore.stats import (
-    PRODUCTS_LIMIT,
     PriceStats,
     ProductsPerCollection,
     Stats,
@@ -31,8 +32,12 @@ from shop_explore.stats import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
-PRODUCTS_BELOW_LIMIT = 7
-"""Arbitrary product count strictly below ``PRODUCTS_LIMIT`` for truncation tests."""
+PRODUCTS_BELOW_OLD_LIMIT = 7
+"""Arbitrary product count below the legacy ``PRODUCTS_LIMIT`` of 50."""
+
+PRODUCTS_ABOVE_OLD_LIMIT = 312
+"""Product count above the legacy 50-cap; verifies pagination's exact total
+flows through to :class:`Stats` without any truncation flag."""
 
 COLLECTION_COUNTS_FOUR = (10, 20, 30, 60)
 """Four ``products_count`` values used for distribution-aggregation assertions."""
@@ -87,13 +92,18 @@ def test_stats_rejects_unknown_field() -> None:
 def test_stats_defaults_are_zeros_and_empty() -> None:
     stats = Stats()
     assert stats.products_total == 0
-    assert stats.products_truncated is False
     assert stats.collections_total == 0
     assert stats.products_per_collection == ProductsPerCollection()
     assert stats.price == PriceStats()
     assert stats.products_with_variants_pct == 0.0
     assert stats.variant_axes_observed == []
     assert stats.feature_count == 0
+
+
+def test_stats_rejects_legacy_products_truncated_field() -> None:
+    """T6.4 dropped the truncation flag; surface schema drift loudly."""
+    with pytest.raises(ValueError, match=r"products_truncated"):
+        Stats.model_validate({"products_truncated": True})
 
 
 # ---------------------------------------------------------------------------
@@ -143,32 +153,33 @@ def test_compute_unexpected_shape_collapses_to_empty(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# compute() — products / truncation
+# compute() — products
 # ---------------------------------------------------------------------------
 
 
-def test_compute_products_total_below_limit_not_truncated(tmp_path: Path) -> None:
+def test_compute_products_total_small_catalog(tmp_path: Path) -> None:
     prefetch = tmp_path / "prefetch"
     _write(
         prefetch,
         "products.json",
-        {"products": [_product() for _ in range(PRODUCTS_BELOW_LIMIT)]},
+        {"products": [_product() for _ in range(PRODUCTS_BELOW_OLD_LIMIT)]},
     )
     stats = compute(prefetch, _empty_caps())
-    assert stats.products_total == PRODUCTS_BELOW_LIMIT
-    assert stats.products_truncated is False
+    assert stats.products_total == PRODUCTS_BELOW_OLD_LIMIT
 
 
-def test_compute_products_at_limit_marks_truncated(tmp_path: Path) -> None:
+def test_compute_products_total_uses_exact_count_from_paginated_merge(
+    tmp_path: Path,
+) -> None:
+    """Multi-page-sized catalogs surface their exact total — no 50-cap clamp."""
     prefetch = tmp_path / "prefetch"
     _write(
         prefetch,
         "products.json",
-        {"products": [_product() for _ in range(PRODUCTS_LIMIT)]},
+        {"products": [_product() for _ in range(PRODUCTS_ABOVE_OLD_LIMIT)]},
     )
     stats = compute(prefetch, _empty_caps())
-    assert stats.products_total == PRODUCTS_LIMIT
-    assert stats.products_truncated is True
+    assert stats.products_total == PRODUCTS_ABOVE_OLD_LIMIT
 
 
 # ---------------------------------------------------------------------------

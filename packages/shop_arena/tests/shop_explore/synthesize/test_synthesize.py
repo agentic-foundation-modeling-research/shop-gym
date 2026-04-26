@@ -194,7 +194,7 @@ def test_synthesize_writes_all_published_artifacts_with_llm_response(
     # stats.json reflects the seeded prefetch fixture.
     stats = json.loads(result.stats_path.read_text(encoding="utf-8"))
     assert stats["products_total"] == _EXPECTED_PRODUCT_COUNT
-    assert stats["products_truncated"] is False
+    assert "products_truncated" not in stats  # T6.4 dropped the truncation flag
     assert stats["collections_total"] == _EXPECTED_COLLECTION_COUNT
     assert stats["price"]["currency"] == "USD"
     assert stats["price"]["min"] == _EXPECTED_PRICE_MIN

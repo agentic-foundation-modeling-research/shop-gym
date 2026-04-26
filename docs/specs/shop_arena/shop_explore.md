@@ -459,12 +459,18 @@ critical_html  = ["/", "/cart", "/search",
                   "/policies/terms-of-service",
                   "/policies/shipping-policy",
                   "/pages/about", "/pages/contact", "/pages/faq"]
-json_endpoints = ["/products.json?limit=50",
+json_endpoints = ["/products.json?page=N&limit=250",  # paginated; see below
                   "/collections.json?limit=50",
                   "/search/suggest.json?q=a&resources[type]=product",
                   "/cart.js"]
 plus           = ["/sitemap.xml", "/robots.txt"]
 ```
+
+`/products.json` is walked across every page until a page returns
+fewer than 250 products (or a safety cap is hit), and the merged
+``{"products": [...]}`` document is written verbatim to
+``prefetch/products.json``. Each page request appears as its own entry
+in ``prefetch.json`` so the per-URL log stays honest.
 
 This is intentionally bounded — it captures *enough* to seed the
 planner, not the whole shop. (The legacy crawler at
@@ -650,10 +656,13 @@ updated. Tag `shop-explore-v0.1.0`.
 4. **Capabilities schema versioning.** Field-additive only within
    `0.x`; bump to `1.x` for any field rename or removal. Document
    migration in `CHANGELOG`.
-5. **Stats from prefetch is a sample.** `/products.json?limit=50`
+5. ~~**Stats from prefetch is a sample.** `/products.json?limit=50`
    caps at 50 products; for accurate `products_total` we may need
    pagination. v0.1 reports the sample size and a `truncated: true`
-   flag rather than crawling every page.
+   flag rather than crawling every page.~~ **Resolved (2026-04-25):**
+   prefetch paginates `/products.json?page=N&limit=250` until the
+   storefront's last (short) page or a safety cap; `Stats.products_total`
+   is exact (T6.4). The `products_truncated` flag was removed.
 
 ### 8.3 Future directions (non-blocking)
 
