@@ -247,7 +247,7 @@ test` green.
 Gaps identified after M6 lands. Sequencing: T7.1 → T7.2 (codegen
 needs the SDL stable). T7.3 and T7.4 are independent.
 
-- [ ] **T7.1** — Adopt `@graphql-codegen/typescript-resolvers`. Wire
+- [x] **T7.1** — Adopt `@graphql-codegen/typescript-resolvers`. Wire
   `pnpm codegen` to regenerate `src/__generated__/resolvers-types.ts`
   from `src/schema.ts`. Resolver files import argument + return
   types from there. **Check:** removing a typeDef field breaks the

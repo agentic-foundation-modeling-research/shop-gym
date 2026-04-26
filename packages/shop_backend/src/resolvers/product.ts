@@ -29,7 +29,18 @@
  *     order.
  */
 
-import { type Connection, type PaginationArgs, paginate } from '../data/pagination.js';
+import type {
+  CollectionProductsArgs,
+  CollectionSortKeys,
+  ProductSelectedOrFirstAvailableVariantArgs,
+  ProductSortKeys,
+  QueryCollectionArgs,
+  QueryCollectionsArgs,
+  QueryProductArgs,
+  QueryProductsArgs,
+  SelectedOptionInput,
+} from '../__generated__/resolvers-types.js';
+import { type Connection, paginate } from '../data/pagination.js';
 import type { Collection, Product, SandboxShopData } from '../data/types.js';
 import {
   type CollectionNode,
@@ -49,43 +60,13 @@ export interface ProductConnectionNode extends Connection<ProductNode> {
   readonly totalCount: number;
 }
 
-// ── Argument shapes ───────────────────────────────────────────────────────
-// Hand-typed until graphql-codegen lands in M7 (T7.1).
-
-export type ProductSortKey =
-  | 'TITLE'
-  | 'PRODUCT_TYPE'
-  | 'VENDOR'
-  | 'UPDATED_AT'
-  | 'CREATED_AT'
-  | 'BEST_SELLING'
-  | 'PRICE'
-  | 'ID'
-  | 'RELEVANCE';
-
-export type CollectionSortKey = 'TITLE' | 'UPDATED_AT' | 'ID' | 'RELEVANCE';
-
-interface ProductsArgs extends PaginationArgs {
-  readonly sortKey?: ProductSortKey | null;
-  readonly reverse?: boolean | null;
-  readonly query?: string | null;
-}
-
-interface CollectionsArgs extends PaginationArgs {
-  readonly sortKey?: CollectionSortKey | null;
-  readonly reverse?: boolean | null;
-}
-
-interface SelectedOptionInput {
-  readonly name: string;
-  readonly value: string;
-}
-
-interface SelectedOrFirstArgs {
-  readonly selectedOptions?: readonly SelectedOptionInput[] | null;
-  readonly ignoreUnknownOptions?: boolean | null;
-  readonly caseInsensitiveMatch?: boolean | null;
-}
+/**
+ * Re-export the SDL-derived sort key unions so test helpers and tooling can
+ * import them without reaching into the generated module directly. Codegen
+ * keeps these in sync with the SDL definitions in §5.3 / §8.2.
+ */
+export type ProductSortKey = ProductSortKeys;
+export type CollectionSortKey = CollectionSortKeys;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -102,7 +83,7 @@ export const productResolvers = {
   Query: {
     product: (
       _parent: unknown,
-      args: { readonly handle: string },
+      args: QueryProductArgs,
       ctx: ResolverContext,
     ): ProductNode | null => {
       const product = ctx.data.productsByHandle.get(args.handle);
@@ -112,7 +93,7 @@ export const productResolvers = {
 
     products: (
       _parent: unknown,
-      args: ProductsArgs,
+      args: QueryProductsArgs,
       ctx: ResolverContext,
     ): ProductConnectionNode => {
       const filtered = filterProducts(ctx.data.products, args.query ?? null);
@@ -124,7 +105,7 @@ export const productResolvers = {
 
     collection: (
       _parent: unknown,
-      args: { readonly handle: string },
+      args: QueryCollectionArgs,
       ctx: ResolverContext,
     ): CollectionNode | null => {
       if (args.handle === ALL_HANDLE) return buildAllCollectionNode();
@@ -135,7 +116,7 @@ export const productResolvers = {
 
     collections: (
       _parent: unknown,
-      args: CollectionsArgs,
+      args: QueryCollectionsArgs,
       ctx: ResolverContext,
     ): Connection<CollectionNode> => {
       const sorted = sortCollections(
@@ -151,7 +132,7 @@ export const productResolvers = {
   Product: {
     selectedOrFirstAvailableVariant: (
       parent: ProductNode,
-      args: SelectedOrFirstArgs,
+      args: ProductSelectedOrFirstAvailableVariantArgs,
     ): ProductVariantNode | null => {
       const selected = args.selectedOptions ?? null;
       if (selected !== null && selected.length > 0) {
@@ -171,7 +152,7 @@ export const productResolvers = {
   Collection: {
     products: (
       parent: CollectionNode,
-      args: PaginationArgs,
+      args: CollectionProductsArgs,
       ctx: ResolverContext,
     ): ProductConnectionNode => {
       const products = collectionProducts(ctx.data, parent.handle);
@@ -201,7 +182,7 @@ function productHaystack(product: Product): string {
 
 function sortProducts(
   products: readonly Product[],
-  sortKey: ProductSortKey | null,
+  sortKey: ProductSortKeys | null,
   reverse: boolean,
 ): readonly Product[] {
   let result: readonly Product[] = products;
@@ -214,7 +195,7 @@ function sortProducts(
   return result;
 }
 
-function compareProducts(a: Product, b: Product, key: ProductSortKey): number {
+function compareProducts(a: Product, b: Product, key: ProductSortKeys): number {
   switch (key) {
     case 'TITLE':
       return a.title.localeCompare(b.title);
@@ -247,7 +228,7 @@ function minVariantPrice(product: Product): number {
 
 function sortCollections(
   collections: readonly Collection[],
-  sortKey: CollectionSortKey | null,
+  sortKey: CollectionSortKeys | null,
   reverse: boolean,
 ): readonly Collection[] {
   let result: readonly Collection[] = collections;
@@ -260,7 +241,7 @@ function sortCollections(
   return result;
 }
 
-function compareCollections(a: Collection, b: Collection, key: CollectionSortKey): number {
+function compareCollections(a: Collection, b: Collection, key: CollectionSortKeys): number {
   switch (key) {
     case 'TITLE':
       return a.title.localeCompare(b.title);

@@ -24,15 +24,25 @@
  * future milestone adds the union shapes (see spec §5.2 deferral list).
  */
 
+import type {
+  CollectionMetafieldArgs,
+  CollectionMetafieldsArgs,
+  HasMetafieldsIdentifier,
+  ProductMetafieldArgs,
+  ProductMetafieldsArgs,
+  ShopMetafieldArgs,
+  ShopMetafieldsArgs,
+} from '../__generated__/resolvers-types.js';
+import type { Metafield } from '../data/types.js';
 import type { CollectionNode, ProductNode } from './builders.js';
 import { gid } from './builders.js';
 import type { ResolverContext } from './index.js';
 import type { ShopParentNode } from './shop.js';
 
-import type { Metafield } from '../data/types.js';
-
 // ── Node shape ─────────────────────────────────────────────────────────────
-// Hand-typed until graphql-codegen lands in M7 (T7.1).
+// Argument types are imported from the generated resolver module above; the
+// hand-typed `MetafieldNode` parent shape stays because codegen mappers are
+// deferred (see `codegen.ts`).
 
 export interface MetafieldNode {
   readonly id: string;
@@ -46,18 +56,7 @@ export interface MetafieldNode {
   readonly reference: null;
 }
 
-// ── Argument shapes ───────────────────────────────────────────────────────
-
-interface MetafieldIdentifier {
-  readonly namespace: string;
-  readonly key: string;
-}
-
-type MetafieldArgs = MetafieldIdentifier;
-
-interface MetafieldsArgs {
-  readonly identifiers: readonly MetafieldIdentifier[];
-}
+// ── Internal helper types ─────────────────────────────────────────────────
 
 type OwnerScope = 'Product' | 'Collection' | 'Shop';
 
@@ -72,14 +71,14 @@ export const metafieldResolvers = {
   Product: {
     metafield: (
       parent: ProductNode,
-      args: MetafieldArgs,
+      args: ProductMetafieldArgs,
       ctx: ResolverContext,
     ): MetafieldNode | null =>
       lookupMetafield('Product', parent.handle, productMetafields(ctx, parent.handle), args),
 
     metafields: (
       parent: ProductNode,
-      args: MetafieldsArgs,
+      args: ProductMetafieldsArgs,
       ctx: ResolverContext,
     ): readonly (MetafieldNode | null)[] =>
       lookupMetafields(
@@ -93,14 +92,14 @@ export const metafieldResolvers = {
   Collection: {
     metafield: (
       parent: CollectionNode,
-      args: MetafieldArgs,
+      args: CollectionMetafieldArgs,
       ctx: ResolverContext,
     ): MetafieldNode | null =>
       lookupMetafield('Collection', parent.handle, collectionMetafields(ctx, parent.handle), args),
 
     metafields: (
       parent: CollectionNode,
-      args: MetafieldsArgs,
+      args: CollectionMetafieldsArgs,
       ctx: ResolverContext,
     ): readonly (MetafieldNode | null)[] =>
       lookupMetafields(
@@ -114,14 +113,14 @@ export const metafieldResolvers = {
   Shop: {
     metafield: (
       _parent: ShopParentNode,
-      args: MetafieldArgs,
+      args: ShopMetafieldArgs,
       ctx: ResolverContext,
     ): MetafieldNode | null =>
       lookupMetafield('Shop', shopOwnerHandle(ctx), shopMetafields(ctx), args),
 
     metafields: (
       _parent: ShopParentNode,
-      args: MetafieldsArgs,
+      args: ShopMetafieldsArgs,
       ctx: ResolverContext,
     ): readonly (MetafieldNode | null)[] =>
       lookupMetafields('Shop', shopOwnerHandle(ctx), shopMetafields(ctx), args.identifiers),
@@ -151,7 +150,7 @@ function lookupMetafield(
   scope: OwnerScope,
   ownerHandle: string,
   list: readonly Metafield[],
-  identifier: MetafieldIdentifier,
+  identifier: HasMetafieldsIdentifier,
 ): MetafieldNode | null {
   const match = findMetafield(list, identifier);
   return match === null ? null : buildMetafieldNode(scope, ownerHandle, match);
@@ -161,14 +160,14 @@ function lookupMetafields(
   scope: OwnerScope,
   ownerHandle: string,
   list: readonly Metafield[],
-  identifiers: readonly MetafieldIdentifier[],
+  identifiers: readonly HasMetafieldsIdentifier[],
 ): readonly (MetafieldNode | null)[] {
   return identifiers.map((id) => lookupMetafield(scope, ownerHandle, list, id));
 }
 
 function findMetafield(
   list: readonly Metafield[],
-  identifier: MetafieldIdentifier,
+  identifier: HasMetafieldsIdentifier,
 ): Metafield | null {
   for (const m of list) {
     if (m.namespace === identifier.namespace && m.key === identifier.key) return m;
