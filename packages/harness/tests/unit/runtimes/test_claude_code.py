@@ -195,6 +195,13 @@ def test_runtime_satisfies_agent_runtime_protocol() -> None:
     assert runtime.binary == "claude"
 
 
+def test_runtime_defaults_to_opus_4_7() -> None:
+    """The default model is ``claude-opus-4-7`` for reproducibility."""
+    runtime = ClaudeCodeRuntime()
+
+    assert runtime.model == "claude-opus-4-7"
+
+
 def test_get_runtime_resolves_claude_code() -> None:
     """The registry resolves ``claude_code`` to a `ClaudeCodeRuntime`."""
     runtime = get_runtime("claude_code")
@@ -203,11 +210,14 @@ def test_get_runtime_resolves_claude_code() -> None:
 
 
 def test_get_runtime_claude_code_forwards_kwargs() -> None:
-    """Constructor kwargs (e.g. ``binary``) are forwarded by the registry."""
-    runtime = get_runtime("claude_code", binary="/opt/bin/claude")
+    """Constructor kwargs (``binary``, ``model``) are forwarded by the registry."""
+    runtime = get_runtime(
+        "claude_code", binary="/opt/bin/claude", model="claude-sonnet-4-6"
+    )
 
     assert isinstance(runtime, ClaudeCodeRuntime)
     assert runtime.binary == "/opt/bin/claude"
+    assert runtime.model == "claude-sonnet-4-6"
 
 
 @pytest.mark.parametrize("bad_kw", [{"unknown_arg": 1}])
