@@ -65,6 +65,17 @@ print(result.final_status, result.exec_iter_count)
 After the run, `result` is also persisted as `run_dir/run.json`. Per-iteration
 telemetry lives under `run_dir/iters/<iter_id>/` (see spec §5.3).
 
+### Seed immutability
+
+If you pass `artifact_seed_dir`, the harness copies it into
+`run_dir/artifact/` and treats those top-level entries as **stable**: a
+sha256 fingerprint is captured at workspace creation and re-checked
+after every iteration. Any mutation, deletion, or new file inside the
+seeded subtree aborts the run with `final_status =
+PROTOCOL_VIOLATION`. Writes outside the seeded subtree are
+unconstrained. See
+[`docs/specs/harness/seed_immutability.md`](../../docs/specs/harness/seed_immutability.md).
+
 ## Runtimes
 
 A runtime is the plug-in seam between the control plane (this package)

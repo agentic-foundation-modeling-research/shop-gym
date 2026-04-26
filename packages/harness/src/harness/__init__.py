@@ -37,4 +37,4 @@ __all__ = [
     "run_plan_exec_loop",
 ]
 
-__version__ = "0.0.0"
+__version__ = "0.2.0"

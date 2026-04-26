@@ -5,6 +5,7 @@ Index of ShopGym specifications. Organized by category.
 | Spec Path | Code Path | Description | Impl Plan |
 | --------- | --------- | ----------- | --------- |
 | [harness/plan_exec_loop.md](harness/plan_exec_loop.md) | `packages/harness` | Reusable plan + exec loop harness, runtime-agnostic. | [impl](../impl/plan_exec_loop_implementation.md) |
+| [harness/seed_immutability.md](harness/seed_immutability.md) | `packages/harness/src/harness/seed.py` | Deterministic post-iteration check that aborts a run on any mutation, deletion, or extension of the seeded subtree under `run_dir/artifact/`. **Status:** Implemented in `harness` 0.2.0. | — |
 
 ## ShopArena
 

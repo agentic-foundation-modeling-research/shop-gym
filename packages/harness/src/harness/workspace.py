@@ -21,11 +21,12 @@ import os
 import shutil
 import tempfile
 from contextlib import suppress
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from harness.config import PlanExecLoopConfig
+from harness.seed import SeedError, SeedManifest, snapshot_seed
 
 _AGENTS_FILENAME = "AGENTS.md"
 _PROMPTS_DIRNAME = "prompts"
@@ -53,9 +54,15 @@ class Workspace:
 
     Attributes:
         run_dir: Absolute or caller-relative path to the run workspace.
+        seed_manifest: Fingerprint of files copied from
+            ``config.artifact_seed_dir`` at workspace creation time, used
+            by the post-iteration seed-immutability check
+            (``docs/specs/harness/seed_immutability.md``). ``None`` when
+            no seed dir was configured.
     """
 
     run_dir: Path
+    seed_manifest: SeedManifest | None = field(default=None)
 
     @property
     def agents_md(self) -> Path:
@@ -131,17 +138,22 @@ class Workspace:
         else:
             run_dir.mkdir(parents=True)
 
-        ws = cls(run_dir=run_dir)
-        ws.agents_md.write_text(config.agents_md, encoding="utf-8")
-        ws.prompts_dir.mkdir()
-        ws.planner_prompt.write_text(config.prompts.planner, encoding="utf-8")
-        ws.execute_prompt.write_text(config.prompts.execute, encoding="utf-8")
-        ws.artifact_dir.mkdir()
+        # Materialise stable surfaces first via a temporary handle, then
+        # re-construct with the seed manifest so the returned `Workspace`
+        # is frozen and self-consistent.
+        bare = cls(run_dir=run_dir)
+        bare.agents_md.write_text(config.agents_md, encoding="utf-8")
+        bare.prompts_dir.mkdir()
+        bare.planner_prompt.write_text(config.prompts.planner, encoding="utf-8")
+        bare.execute_prompt.write_text(config.prompts.execute, encoding="utf-8")
+        bare.artifact_dir.mkdir()
+        seed_manifest: SeedManifest | None = None
         if config.artifact_seed_dir is not None:
-            _copy_tree_into(config.artifact_seed_dir, ws.artifact_dir)
-        ws.plan_md.write_text("", encoding="utf-8")
-        ws.iters_dir.mkdir()
-        return ws
+            seeded_roots = _copy_tree_into(config.artifact_seed_dir, bare.artifact_dir)
+            seed_manifest = snapshot_seed(bare.artifact_dir, seeded_roots)
+        bare.plan_md.write_text("", encoding="utf-8")
+        bare.iters_dir.mkdir()
+        return cls(run_dir=run_dir, seed_manifest=seed_manifest)
 
     def snapshot_plan(self, target: Path) -> None:
         """Copy the live `plan.md` byte-for-byte to `target`.
@@ -198,11 +210,44 @@ def atomic_write_json(path: Path, data: Any) -> None:
         raise
 
 
-def _copy_tree_into(src: Path, dst: Path) -> None:
-    """Copy every entry under `src` into the existing directory `dst`."""
+def _copy_tree_into(src: Path, dst: Path) -> frozenset[PurePosixPath]:
+    """Copy every entry under `src` into `dst` and return the seeded roots.
+
+    Rejects symlinks anywhere under `src` before copying anything, so the
+    seed manifest never picks up files outside the literal seed tree
+    (spec `seed_immutability.md` §5.2, alternative C). The returned set
+    contains one POSIX-relative entry per top-level name in `src`.
+    """
+    _reject_symlinks(src)
+    seeded_roots: set[PurePosixPath] = set()
     for entry in src.iterdir():
         target = dst / entry.name
         if entry.is_dir():
-            shutil.copytree(entry, target)
+            shutil.copytree(entry, target, symlinks=False)
         else:
             shutil.copy2(entry, target)
+        seeded_roots.add(PurePosixPath(entry.name))
+    return frozenset(seeded_roots)
+
+
+def _reject_symlinks(root: Path) -> None:
+    """Walk `root` and raise `WorkspaceError` if any entry is a symlink.
+
+    Validation runs before any copy so the destination is never partially
+    populated when a symlink is rejected.
+    """
+    for entry in root.iterdir():
+        rel = PurePosixPath(entry.name)
+        try:
+            _reject_symlinks_at(entry, rel)
+        except SeedError as exc:
+            raise WorkspaceError(str(exc)) from exc
+
+
+def _reject_symlinks_at(entry: Path, rel: PurePosixPath) -> None:
+    """Recursive worker for `_reject_symlinks`; raises `SeedError` on hit."""
+    if entry.is_symlink():
+        raise SeedError(f"symlink in seed not supported: {rel.as_posix()}")
+    if entry.is_dir():
+        for child in entry.iterdir():
+            _reject_symlinks_at(child, rel / child.name)

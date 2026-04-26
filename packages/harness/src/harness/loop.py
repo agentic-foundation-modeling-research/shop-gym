@@ -28,6 +28,7 @@ from harness.plan.parser import InvalidPlanError, PlanDiff, diff, parse, select_
 from harness.plan.protocol import run_protocol_checks
 from harness.plan.tasks import Task, TaskList
 from harness.runtimes.base import AgentRuntime, RuntimeIterationResult
+from harness.seed import check_seed
 from harness.telemetry import (
     PLAN_ITER_ID,
     RunSummaryWriter,
@@ -133,6 +134,24 @@ class _LoopState:
         self._plan_iter_count = 1
         self._trajectory_paths.append(f"iters/{PLAN_ITER_ID}/{_TRAJECTORY_FILENAME}")
 
+        seed_result = _seed_check_or_none(self._workspace, PLAN_ITER_ID)
+        if seed_result is not None:
+            _write_protocol_result(plan_dir, seed_result)
+            if not seed_result.passed:
+                _write_metadata(
+                    plan_dir,
+                    IterationMetadata(
+                        iter_id=PLAN_ITER_ID,
+                        iter_kind="plan",
+                        runtime=outcome.trajectory.runtime,
+                        started_at=outcome.trajectory.started_at,
+                        ended_at=outcome.trajectory.ended_at,
+                    ),
+                )
+                self._final_status = FinalStatus.PROTOCOL_VIOLATION
+                self._rewrite_run_summary()
+                return False
+
         try:
             after_tasks = _parse_workspace_plan(self._workspace)
         except InvalidPlanError:
@@ -230,11 +249,16 @@ class _LoopState:
             self._rewrite_run_summary()
             return False
 
-        protocol_result = run_protocol_checks(
+        plan_protocol_result = run_protocol_checks(
             iter_id=exec_id,
             before=before,
             after=after,
             selected_task_id=selected.id,
+        )
+        seed_result = _seed_check_or_none(self._workspace, exec_id)
+        protocol_result = _merge_protocol_results(
+            iter_id=exec_id,
+            results=(plan_protocol_result, seed_result),
         )
         _write_protocol_result(exec_dir, protocol_result)
         _write_metadata(
@@ -377,14 +401,49 @@ def _write_metadata(iter_dir_path: Path, metadata: IterationMetadata) -> None:
     )
 
 
-def _write_protocol_result(exec_dir: Path, result: ProtocolCheckResult) -> None:
-    """Persist `checks/protocol.json` for one executor iteration."""
-    checks_dir = exec_dir / "checks"
+def _write_protocol_result(iter_dir_path: Path, result: ProtocolCheckResult) -> None:
+    """Persist `checks/protocol.json` for one iteration (planner or executor)."""
+    checks_dir = iter_dir_path / "checks"
     checks_dir.mkdir(parents=True, exist_ok=True)
     payload = result.model_dump(mode="json")
     (checks_dir / _PROTOCOL_FILENAME).write_text(
         json.dumps(payload, indent=2) + "\n",
         encoding="utf-8",
+    )
+
+
+def _seed_check_or_none(workspace: Workspace, iter_id: str) -> ProtocolCheckResult | None:
+    """Run the seed-immutability check if a manifest is present, else `None`.
+
+    Spec: `docs/specs/harness/seed_immutability.md`. The check is a no-op
+    when ``config.artifact_seed_dir`` was not provided.
+    """
+    if workspace.seed_manifest is None:
+        return None
+    return check_seed(workspace.seed_manifest, workspace.artifact_dir, iter_id=iter_id)
+
+
+def _merge_protocol_results(
+    *,
+    iter_id: str,
+    results: tuple[ProtocolCheckResult | None, ...],
+) -> ProtocolCheckResult:
+    """Concatenate violations from one or more `ProtocolCheckResult`s.
+
+    Order is preserved across the input tuple, so plan-protocol violations
+    appear first and seed violations after — matching the order callers
+    pass them in. ``None`` entries are skipped, letting callers thread an
+    optional seed result without conditional branching.
+    """
+    violations: list[str] = []
+    for result in results:
+        if result is None:
+            continue
+        violations.extend(result.violations)
+    return ProtocolCheckResult(
+        iter_id=iter_id,
+        passed=not violations,
+        violations=tuple(violations),
     )
 
 
