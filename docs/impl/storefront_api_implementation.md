@@ -206,7 +206,7 @@ no metafields → `null` on every query.
 
 ### M6 · HTTP wrapper + versioned routing + image serving
 
-- [ ] **T6.1** — `src/http.ts`: `buildHttpHandler({ yoga, dataDir })`
+- [x] **T6.1** — `src/http.ts`: `buildHttpHandler({ yoga, dataDir })`
   returns a `(req, res) => void` that:
   1. Serves `GET /health` with `{ status: "ok", store }` payload
      (read from the dataset name passed in).
