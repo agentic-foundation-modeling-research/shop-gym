@@ -6,9 +6,11 @@
  * Resolver areas covered to date: shop / menu / localization (T2.3),
  * product / collection (T2.4), page / blog / article (T2.5), search
  * (T3.1 + T3.2 + T3.3), cart-read (T4.2 — `Query.cart` + the
- * `BaseCartLine` / `Merchandise` discriminators). Cart mutations (T4.3+)
- * and metafield (M5) maps land in subsequent milestones and merge into
- * `sandboxResolvers` as they ship.
+ * `BaseCartLine` / `Merchandise` discriminators), cart line mutations
+ * (T4.3 — `cartCreate` / `cartLinesAdd` / `cartLinesUpdate` /
+ * `cartLinesRemove`). The remaining cart mutations (T4.4) and metafield
+ * (M5) maps land in subsequent milestones and merge into `sandboxResolvers`
+ * as they ship.
  */
 
 import type { SandboxShopData } from '../data/types.js';
@@ -48,6 +50,9 @@ export const sandboxResolvers: SandboxSchemaResolvers = {
     ...contentResolvers.Query,
     ...searchResolvers.Query,
     ...cartResolvers.Query,
+  },
+  Mutation: {
+    ...cartResolvers.Mutation,
   },
   Shop: shopResolvers.Shop,
   Product: productResolvers.Product,

@@ -22,9 +22,13 @@
  * cart in the store, materializes its lines through `data.variantsByGid` so
  * each line resolves to a typed `ProductVariant` merchandise node, and
  * returns `null` for unknown ids (spec §5.3 — diverges from mock-api which
- * auto-creates). T4.3 adds the cart mutations on top of this surface; T4.4
- * extends it with discount-code / buyer-identity / note / attribute /
- * gift-card fields stored on the cart.
+ * auto-creates). T4.3 adds the four line-management mutations
+ * (`cartCreate`, `cartLinesAdd`, `cartLinesUpdate`, `cartLinesRemove`) on
+ * top of the same store; each one looks up (or allocates) a cart, mutates
+ * it via the `CartStore` line methods, and returns the freshly materialized
+ * cart in a `CartCreatePayload`/`CartLines*Payload`-shaped envelope. T4.4
+ * extends the surface with discount-code / buyer-identity / note /
+ * attribute / gift-card fields stored on the cart.
  */
 
 import type { ProductVariant, SandboxShopData, VariantLookup } from '../data/types.js';
@@ -252,13 +256,45 @@ export interface CartNode {
   readonly lineNodes: readonly CartLineNode[];
 }
 
+// ── Mutation payload shapes ───────────────────────────────────────────────
+
+/**
+ * One entry in the `userErrors` array on every cart-mutation payload. The SDL
+ * permits `code` and `field` to be null (e.g. when the error is not bound to
+ * a specific input field); `message` is always present.
+ */
+export interface CartUserErrorNode {
+  readonly code: string | null;
+  readonly field: readonly string[] | null;
+  readonly message: string;
+}
+
+/** One entry in the `warnings` array. v0.1 never emits warnings. */
+export interface CartWarningNode {
+  readonly code: string;
+  readonly message: string;
+  readonly target: string | null;
+}
+
+/**
+ * Shared payload shape for every cart mutation. The SDL declares one named
+ * payload type per mutation (`CartCreatePayload`, `CartLinesAddPayload`, ...)
+ * but they are structurally identical; resolvers all produce this shape.
+ */
+export interface CartMutationPayloadNode {
+  readonly cart: CartNode | null;
+  readonly userErrors: readonly CartUserErrorNode[];
+  readonly warnings: readonly CartWarningNode[];
+}
+
 // ── Resolvers ─────────────────────────────────────────────────────────────
 
 /**
- * Resolver map for the Cart area. Covers `Query.cart(id)` (T4.2) plus the
- * `BaseCartLine` / `Merchandise` union discriminators and the `Cart.lines`
- * connection field. The cart mutations (T4.3) and the discount-code /
- * buyer-identity / note / attribute / gift-card fields (T4.4) merge into
+ * Resolver map for the Cart area. Covers `Query.cart(id)` (T4.2), the four
+ * line-management mutations (`cartCreate`, `cartLinesAdd`, `cartLinesUpdate`,
+ * `cartLinesRemove`, T4.3), plus the `BaseCartLine` / `Merchandise` union
+ * discriminators and the `Cart.lines` connection field. The discount-code /
+ * buyer-identity / note / attribute / gift-card mutations (T4.4) merge into
  * this map as they ship.
  */
 export const cartResolvers = {
@@ -271,6 +307,50 @@ export const cartResolvers = {
       const state = ctx.carts.get(args.id);
       if (state === undefined) return null;
       return buildCartNode(state, ctx.data, ctx.baseUrl);
+    },
+  },
+
+  Mutation: {
+    cartCreate: (
+      _parent: unknown,
+      args: { readonly input?: CartInput | null },
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.create(args.input ?? null);
+      return successPayload(state, ctx);
+    },
+
+    cartLinesAdd: (
+      _parent: unknown,
+      args: { readonly cartId: string; readonly lines: readonly CartLineInput[] },
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.addLines(state, args.lines);
+      return successPayload(state, ctx);
+    },
+
+    cartLinesUpdate: (
+      _parent: unknown,
+      args: { readonly cartId: string; readonly lines: readonly CartLineUpdateInput[] },
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.updateLines(state, args.lines);
+      return successPayload(state, ctx);
+    },
+
+    cartLinesRemove: (
+      _parent: unknown,
+      args: { readonly cartId: string; readonly lineIds: readonly string[] },
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.removeLines(state, args.lineIds);
+      return successPayload(state, ctx);
     },
   },
 
@@ -294,6 +374,29 @@ export const cartResolvers = {
     __resolveType: (): 'ProductVariant' => 'ProductVariant',
   },
 };
+
+// ── Mutation payload helpers ──────────────────────────────────────────────
+
+function successPayload(state: CartState, ctx: ResolverContext): CartMutationPayloadNode {
+  return {
+    cart: buildCartNode(state, ctx.data, ctx.baseUrl),
+    userErrors: [],
+    warnings: [],
+  };
+}
+
+/**
+ * Payload returned by `cartLinesAdd` / `cartLinesUpdate` / `cartLinesRemove`
+ * when `cartId` does not match a cart in the store. Mirrors Shopify's
+ * `INVALID` userError shape so clients can surface a recognizable message.
+ */
+function cartNotFoundPayload(): CartMutationPayloadNode {
+  return {
+    cart: null,
+    userErrors: [{ code: 'INVALID', field: ['cartId'], message: 'Cart not found' }],
+    warnings: [],
+  };
+}
 
 // ── Cart materialization ──────────────────────────────────────────────────
 

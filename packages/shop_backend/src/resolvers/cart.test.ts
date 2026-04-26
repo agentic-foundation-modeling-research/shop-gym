@@ -228,6 +228,7 @@ const FUZZYARD_VARIANT = 'gid://shopify/ProductVariant/47242666836142'; // $19.9
 
 const resolvers: SandboxSchemaResolvers = {
   Query: cartResolvers.Query,
+  Mutation: cartResolvers.Mutation,
   Cart: cartResolvers.Cart,
   BaseCartLine: cartResolvers.BaseCartLine,
   Merchandise: cartResolvers.Merchandise,
@@ -423,6 +424,223 @@ describe('cartResolvers — Query.cart', () => {
         totalQuantity: 0,
         cost: { subtotalAmount: { amount: '0.00' } },
         lines: { nodes: [] },
+      },
+    });
+  });
+});
+
+// ── Cart mutations (T4.3) ─────────────────────────────────────────────────
+
+const BLUESTEM_VARIANT = 'gid://shopify/ProductVariant/47694728298670'; // $12.99
+
+interface CartLineSummary {
+  readonly id: string;
+  readonly quantity: number;
+  readonly merchandiseId: string;
+}
+
+interface CartSummary {
+  readonly id: string;
+  readonly totalQuantity: number;
+  readonly subtotal: string;
+  readonly lines: readonly CartLineSummary[];
+}
+
+function unwrapCart(payload: unknown, key: string): CartSummary {
+  if (typeof payload !== 'object' || payload === null) {
+    throw new Error(`payload is not an object for ${key}`);
+  }
+  const node = (payload as Record<string, unknown>)[key];
+  if (typeof node !== 'object' || node === null) {
+    throw new Error(`payload.${key} is not an object`);
+  }
+  const cart = (node as Record<string, unknown>).cart;
+  if (typeof cart !== 'object' || cart === null) {
+    throw new Error(`payload.${key}.cart is null or not an object`);
+  }
+  const summary = cart as {
+    readonly id: string;
+    readonly totalQuantity: number;
+    readonly cost: { readonly subtotalAmount: { readonly amount: string } };
+    readonly lines: {
+      readonly nodes: readonly {
+        readonly id: string;
+        readonly quantity: number;
+        readonly merchandise: { readonly id: string };
+      }[];
+    };
+  };
+  return {
+    id: summary.id,
+    totalQuantity: summary.totalQuantity,
+    subtotal: summary.cost.subtotalAmount.amount,
+    lines: summary.lines.nodes.map((line) => ({
+      id: line.id,
+      quantity: line.quantity,
+      merchandiseId: line.merchandise.id,
+    })),
+  };
+}
+
+const CART_PAYLOAD_FRAGMENT = /* GraphQL */ `
+  cart {
+    id
+    totalQuantity
+    cost {
+      subtotalAmount {
+        amount
+      }
+    }
+    lines(first: 10) {
+      nodes {
+        ... on CartLine {
+          id
+          quantity
+          merchandise {
+            ... on ProductVariant {
+              id
+            }
+          }
+        }
+      }
+    }
+  }
+  userErrors {
+    code
+    field
+    message
+  }
+`;
+
+describe('cartResolvers — line mutations (T4.3)', () => {
+  it('round-trips the canonical lifecycle: cartCreate → cartLinesAdd → cartLinesUpdate(0) → cartLinesRemove', async () => {
+    const carts = new CartStore();
+    const run = runWith(carts);
+
+    // 1. cartCreate with two starting lines.
+    const createResult = await run(/* GraphQL */ `
+      mutation {
+        cartCreate(input: {
+          lines: [
+            { merchandiseId: "${TICKLESS_VARIANT}", quantity: 1 },
+            { merchandiseId: "${FUZZYARD_VARIANT}", quantity: 2 }
+          ]
+        }) {
+          ${CART_PAYLOAD_FRAGMENT}
+        }
+      }
+    `);
+    expect(createResult.errors).toBeUndefined();
+    const created = unwrapCart(createResult.data, 'cartCreate');
+    expect(created.id).toBe('gid://shopify/Cart/cart-1');
+    expect(created.totalQuantity).toBe(3);
+    // 1 * 79.99 + 2 * 19.99 = 79.99 + 39.98 = 119.97.
+    expect(created.subtotal).toBe('119.97');
+    expect(created.lines).toHaveLength(2);
+    const ticklessLineId = created.lines[0]?.id;
+    const fuzzyardLineId = created.lines[1]?.id;
+    if (ticklessLineId === undefined || fuzzyardLineId === undefined) {
+      throw new Error('unreachable: cart should have two lines');
+    }
+    expect(created.lines[0]?.merchandiseId).toBe(TICKLESS_VARIANT);
+    expect(created.lines[1]?.merchandiseId).toBe(FUZZYARD_VARIANT);
+
+    // 2. cartLinesAdd: TICKLESS merges, BLUESTEM is a new line.
+    const addResult = await run(/* GraphQL */ `
+      mutation {
+        cartLinesAdd(
+          cartId: "${created.id}"
+          lines: [
+            { merchandiseId: "${TICKLESS_VARIANT}", quantity: 2 }
+            { merchandiseId: "${BLUESTEM_VARIANT}", quantity: 1 }
+          ]
+        ) {
+          ${CART_PAYLOAD_FRAGMENT}
+        }
+      }
+    `);
+    expect(addResult.errors).toBeUndefined();
+    const added = unwrapCart(addResult.data, 'cartLinesAdd');
+    // TICKLESS qty=3, FUZZYARD qty=2, BLUESTEM qty=1 → 6 total.
+    expect(added.totalQuantity).toBe(6);
+    // 3 * 79.99 + 2 * 19.99 + 1 * 12.99 = 239.97 + 39.98 + 12.99 = 292.94.
+    expect(added.subtotal).toBe('292.94');
+    expect(added.lines).toHaveLength(3);
+    expect(added.lines[0]?.id).toBe(ticklessLineId); // merged → same id
+    expect(added.lines[0]?.quantity).toBe(3);
+
+    // 3. cartLinesUpdate with quantity: 0 removes the FUZZYARD line.
+    const updateResult = await run(/* GraphQL */ `
+      mutation {
+        cartLinesUpdate(
+          cartId: "${created.id}"
+          lines: [{ id: "${fuzzyardLineId}", quantity: 0 }]
+        ) {
+          ${CART_PAYLOAD_FRAGMENT}
+        }
+      }
+    `);
+    expect(updateResult.errors).toBeUndefined();
+    const updated = unwrapCart(updateResult.data, 'cartLinesUpdate');
+    expect(updated.totalQuantity).toBe(4); // 3 TICKLESS + 1 BLUESTEM
+    // 3 * 79.99 + 1 * 12.99 = 239.97 + 12.99 = 252.96.
+    expect(updated.subtotal).toBe('252.96');
+    expect(updated.lines).toHaveLength(2);
+    expect(updated.lines.some((l) => l.id === fuzzyardLineId)).toBe(false);
+
+    // 4. cartLinesRemove drops the TICKLESS line.
+    const removeResult = await run(/* GraphQL */ `
+      mutation {
+        cartLinesRemove(cartId: "${created.id}", lineIds: ["${ticklessLineId}"]) {
+          ${CART_PAYLOAD_FRAGMENT}
+        }
+      }
+    `);
+    expect(removeResult.errors).toBeUndefined();
+    const removed = unwrapCart(removeResult.data, 'cartLinesRemove');
+    expect(removed.totalQuantity).toBe(1);
+    expect(removed.subtotal).toBe('12.99');
+    expect(removed.lines).toHaveLength(1);
+    expect(removed.lines[0]?.merchandiseId).toBe(BLUESTEM_VARIANT);
+  });
+
+  it('cartCreate with no input allocates an empty cart', async () => {
+    const carts = new CartStore();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartCreate(input: {}) {
+          ${CART_PAYLOAD_FRAGMENT}
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    const created = unwrapCart(result.data, 'cartCreate');
+    expect(created.id).toBe('gid://shopify/Cart/cart-1');
+    expect(created.totalQuantity).toBe(0);
+    expect(created.subtotal).toBe('0.00');
+    expect(created.lines).toEqual([]);
+  });
+
+  it('returns a cartId userError when cartLinesAdd targets an unknown cart', async () => {
+    const carts = new CartStore();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartLinesAdd(
+          cartId: "gid://shopify/Cart/cart-999"
+          lines: [{ merchandiseId: "${TICKLESS_VARIANT}", quantity: 1 }]
+        ) {
+          cart { id }
+          userErrors { code field message }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      cartLinesAdd: {
+        cart: null,
+        userErrors: [{ code: 'INVALID', field: ['cartId'], message: 'Cart not found' }],
       },
     });
   });
