@@ -226,7 +226,7 @@ no metafields → `null` on every query.
   server on an ephemeral port, fires `{ shop { name } }` against
   `/graphql` and `/api/2024-01/graphql.json`, asserts both succeed.
   Satisfies SC2 + SC4.
-- [ ] **T6.3** — `src/cli.ts`: parse `<data-dir> [port]`, call
+- [x] **T6.3** — `src/cli.ts`: parse `<data-dir> [port]`, call
   `loadShopData`, then `createSandboxServer`. Print boot message.
   **Check:** `pnpm shop-backend tests/fixtures/sandbox_shop_v0 0`
   starts and serves `/health`.
