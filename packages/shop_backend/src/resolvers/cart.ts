@@ -31,6 +31,9 @@
  * attribute / gift-card fields stored on the cart.
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import type {
   AttributeInput,
   CartBuyerIdentityInput,
@@ -98,18 +101,66 @@ export interface CartState {
 
 // ── Store ─────────────────────────────────────────────────────────────────
 
+/** Construction-time options for `CartStore`. */
+export interface CartStoreOptions {
+  /**
+   * File path to back the store with. When set, the constructor rehydrates
+   * from the file (if present) and every mutation writes the full snapshot
+   * back synchronously (T7.4). Omit for the default in-memory-only store.
+   */
+  readonly persistencePath?: string;
+}
+
+/** Wire format written to `persistencePath`. Bumped if the layout ever changes. */
+const PERSISTENCE_VERSION = 1;
+
+interface CartStoreSnapshot {
+  readonly version: number;
+  readonly cartCounter: number;
+  readonly lineCounters: Readonly<Record<string, number>>;
+  readonly carts: Readonly<Record<string, CartState>>;
+}
+
+/** Thrown when `persistencePath` exists but cannot be parsed as a valid snapshot. */
+export class InvalidCartStoreFileError extends Error {
+  readonly fullPath: string;
+  readonly reason: string;
+
+  constructor(fullPath: string, reason: string) {
+    super(`Invalid cart store file at ${fullPath}: ${reason}`);
+    this.name = 'InvalidCartStoreFileError';
+    this.fullPath = fullPath;
+    this.reason = reason;
+  }
+}
+
 /**
- * Per-server in-memory cart store.
+ * Per-server cart store.
  *
  * `create` allocates a new cart with a deterministic GID; `get` returns the
  * stored instance (or `undefined` for unknown ids — spec §5.3); the
  * line-mutation methods operate in place on a cart returned by `create` /
- * `get`. `clear` resets the store (used on `server.close()` and in tests).
+ * `get`. `clear` resets in-memory state (used on `server.close()` and in
+ * tests).
+ *
+ * When constructed with `persistencePath`, the store rehydrates from that
+ * file at construction time and writes the full snapshot back after every
+ * mutation (T7.4). The persistence file is the source of truth across
+ * process restarts; `clear()` does not touch it so a fresh `CartStore`
+ * pointed at the same path continues to see prior carts.
  */
 export class CartStore {
   private readonly carts = new Map<string, CartState>();
   private cartCounter = 0;
   private readonly lineCounters = new Map<string, number>();
+  private readonly persistencePath: string | undefined;
+
+  constructor(options?: CartStoreOptions) {
+    this.persistencePath = options?.persistencePath;
+    if (this.persistencePath !== undefined && fs.existsSync(this.persistencePath)) {
+      this.loadSnapshot(this.persistencePath);
+    }
+  }
 
   /**
    * Allocate a new cart and register it under a fresh
@@ -148,6 +199,7 @@ export class CartStore {
     if (input?.buyerIdentity !== undefined && input.buyerIdentity !== null) {
       this.setBuyerIdentity(cart, input.buyerIdentity);
     }
+    this.persist();
     return cart;
   }
 
@@ -181,6 +233,7 @@ export class CartStore {
           line.attributes === undefined || line.attributes === null ? [] : [...line.attributes],
       });
     }
+    this.persist();
   }
 
   /**
@@ -208,6 +261,7 @@ export class CartStore {
         line.attributes = [...update.attributes];
       }
     }
+    this.persist();
   }
 
   /** Remove every line whose id appears in `lineIds`. Unknown ids are ignored. */
@@ -215,6 +269,7 @@ export class CartStore {
     if (lineIds.length === 0) return;
     const ids = new Set(lineIds);
     cart.lines = cart.lines.filter((l) => !ids.has(l.id));
+    this.persist();
   }
 
   /**
@@ -225,6 +280,7 @@ export class CartStore {
    */
   setDiscountCodes(cart: CartState, codes: readonly string[] | null): void {
     cart.discountCodes = codes === null ? [] : [...codes];
+    this.persist();
   }
 
   /**
@@ -234,6 +290,7 @@ export class CartStore {
    */
   setGiftCardCodes(cart: CartState, codes: readonly string[]): void {
     cart.giftCardCodes = [...codes];
+    this.persist();
   }
 
   /**
@@ -247,19 +304,26 @@ export class CartStore {
     if (identity.countryCode !== undefined) cart.buyerIdentity.countryCode = identity.countryCode;
     if (identity.email !== undefined) cart.buyerIdentity.email = identity.email;
     if (identity.phone !== undefined) cart.buyerIdentity.phone = identity.phone;
+    this.persist();
   }
 
   /** Replace the cart's free-form note. */
   setNote(cart: CartState, note: string): void {
     cart.note = note;
+    this.persist();
   }
 
   /** Replace the cart's custom attributes. */
   setAttributes(cart: CartState, attributes: readonly AttributeInput[]): void {
     cart.attributes = attributes.map((a) => ({ key: a.key, value: a.value }));
+    this.persist();
   }
 
-  /** Reset the store. Used by `server.close()` and in tests. */
+  /**
+   * Reset in-memory state. The persistence file (if configured) is left in
+   * place so a fresh `CartStore` pointed at the same path continues to see
+   * prior carts — this is what makes T7.4 cross-process persistence work.
+   */
   clear(): void {
     this.carts.clear();
     this.lineCounters.clear();
@@ -272,6 +336,199 @@ export class CartStore {
     const cartSuffix = cartId.slice(cartId.lastIndexOf('/') + 1);
     return `gid://shopify/CartLine/${cartSuffix}-line-${next}`;
   }
+
+  /**
+   * Write the full store snapshot to `persistencePath` synchronously. No-op
+   * when persistence is disabled. Writes the parent directory on first use
+   * so callers can point at a path under a fresh outputs/ subtree without
+   * pre-creating it.
+   */
+  private persist(): void {
+    if (this.persistencePath === undefined) return;
+    const snapshot: CartStoreSnapshot = {
+      version: PERSISTENCE_VERSION,
+      cartCounter: this.cartCounter,
+      lineCounters: Object.fromEntries(this.lineCounters),
+      carts: Object.fromEntries(this.carts),
+    };
+    fs.mkdirSync(path.dirname(this.persistencePath), { recursive: true });
+    fs.writeFileSync(this.persistencePath, JSON.stringify(snapshot, null, 2));
+  }
+
+  /**
+   * Rehydrate state from a previously-written snapshot. Throws
+   * `InvalidCartStoreFileError` for malformed JSON or shape mismatches —
+   * callers can recover by deleting the file before re-creating the store.
+   */
+  private loadSnapshot(filePath: string): void {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(filePath, 'utf-8');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new InvalidCartStoreFileError(filePath, `read failed: ${message}`);
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new InvalidCartStoreFileError(filePath, `JSON parse error: ${message}`);
+    }
+    const snapshot = parseSnapshot(filePath, parsed);
+    this.cartCounter = snapshot.cartCounter;
+    for (const [cartId, count] of Object.entries(snapshot.lineCounters)) {
+      this.lineCounters.set(cartId, count);
+    }
+    for (const [cartId, cart] of Object.entries(snapshot.carts)) {
+      this.carts.set(cartId, cart);
+    }
+  }
+}
+
+// ── Snapshot validation ───────────────────────────────────────────────────
+
+function parseSnapshot(filePath: string, raw: unknown): CartStoreSnapshot {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new InvalidCartStoreFileError(filePath, 'expected snapshot object at root');
+  }
+  const obj = raw as Record<string, unknown>;
+  const version = obj.version;
+  if (version !== PERSISTENCE_VERSION) {
+    throw new InvalidCartStoreFileError(
+      filePath,
+      `unsupported snapshot version (got ${typeof version === 'number' ? String(version) : typeof version}, expected ${PERSISTENCE_VERSION})`,
+    );
+  }
+  if (typeof obj.cartCounter !== 'number' || !Number.isInteger(obj.cartCounter)) {
+    throw new InvalidCartStoreFileError(filePath, 'cartCounter must be an integer');
+  }
+  if (typeof obj.lineCounters !== 'object' || obj.lineCounters === null) {
+    throw new InvalidCartStoreFileError(filePath, 'lineCounters must be an object');
+  }
+  if (typeof obj.carts !== 'object' || obj.carts === null) {
+    throw new InvalidCartStoreFileError(filePath, 'carts must be an object');
+  }
+  const lineCounters: Record<string, number> = {};
+  for (const [key, value] of Object.entries(obj.lineCounters as Record<string, unknown>)) {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
+      throw new InvalidCartStoreFileError(filePath, `lineCounters.${key} must be an integer`);
+    }
+    lineCounters[key] = value;
+  }
+  const carts: Record<string, CartState> = {};
+  for (const [cartId, value] of Object.entries(obj.carts as Record<string, unknown>)) {
+    carts[cartId] = parseCartState(filePath, cartId, value);
+  }
+  return { version, cartCounter: obj.cartCounter, lineCounters, carts };
+}
+
+function parseCartState(filePath: string, cartId: string, raw: unknown): CartState {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new InvalidCartStoreFileError(filePath, `carts.${cartId} must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  if (obj.id !== cartId) {
+    throw new InvalidCartStoreFileError(
+      filePath,
+      `carts.${cartId}.id must match the map key (got ${typeof obj.id === 'string' ? obj.id : typeof obj.id})`,
+    );
+  }
+  if (typeof obj.note !== 'string') {
+    throw new InvalidCartStoreFileError(filePath, `carts.${cartId}.note must be a string`);
+  }
+  return {
+    id: cartId,
+    lines: parseLines(filePath, cartId, obj.lines),
+    discountCodes: parseStringArray(filePath, `carts.${cartId}.discountCodes`, obj.discountCodes),
+    giftCardCodes: parseStringArray(filePath, `carts.${cartId}.giftCardCodes`, obj.giftCardCodes),
+    buyerIdentity: parseBuyerIdentity(filePath, cartId, obj.buyerIdentity),
+    note: obj.note,
+    attributes: parseAttributes(filePath, `carts.${cartId}.attributes`, obj.attributes),
+  };
+}
+
+function parseLines(filePath: string, cartId: string, raw: unknown): CartLineState[] {
+  if (!Array.isArray(raw)) {
+    throw new InvalidCartStoreFileError(filePath, `carts.${cartId}.lines must be an array`);
+  }
+  return raw.map((entry, i) => {
+    const ctx = `carts.${cartId}.lines[${i}]`;
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new InvalidCartStoreFileError(filePath, `${ctx} must be an object`);
+    }
+    const obj = entry as Record<string, unknown>;
+    if (typeof obj.id !== 'string') {
+      throw new InvalidCartStoreFileError(filePath, `${ctx}.id must be a string`);
+    }
+    if (typeof obj.merchandiseId !== 'string') {
+      throw new InvalidCartStoreFileError(filePath, `${ctx}.merchandiseId must be a string`);
+    }
+    if (typeof obj.quantity !== 'number' || !Number.isInteger(obj.quantity)) {
+      throw new InvalidCartStoreFileError(filePath, `${ctx}.quantity must be an integer`);
+    }
+    return {
+      id: obj.id,
+      merchandiseId: obj.merchandiseId,
+      quantity: obj.quantity,
+      attributes: parseAttributes(filePath, `${ctx}.attributes`, obj.attributes),
+    };
+  });
+}
+
+function parseAttributes(filePath: string, ctx: string, raw: unknown): AttributeInput[] {
+  if (!Array.isArray(raw)) {
+    throw new InvalidCartStoreFileError(filePath, `${ctx} must be an array`);
+  }
+  return raw.map((entry, i) => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new InvalidCartStoreFileError(filePath, `${ctx}[${i}] must be an object`);
+    }
+    const obj = entry as Record<string, unknown>;
+    if (typeof obj.key !== 'string' || typeof obj.value !== 'string') {
+      throw new InvalidCartStoreFileError(
+        filePath,
+        `${ctx}[${i}] must have string 'key' and 'value'`,
+      );
+    }
+    return { key: obj.key, value: obj.value };
+  });
+}
+
+function parseStringArray(filePath: string, ctx: string, raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    throw new InvalidCartStoreFileError(filePath, `${ctx} must be an array`);
+  }
+  return raw.map((entry, i) => {
+    if (typeof entry !== 'string') {
+      throw new InvalidCartStoreFileError(filePath, `${ctx}[${i}] must be a string`);
+    }
+    return entry;
+  });
+}
+
+function parseBuyerIdentity(
+  filePath: string,
+  cartId: string,
+  raw: unknown,
+): CartBuyerIdentityState {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new InvalidCartStoreFileError(filePath, `carts.${cartId}.buyerIdentity must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  return {
+    countryCode: parseStringOrNull(filePath, `carts.${cartId}.buyerIdentity.countryCode`, obj.countryCode),
+    email: parseStringOrNull(filePath, `carts.${cartId}.buyerIdentity.email`, obj.email),
+    phone: parseStringOrNull(filePath, `carts.${cartId}.buyerIdentity.phone`, obj.phone),
+  };
+}
+
+function parseStringOrNull(filePath: string, ctx: string, raw: unknown): string | null {
+  if (raw === null) return null;
+  if (typeof raw !== 'string') {
+    throw new InvalidCartStoreFileError(filePath, `${ctx} must be a string or null`);
+  }
+  return raw;
 }
 
 // ── Cart node shapes ──────────────────────────────────────────────────────

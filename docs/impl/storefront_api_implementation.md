@@ -268,7 +268,7 @@ needs the SDL stable). T7.3 and T7.4 are independent.
   `null`/`UnsupportedLocale` for mismatches. **Check:** test fires a
   query with `@inContext(country: GB)` against a US-only dataset and
   asserts the documented behavior.
-- [ ] **T7.4** — Persisted cart store. Optional file-backed cart
+- [x] **T7.4** — Persisted cart store. Optional file-backed cart
   store for benchmarking runs that need cart state across server
   restarts. **Check:** cart created in run A is queryable in run B
   with the same `--cart-store` flag.
