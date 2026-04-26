@@ -55,7 +55,7 @@ are clean. SC1–SC6 from the spec satisfied.
   to ~5 products / 2 collections / 1 page / 1 blog / 1 policy / 2
   metafields, anonymized. **Check:** files validate against §8.1
   shape; `git ls-files | wc -l` confirms small footprint.
-- [ ] **T1.2** — `src/data/types.ts`: dataset schema types (§8.1)
+- [x] **T1.2** — `src/data/types.ts`: dataset schema types (§8.1)
   with `readonly` fields, plus the internal `SandboxShopData`
   aggregate including the two indices (`productsByHandle`,
   `variantsByGid`). No `any`. **Check:** `tsc --noEmit` clean; types
