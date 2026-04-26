@@ -186,7 +186,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
 
 ### M5 · Metafields (optional surface)
 
-- [ ] **T5.1** — `src/resolvers/metafields.ts`:
+- [x] **T5.1** — `src/resolvers/metafields.ts`:
   `Product.metafield(namespace, key)`,
   `Product.metafields(identifiers)`,
   `Collection.metafield`, `Collection.metafields`. Read from
