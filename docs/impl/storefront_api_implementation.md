@@ -83,7 +83,7 @@ No GraphQL schema changes yet.
 
 ### M2 · SDL + read-only resolvers
 
-- [ ] **T2.1** — `src/schema.ts`: replace the `Query.ping` SDL with
+- [x] **T2.1** — `src/schema.ts`: replace the `Query.ping` SDL with
   the full Storefront-API subset (§5.2). Source: mock-api `schema.ts`
   verbatim, with the two changes from spec §8.2 (extend currency/
   country enums, document `requiresShipping`). **Check:** `tsc` clean;
