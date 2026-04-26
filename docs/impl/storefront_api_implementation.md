@@ -194,7 +194,7 @@ shapes against the fixture; SC1 + the read half of SC2 satisfied.
   fixture metafield asserts namespace + key match returns the
   metafield, missing returns `null`, `metafields([{...},{...}])`
   preserves request order with `null` for misses.
-- [ ] **T5.2** — `Shop.metafield(s)` reading `metafields.shop`.
+- [x] **T5.2** — `Shop.metafield(s)` reading `metafields.shop`.
   **Check:** test covers single metafield read.
 - [ ] **T5.3** — `metafieldsByIdentifiers` query if convenient (a
   flat batch read used by Hydrogen). Defer to v0.2 if SDL bloat is

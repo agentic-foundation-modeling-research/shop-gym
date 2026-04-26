@@ -1,5 +1,6 @@
 /**
- * Resolvers for the Product / Collection metafield surface (T5.1).
+ * Resolvers for the Product / Collection / Shop metafield surface
+ * (T5.1 + T5.2).
  *
  * Reads from the optional `metafields.json` file (`data.metafields`,
  * spec §8.1.2). When the file is absent the loader defaults the field to
@@ -13,6 +14,8 @@
  *     the request order, with `null` for unmatched identifiers.
  *   - `Collection.metafield` / `Collection.metafields` — same shape, keyed
  *     by collection handle.
+ *   - `Shop.metafield` / `Shop.metafields` — same shape against
+ *     `data.metafields.shop`, keyed by `store.shop_id` for stable GIDs.
  *
  * `Metafield.id` is a deterministic GID derived from the owner scope/handle
  * plus `namespace:key` so identical inputs produce identical ids across
@@ -24,6 +27,7 @@
 import type { CollectionNode, ProductNode } from './builders.js';
 import { gid } from './builders.js';
 import type { ResolverContext } from './index.js';
+import type { ShopParentNode } from './shop.js';
 
 import type { Metafield } from '../data/types.js';
 
@@ -55,7 +59,7 @@ interface MetafieldsArgs {
   readonly identifiers: readonly MetafieldIdentifier[];
 }
 
-type OwnerScope = 'Product' | 'Collection';
+type OwnerScope = 'Product' | 'Collection' | 'Shop';
 
 // ── Resolvers ─────────────────────────────────────────────────────────────
 
@@ -106,6 +110,22 @@ export const metafieldResolvers = {
         args.identifiers,
       ),
   },
+
+  Shop: {
+    metafield: (
+      _parent: ShopParentNode,
+      args: MetafieldArgs,
+      ctx: ResolverContext,
+    ): MetafieldNode | null =>
+      lookupMetafield('Shop', shopOwnerHandle(ctx), shopMetafields(ctx), args),
+
+    metafields: (
+      _parent: ShopParentNode,
+      args: MetafieldsArgs,
+      ctx: ResolverContext,
+    ): readonly (MetafieldNode | null)[] =>
+      lookupMetafields('Shop', shopOwnerHandle(ctx), shopMetafields(ctx), args.identifiers),
+  },
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -116,6 +136,15 @@ function productMetafields(ctx: ResolverContext, handle: string): readonly Metaf
 
 function collectionMetafields(ctx: ResolverContext, handle: string): readonly Metafield[] {
   return ctx.data.metafields.collections[handle] ?? [];
+}
+
+function shopMetafields(ctx: ResolverContext): readonly Metafield[] {
+  return ctx.data.metafields.shop;
+}
+
+/** Stable owner handle for shop-scoped metafield GIDs. */
+function shopOwnerHandle(ctx: ResolverContext): string {
+  return String(ctx.data.store.shop_id);
 }
 
 function lookupMetafield(
