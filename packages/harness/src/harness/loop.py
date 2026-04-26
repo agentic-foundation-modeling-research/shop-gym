@@ -13,16 +13,24 @@ owns:
 The runtime owns: the actual subprocess spawn, the LLM/tool stack, and
 the in-iteration log → `Trajectory` conversion. See
 `docs/specs/harness/plan_exec_loop.md` §§5.2-5.7.
+
+When `config.run_dir` already exists and is non-empty, the loop enters
+*resume mode* (`docs/specs/harness/resume.md`): the workspace is opened
+via `Workspace.open` (identity check), partial executor dirs are
+quarantined, loop counters are reconstructed from `iters/`, and the
+planner is skipped if its trajectory is already on disk.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import logging
+import re
 import subprocess
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from harness.config import FinalStatus, PlanExecLoopConfig, PlanExecLoopResult
 from harness.plan.parser import InvalidPlanError, PlanDiff, diff, parse, select_next
@@ -35,7 +43,9 @@ from harness.telemetry import (
     RunSummaryWriter,
     exec_iter_id,
     iter_dir,
+    reconstruct,
 )
+from harness.telemetry.recovery import scan_iter_dirs
 from harness.trajectory import IterationMetadata, ProtocolCheckResult, Trajectory
 from harness.workspace import Workspace
 
@@ -49,35 +59,107 @@ _METADATA_FILENAME: Final[str] = "metadata.json"
 _PROTOCOL_FILENAME: Final[str] = "protocol.json"
 _PLAN_BEFORE_FILENAME: Final[str] = "plan.before.md"
 _PLAN_AFTER_FILENAME: Final[str] = "plan.after.md"
+_ABORTED_SENTINEL_FILENAME: Final[str] = "aborted.txt"
+_EXEC_ITER_ID_RE: Final[re.Pattern[str]] = re.compile(r"^exec-\d{4}$")
+_REFUSAL_STATUSES: Final[frozenset[FinalStatus]] = frozenset(
+    {
+        FinalStatus.PROTOCOL_VIOLATION,
+        FinalStatus.INVALID_PLAN,
+        FinalStatus.RUNTIME_ERROR,
+    }
+)
+
+
+class ResumeRefusedError(Exception):
+    """Raised when the prior `final_status` implies the workspace is in a bad state.
+
+    Refusals are governed by `docs/specs/harness/resume.md` §5.5:
+    `protocol_violation`, `invalid_plan`, `runtime_error`, and an
+    indeterminate prior status all refuse by default. Pass
+    ``force=True`` to `run_plan_exec_loop` (CLI: ``--force-resume``)
+    to override.
+
+    Attributes:
+        run_dir: The workspace path the harness refused to resume.
+        prior_status: The terminal `FinalStatus` read from the prior
+            run, or ``None`` when neither `run.json` nor
+            `reconstruct()` could establish one.
+    """
+
+    def __init__(
+        self,
+        *,
+        run_dir: Path,
+        prior_status: FinalStatus | None,
+    ) -> None:
+        self.run_dir = run_dir
+        self.prior_status = prior_status
+        prior_repr = prior_status.value if prior_status is not None else "unknown"
+        super().__init__(
+            f"refusing to resume run_dir={run_dir} with prior final_status={prior_repr}; "
+            "pass force=True to override (--force-resume)"
+        )
 
 
 def run_plan_exec_loop(
     config: PlanExecLoopConfig,
     runtime: AgentRuntime,
+    *,
+    force: bool = False,
 ) -> PlanExecLoopResult:
     """Run one plan-then-loop session against `runtime` and `config`.
 
-    The harness creates the workspace, runs a single planner iteration,
-    then runs up to ``config.max_iters`` executor iterations, selecting
-    the highest-priority PENDING task before each one. After every
-    iteration `run.json` is rewritten atomically. The terminal
-    `FinalStatus` is determined per spec §5.2.
+    Mode is inferred from `config.run_dir`: an empty (or non-existent)
+    directory triggers a *fresh* run (`Workspace.create`), and a
+    non-empty directory triggers a *resume* (`Workspace.open` plus the
+    §5.3 loop-state reconstruction). In both modes the harness drives a
+    single planner iteration followed by up to ``config.max_iters``
+    executor iterations, selecting the highest-priority PENDING task
+    before each one. After every iteration `run.json` is rewritten
+    atomically. The terminal `FinalStatus` is determined per spec §5.2.
 
     Args:
         config: Validated run configuration.
         runtime: Runtime adapter used to execute every iteration.
+        force: When `True`, override the §5.5 refusal policy for
+            bad-state prior runs (`protocol_violation`, `invalid_plan`,
+            `runtime_error`, or indeterminate prior status). Has no
+            effect on identity-tuple mismatches and no effect on a
+            fresh run.
 
     Returns:
         A `PlanExecLoopResult` describing the run. The same payload is
         also persisted to ``<run_dir>/run.json``.
+
+    Raises:
+        ResumeMismatchError: In resume mode, when the on-disk identity
+            tuple disagrees with `config` (`Workspace.open` §5.2).
+        ResumeRefusedError: In resume mode, when the prior
+            `final_status` implies a bad state and `force` is `False`
+            (resume.md §5.5).
     """
-    workspace = Workspace.create(config)
+    if _is_existing_workspace(config.run_dir):
+        workspace = Workspace.open(config.run_dir, config=config)
+        prior_status = _read_prior_final_status(workspace.run_dir)
+        _enforce_refusal_policy(prior_status, run_dir=workspace.run_dir, force=force)
+        _quarantine_partial_iters(workspace, prior_status=prior_status)
+        prior_resume_history = _read_prior_resume_history(workspace.run_dir)
+    else:
+        workspace = Workspace.create(config)
+        prior_status = None
+        prior_resume_history = []
+
     config_snapshot = _build_config_snapshot(config)
     state = _LoopState(
-        workspace=workspace, config=config, runtime=runtime, config_snapshot=config_snapshot
+        workspace=workspace,
+        config=config,
+        runtime=runtime,
+        config_snapshot=config_snapshot,
+        prior_resume_history=prior_resume_history,
     )
+    state.restore_from_disk()
 
-    if not state.run_planner():
+    if not state.plan_already_recorded() and not state.run_planner():
         return state.finalize()
     state.run_executor_loop()
     return state.finalize()
@@ -104,15 +186,48 @@ class _LoopState:
         config: PlanExecLoopConfig,
         runtime: AgentRuntime,
         config_snapshot: dict[str, Any],
+        prior_resume_history: list[dict[str, Any]],
     ) -> None:
         self._workspace = workspace
         self._config = config
         self._runtime = runtime
         self._config_snapshot = config_snapshot
+        self._prior_resume_history = prior_resume_history
+        self._attempt_started_at = dt.datetime.now(dt.UTC)
         self._plan_iter_count = 0
         self._exec_iter_count = 0
+        self._exec_iter_baseline = 0
         self._trajectory_paths: list[str] = []
         self._final_status: FinalStatus | None = None
+
+    # ------------------------------------------------------------------
+    # Resume hooks
+    # ------------------------------------------------------------------
+
+    def restore_from_disk(self) -> None:
+        """Reconstruct loop counters from `iters/` content (resume.md §5.3).
+
+        Called once during run setup. On a fresh run this is a no-op
+        (the directory has just been created and is empty). On a
+        resume the counters are replayed from the same scan
+        `telemetry.recovery.scan_iter_dirs` performs, so the
+        reconstructed state is consistent with what
+        `reconstruct(run_dir)` would produce.
+
+        Also captures `_exec_iter_baseline` so the executor budget check
+        treats `config.max_iters` as the *additional* iterations granted
+        to this call (resume.md §5 — "Prior executor iterations on disk
+        do not count against `max_iters`.").
+        """
+        plan_count, _exec_dirs, trajectory_paths = scan_iter_dirs(self._workspace)
+        self._plan_iter_count = plan_count
+        self._exec_iter_count = len(_exec_dirs)
+        self._exec_iter_baseline = self._exec_iter_count
+        self._trajectory_paths = list(trajectory_paths)
+
+    def plan_already_recorded(self) -> bool:
+        """Return True when `iters/plan/trajectory.json` is on disk (resume.md §5.3)."""
+        return self._plan_iter_count > 0
 
     # ------------------------------------------------------------------
     # Planner
@@ -216,7 +331,7 @@ class _LoopState:
                 self._final_status = FinalStatus.COMPLETED
                 self._rewrite_run_summary()
                 return
-            if self._exec_iter_count >= self._config.max_iters:
+            if (self._exec_iter_count - self._exec_iter_baseline) >= self._config.max_iters:
                 self._final_status = FinalStatus.BUDGET_EXHAUSTED
                 self._rewrite_run_summary()
                 return
@@ -322,7 +437,14 @@ class _LoopState:
         return self._rewrite_run_summary()
 
     def _rewrite_run_summary(self) -> PlanExecLoopResult:
-        """Rebuild the `PlanExecLoopResult` and atomically rewrite `run.json`."""
+        """Rebuild the `PlanExecLoopResult` and atomically rewrite `run.json`.
+
+        Each rewrite re-renders ``config_snapshot.resume_history`` as
+        ``prior_resume_history + [current_attempt]`` so the file always
+        reflects the live state of the in-flight attempt (resume.md
+        §5.7). Prior attempts' entries are immutable; the tail entry is
+        the only one that mutates as the attempt progresses.
+        """
         status = self._final_status if self._final_status is not None else FinalStatus.COMPLETED
         result = PlanExecLoopResult(
             run_dir=self._workspace.run_dir,
@@ -332,10 +454,19 @@ class _LoopState:
             trajectory_paths=tuple(self._trajectory_paths),
             tasks_final=_safe_parse_tasks(self._workspace),
         )
+        snapshot = dict(self._config_snapshot)
+        snapshot["resume_history"] = [
+            *self._prior_resume_history,
+            {
+                "started_at": self._attempt_started_at.isoformat(),
+                "ended_at": dt.datetime.now(dt.UTC).isoformat(),
+                "final_status": status.value,
+            },
+        ]
         RunSummaryWriter.rewrite(
             self._workspace.run_dir,
             result=result,
-            config_snapshot=self._config_snapshot,
+            config_snapshot=snapshot,
         )
         return result
 
@@ -482,3 +613,160 @@ def _build_exec_metadata(
 def _build_config_snapshot(config: PlanExecLoopConfig) -> dict[str, Any]:
     """Return a JSON-safe echo of `config` for `run.json`'s `config_snapshot`."""
     return config.model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
+# Resume helpers (resume.md §§4.1, 5.4, 5.5)
+# ---------------------------------------------------------------------------
+
+
+def _is_existing_workspace(run_dir: Path) -> bool:
+    """Return True iff `run_dir` is an existing, non-empty directory.
+
+    Drives the resume-mode branch in `run_plan_exec_loop`: an empty or
+    non-existent directory falls through to `Workspace.create`. Symbolic
+    targets that are not directories fall through to fresh-mode and let
+    `Workspace.create` raise its own error.
+    """
+    if not run_dir.exists() or not run_dir.is_dir():
+        return False
+    return any(run_dir.iterdir())
+
+
+def _read_prior_final_status(run_dir: Path) -> FinalStatus | None:
+    """Best-effort read of the prior run's `final_status` (resume.md §5.5).
+
+    The harness rewrites `run.json` after every iteration, so its
+    ``final_status`` is the most recent in-memory status the prior
+    process flushed. If `run.json` is missing or malformed, fall back to
+    `reconstruct(run_dir)`. Both failures collapse to ``None`` and the
+    refusal policy treats that as indeterminate.
+    """
+    run_summary_path = run_dir / "run.json"
+    payload: Any = None
+    if run_summary_path.is_file():
+        try:
+            payload = json.loads(run_summary_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            payload = None
+    if isinstance(payload, dict):
+        status_value = cast("dict[str, Any]", payload).get("final_status")
+        if isinstance(status_value, str):
+            try:
+                return FinalStatus(status_value)
+            except ValueError:
+                pass
+    try:
+        return reconstruct(run_dir).final_status
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+
+
+def _read_prior_resume_history(run_dir: Path) -> list[dict[str, Any]]:
+    """Best-effort read of `config_snapshot.resume_history` from prior `run.json`.
+
+    Returns an empty list when `run.json` is missing, malformed, or has
+    no `resume_history` field. The harness always extends this list by
+    exactly one entry per attempt (resume.md §5.7), so a missing prior
+    list is equivalent to a fresh single-entry history. Any non-dict
+    entries in the prior list are dropped defensively to keep the
+    rewritten payload schema-clean.
+    """
+    run_summary_path = run_dir / "run.json"
+    if not run_summary_path.is_file():
+        return []
+    try:
+        payload = json.loads(run_summary_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    snapshot = cast("dict[str, Any]", payload).get("config_snapshot")
+    if not isinstance(snapshot, dict):
+        return []
+    history = cast("dict[str, Any]", snapshot).get("resume_history")
+    if not isinstance(history, list):
+        return []
+    typed_history = cast("list[Any]", history)
+    return [cast("dict[str, Any]", entry) for entry in typed_history if isinstance(entry, dict)]
+
+
+def _enforce_refusal_policy(
+    prior_status: FinalStatus | None,
+    *,
+    run_dir: Path,
+    force: bool,
+) -> None:
+    """Raise `ResumeRefusedError` if the prior status implies a bad state.
+
+    See resume.md §5.5. `protocol_violation`, `invalid_plan`,
+    `runtime_error`, and an indeterminate prior status (``None``) all
+    refuse by default. ``force=True`` overrides every refusal.
+    `completed`, `timeout`, and `budget_exhausted` always allow.
+    """
+    if force:
+        return
+    if prior_status is None or prior_status in _REFUSAL_STATUSES:
+        raise ResumeRefusedError(run_dir=run_dir, prior_status=prior_status)
+
+
+def _quarantine_partial_iters(
+    workspace: Workspace,
+    *,
+    prior_status: FinalStatus | None,
+) -> None:
+    """Rename partial iter dirs to `<id>.aborted-<N>/` and drop a sentinel (§5.4).
+
+    Runs once before either the planner-skip branch or the executor
+    loop. A directory under ``iters/`` is "partial" when its name is a
+    recognized iter id (``plan`` or ``exec-NNNN``) and it contains no
+    ``trajectory.json``. The chosen ``N`` is the smallest positive
+    integer that makes the destination unique, so repeated resume
+    attempts append fresh quarantine dirs without colliding.
+
+    The spec only mentions executor dirs explicitly, but a partial
+    ``iters/plan/`` would otherwise cause `run_planner` to fail when it
+    tries to create the directory; quarantining it is the natural
+    extension and preserves the rule "every healthy iter dir
+    corresponds to exactly one subprocess".
+
+    Args:
+        workspace: The workspace under resume.
+        prior_status: Best-effort prior `final_status` (used in the
+            sentinel body). May be ``None`` when neither `run.json` nor
+            `reconstruct()` could establish one.
+    """
+    iters_dir = workspace.iters_dir
+    if not iters_dir.is_dir():
+        return
+    resume_ts = dt.datetime.now(dt.UTC)
+    for entry in sorted(iters_dir.iterdir(), key=lambda p: p.name):
+        if not entry.is_dir():
+            continue
+        if not _is_iter_dir_name(entry.name):
+            continue
+        if (entry / _TRAJECTORY_FILENAME).is_file():
+            continue
+        target = _next_aborted_path(iters_dir, entry.name)
+        entry.rename(target)
+        sentinel = (
+            f"resume_at: {resume_ts.isoformat()}\n"
+            f"prior_final_status: "
+            f"{prior_status.value if prior_status is not None else 'unknown'}\n"
+        )
+        (target / _ABORTED_SENTINEL_FILENAME).write_text(sentinel, encoding="utf-8")
+
+
+def _is_iter_dir_name(name: str) -> bool:
+    """Return True if `name` is a recognized iter-dir id (`plan` or `exec-NNNN`)."""
+    return name == PLAN_ITER_ID or _EXEC_ITER_ID_RE.match(name) is not None
+
+
+def _next_aborted_path(iters_dir: Path, base_name: str) -> Path:
+    """Return the next free `iters/<base>.aborted-<N>` path (N >= 1)."""
+    counter = 1
+    while True:
+        candidate = iters_dir / f"{base_name}.aborted-{counter}"
+        if not candidate.exists():
+            return candidate
+        counter += 1

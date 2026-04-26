@@ -27,10 +27,10 @@ from harness.config import FinalStatus
 RuntimeName = Literal["pi", "claude_code"]
 """Name of the agent runtime to drive the plan/exec loop."""
 
-DEFAULT_MAX_ITERS = 12
+DEFAULT_MAX_ITERS = 20
 """Default executor budget (spec §4.1)."""
 
-DEFAULT_TIMEOUT_SECONDS = 600.0
+DEFAULT_TIMEOUT_SECONDS = 1800.0
 """Default per-iteration timeout in seconds (spec §4.1)."""
 
 
@@ -42,10 +42,18 @@ class ExploreConfig(BaseModel):
             ``https://``.
         out_dir: Run workspace directory. ``None`` (default) lets the
             pipeline compute ``outputs/shop_manuals/<domain>/<run_id>/``.
-            When supplied, the directory must be empty or non-existent.
+            When supplied, the directory must be either empty (or
+            non-existent) for a fresh run, or contain a prior harness
+            workspace for resume (resume.md §5.6). The harness validates
+            the resume identity tuple before any subprocess is spawned.
         runtime: Agent runtime to drive the plan/exec loop.
-        max_iters: Executor iteration budget. Strictly positive.
+        max_iters: Executor iteration budget. Strictly positive. On
+            resume this is the *additional* budget granted to the new
+            attempt (resume.md §5).
         timeout: Per-iteration timeout in seconds. Strictly positive.
+        force_resume: When ``True``, override
+            :class:`harness.loop.ResumeRefusedError` for bad-state
+            prior runs (resume.md §5.5). Has no effect on a fresh run.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -55,6 +63,7 @@ class ExploreConfig(BaseModel):
     runtime: RuntimeName = "pi"
     max_iters: int = Field(default=DEFAULT_MAX_ITERS, gt=0)
     timeout: float = Field(default=DEFAULT_TIMEOUT_SECONDS, gt=0)
+    force_resume: bool = False
 
     @field_validator("url")
     @classmethod
@@ -72,12 +81,14 @@ class ExploreConfig(BaseModel):
     @field_validator("out_dir")
     @classmethod
     def _validate_out_dir(cls, value: Path | None) -> Path | None:
-        """Require ``out_dir`` to be empty or non-existent.
+        """Reject a path that points at a regular file.
 
-        Mirrors §4.1 of the spec: the run workspace must be a fresh
-        directory so the harness can own its layout. We accept a
-        missing path, an existing empty directory, but reject anything
-        else (a non-empty directory, or a file).
+        A missing path or an existing directory (empty or not) are both
+        accepted; the harness decides between fresh-mode
+        (`Workspace.create`, requires empty) and resume-mode
+        (`Workspace.open`, requires the resume identity tuple to match)
+        once it inspects on-disk content. See resume.md §5.6 — pointing
+        ``--out`` at an existing run directory is the resume affordance.
         """
         if value is None:
             return value
@@ -85,8 +96,6 @@ class ExploreConfig(BaseModel):
             return value
         if not value.is_dir():
             raise ValueError(f"out_dir must be a directory or non-existent, got file: {value}")
-        if any(value.iterdir()):
-            raise ValueError(f"out_dir must be empty, got non-empty directory: {value}")
         return value
 
 

@@ -1,11 +1,13 @@
 """Unit tests for :mod:`shop_explore.config`.
 
 Covers the validation requirements from
-``docs/impl/shop_explore_implementation.md`` T1.2:
+``docs/impl/shop_explore_implementation.md`` T1.2 and the
+relaxation introduced by ``docs/specs/harness/resume.md`` §5.6:
 
 * Non-http URLs are rejected.
 * ``max_iters <= 0`` is rejected.
-* A non-empty ``out_dir`` is rejected; missing or empty is accepted.
+* ``out_dir`` accepts missing, empty, or a prior workspace (resume);
+  only a regular file is rejected.
 * Defaults match the spec §4.1.
 * ``ExploreResult`` round-trips and forbids unknown fields.
 """
@@ -93,12 +95,13 @@ def test_explore_config_accepts_empty_out_dir(tmp_path: Path) -> None:
     assert cfg.out_dir == empty
 
 
-def test_explore_config_rejects_non_empty_out_dir(tmp_path: Path) -> None:
-    nonempty = tmp_path / "non-empty"
+def test_explore_config_accepts_non_empty_out_dir_for_resume(tmp_path: Path) -> None:
+    """Non-empty `out_dir` is accepted; the harness validates resume identity."""
+    nonempty = tmp_path / "prior-run"
     nonempty.mkdir()
     (nonempty / "marker").write_text("hi")
-    with pytest.raises(ValidationError, match="non-empty"):
-        ExploreConfig(url="https://example-shop.com", out_dir=nonempty)
+    cfg = ExploreConfig(url="https://example-shop.com", out_dir=nonempty)
+    assert cfg.out_dir == nonempty
 
 
 def test_explore_config_rejects_out_dir_pointing_at_file(tmp_path: Path) -> None:
@@ -106,6 +109,16 @@ def test_explore_config_rejects_out_dir_pointing_at_file(tmp_path: Path) -> None
     file_path.write_text("hi")
     with pytest.raises(ValidationError, match="non-existent"):
         ExploreConfig(url="https://example-shop.com", out_dir=file_path)
+
+
+def test_explore_config_force_resume_defaults_to_false() -> None:
+    cfg = ExploreConfig(url="https://example-shop.com")
+    assert cfg.force_resume is False
+
+
+def test_explore_config_force_resume_can_be_set_true() -> None:
+    cfg = ExploreConfig(url="https://example-shop.com", force_resume=True)
+    assert cfg.force_resume is True
 
 
 def test_explore_config_is_frozen() -> None:

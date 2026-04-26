@@ -17,16 +17,26 @@ hits the same model the runtime drives iterations with; otherwise it
 falls back to the no-op client and the deterministic concatenation of
 ``parts/*.md`` (impl plan T6.2).
 
+Pointing ``--out`` at an existing run directory triggers resume mode
+(``docs/specs/harness/resume.md`` §5.6): the prior ``run.json``'s
+``config_snapshot`` is consulted to fill in ``--max-iters`` and
+``--timeout`` defaults, ``--url`` and ``--runtime`` must match the
+prior values when supplied, and ``--force-resume`` propagates to
+:func:`harness.run_plan_exec_loop` (``force=True``) for §5.5 overrides.
+
 The module is import-safe: it performs no I/O at import time.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 from harness import get_runtime
@@ -62,6 +72,12 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = _build_parser().parse_args(argv)
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="shop-explore: %(message)s",
+        stream=sys.stderr,
+    )
+
     if args.prefetch_only:
         return _run_prefetch_only(args)
 
@@ -94,22 +110,42 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--runtime",
         choices=("pi", "claude_code"),
-        default="pi",
-        help="Agent runtime for the plan/exec loop (used by full pipeline).",
+        default=None,
+        help=(
+            "Agent runtime for the plan/exec loop. Defaults to 'pi' for fresh runs; "
+            "on resume (--out points at an existing run dir) defaults to the prior "
+            "run's runtime and must match if supplied."
+        ),
     )
     parser.add_argument(
         "--max-iters",
         type=int,
-        default=DEFAULT_MAX_ITERS,
+        default=None,
         metavar="N",
-        help="Executor iteration budget (used by full pipeline).",
+        help=(
+            "Executor iteration budget. Defaults to "
+            f"{DEFAULT_MAX_ITERS} for fresh runs; on resume defaults to the "
+            "prior run's value (interpreted as additional budget per resume.md §5)."
+        ),
     )
     parser.add_argument(
         "--timeout",
         type=float,
-        default=DEFAULT_TIMEOUT_SECONDS,
+        default=None,
         metavar="SECONDS",
-        help="Per-iteration timeout in seconds (used by full pipeline).",
+        help=(
+            "Per-iteration timeout in seconds. Defaults to "
+            f"{int(DEFAULT_TIMEOUT_SECONDS)} for fresh runs; on resume defaults "
+            "to the prior run's value."
+        ),
+    )
+    parser.add_argument(
+        "--force-resume",
+        action="store_true",
+        help=(
+            "Override the harness refusal policy when resuming a prior run that "
+            "ended in a bad state (resume.md §5.5). Has no effect on fresh runs."
+        ),
     )
     parser.add_argument(
         "--prefetch-only",
@@ -162,8 +198,10 @@ def _run_synthesize_only(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     manual_prompt = _load_manual_prompt()
-    runtime = get_runtime(args.runtime)
-    llm = build_runtime_llm(runtime, timeout=args.timeout)
+    runtime_name = args.runtime if args.runtime is not None else "pi"
+    timeout = args.timeout if args.timeout is not None else DEFAULT_TIMEOUT_SECONDS
+    runtime = get_runtime(runtime_name)
+    llm = build_runtime_llm(runtime, timeout=timeout)
     try:
         result = run_synthesize(run_dir, llm=llm, manual_prompt=manual_prompt)
     except SynthesisError as exc:
@@ -178,13 +216,66 @@ def _run_synthesize_only(args: argparse.Namespace) -> int:
 
 
 def _run_explore(args: argparse.Namespace) -> int:
-    """Execute the default invocation: full pipeline via :func:`shop_explore.pipeline.explore`."""
+    """Execute the default invocation: full pipeline via :func:`shop_explore.pipeline.explore`.
+
+    When ``--out`` points at an existing run_dir with a prior ``run.json``,
+    the CLI falls into resume mode (``docs/specs/harness/resume.md`` §5.6):
+
+    * ``--max-iters`` and ``--timeout`` default to the prior run's values
+      when not supplied on the command line. Per resume.md §5,
+      ``max_iters`` is granted as *additional* budget by the harness.
+    * ``--runtime`` defaults to the prior runtime; if supplied, it must
+      match — otherwise we exit with :data:`EXIT_USAGE` before any
+      subprocess is spawned.
+    * The positional ``url`` must match the prior run's URL.
+    * ``--force-resume`` is forwarded to the harness via
+      :class:`shop_explore.config.ExploreConfig` so the §5.5 refusal
+      policy can be overridden when needed.
+    """
+    prior = _read_prior_run_config(args.out) if args.out is not None else None
+    if prior is not None:
+        prior_url = prior.get("url")
+        if isinstance(prior_url, str) and prior_url != args.url:
+            print(
+                f"shop-explore: url {args.url!r} does not match prior run "
+                f"({prior_url!r}) at {args.out}",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        prior_runtime = prior.get("runtime")
+        if (
+            args.runtime is not None
+            and isinstance(prior_runtime, str)
+            and prior_runtime != args.runtime
+        ):
+            print(
+                f"shop-explore: --runtime {args.runtime!r} does not match prior run "
+                f"({prior_runtime!r}) at {args.out}",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+
+    runtime = (
+        args.runtime if args.runtime is not None else _prior_or(prior, "runtime", "pi")
+    )
+    max_iters = (
+        args.max_iters
+        if args.max_iters is not None
+        else _prior_or(prior, "max_iters", DEFAULT_MAX_ITERS)
+    )
+    timeout = (
+        args.timeout
+        if args.timeout is not None
+        else _prior_or(prior, "timeout", DEFAULT_TIMEOUT_SECONDS)
+    )
+
     config = ExploreConfig(
         url=args.url,
         out_dir=args.out,
-        runtime=args.runtime,
-        max_iters=args.max_iters,
-        timeout=args.timeout,
+        runtime=runtime,
+        max_iters=max_iters,
+        timeout=timeout,
+        force_resume=args.force_resume,
     )
     try:
         result = explore(config)
@@ -200,6 +291,42 @@ def _run_explore(args: argparse.Namespace) -> int:
         f"(harness final_status={result.final_status.value})",
     )
     return EXIT_OK
+
+
+def _read_prior_run_config(run_dir: Path | None) -> dict[str, Any] | None:
+    """Return the ``config_snapshot`` from ``run_dir/run.json`` if present.
+
+    Returns ``None`` when ``run_dir`` is missing, has no ``run.json``, or
+    the file's payload is not a JSON object containing a
+    ``config_snapshot`` object. The harness ultimately validates the
+    resume identity tuple via :class:`harness.workspace.Workspace.open`,
+    so this helper only needs to be best-effort: a malformed file is
+    surfaced by the harness with a clearer error than the CLI could
+    produce on its own.
+    """
+    if run_dir is None or not run_dir.is_dir():
+        return None
+    run_summary_path = run_dir / "run.json"
+    if not run_summary_path.is_file():
+        return None
+    try:
+        payload = json.loads(run_summary_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    snapshot = cast("dict[str, Any]", payload).get("config_snapshot")
+    if not isinstance(snapshot, dict):
+        return None
+    return cast("dict[str, Any]", snapshot)
+
+
+def _prior_or(prior: dict[str, Any] | None, key: str, default: Any) -> Any:
+    """Return ``prior[key]`` when present and non-``None``; else ``default``."""
+    if prior is None:
+        return default
+    value = prior.get(key)
+    return default if value is None else value
 
 
 def _load_manual_prompt() -> str:

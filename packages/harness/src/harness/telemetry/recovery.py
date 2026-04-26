@@ -53,7 +53,7 @@ def reconstruct(run_dir: Path) -> PlanExecLoopResult:
     if not workspace.iters_dir.is_dir():
         raise FileNotFoundError(f"missing iters/ under run_dir: {run_dir}")
 
-    plan_iter_count, exec_iter_dirs, trajectory_paths = _scan_iter_dirs(workspace)
+    plan_iter_count, exec_iter_dirs, trajectory_paths = scan_iter_dirs(workspace)
     exec_iter_count = len(exec_iter_dirs)
 
     plan_text = workspace.plan_md.read_text(encoding="utf-8") if workspace.plan_md.is_file() else ""
@@ -97,13 +97,17 @@ def reconstruct(run_dir: Path) -> PlanExecLoopResult:
 # ---------------------------------------------------------------------------
 
 
-def _scan_iter_dirs(workspace: Workspace) -> tuple[int, list[Path], list[str]]:
+def scan_iter_dirs(workspace: Workspace) -> tuple[int, list[Path], list[str]]:
     """Walk `iters/` and return (plan_iter_count, exec_dirs, trajectory_paths).
 
     Only iteration directories with a written `trajectory.json` are
     counted; an iteration that crashed before emitting telemetry is
     skipped so the reconstructed result satisfies the
     `PlanExecLoopResult` invariants.
+
+    Shared between `reconstruct()` (read-only crash recovery) and
+    `harness.loop._LoopState.restore_from_disk` (resume entry path,
+    spec `docs/specs/harness/resume.md` §5.3) so the two stay in sync.
     """
     iters_dir = workspace.iters_dir
     plan_dir = iters_dir / PLAN_ITER_ID

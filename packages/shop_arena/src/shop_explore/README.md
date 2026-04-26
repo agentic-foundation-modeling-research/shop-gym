@@ -43,6 +43,7 @@ assert result.manual_path.exists()
 ```
 shop-explore <url> [--out PATH] [--runtime {pi,claude_code}]
                    [--max-iters N] [--timeout SECONDS]
+                   [--force-resume]
                    [--prefetch-only] [--synthesize-only PATH]
 ```
 
@@ -89,6 +90,32 @@ uv run shop-explore --synthesize-only outputs/shop_manuals/example-shop.com/<run
 
 Useful for iterating on the synthesis prompt or re-running merge after
 hand-editing `parts/*.caps.json`.
+
+#### Resuming a prior run
+
+Pointing `--out` at an existing `run_dir` triggers resume mode (see
+[`docs/specs/harness/resume.md` §5.6](../../../../docs/specs/harness/resume.md#56-shop-explore-cli)).
+The CLI reads the prior `run.json`'s `config_snapshot` and:
+
+* Defaults `--runtime`, `--max-iters`, and `--timeout` to the prior
+  values when not supplied (per resume.md §5, `max_iters` is granted as
+  *additional* budget, not a lifetime total).
+* Errors out with exit code `2` if the supplied positional `<url>` or
+  `--runtime` does not match the prior run.
+* Forwards `--force-resume` to the harness so the §5.5 refusal policy
+  (e.g. `protocol_violation`, `invalid_plan`, `runtime_error`) can be
+  overridden when the operator has triaged the prior failure.
+
+```bash
+# Continue a run that hit BUDGET_EXHAUSTED with another 10 iterations.
+uv run shop-explore https://example-shop.com \
+    --out outputs/shop_manuals/example-shop.com/<run_id>/ \
+    --max-iters 10
+```
+
+Each attempt is appended to `config_snapshot.resume_history` in
+`run.json` (one entry per call to `run_plan_exec_loop`, per
+resume.md §5.7).
 
 ---
 

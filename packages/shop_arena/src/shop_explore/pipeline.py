@@ -134,7 +134,7 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
             config.max_iters,
             config.timeout,
         )
-        loop_result = run_plan_exec_loop(loop_config, runtime)
+        loop_result = run_plan_exec_loop(loop_config, runtime, force=config.force_resume)
         _log.info(
             "plan/exec loop done: final_status=%s, plan_iters=%d, exec_iters=%d",
             loop_result.final_status.value,

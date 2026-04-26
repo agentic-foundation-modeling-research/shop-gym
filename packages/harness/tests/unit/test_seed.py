@@ -229,6 +229,51 @@ def test_check_seed_flags_symlink_introduced_post_seed(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# SeedManifest.to_json / from_json (resume.md §5.1 round-trip)
+# ---------------------------------------------------------------------------
+
+
+def test_seed_manifest_round_trips_through_json(tmp_path: Path) -> None:
+    _, manifest = _seed_with_two_files(tmp_path)
+
+    payload = manifest.to_json()
+    restored = SeedManifest.from_json(payload)
+
+    assert restored.files == dict(manifest.files)
+    assert restored.seeded_roots == manifest.seeded_roots
+
+
+def test_seed_manifest_to_json_is_sorted_for_determinism(tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact"
+    (artifact / "b").mkdir(parents=True)
+    (artifact / "a").mkdir(parents=True)
+    (artifact / "b" / "second.txt").write_text("2", encoding="utf-8")
+    (artifact / "a" / "first.txt").write_text("1", encoding="utf-8")
+    manifest = snapshot_seed(
+        artifact,
+        frozenset({PurePosixPath("a"), PurePosixPath("b")}),
+    )
+
+    payload = manifest.to_json()
+
+    assert payload["seeded_roots"] == ["a", "b"]
+    assert list(payload["files"].keys()) == ["a/first.txt", "b/second.txt"]
+
+
+def test_seed_manifest_from_json_rejects_missing_keys() -> None:
+    with pytest.raises(SeedError, match="missing key"):
+        SeedManifest.from_json({"seeded_roots": []})
+
+
+def test_seed_manifest_from_json_rejects_wrong_value_types() -> None:
+    with pytest.raises(SeedError):
+        SeedManifest.from_json({"seeded_roots": "not-a-list", "files": {}})
+
+    with pytest.raises(SeedError, match="string"):
+        SeedManifest.from_json({"seeded_roots": [], "files": {"a.txt": 123}})
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

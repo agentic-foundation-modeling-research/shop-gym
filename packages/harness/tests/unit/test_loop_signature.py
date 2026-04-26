@@ -62,7 +62,10 @@ class _StubRuntime:
 
 def test_run_plan_exec_loop_signature_matches_spec() -> None:
     sig = inspect.signature(run_plan_exec_loop)
-    assert list(sig.parameters) == ["config", "runtime"]
+    assert list(sig.parameters) == ["config", "runtime", "force"]
+    force_param = sig.parameters["force"]
+    assert force_param.kind is inspect.Parameter.KEYWORD_ONLY
+    assert force_param.default is False
 
 
 def test_run_plan_exec_loop_protocol_conformance() -> None:
@@ -203,6 +206,56 @@ def test_run_plan_exec_loop_maps_timeout_to_timeout_status(tmp_path: Path) -> No
     result = run_plan_exec_loop(_config(tmp_path), _SlowRuntime())
 
     assert result.final_status is FinalStatus.TIMEOUT
+
+
+def test_run_plan_exec_loop_executor_timeout_keeps_counts_consistent(
+    tmp_path: Path,
+) -> None:
+    """Executor timeout after a successful planner must not desync iter counts.
+
+    Regression: `_exec_iter_count` was incremented before the runtime
+    invocation, so a timeout left `trajectory_paths` short by one and
+    `PlanExecLoopResult` failed validation.
+    """
+
+    plan_md = "# Plan\n\n## Tasks\n- [ ] homepage\n"
+
+    def planner_script(run_dir: Path, _iter_dir: Path, _prompt: str) -> None:
+        (run_dir / "plan.md").write_text(plan_md, encoding="utf-8")
+
+    class _PlannerThenTimeoutRuntime:
+        def __init__(self) -> None:
+            self._calls = 0
+
+        def run_iteration(
+            self,
+            *,
+            run_dir: Path,
+            iter_dir: Path,
+            prompt: str,
+            timeout: float,
+        ) -> RuntimeIterationResult:
+            self._calls += 1
+            if self._calls == 1:
+                planner_script(run_dir, iter_dir, prompt)
+                return RuntimeIterationResult(
+                    trajectory=Trajectory(
+                        iter_id=iter_dir.name,
+                        runtime="stub",
+                        started_at=_TS,
+                        ended_at=_TS + dt.timedelta(seconds=1),
+                        exit_code=0,
+                        prompt_sha256="0" * 64,
+                    )
+                )
+            raise subprocess.TimeoutExpired(cmd="agent", timeout=timeout)
+
+    result = run_plan_exec_loop(_config(tmp_path), _PlannerThenTimeoutRuntime())
+
+    assert result.final_status is FinalStatus.TIMEOUT
+    assert result.plan_iter_count == 1
+    assert result.exec_iter_count == 0
+    assert result.trajectory_paths == ("iters/plan/trajectory.json",)
 
 
 def test_run_plan_exec_loop_budget_exhausted_when_pending_remain(tmp_path: Path) -> None:
