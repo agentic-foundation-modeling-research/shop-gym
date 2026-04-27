@@ -31,6 +31,9 @@ sidecar lifecycle land:
   verifier set, spawns the long-lived sidecar via
   :func:`sidecar_lifecycle`, and invokes
   :func:`harness.run_plan_exec_loop`.
+* :mod:`shop_gen.build.consolidate` — :func:`ensure_consolidate_task`
+  (T5.8) appends the mandatory ``consolidate`` task to ``plan.md``
+  when the planner omits it (spec §5.5.4).
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -38,6 +41,12 @@ import.
 
 from __future__ import annotations
 
+from shop_gen.build.consolidate import (
+    CONSOLIDATE_BRIEF,
+    CONSOLIDATE_PRIORITY,
+    CONSOLIDATE_TASK_ID,
+    ensure_consolidate_task,
+)
 from shop_gen.build.env import CloneTemplateStep, WriteEnvFileStep
 from shop_gen.build.loop import (
     LoopRunner,
@@ -79,6 +88,9 @@ from shop_gen.build.verifiers import (
 )
 
 __all__ = [
+    "CONSOLIDATE_BRIEF",
+    "CONSOLIDATE_PRIORITY",
+    "CONSOLIDATE_TASK_ID",
     "VERIFIER_FEEDBACK_PLACEHOLDER",
     "BuildVerifier",
     "CloneTemplateStep",
@@ -105,6 +117,7 @@ __all__ = [
     "WriteEnvFileStep",
     "append_redo_task",
     "default_verifiers_factory",
+    "ensure_consolidate_task",
     "load_agents_md",
     "load_consolidate_execute_prompt",
     "load_cross_task_consistency_prompt",
