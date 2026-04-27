@@ -38,6 +38,7 @@ from typing import Final
 from shop_gen.config import ShopGenConfig, ShopGenResult
 from shop_gen.manual_merge import (
     ComputeMergeStatsStep,
+    CopySeedManualStep,
     MergeCapabilitiesStep,
     MergeManualProseStep,
     WriteMergeManifestStep,
@@ -251,7 +252,7 @@ def _build_registry_from_branch(
     if multi_seed:
         _register_manual_merge(registry, config=config)
     else:
-        _register_single_seed_manual(registry)
+        _register_single_seed_manual(registry, config=config)
     _register_data_synth(registry)
     _register_data_validation(registry)
     _register_build(registry)
@@ -289,12 +290,26 @@ def _register_manual_merge(registry: Registry, *, config: ShopGenConfig | None =
     registry.register(WriteMergeManifestStep())
 
 
-def _register_single_seed_manual(registry: Registry) -> None:
-    """Register the single-seed ``copy_seed_manual`` shortcut.
+def _register_single_seed_manual(
+    registry: Registry,
+    *,
+    config: ShopGenConfig | None = None,
+) -> None:
+    """Register the single-seed ``copy_seed_manual`` shortcut (spec §5.2).
 
-    Wired up in M2 (impl plan T2.6); a no-op until that task lands.
+    Phase 1 collapses to one byte-for-byte copy when ``len(seeds) == 1``:
+    the seed's ``capabilities.json`` / ``manual.md`` / ``stats.json`` are
+    copied verbatim into ``<out_dir>/manual/``.
+
+    Args:
+        registry: Registry to mutate.
+        config: Run configuration. ``None`` is the listing branch
+            (:func:`list_steps`); the step registers a placeholder
+            instance so its id surfaces in the ``--list-steps`` table
+            without requiring a real seed path.
     """
-    del registry  # placeholder until M2 lands.
+    seed_dir: Path | None = None if config is None or len(config.seeds) != 1 else config.seeds[0]
+    registry.register(CopySeedManualStep(seed_dir=seed_dir))
 
 
 def _register_data_synth(registry: Registry) -> None:

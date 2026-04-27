@@ -56,10 +56,23 @@ from shop_gen.steps.state import (
 
 
 def _make_seeds(tmp_path: Path, count: int) -> list[Path]:
+    """Create ``count`` seed directories with the canonical artifact tree.
+
+    Each seed gets an ``artifact/`` directory containing minimal
+    ``capabilities.json`` / ``manual.md`` / ``stats.json`` files so the
+    Phase 1 ``copy_seed_manual`` step (single-seed) and merge steps
+    (multi-seed) have something to read. Tests that exercise the runner
+    machinery without caring about Phase 1 contents can still rely on
+    these stub artifacts because the copy step only reads bytes.
+    """
     seeds: list[Path] = []
     for i in range(count):
         seed = tmp_path / f"seed_{i}"
-        seed.mkdir()
+        artifact = seed / "artifact"
+        artifact.mkdir(parents=True)
+        (artifact / "capabilities.json").write_text("{}", encoding="utf-8")
+        (artifact / "manual.md").write_text(f"# seed_{i}\n", encoding="utf-8")
+        (artifact / "stats.json").write_text("{}", encoding="utf-8")
         seeds.append(seed)
     return seeds
 
@@ -95,6 +108,7 @@ def test_list_steps_only_lists_registered_phases() -> None:
     """Phase 1 lists landed M2 steps; later phases stay empty until M3-M6."""
     grouped = list_steps()
     assert grouped["manual_merge"] == (
+        "copy_seed_manual",
         "merge_capabilities",
         "merge_manual_prose",
         "compute_merge_stats",
@@ -116,7 +130,8 @@ def test_list_steps_unions_single_and_multi_seed_branches() -> None:
         del config
         reg.register(cast(Step, _NoOpStep("merge_capabilities", "manual_merge")))
 
-    def _single(reg: Registry) -> None:
+    def _single(reg: Registry, *, config: ShopGenConfig | None = None) -> None:
+        del config
         reg.register(cast(Step, _NoOpStep("copy_seed_manual", "manual_merge")))
 
     with (
@@ -163,13 +178,13 @@ def test_build_registry_multi_seed_uses_merge_branch(tmp_path: Path) -> None:
     single_hook.assert_not_called()
 
 
-def test_build_registry_single_seed_branch_remains_empty(tmp_path: Path) -> None:
-    """Single-seed manual hook is still a no-op (T2.6 lands later in M2)."""
+def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -> None:
+    """Single-seed branch registers ``copy_seed_manual`` (impl plan T2.6)."""
     [seed] = _make_seeds(tmp_path, 1)
     single = pipeline._build_registry(
         ShopGenConfig(seeds=[seed], out_dir=tmp_path / "a"),
     )
-    assert single.ids() == []
+    assert single.ids() == ["copy_seed_manual"]
 
 
 def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) -> None:
@@ -213,7 +228,10 @@ def test_run_with_no_registered_steps_writes_no_state(tmp_path: Path) -> None:
     """An empty registry resolves to zero stale steps; ``state.json`` is untouched."""
     [seed] = _make_seeds(tmp_path, 1)
     out_dir = tmp_path / "shop"
-    run(ShopGenConfig(seeds=[seed], out_dir=out_dir))
+    # Patch out the single-seed manual-merge registration so the registry
+    # is genuinely empty (this test asserts runner behaviour, not Phase 1).
+    with patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None):
+        run(ShopGenConfig(seeds=[seed], out_dir=out_dir))
     assert not state_path(out_dir).exists()
 
 
@@ -227,7 +245,10 @@ def test_run_drives_registered_step_to_completion(tmp_path: Path) -> None:
     def _register(reg: Registry) -> None:
         reg.register(cast(Step, step))
 
-    with patch.object(pipeline, "_register_data_synth", _register):
+    with (
+        patch.object(pipeline, "_register_data_synth", _register),
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+    ):
         run(config)
 
     assert step.calls == 1

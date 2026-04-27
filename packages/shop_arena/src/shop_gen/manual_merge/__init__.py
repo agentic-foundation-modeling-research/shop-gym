@@ -16,8 +16,8 @@ Implements the multi-seed manual-merge sub-DAG documented in
 * :mod:`shop_gen.manual_merge.manifest` — ``write_merge_manifest``
   step + the :class:`Manifest` / :class:`WriteHistoryEntry` schemas.
 
-Future submodules (T2.5-T2.6) will add the prompt assets and the
-single-seed copy shortcut.
+* :mod:`shop_gen.manual_merge.copy_seed` — ``copy_seed_manual`` step,
+  the single-seed shortcut that bypasses the merge sub-DAG (spec §5.2).
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -30,6 +30,7 @@ from shop_gen.manual_merge.capabilities import (
     MergeConflict,
     merge_capabilities_seeds,
 )
+from shop_gen.manual_merge.copy_seed import CopySeedManualStep
 from shop_gen.manual_merge.manifest import (
     Manifest,
     WriteHistoryEntry,
@@ -47,6 +48,7 @@ from shop_gen.manual_merge.stats import (
 
 __all__ = [
     "ComputeMergeStatsStep",
+    "CopySeedManualStep",
     "Manifest",
     "MergeCapabilitiesStep",
     "MergeConflict",
