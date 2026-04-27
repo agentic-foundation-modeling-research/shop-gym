@@ -98,6 +98,7 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "merge_capabilities",
         "merge_manual_prose",
         "compute_merge_stats",
+        "write_merge_manifest",
     )
     for phase in ("data_synth", "data_validation", "build", "final_eval"):
         assert grouped[phase] == ()
@@ -172,12 +173,17 @@ def test_build_registry_single_seed_branch_remains_empty(tmp_path: Path) -> None
 
 
 def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) -> None:
-    """Multi-seed branch registers ``merge_capabilities`` + ``merge_manual_prose``."""
+    """Multi-seed branch registers all four Phase 1 manual-merge steps."""
     multi_seeds = _make_seeds(tmp_path, 2)
     multi = pipeline._build_registry(
         ShopGenConfig(seeds=multi_seeds, out_dir=tmp_path / "b"),
     )
-    assert multi.ids() == ["merge_capabilities", "merge_manual_prose", "compute_merge_stats"]
+    assert multi.ids() == [
+        "merge_capabilities",
+        "merge_manual_prose",
+        "compute_merge_stats",
+        "write_merge_manifest",
+    ]
 
 
 # --------------------------------------------------------------------------- #

@@ -40,6 +40,7 @@ from shop_gen.manual_merge import (
     ComputeMergeStatsStep,
     MergeCapabilitiesStep,
     MergeManualProseStep,
+    WriteMergeManifestStep,
 )
 from shop_gen.steps.base import StepContext, StepStatus
 from shop_gen.steps.runner import Registry, RunResult, run_pipeline
@@ -262,8 +263,8 @@ def _register_manual_merge(registry: Registry, *, config: ShopGenConfig | None =
     """Register Phase 1 multi-seed manual-merge steps (impl plan T2.1-T2.5).
 
     Currently registers ``merge_capabilities`` (T2.1),
-    ``merge_manual_prose`` (T2.2), and ``compute_merge_stats`` (T2.3).
-    T2.4-T2.5 add ``write_merge_manifest`` and prompt assets.
+    ``merge_manual_prose`` (T2.2), ``compute_merge_stats`` (T2.3), and
+    ``write_merge_manifest`` (T2.4). T2.5 adds the prompt assets.
 
     Args:
         registry: Registry to mutate.
@@ -285,6 +286,7 @@ def _register_manual_merge(registry: Registry, *, config: ShopGenConfig | None =
     registry.register(MergeCapabilitiesStep(seed_capabilities_paths=seed_capabilities_paths))
     registry.register(MergeManualProseStep(seed_manual_paths=seed_manual_paths))
     registry.register(ComputeMergeStatsStep(seed_stats_paths=seed_stats_paths))
+    registry.register(WriteMergeManifestStep())
 
 
 def _register_single_seed_manual(registry: Registry) -> None:
