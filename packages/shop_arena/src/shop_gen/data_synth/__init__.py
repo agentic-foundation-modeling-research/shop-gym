@@ -46,6 +46,11 @@ from shop_gen.data_synth.schema import (
     Store,
     StoreBrand,
 )
+from shop_gen.data_synth.skeletons import (
+    ProductSkeleton,
+    SynthProductSkeletonsStep,
+    synth_product_skeletons_from_collections,
+)
 from shop_gen.data_synth.store import SynthStoreStep, synth_store_from_identity
 
 __all__ = [
@@ -63,6 +68,7 @@ __all__ = [
     "Product",
     "ProductImage",
     "ProductOption",
+    "ProductSkeleton",
     "ProductVariant",
     "StageSynthError",
     "Store",
@@ -71,11 +77,13 @@ __all__ = [
     "SynthIdentityStep",
     "SynthPagesStep",
     "SynthPoliciesStep",
+    "SynthProductSkeletonsStep",
     "SynthStoreStep",
     "pick_name_from_allowlist",
     "synth_collections_from_identity",
     "synth_identity_from_manual",
     "synth_pages_from_identity",
     "synth_policies_from_identity",
+    "synth_product_skeletons_from_collections",
     "synth_store_from_identity",
 ]
