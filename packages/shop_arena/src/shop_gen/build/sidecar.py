@@ -255,7 +255,7 @@ class StartSidecarStep:
                 ``packages/shop_backend/dist/cli.js`` cannot be located.
         """
         env_path = ctx.out_dir / _HYDROGEN_ENV
-        port = _parse_port_from_env(env_path)
+        port = parse_port_from_env(env_path)
         cli_path = find_shop_backend_cli()
         data_dir = ctx.out_dir / _DATA_DIR
         argv: list[str] = ["node", str(cli_path), str(data_dir), str(port)]
@@ -284,7 +284,7 @@ class StartSidecarStep:
 # --------------------------------------------------------------------------- #
 
 
-def _parse_port_from_env(env_path: Path) -> int:
+def parse_port_from_env(env_path: Path) -> int:
     """Extract the ``PUBLIC_STORE_DOMAIN`` port from ``write_env_file``'s ``.env``.
 
     The file's expected shape (see
@@ -476,5 +476,6 @@ __all__ = [
     "SidecarHandle",
     "SidecarLifecycleError",
     "StartSidecarStep",
+    "parse_port_from_env",
     "sidecar_lifecycle",
 ]

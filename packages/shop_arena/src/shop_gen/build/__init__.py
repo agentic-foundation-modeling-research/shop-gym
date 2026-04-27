@@ -26,9 +26,11 @@ sidecar lifecycle land:
   T5.6 loop driver: ``tsc``/``build``/``routes_200``/``data_in_use``/
   ``nav_coverage``/``no_brand_leak`` (T5.4) plus the LLM-based
   ``quality_judge`` and ``cross_task_consistency`` judges (T5.5).
-
-Later tasks (T5.6-T5.10) wire the harness-loop driver against the
-verifier set under this same package.
+* :mod:`shop_gen.build.loop` — :class:`RunBuildHarnessLoopStep` (T5.6)
+  wires :class:`harness.PlanExecLoopConfig` against the prompts +
+  verifier set, spawns the long-lived sidecar via
+  :func:`sidecar_lifecycle`, and invokes
+  :func:`harness.run_plan_exec_loop`.
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -37,6 +39,14 @@ import.
 from __future__ import annotations
 
 from shop_gen.build.env import CloneTemplateStep, WriteEnvFileStep
+from shop_gen.build.loop import (
+    LoopRunner,
+    RunBuildHarnessLoopStep,
+    RuntimeFactory,
+    SidecarFactory,
+    VerifiersFactory,
+    default_verifiers_factory,
+)
 from shop_gen.build.prompts import (
     VERIFIER_FEEDBACK_PLACEHOLDER,
     load_agents_md,
@@ -76,16 +86,22 @@ __all__ = [
     "DevServerFactory",
     "GraphQLOperationError",
     "GraphQLOperationRef",
+    "LoopRunner",
     "NavCoverageVerifier",
     "NoBrandLeakVerifier",
     "QualityJudgeVerifier",
     "Routes200Verifier",
+    "RunBuildHarnessLoopStep",
+    "RuntimeFactory",
     "SchemaIntrospection",
+    "SidecarFactory",
     "SidecarHandle",
     "SidecarLifecycleError",
     "StartSidecarStep",
     "TscVerifier",
+    "VerifiersFactory",
     "WriteEnvFileStep",
+    "default_verifiers_factory",
     "load_agents_md",
     "load_consolidate_execute_prompt",
     "load_cross_task_consistency_prompt",

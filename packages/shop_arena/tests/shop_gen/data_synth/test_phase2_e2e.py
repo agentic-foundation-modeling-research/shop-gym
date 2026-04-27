@@ -654,7 +654,13 @@ def test_phase2_single_seed_end_to_end(tmp_path: Path) -> None:
     # (tests/shop_gen/build/test_sidecar.py). Skip them all here so
     # this Phase 2 e2e stays hermetic and free of subprocess plumbing.
     registry = pipeline._build_registry(config)
-    skip_ids = {"validate_hosting", "clone_template", "write_env_file", "start_sidecar"}
+    skip_ids = {
+        "validate_hosting",
+        "clone_template",
+        "write_env_file",
+        "start_sidecar",
+        "run_build_harness_loop",
+    }
     phase2_steps = [step for step in registry.all() if step.id not in skip_ids]
     result = run_pipeline(phase2_steps, ctx)
 

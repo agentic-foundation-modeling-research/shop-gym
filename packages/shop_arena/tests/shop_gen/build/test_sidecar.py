@@ -48,7 +48,7 @@ from shop_gen.build.sidecar import (
     SidecarHandle,
     SidecarLifecycleError,
     StartSidecarStep,
-    _parse_port_from_env,
+    parse_port_from_env,
     sidecar_lifecycle,
 )
 from shop_gen.config import ShopGenConfig
@@ -185,17 +185,17 @@ _BARE_PORT_FOR_PARSER_TEST: int = 12345
 """Arbitrary fixed port for the bare-host-port parser variant."""
 
 
-def test_parse_port_from_env_extracts_port_from_public_store_domain(tmp_path: Path) -> None:
+def testparse_port_from_env_extracts_port_from_public_store_domain(tmp_path: Path) -> None:
     env = tmp_path / ".env"
     env.write_text(
         f"PUBLIC_STORE_DOMAIN=http://localhost:{_FIXED_PORT_FOR_PARSER_TEST}\nSESSION_SECRET=foo\n",
         encoding="utf-8",
     )
 
-    assert _parse_port_from_env(env) == _FIXED_PORT_FOR_PARSER_TEST
+    assert parse_port_from_env(env) == _FIXED_PORT_FOR_PARSER_TEST
 
 
-def test_parse_port_from_env_handles_bare_host_port(tmp_path: Path) -> None:
+def testparse_port_from_env_handles_bare_host_port(tmp_path: Path) -> None:
     """The parser must tolerate a value without an explicit ``http://`` prefix."""
     env = tmp_path / ".env"
     env.write_text(
@@ -203,28 +203,28 @@ def test_parse_port_from_env_handles_bare_host_port(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    assert _parse_port_from_env(env) == _BARE_PORT_FOR_PARSER_TEST
+    assert parse_port_from_env(env) == _BARE_PORT_FOR_PARSER_TEST
 
 
-def test_parse_port_from_env_raises_when_file_missing(tmp_path: Path) -> None:
+def testparse_port_from_env_raises_when_file_missing(tmp_path: Path) -> None:
     with pytest.raises(SidecarLifecycleError, match=r"hydrogen \.env not found"):
-        _parse_port_from_env(tmp_path / "missing.env")
+        parse_port_from_env(tmp_path / "missing.env")
 
 
-def test_parse_port_from_env_raises_when_key_missing(tmp_path: Path) -> None:
+def testparse_port_from_env_raises_when_key_missing(tmp_path: Path) -> None:
     env = tmp_path / ".env"
     env.write_text("SESSION_SECRET=foo\n", encoding="utf-8")
 
     with pytest.raises(SidecarLifecycleError, match="missing PUBLIC_STORE_DOMAIN"):
-        _parse_port_from_env(env)
+        parse_port_from_env(env)
 
 
-def test_parse_port_from_env_raises_when_port_non_numeric(tmp_path: Path) -> None:
+def testparse_port_from_env_raises_when_port_non_numeric(tmp_path: Path) -> None:
     env = tmp_path / ".env"
     env.write_text("PUBLIC_STORE_DOMAIN=http://localhost:abc\n", encoding="utf-8")
 
     with pytest.raises(SidecarLifecycleError, match="no numeric port"):
-        _parse_port_from_env(env)
+        parse_port_from_env(env)
 
 
 # --------------------------------------------------------------------------- #

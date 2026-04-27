@@ -128,7 +128,12 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "assemble_data",
     )
     assert grouped["data_validation"] == ("validate_schema", "validate_hosting")
-    assert grouped["build"] == ("clone_template", "write_env_file", "start_sidecar")
+    assert grouped["build"] == (
+        "clone_template",
+        "write_env_file",
+        "start_sidecar",
+        "run_build_harness_loop",
+    )
     assert grouped["final_eval"] == ()
 
 
@@ -216,6 +221,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
         "clone_template",
         "write_env_file",
         "start_sidecar",
+        "run_build_harness_loop",
     ]
 
 
@@ -246,6 +252,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "clone_template",
         "write_env_file",
         "start_sidecar",
+        "run_build_harness_loop",
     ]
 
 
