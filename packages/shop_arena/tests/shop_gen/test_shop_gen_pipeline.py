@@ -105,7 +105,7 @@ def test_list_steps_returns_every_phase_in_order() -> None:
 
 
 def test_list_steps_only_lists_registered_phases() -> None:
-    """Phase 1-4 (T5.1) list registered steps; ``final_eval`` stays empty."""
+    """Every phase lists at least one registered step at v0.1."""
     grouped = list_steps()
     assert grouped["manual_merge"] == (
         "copy_seed_manual",
@@ -134,7 +134,7 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "start_sidecar",
         "run_build_harness_loop",
     )
-    assert grouped["final_eval"] == ()
+    assert grouped["final_eval"] == ("final_eval",)
 
 
 def test_list_steps_unions_single_and_multi_seed_branches() -> None:
@@ -222,6 +222,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
         "write_env_file",
         "start_sidecar",
         "run_build_harness_loop",
+        "final_eval",
     ]
 
 
@@ -253,6 +254,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "write_env_file",
         "start_sidecar",
         "run_build_harness_loop",
+        "final_eval",
     ]
 
 
@@ -272,6 +274,7 @@ def test_run_creates_out_dir_and_returns_artifact_paths(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
     ):
         result = run(config)
 
@@ -297,6 +300,7 @@ def test_run_with_no_registered_steps_writes_no_state(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
     ):
         run(ShopGenConfig(seeds=[seed], out_dir=out_dir))
     assert not state_path(out_dir).exists()
@@ -317,6 +321,7 @@ def test_run_drives_registered_step_to_completion(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
     ):
         run(config)
 
@@ -343,6 +348,7 @@ def test_run_default_out_dir_for_single_seed(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
     ):
         result = run(ShopGenConfig(seeds=[seed]))
 
@@ -373,6 +379,7 @@ def test_run_uses_explicit_name_for_default_out_dir(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
     ):
         result = run(ShopGenConfig(seeds=seeds, name="acme"))
 
@@ -401,6 +408,7 @@ def test_run_is_idempotent_on_second_invocation(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
     ):
         run(config)
         _do_run()

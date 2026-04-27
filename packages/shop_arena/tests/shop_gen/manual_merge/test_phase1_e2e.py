@@ -302,6 +302,7 @@ def test_phase1_two_seed_end_to_end_no_llm(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
     ):
         result = pipeline.run(config)
 
@@ -537,6 +538,7 @@ def test_phase1_three_seed_end_to_end_with_llm(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
     ):
         registry = pipeline._build_registry(config)
     result = run_pipeline(registry.all(), ctx)

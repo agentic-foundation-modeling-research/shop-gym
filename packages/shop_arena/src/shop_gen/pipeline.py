@@ -57,6 +57,7 @@ from shop_gen.data_synth import (
     SynthStoreStep,
 )
 from shop_gen.data_validation import ValidateHostingStep, ValidateSchemaStep
+from shop_gen.final_eval import FinalEvalStep
 from shop_gen.manual_merge import (
     ComputeMergeStatsStep,
     CopySeedManualStep,
@@ -432,10 +433,13 @@ def _register_build(registry: Registry) -> None:
 def _register_final_eval(registry: Registry) -> None:
     """Register Phase 5 final-eval steps.
 
-    Wired up in M6 (impl plan T6.1-T6.3); a no-op until those tasks
-    land.
+    Registers the advisory ``final_eval`` step from impl plan T6.3:
+    drives the playwright smoke flow + LLM judge against the post-build
+    hydrogen tree and writes ``<out_dir>/final_eval.json``. The step is
+    advisory per spec §5.5.5 — verdict failures and transport errors
+    are recorded into the verdict file rather than re-raised.
     """
-    del registry  # placeholder until M6 lands.
+    registry.register(FinalEvalStep())
 
 
 # --------------------------------------------------------------------------- #

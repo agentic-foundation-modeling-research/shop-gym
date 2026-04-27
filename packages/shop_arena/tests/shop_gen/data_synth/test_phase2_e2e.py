@@ -660,6 +660,7 @@ def test_phase2_single_seed_end_to_end(tmp_path: Path) -> None:
         "write_env_file",
         "start_sidecar",
         "run_build_harness_loop",
+        "final_eval",
     }
     phase2_steps = [step for step in registry.all() if step.id not in skip_ids]
     result = run_pipeline(phase2_steps, ctx)

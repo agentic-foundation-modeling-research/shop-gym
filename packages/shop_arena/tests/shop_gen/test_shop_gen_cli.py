@@ -87,8 +87,6 @@ def test_list_steps_prints_every_phase(capsys: pytest.CaptureFixture[str]) -> No
     assert rc == EXIT_OK
     for phase in PHASES:
         assert phase in out
-    # No concrete steps registered yet; every phase prints the placeholder marker.
-    assert "no steps registered" in out
 
 
 def test_list_steps_ignores_other_arguments(capsys: pytest.CaptureFixture[str]) -> None:
