@@ -16,6 +16,11 @@ import.
 from __future__ import annotations
 
 from shop_gen.data_synth._synth_helpers import StageSynthError
+from shop_gen.data_synth.collections import (
+    CollectionDraft,
+    SynthCollectionsStep,
+    synth_collections_from_identity,
+)
 from shop_gen.data_synth.identity import (
     Identity,
     IdentitySynthError,
@@ -46,6 +51,7 @@ from shop_gen.data_synth.store import SynthStoreStep, synth_store_from_identity
 __all__ = [
     "BrandColors",
     "Collection",
+    "CollectionDraft",
     "Identity",
     "IdentitySynthError",
     "Navigation",
@@ -61,11 +67,13 @@ __all__ = [
     "StageSynthError",
     "Store",
     "StoreBrand",
+    "SynthCollectionsStep",
     "SynthIdentityStep",
     "SynthPagesStep",
     "SynthPoliciesStep",
     "SynthStoreStep",
     "pick_name_from_allowlist",
+    "synth_collections_from_identity",
     "synth_identity_from_manual",
     "synth_pages_from_identity",
     "synth_policies_from_identity",

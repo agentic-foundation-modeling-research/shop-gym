@@ -119,6 +119,7 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "synth_store",
         "synth_pages",
         "synth_policies",
+        "synth_collections",
     )
     for phase in ("data_validation", "build", "final_eval"):
         assert grouped[phase] == ()
@@ -196,6 +197,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
         "synth_store",
         "synth_pages",
         "synth_policies",
+        "synth_collections",
     ]
 
 
@@ -214,6 +216,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "synth_store",
         "synth_pages",
         "synth_policies",
+        "synth_collections",
     ]
 
 

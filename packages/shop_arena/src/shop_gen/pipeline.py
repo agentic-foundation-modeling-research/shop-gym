@@ -38,6 +38,7 @@ from typing import Final
 
 from shop_gen.config import ShopGenConfig, ShopGenResult
 from shop_gen.data_synth import (
+    SynthCollectionsStep,
     SynthIdentityStep,
     SynthPagesStep,
     SynthPoliciesStep,
@@ -259,10 +260,19 @@ def _build_registry_from_branch(
     if multi_seed:
         _register_manual_merge(registry, config=config)
         manual_step_ids: tuple[str, ...] = ("merge_capabilities", "merge_manual_prose")
+        stats_aware_manual_step_ids: tuple[str, ...] = (
+            *manual_step_ids,
+            "compute_merge_stats",
+        )
     else:
         _register_single_seed_manual(registry, config=config)
         manual_step_ids = ("copy_seed_manual",)
-    _register_data_synth(registry, manual_step_ids=manual_step_ids)
+        stats_aware_manual_step_ids = manual_step_ids
+    _register_data_synth(
+        registry,
+        manual_step_ids=manual_step_ids,
+        stats_aware_manual_step_ids=stats_aware_manual_step_ids,
+    )
     _register_data_validation(registry)
     _register_build(registry)
     _register_final_eval(registry)
@@ -325,29 +335,42 @@ def _register_data_synth(
     registry: Registry,
     *,
     manual_step_ids: Sequence[str] = (),
+    stats_aware_manual_step_ids: Sequence[str] = (),
 ) -> None:
     """Register Phase 2 data-synthesis steps.
 
-    Currently registers ``synth_identity`` (T3.3) plus the three
+    Currently registers ``synth_identity`` (T3.3), the three
     identity-fanout steps ``synth_store`` / ``synth_pages`` /
-    ``synth_policies`` (T3.4). Subsequent M3 tasks (T3.5-T3.11) will
-    register the rest of the Phase 2 sub-DAG here.
+    ``synth_policies`` (T3.4), and ``synth_collections`` (T3.5).
+    Subsequent M3 tasks (T3.6-T3.11) will register the rest of the
+    Phase 2 sub-DAG here.
 
     Args:
         registry: Registry to mutate.
         manual_step_ids: Upstream step ids that produce the merged
-            ``manual/`` directory. Multi-seed runs pass
-            ``("merge_capabilities", "merge_manual_prose")``;
-            single-seed runs pass ``("copy_seed_manual",)``. Empty in
-            the listing branch (``--list-steps`` does not bind to a
-            specific seed count); the placeholder still surfaces the
-            step ids in :func:`shop_gen.pipeline.list_steps`.
+            ``manual/capabilities.json`` + ``manual/manual.md``.
+            Multi-seed runs pass ``("merge_capabilities",
+            "merge_manual_prose")``; single-seed runs pass
+            ``("copy_seed_manual",)``. Empty in the listing branch
+            (``--list-steps`` does not bind to a specific seed
+            count); the placeholder still surfaces the step ids in
+            :func:`shop_gen.pipeline.list_steps`.
+        stats_aware_manual_step_ids: Like ``manual_step_ids`` but also
+            includes the producer of ``manual/stats.json``
+            (``compute_merge_stats`` for multi-seed,
+            ``copy_seed_manual`` for single-seed). Used by
+            ``synth_collections`` so the stats priors propagate
+            staleness correctly.
     """
     manual_ids = tuple(manual_step_ids)
+    stats_aware_manual_ids = tuple(stats_aware_manual_step_ids)
     registry.register(SynthIdentityStep(manual_step_ids=manual_ids))
     registry.register(SynthStoreStep())
     registry.register(SynthPagesStep(manual_step_ids=manual_ids))
     registry.register(SynthPoliciesStep())
+    registry.register(
+        SynthCollectionsStep(manual_step_ids=stats_aware_manual_ids),
+    )
 
 
 def _register_data_validation(registry: Registry) -> None:
