@@ -15,9 +15,15 @@ sidecar lifecycle land:
   resolved port + argv. Exposes :func:`sidecar_lifecycle` — the
   context-manager helper the harness loop driver (T5.6) reuses to
   hold the long-lived sidecar that the build loop talks to.
+* :mod:`shop_gen.build.prompts` — ``agents.md`` / ``planner.md`` /
+  ``execute.md`` / ``consolidate_execute.md`` (T5.3) loaders. The
+  T5.6 loop driver feeds the agents-md / planner / executor strings
+  into :class:`harness.PlanExecLoopConfig` and swaps in the
+  consolidate body when the harness selects the mandatory final
+  task.
 
-Later tasks (T5.3-T5.10) populate the verifier set, the prompt
-assets, and the harness-loop driver under this same package.
+Later tasks (T5.4-T5.10) populate the verifier set and the
+harness-loop driver under this same package.
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -26,6 +32,13 @@ import.
 from __future__ import annotations
 
 from shop_gen.build.env import CloneTemplateStep, WriteEnvFileStep
+from shop_gen.build.prompts import (
+    VERIFIER_FEEDBACK_PLACEHOLDER,
+    load_agents_md,
+    load_consolidate_execute_prompt,
+    load_execute_prompt,
+    load_planner_prompt,
+)
 from shop_gen.build.sidecar import (
     SidecarHandle,
     SidecarLifecycleError,
@@ -34,10 +47,15 @@ from shop_gen.build.sidecar import (
 )
 
 __all__ = [
+    "VERIFIER_FEEDBACK_PLACEHOLDER",
     "CloneTemplateStep",
     "SidecarHandle",
     "SidecarLifecycleError",
     "StartSidecarStep",
     "WriteEnvFileStep",
+    "load_agents_md",
+    "load_consolidate_execute_prompt",
+    "load_execute_prompt",
+    "load_planner_prompt",
     "sidecar_lifecycle",
 ]
