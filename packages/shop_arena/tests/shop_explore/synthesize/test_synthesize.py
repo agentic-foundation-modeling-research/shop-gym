@@ -186,7 +186,6 @@ def test_synthesize_writes_all_published_artifacts_with_llm_response(
     assert caps["cart"]["type"] == "drawer"
     assert caps["search"]["has_predictive"] is True
     assert caps["site_shell"]["has_mega_menu"] is True
-    assert caps["intl"]["has_locale_switcher"] is True
     assert caps["collection"]["filters"] == ["size", "color", "price"]
     assert caps["homepage"]["section_count"] == _EXPECTED_HOMEPAGE_SECTIONS
 

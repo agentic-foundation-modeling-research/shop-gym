@@ -242,7 +242,6 @@ _DAWN_DEMO_FIXTURE = _ReplayFixture(
         (("cart", "type"), "drawer"),
         (("site_shell", "has_mega_menu"), False),
         (("homepage", "section_count"), 2),
-        (("intl", "has_currency_switcher"), True),
     ),
 )
 
@@ -260,8 +259,6 @@ _FEATURE_RICH_FIXTURE = _ReplayFixture(
         (("site_shell", "has_mega_menu"), True),
         (("site_shell", "nav_depth"), 2),
         (("search", "has_predictive"), True),
-        (("intl", "has_locale_switcher"), True),
-        (("intl", "has_currency_switcher"), True),
     ),
 )
 

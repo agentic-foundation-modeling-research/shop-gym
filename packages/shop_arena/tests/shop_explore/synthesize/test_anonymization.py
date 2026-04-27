@@ -74,9 +74,7 @@ _CLEAN_MANUAL_BODY = (
     "collection suggestions; the results layout is a grid with filters.\n\n"
     "## Collection\n\n"
     "Four-column grid with size, color, and price filters and "
-    "featured / price / newest sort options. Pagination is load-more.\n\n"
-    "## Internationalization\n\n"
-    "A locale switcher is exposed; currency switching is not.\n"
+    "featured / price / newest sort options. Pagination is load-more.\n"
 )
 
 

@@ -16,7 +16,7 @@ landing in `parts/`.
 | `plan`      | —                    | three tasks + four omitted areas in plan.md |
 | `exec-0001` | `homepage_sections`  | minimal `site_shell`, `homepage`, `floating` |
 | `exec-0002` | `info_pages`         | `info_pages_present` (six pages)           |
-| `exec-0003` | `cart_drawer`        | `cart` (`type=drawer`, no upsells), `intl` |
+| `exec-0003` | `cart_drawer`        | `cart` (`type=drawer`, no upsells)         |
 
 ## Provenance
 

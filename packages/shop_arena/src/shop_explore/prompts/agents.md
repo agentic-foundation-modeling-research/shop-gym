@@ -149,12 +149,16 @@ e.g. `homepage_sections`, `cart_drawer`, `search_predictive`). Use the
 same id for both `parts/<task_id>.*` and `evidence/<task_id>/`.
 
 `parts/<task_id>.md` — markdown describing the structural findings
-for this task. **Anonymized.** Headings are H2 (`##`) under the task
-name; don't repeat the task title at H1. Keep prose tight: the
-synthesizer concatenates these and merges them into the final
-`manual.md`. No on-page copy quoted verbatim; describe the *role* and
-*shape* of each element. Reference your evidence inline by relative
-path, e.g. `see evidence/cart_drawer/screenshots/01-empty.png`.
+for this task. **Anonymized.** Use one `## <Surface name>` heading at
+the top, then one `### <Element name>` block per distinct UX element
+following the bullet template (Type / Layout / Content / Behavior /
+Styling / UX Notes) defined in `prompts/execute.md` §"Per-element
+template". The synthesis pass lifts those H3 blocks into the final
+`manual.md`, so optimize for structural fidelity, not brevity — every
+bullet is a claim a downstream sandbox generator needs. No on-page
+copy quoted verbatim; describe the *role* and *shape* of each
+element. Reference your evidence inline by relative path, e.g.
+`see evidence/cart_drawer/screenshots/01-empty.png`.
 
 `parts/<task_id>.caps.json` — a JSON object containing **only** the
 top-level capabilities-schema keys this task is responsible for. The
@@ -190,7 +194,7 @@ this file at pipeline-time, so it cannot drift):
 ```
 
 The top-level groupings (`shop`, `site_shell`, `homepage`,
-`collection`, `product`, `cart`, `search`, `intl`, `floating`,
+`collection`, `product`, `cart`, `search`, `floating`,
 `info_pages_present`) are the only valid keys for any
 `parts/<task_id>.caps.json` fragment.
 

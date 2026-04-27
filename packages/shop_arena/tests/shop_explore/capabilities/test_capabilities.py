@@ -86,10 +86,6 @@ def _spec_example() -> dict[str, object]:
             "predictive_types": ["products", "collections"],
             "results_layout": "grid_with_filters",
         },
-        "intl": {
-            "has_locale_switcher": True,
-            "has_currency_switcher": False,
-        },
         "floating": {
             "has_chat_widget": True,
             "has_age_gate": False,

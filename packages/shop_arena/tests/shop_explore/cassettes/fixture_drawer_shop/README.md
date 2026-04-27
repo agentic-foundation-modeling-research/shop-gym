@@ -14,7 +14,7 @@ in §5.7 of `docs/specs/shop_arena/shop_explore.md`:
 | `exec-0001` | `homepage_sections`  | `homepage`, `site_shell`                  |
 | `exec-0002` | `cart_drawer`        | `cart` (`type=drawer`)                    |
 | `exec-0003` | `search_predictive`  | `search` (`has_predictive=true`)          |
-| `exec-0004` | `collection_filters` | `collection`, `intl`                      |
+| `exec-0004` | `collection_filters` | `collection`                              |
 
 Each executor iteration's `workspace_after/artifact/` writes
 `parts/<task>.md`, `parts/<task>.caps.json`, and at least one evidence

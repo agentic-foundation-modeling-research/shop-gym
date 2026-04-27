@@ -13,9 +13,5 @@
     ],
     "section_count": 6,
     "has_popup_modal": false
-  },
-  "intl": {
-    "has_locale_switcher": true,
-    "has_currency_switcher": true
   }
 }

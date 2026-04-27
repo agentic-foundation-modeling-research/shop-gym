@@ -12,7 +12,7 @@ schema:
 | Iter        | Selected task        | Capabilities fragment surfaces                |
 | ----------- | -------------------- | ---------------------------------------------- |
 | `plan`      | —                    | four tasks + one omitted area in plan.md       |
-| `exec-0001` | `homepage_sections`  | `site_shell`, `homepage`, `intl` (both switchers) |
+| `exec-0001` | `homepage_sections`  | `site_shell`, `homepage`                       |
 | `exec-0002` | `header_navigation`  | `site_shell.has_mega_menu=true`, `nav_depth=2` |
 | `exec-0003` | `collection_filters` | `collection` (4 filters, 5 sort), `search` (predictive) |
 | `exec-0004` | `cart_drawer`        | `cart` (drawer + upsells + promo), `product` (variants) |
@@ -22,8 +22,8 @@ schema:
 This is a **synthetic placeholder cassette**, not a recording of any
 live storefront. The cassette is hand-authored to advertise the
 documented feature-rich profile (mega menu, faceted filters, drawer
-cart with upsells, predictive search, locale + currency switchers) so
-the replay pipeline test exercises the feature-rich shape end-to-end.
+cart with upsells, predictive search) so the replay pipeline test
+exercises the feature-rich shape end-to-end.
 Refresh in place when a recorded cassette is added; the README header
 in `cassettes/README.md` tracks status.
 

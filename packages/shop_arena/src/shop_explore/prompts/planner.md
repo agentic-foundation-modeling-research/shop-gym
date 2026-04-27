@@ -20,8 +20,7 @@ Read `artifact/prefetch/` first; resolve everything HTML can answer
 before opening the browser. Then spend ≤ 4 navigations on what static
 HTML cannot show:
 
-1. **Homepage** (`/`) — hero, sections, popups, locale switcher,
-   announcement bar.
+1. **Homepage** (`/`) — hero, sections, popups, announcement bar.
 2. **Largest collection** (from `collections.json`) — filters, sort,
    pagination, card layout.
 3. **PDP with > 1 variant** (from `products.json`) — variant selector,
@@ -39,37 +38,42 @@ optional — the executor will redo them in their task.
 
 ---
 
-## 2. Coverage taxonomy (spec §5.3)
+## 2. Canonical task list (emit unconditionally)
 
-Consider every area; emit a task or list it under `## Omitted Areas`
-with a one-line reason. Emit a task only when prefetch or the browse
-shows the feature is present.
+The following task ids are the **canonical set**. Every run emits
+**all of them** in `## Tasks`, in the order shown, with the priorities
+shown. The planner's job is verification + extension, not discovery —
+do not drop a canonical task because a feature looks absent. If the
+feature really is missing, the executor will note that under its
+`### Edge cases & gaps` block (and `caps.json` will reflect it). This
+keeps cassettes stable across shops and gives the synthesis pass a
+predictable input shape.
 
 ```
-Site shell:        announcement_bar, header_navigation, mega_menu, footer
-Homepage:          hero, sections (featured_collection / banner / testimonials /
-                   carousel / video), newsletter, popups
-Collection:        listing_layout, product_card, filters, sort, pagination
-Product detail:    gallery, variant_selectors, qty_selector, add_to_cart,
-                   description, recommendations, reviews
-Cart:              cart_drawer_or_page, line_item_edit, upsells, promo_code
-Search:            search_trigger, predictive, results_layout
-Info / policy:     about, contact, shipping, returns, privacy, tos, faq, gift_cards
-Internationalization: locale_switcher, currency_switcher
-Floating:          chat_widget, age_gate, cookie_banner
+- [ ] homepage_sections — capture every section below the hero; full-page screenshot per section [priority: 9]
+- [ ] header_navigation — header rows, sticky behavior, mega menu / flyouts, search trigger, account / cart icons [priority: 8]
+- [ ] cart_drawer       — add 1 product, capture drawer states (empty, filled, qty change, remove) [priority: 8]
+- [ ] product_variants  — pick 2 PDPs (one with > 1 variant); capture gallery, variant selectors, qty stepper, recommendations [priority: 7]
+- [ ] collection_filters — open the largest collection; exercise filters + sort + pagination [priority: 7]
+- [ ] search_predictive — type 2 prefixes; capture suggestion panel + 1 network capture for `/search/suggest.json` (or equivalent) [priority: 6]
+- [ ] footer            — link groups, legal links, payment icons, social icons [priority: 4]
+- [ ] info_pages        — visit shipping, refund, privacy, tos, faq (and contact / about if present); one screenshot each [priority: 4]
+- [ ] floating_widgets  — cookie banner, newsletter popup, chat widget, age gate (record presence + behavior) [priority: 3]
 ```
 
-Use these task ids when applicable so cassettes stay stable across runs:
+Priorities are advisory tie-breakers, not gates — every task above
+must appear in `## Tasks` with status `[ ]`.
 
-- `homepage_sections`, `header_navigation`, `footer`
-- `collection_filters`, `collection_layout`
-- `product_variants`, `product_gallery`, `product_extras`
-- `cart_drawer`
-- `search_predictive`, `search_results`
-- `info_pages`, `intl_switchers`, `floating_widgets`
+If the prefetch or your browse surfaces a *shop-specific* feature
+that none of the canonical ids cover (e.g. a `gift_card_purchase`
+flow, a `bundle_builder`, a `loyalty_program` page), append additional
+snake_case task ids **after** the canonical block. Justify each
+addition with a one-line evidence reference in the brief.
 
-You may invent additional snake_case ids for shop-specific surfaces
-(e.g. `gift_card_purchase`); prefer the list above when generic.
+The `## Omitted Areas` block is reserved for taxonomy areas the shop
+genuinely lacks at the surface level (e.g. "no mega_menu — header is
+single-row links only"). Do **not** list canonical task ids there —
+they always run.
 
 ---
 
@@ -85,12 +89,8 @@ terms. No brand, no product names, no source URL.>
 
 ## Tasks
 
-- [ ] homepage_sections — capture all sections below the hero; full-page screenshot per section [priority: 8]
-- [ ] cart_drawer        — add 1 product, capture drawer states (empty, filled, qty change) [priority: 7]
-- [ ] search_predictive  — type 2 prefixes; capture suggestion panel + 1 network capture [priority: 6]
-- [ ] collection_filters — open the largest collection; exercise filters + sort + pagination [priority: 6]
-- [ ] product_variants   — pick 2 PDPs with variants; capture each selector state [priority: 5]
-- [ ] info_pages         — visit shipping, returns, privacy, tos; one screenshot each [priority: 3]
+<the full canonical block from §2, verbatim, optionally followed by
+shop-specific tasks justified inline in their brief>
 
 ## Omitted Areas
 
@@ -115,9 +115,12 @@ consume them):
 
 - `## Omitted Areas` is required even if empty (write `(none)`). Each
   entry is `- <area> — <one-line evidence-grounded reason>`.
-- Order tasks within `## Tasks` from highest priority down.
-- Every emitted task must be justified by prefetch evidence or your
-  browse — no speculative tasks.
+- The canonical block from §2 is emitted **verbatim and unconditionally**;
+  do not drop tasks because a feature looks absent. Any shop-specific
+  additions appear *after* the canonical block.
+- Tweak briefs (the trailer after `—`) when prefetch reveals a more
+  specific target (e.g. naming the largest collection slug). Do not
+  change task ids or priorities of the canonical list.
 
 ---
 
@@ -141,13 +144,5 @@ brief plus their per-task knowledge — make it self-sufficient.
 | 3–4      | Footer, info pages, less-distinctive layout pages.                           |
 | 0–2      | Floating widgets that exist but are off-the-shelf (cookie banner, chat).     |
 
----
-
-## 6. Self-check before exit
-
-- Exactly one `## Tasks` and one `## Omitted Areas` heading, in that order.
-- Every task line matches the format; ids are unique snake_case.
-- Every emitted task is evidenced by prefetch or your browse.
-- Every taxonomy area not emitted appears under `## Omitted Areas` with a reason.
-- Total `pw.js goto` calls ≤ 4.
-- No files written outside `plan.md` and `artifact/evidence/_planner/`.
+The canonical priorities in §2 already cover most rows; this guide is
+for shop-specific tasks you append below the canonical block.

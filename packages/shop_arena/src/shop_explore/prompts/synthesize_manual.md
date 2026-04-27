@@ -34,12 +34,12 @@ stop.
   (e.g. "Premium Outdoor Gear Shop", "Independent Furniture Store").
   Pick it from the `shop` block of capabilities; never use the real
   store name.
-- Use H2 (`##`) for each top-level area in this fixed order, skipping
-  any area that has no relevant content in either input:
+- Use H2 (`##`) for each top-level area in this fixed order. Skip an
+  H2 only when neither capabilities nor parts have any signal for it.
   1. `## Overview` — 2–4 sentences: vertical, scale signals from the
      `shop` block, customer-facing tone.
-  2. `## Site shell` — header, footer, mega menu, announcement bar,
-     locale switcher (mirror `site_shell` + `intl`).
+  2. `## Site shell` — header, footer, mega menu, announcement bar
+     (mirror `site_shell`).
   3. `## Homepage` — section taxonomy and ordering (`homepage`).
   4. `## Collections & navigation` — collection page UX, filters, sort,
      pagination (`collection`).
@@ -49,13 +49,22 @@ stop.
      (`cart`).
   7. `## Search` — predictive vs full-page, suggestion grouping, empty
      state (`search`).
-  8. `## Internationalization` — locale, currency, market switcher
-     (`intl`, if not folded into Site shell).
-  9. `## Floating UX` — popups, chat, banners (`floating`).
-  10. `## Policy & info pages` — which pages exist + their role
-      (`info_pages_present`).
-- Keep the body **≤ 1200 words total**. The deliverable is a concise
-  manual, not a transcript of the parts.
+  8. `## Floating UX` — popups, chat, banners (`floating`).
+  9. `## Policy & info pages` — which pages exist + their role
+     (`info_pages_present`).
+  10. `## UX Patterns Summary` — **mandatory closing section**, see §3
+      for the required table format.
+- Within each H2, **preserve the per-element H3 blocks** the executor
+  produced in `parts/<task_id>.md`. Lift each `### <Element name>`
+  block into the matching H2 area and keep the bullet template
+  (Type / Layout / Content / Behavior / Styling / UX Notes) intact.
+  Do not collapse them into prose paragraphs or single-line bullets;
+  that is precisely the detail downstream `shop_gen` needs.
+- There is **no overall word cap**. Optimize for structural fidelity:
+  every claim a downstream generator would need to rebuild the surface
+  belongs in the manual. The only thing to compress is *cross-task
+  duplication* (e.g. trust badges described identically in cart and
+  homepage parts — describe once, reference from the second).
 - Always end with a single newline.
 
 ## 2. How to merge
@@ -65,9 +74,10 @@ stop.
   contradict capabilities, prefer capabilities and silently drop the
   contradicting sentence.
 - Treat `Per-task parts` as the **source of qualitative detail**:
-  layout descriptions, interaction order, edge cases. Merge
-  overlapping observations across tasks; do not list the same fact
-  twice.
+  layout descriptions, interaction order, edge cases. Lift their H3
+  element blocks into the right H2 area; do not rewrite or compress.
+  When two parts describe overlapping facts (e.g. trust badges), keep
+  the most detailed version once and drop the duplicate.
 - If a task fragment is empty or trivially short (e.g. a `[!]` blocked
   task), drop it — note the gap implicitly by leaving that area thin,
   do not add `(blocked)` markers.
@@ -79,7 +89,36 @@ stop.
   process notes ("we ran out of iterations") — they belong in
   `manifest.json`, not the manual.
 
-## 3. Anonymization (final-pass safety net)
+## 3. UX Patterns Summary (mandatory closing section)
+
+The manual must end with `## UX Patterns Summary` — a closing 2-column
+table that gives downstream consumers a one-glance read of the shop's
+pattern profile. The pattern axes below are the canonical set; emit
+every row in this exact order, even when the cell collapses to "none
+observed". Keep cells short — one phrase or comma-separated list, no
+sentences.
+
+```markdown
+## UX Patterns Summary
+
+| Pattern               | Implementation                                                       |
+| --------------------- | -------------------------------------------------------------------- |
+| Navigation            | <e.g. "sticky two-row header + 8-entry category nav with flyouts">  |
+| Social Proof          | <e.g. "celebrity endorsement, 50K+ aggregate reviews, UGC carousel">|
+| Conversion Tactics    | <e.g. "sale announcement bar, savings badges, free-shipping qualifier"> |
+| Layout Variety        | <e.g. "alternating grids, full-width banners, 2×2 feature grid">    |
+| Product Discovery     | <e.g. "category nav, best sellers carousel, predictive search disabled"> |
+| Trust Signals         | <e.g. "lifetime warranty, free shipping, 30-day returns, BNPL">     |
+| Content Strategy      | <e.g. "editorial recipes + articles carousels alongside PDP rails"> |
+| Floating Surfaces     | <e.g. "cookie banner, time-gated newsletter popup, no chat widget">  |
+```
+
+Pull each row from `Capabilities` first (the schema-validated truth)
+and supplement with the most distinctive observation from the parts.
+If a row genuinely has nothing to say (e.g. no floating surfaces at
+all), emit `none observed` — do not omit the row.
+
+## 4. Anonymization (final-pass safety net)
 
 `AGENTS.md` already required executors to anonymize at write time.
 This pass is the **last line of defense** before publication. Re-apply
@@ -112,23 +151,25 @@ encouraged; that is the vocabulary of the capabilities schema.
 A reader of `manual.md` must be unable to identify the source shop.
 If you are unsure whether a sentence leaks identity, cut it.
 
-## 4. Style
+## 5. Style
 
 - Crisp, structural, neutral. No marketing voice. No "we observed";
   write in the present tense about the storefront ("The cart opens
   as a right-side drawer.").
-- Prefer bullet lists when describing inventories of features (filter
-  facets, locale options, homepage sections); prefer prose when
-  describing a flow.
+- Within an H3 element block, keep the executor's bullet template
+  (Type / Layout / Content / Behavior / Styling / UX Notes). Outside
+  those blocks, prefer prose for flows and short bullet lists for
+  inventories (filter facets, locale options, info pages).
 - Reference the capabilities vocabulary directly — say
   "predictive search" not "search-as-you-type", "mega menu" not
   "expanded navigation".
 - No internal references (`see parts/...`, `see evidence/...`);
   they would be dangling once the parts are deleted.
-- No code fences, no JSON, no tables unless a comparison is genuinely
-  clearer as a 2-column table.
+- No code fences and no JSON. The closing `## UX Patterns Summary`
+  table is the only required table; ad-hoc tables are allowed only
+  when a 2-column comparison is genuinely clearer than prose.
 
-## 5. Failure mode
+## 6. Failure mode
 
 If the inputs are too sparse to produce a meaningful manual (e.g. the
 parts are all empty), emit only the `# Shop Manual — <descriptor>`

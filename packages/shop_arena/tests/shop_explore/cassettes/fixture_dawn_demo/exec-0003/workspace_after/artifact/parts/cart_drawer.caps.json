@@ -4,9 +4,5 @@
     "has_promo_input": false,
     "has_upsells": false,
     "has_shipping_estimate": false
-  },
-  "intl": {
-    "has_locale_switcher": true,
-    "has_currency_switcher": true
   }
 }

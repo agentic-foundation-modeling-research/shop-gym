@@ -66,7 +66,6 @@ against the new content.
     quantity selector, recommendations.
   - **Cart:** drawer (not page).
   - **Search:** predictive panel with products + collections.
-  - **Intl:** locale switcher + currency switcher.
   - **Info:** about, contact, shipping, returns, privacy, ToS, FAQ.
 - **License / fair-use stance:** when this cassette is refreshed from a
   live recording in a future milestone, the repo will commit **only**:
@@ -103,7 +102,6 @@ against the new content.
     no reviews, no recommendations carousel.
   - **Cart:** drawer or notification (theme default).
   - **Search:** modal trigger; predictive results minimal.
-  - **Intl:** locale + currency form (default Dawn includes both).
   - **Info:** policy pages only.
 - **Why this exact shop:** the spec's M4 plan calls for "one feature-
   rich and one minimal" fixture so SC5 (coverage) and the

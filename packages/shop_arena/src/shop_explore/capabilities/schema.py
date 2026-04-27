@@ -91,13 +91,6 @@ class Search(_Section):
     results_layout: str | None = None
 
 
-class Intl(_Section):
-    """Internationalization switchers (spec §5.5 ``intl``)."""
-
-    has_locale_switcher: bool | None = None
-    has_currency_switcher: bool | None = None
-
-
 class Floating(_Section):
     """Floating / overlay widgets (spec §5.5 ``floating``)."""
 
@@ -128,6 +121,5 @@ class Capabilities(BaseModel):
     product: Product = Field(default_factory=Product)
     cart: Cart = Field(default_factory=Cart)
     search: Search = Field(default_factory=Search)
-    intl: Intl = Field(default_factory=Intl)
     floating: Floating = Field(default_factory=Floating)
     info_pages_present: list[str] = Field(default_factory=list)

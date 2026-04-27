@@ -42,9 +42,9 @@ edit any other task's checkbox.
      (predictive search, cart updates, filter responses).
 
 3. **Write the part files.** Anonymize at write time per AGENTS.md §2.
-   - `artifact/parts/<task_id>.md` — prose describing the *role* and
-     *shape* of each element. H2 headings under the task name (no H1).
-     Reference evidence inline by relative path.
+   - `artifact/parts/<task_id>.md` — markdown describing the *role* and
+     *shape* of each element. Use the template in §"Per-element
+     template" below; reference evidence inline by relative path.
    - `artifact/parts/<task_id>.caps.json` — single JSON object with
      top-level keys from the closed schema for the surface in your
      brief. The schema rejects unknowns at merge time; if you observe
@@ -57,10 +57,62 @@ edit any other task's checkbox.
 
 ---
 
+## Per-element template
+
+`parts/<task_id>.md` is the *source of structural detail* the synthesis
+pass relies on. Treat it as the long-form companion to your
+`caps.json`: where caps captures booleans and enumerations, the
+markdown captures *layout, behavior, and content shape* well enough
+that a downstream sandbox generator can rebuild the surface without
+seeing the live shop.
+
+Required structure:
+
+- One `## <Surface name>` heading at the top (H2 under the implicit
+  task title — e.g. `## Homepage Sections`, `## Cart Drawer`,
+  `## Search`). Do not repeat the task title at H1.
+- Optional 1–2 sentence orientation paragraph after the H2 plus inline
+  evidence references (full-page screenshot, key snapshots).
+- One `### <Element name>` block per distinct UX element observed
+  (e.g. each homepage section, each cart state, each variant axis).
+  Number them `Section 1 — …`, `Section 2 — …` when ordering matters.
+
+For every `### <Element name>` block, fill the bullet template below.
+Mark a field `N/A` rather than skipping it — the schema makes gaps
+visible to the synthesis pass instead of letting them disappear.
+
+```markdown
+### <Element name>
+
+- **Type:** <one-line classification — e.g. "promotional banner",
+  "sticky two-row header", "horizontal product carousel">
+- **Layout:** <how it is structured visually — column count, grid vs
+  carousel, asymmetric splits, mobile vs desktop differences>
+- **Content:** <what fields and data the element shows — image, title,
+  price block, savings badge, star rating, etc.>
+- **Behavior:** <interactivity — scroll, hover, click, expand, modal
+  open, autoplay, sticky-on-scroll, ajax updates, popup triggers>
+- **Styling:** <visual cues — full-bleed, dark/light, sticky, dismissible,
+  badge color, typography role; only structural facts, no brand colors>
+- **UX Notes:** <quirks, edge cases, accessibility cues, anonymization
+  flags — anything a generator would otherwise miss>
+```
+
+Close every part file with one `### Edge cases & gaps` block (use the
+same bullet template) summarizing surfaces you tried but could not
+exercise (popup didn't fire, variant out of stock, etc.). This is
+where the synthesis pass learns what is *absent* in addition to what
+is present.
+
+Keep prose factual and structural — no marketing tone, no verbatim
+on-page copy, no brand or product names. The point is fidelity, not
+brevity: a richer part is fine as long as every line is structural.
+
+---
+
 ## Self-check before exit
 
 - Both `parts/<task_id>.md` and `parts/<task_id>.caps.json` exist;
   the caps file parses as one JSON object (no envelope, no array).
 - ≥ 1 screenshot, paired snapshot at the same `NN`.
 - No store / brand / product names; no verbatim on-page copy.
-- `plan.md` changed exactly one line: yours.

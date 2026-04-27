@@ -154,7 +154,6 @@ def test_caps_fragments_merge_into_complete_capabilities_without_conflicts(
     assert capabilities.cart.type == "drawer"
     assert capabilities.search.has_predictive is True
     assert capabilities.site_shell.has_mega_menu is True
-    assert capabilities.intl.has_locale_switcher is True
     assert capabilities.collection.filters == ["size", "color", "price"]
     assert capabilities.collection.sort == [
         "featured",
