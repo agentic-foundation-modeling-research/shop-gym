@@ -36,13 +36,12 @@ if [[ ! -f "$PLAN" ]]; then
 fi
 
 PROMPT=$(cat <<EOF
-Pick the most important task from @$PLAN (study the spec linked at the
-top of the plan first)
+Pick the most important task from @$PLAN
 do it end-to-end (edit code, run tests)
 then mark it "- [x]" in @$PLAN and commit with a summary.
 
-If no unchecked tasks remain, print exactly "ALL TASKS ARE DONE" and
-stop.
+If no unchecked tasks remain, print exactly "ALL TASKS ARE DONE" and stop.
+otherwise NEVER put "ALL TASKS ARE DONE" in your response.
 EOF
 )
 
