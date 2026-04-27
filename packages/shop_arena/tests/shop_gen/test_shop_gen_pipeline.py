@@ -91,10 +91,11 @@ def test_list_steps_returns_every_phase_in_order() -> None:
     assert tuple(grouped.keys()) == PHASES
 
 
-def test_list_steps_is_empty_for_unregistered_phases() -> None:
-    """Currently no concrete steps are registered (M2-M6 placeholders)."""
+def test_list_steps_only_lists_registered_phases() -> None:
+    """Phase 1 lists landed M2 steps; later phases stay empty until M3-M6."""
     grouped = list_steps()
-    for phase in PHASES:
+    assert grouped["manual_merge"] == ("merge_capabilities",)
+    for phase in ("data_synth", "data_validation", "build", "final_eval"):
         assert grouped[phase] == ()
 
 
@@ -106,7 +107,8 @@ def test_list_steps_unions_single_and_multi_seed_branches() -> None:
     every step name a user can target, regardless of seed count.
     """
 
-    def _multi(reg: Registry) -> None:
+    def _multi(reg: Registry, *, config: ShopGenConfig | None = None) -> None:
+        del config
         reg.register(cast(Step, _NoOpStep("merge_capabilities", "manual_merge")))
 
     def _single(reg: Registry) -> None:
@@ -156,22 +158,22 @@ def test_build_registry_multi_seed_uses_merge_branch(tmp_path: Path) -> None:
     single_hook.assert_not_called()
 
 
-def test_build_registry_is_empty_until_step_milestones_land(tmp_path: Path) -> None:
-    """Both DAG shapes are empty at this milestone (M2-M6 placeholders)."""
-    single_root = tmp_path / "single_root"
-    multi_root = tmp_path / "multi_root"
-    single_root.mkdir()
-    multi_root.mkdir()
-    [single_seed] = _make_seeds(single_root, 1)
-    multi_seeds = _make_seeds(multi_root, 2)
+def test_build_registry_single_seed_branch_remains_empty(tmp_path: Path) -> None:
+    """Single-seed manual hook is still a no-op (T2.6 lands later in M2)."""
+    [seed] = _make_seeds(tmp_path, 1)
     single = pipeline._build_registry(
-        ShopGenConfig(seeds=[single_seed], out_dir=tmp_path / "a"),
+        ShopGenConfig(seeds=[seed], out_dir=tmp_path / "a"),
     )
+    assert single.ids() == []
+
+
+def test_build_registry_multi_seed_registers_merge_capabilities(tmp_path: Path) -> None:
+    """Multi-seed branch registers ``merge_capabilities`` (T2.1 landed)."""
+    multi_seeds = _make_seeds(tmp_path, 2)
     multi = pipeline._build_registry(
         ShopGenConfig(seeds=multi_seeds, out_dir=tmp_path / "b"),
     )
-    assert single.ids() == []
-    assert multi.ids() == []
+    assert multi.ids() == ["merge_capabilities"]
 
 
 # --------------------------------------------------------------------------- #
@@ -254,7 +256,10 @@ def test_run_uses_explicit_name_for_default_out_dir(tmp_path: Path) -> None:
     cwd = tmp_path / "workspace"
     cwd.mkdir()
 
-    with _chdir(cwd):
+    # The merge_capabilities step (T2.1) reads each seed's
+    # capabilities.json; this test only exercises out_dir resolution,
+    # so patch the manual-merge registration to a no-op.
+    with _chdir(cwd), patch.object(pipeline, "_register_manual_merge", lambda reg, **_: None):
         result = run(ShopGenConfig(seeds=seeds, name="acme"))
 
     assert result.out_dir == Path("outputs") / "shops" / "acme"

@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Final
 
 from shop_gen.config import ShopGenConfig, ShopGenResult
+from shop_gen.manual_merge import MergeCapabilitiesStep
 from shop_gen.steps.base import StepContext, StepStatus
 from shop_gen.steps.runner import Registry, RunResult, run_pipeline
 from shop_gen.steps.state import read_state, state_path
@@ -223,19 +224,27 @@ def _build_registry(config: ShopGenConfig) -> Registry:
     single-seed ``copy_seed_manual`` shortcut (spec §5.2) is
     registered. Phases 2-5 are config-independent at v0.1.
     """
-    return _build_registry_from_branch(multi_seed=len(config.seeds) > 1)
+    return _build_registry_from_branch(multi_seed=len(config.seeds) > 1, config=config)
 
 
-def _build_registry_from_branch(*, multi_seed: bool) -> Registry:
+def _build_registry_from_branch(
+    *,
+    multi_seed: bool,
+    config: ShopGenConfig | None = None,
+) -> Registry:
     """Build a registry by selecting the manual-merge branch.
 
     Factored out of :func:`_build_registry` so :func:`list_steps` can
     enumerate both branches without constructing a full
     :class:`ShopGenConfig` (spec §5.8 ``--list-steps`` is config-free).
+    Steps that need per-run data (e.g. ``merge_capabilities`` reads
+    one ``capabilities.json`` per seed) accept ``config=None`` and
+    register a placeholder instance so the step id still surfaces in
+    the ``--list-steps`` table.
     """
     registry = Registry()
     if multi_seed:
-        _register_manual_merge(registry)
+        _register_manual_merge(registry, config=config)
     else:
         _register_single_seed_manual(registry)
     _register_data_synth(registry)
@@ -245,13 +254,27 @@ def _build_registry_from_branch(*, multi_seed: bool) -> Registry:
     return registry
 
 
-def _register_manual_merge(registry: Registry) -> None:
-    """Register Phase 1 multi-seed manual-merge steps.
+def _register_manual_merge(registry: Registry, *, config: ShopGenConfig | None = None) -> None:
+    """Register Phase 1 multi-seed manual-merge steps (impl plan T2.1-T2.5).
 
-    Wired up in M2 (impl plan T2.1-T2.5); a no-op while those tasks
-    are pending.
+    Currently registers ``merge_capabilities`` (T2.1). T2.2-T2.5 add
+    ``merge_manual_prose``, ``compute_merge_stats``, and
+    ``write_merge_manifest``.
+
+    Args:
+        registry: Registry to mutate.
+        config: Run configuration. ``None`` is the listing branch
+            (:func:`list_steps`); steps register a placeholder
+            instance so their ids surface in the ``--list-steps`` table
+            without requiring real seed paths.
     """
-    del registry  # placeholder until M2 lands.
+    if config is None:
+        seed_capabilities_paths: tuple[Path, ...] = ()
+    else:
+        seed_capabilities_paths = tuple(
+            seed / "artifact" / "capabilities.json" for seed in config.seeds
+        )
+    registry.register(MergeCapabilitiesStep(seed_capabilities_paths=seed_capabilities_paths))
 
 
 def _register_single_seed_manual(registry: Registry) -> None:
