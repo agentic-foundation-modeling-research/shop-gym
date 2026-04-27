@@ -100,7 +100,11 @@ class StatusReport:
     steps: tuple[StepStatusEntry, ...]
 
 
-def run(config: ShopGenConfig) -> ShopGenResult:
+def run(
+    config: ShopGenConfig,
+    *,
+    force_ids: frozenset[str] = frozenset(),
+) -> ShopGenResult:
     """Execute the ``shop_gen`` pipeline for ``config``.
 
     Resolves the run workspace, builds the config-aware step registry
@@ -113,6 +117,10 @@ def run(config: ShopGenConfig) -> ShopGenResult:
 
     Args:
         config: Validated run configuration.
+        force_ids: Step ids to force-run regardless of their stored
+            fingerprint. Plumbing for the CLI's ``--from`` / ``--only``
+            flags (spec §5.7.4); downstream descendants cascade to
+            stale via :func:`shop_gen.steps.runner.compute_staleness`.
 
     Returns:
         A :class:`~shop_gen.config.ShopGenResult` anchored at the
@@ -133,7 +141,7 @@ def run(config: ShopGenConfig) -> ShopGenResult:
 
     registry = _build_registry(config)
     ctx = StepContext(config=config, out_dir=out_dir)
-    _: RunResult = run_pipeline(registry.all(), ctx)
+    _: RunResult = run_pipeline(registry.all(), ctx, force_ids=force_ids)
 
     return _result_for(out_dir)
 
