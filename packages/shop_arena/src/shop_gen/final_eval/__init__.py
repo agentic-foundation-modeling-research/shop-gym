@@ -3,7 +3,7 @@
 Implements the post-build advisory quality check documented in
 ``docs/specs/shop_arena/shop_gen.md`` §5.5.5. v0.1 lands incrementally
 behind the impl plan T6.x tasks; today the playwright smoke runner
-ships:
+and the post-build LLM-judge prompt template ship:
 
 * :mod:`shop_gen.final_eval.playwright_smoke` — :func:`run_playwright_smoke`
   drives the spec-mandated smoke flow (home → collection → product →
@@ -12,7 +12,12 @@ ships:
   structured :class:`SmokeReport`. The module ships protocol seams
   (:class:`DevServerFactory`, :class:`BrowserDriver`) so the loop can
   be exercised under stubs in CI; production wiring lands alongside
-  the LLM judge (T6.2) and the ``final_eval`` step (T6.3).
+  the ``final_eval`` step (T6.3).
+* :mod:`shop_gen.final_eval.prompts` — :func:`load_quality_judge_prompt`
+  returns the ``str.format()`` template the post-build LLM judge
+  consumes (T6.2). The template carries the slots T6.3 fills in:
+  ``{base_url}``, ``{capabilities}``, ``{screenshots_table}``,
+  ``{failures_table}``.
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -35,6 +40,7 @@ from shop_gen.final_eval.playwright_smoke import (
     resolve_smoke_flow,
     run_playwright_smoke,
 )
+from shop_gen.final_eval.prompts import load_quality_judge_prompt
 
 __all__ = [
     "DEFAULT_SMOKE_FLOW",
@@ -48,6 +54,7 @@ __all__ = [
     "SmokeReport",
     "SmokeStep",
     "Viewport",
+    "load_quality_judge_prompt",
     "resolve_smoke_flow",
     "run_playwright_smoke",
 ]
