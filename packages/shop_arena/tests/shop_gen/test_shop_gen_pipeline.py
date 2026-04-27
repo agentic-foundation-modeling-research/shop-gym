@@ -128,7 +128,7 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "assemble_data",
     )
     assert grouped["data_validation"] == ("validate_schema", "validate_hosting")
-    assert grouped["build"] == ("clone_template", "write_env_file")
+    assert grouped["build"] == ("clone_template", "write_env_file", "start_sidecar")
     assert grouped["final_eval"] == ()
 
 
@@ -215,6 +215,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
         "validate_hosting",
         "clone_template",
         "write_env_file",
+        "start_sidecar",
     ]
 
 
@@ -244,6 +245,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "validate_hosting",
         "clone_template",
         "write_env_file",
+        "start_sidecar",
     ]
 
 
@@ -262,6 +264,7 @@ def test_run_creates_out_dir_and_returns_artifact_paths(tmp_path: Path) -> None:
     with (
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
     ):
         result = run(config)
 
@@ -332,6 +335,7 @@ def test_run_default_out_dir_for_single_seed(tmp_path: Path) -> None:
         _chdir(cwd),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
     ):
         result = run(ShopGenConfig(seeds=[seed]))
 
@@ -361,6 +365,7 @@ def test_run_uses_explicit_name_for_default_out_dir(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_manual_merge", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
     ):
         result = run(ShopGenConfig(seeds=seeds, name="acme"))
 
@@ -388,6 +393,7 @@ def test_run_is_idempotent_on_second_invocation(tmp_path: Path) -> None:
     with (
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
     ):
         run(config)
         _do_run()

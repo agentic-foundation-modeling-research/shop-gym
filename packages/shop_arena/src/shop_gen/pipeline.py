@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from shop_gen.build import CloneTemplateStep, WriteEnvFileStep
+from shop_gen.build import CloneTemplateStep, StartSidecarStep, WriteEnvFileStep
 from shop_gen.config import ShopGenConfig, ShopGenResult
 from shop_gen.data_synth import (
     AssembleDataStep,
@@ -402,15 +402,23 @@ def _register_data_validation(registry: Registry) -> None:
 def _register_build(registry: Registry) -> None:
     """Register Phase 4 build-harness-loop steps.
 
-    Currently registers the env-setup pair from impl plan T5.1:
-    ``clone_template`` copies the vendored Hydrogen template into
-    ``<out_dir>/hydrogen/``; ``write_env_file`` picks a free port
-    and writes ``hydrogen/.env`` with the resolved sidecar URL
-    (spec §5.5.1). The sidecar lifecycle (T5.2) and the harness
-    loop driver (T5.6) are wired up by later milestones.
+    Registers the env-setup pair from impl plan T5.1 plus the
+    ``start_sidecar`` step from T5.2:
+
+    * ``clone_template`` copies the vendored Hydrogen template into
+      ``<out_dir>/hydrogen/``.
+    * ``write_env_file`` picks a free port and writes
+      ``hydrogen/.env`` with the resolved sidecar URL (spec §5.5.1).
+    * ``start_sidecar`` boots ``shop-backend`` against the assembled
+      ``data/`` tree on that port to validate the spawn sequence and
+      records the verdict in ``runs/build/sidecar.json``.
+
+    The harness loop driver (T5.6) wires up the long-lived sidecar
+    via :func:`shop_gen.build.sidecar_lifecycle` in a later milestone.
     """
     registry.register(CloneTemplateStep())
     registry.register(WriteEnvFileStep())
+    registry.register(StartSidecarStep())
 
 
 def _register_final_eval(registry: Registry) -> None:

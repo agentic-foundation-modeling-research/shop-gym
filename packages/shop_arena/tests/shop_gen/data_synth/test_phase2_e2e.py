@@ -648,11 +648,13 @@ def test_phase2_single_seed_end_to_end(tmp_path: Path) -> None:
     # its own integration test (tests/shop_gen/data_validation/
     # test_hosting_check.py); the build env-setup steps (T5.1) operate
     # against the vendored Hydrogen template and are exercised in
-    # their own unit tests (tests/shop_gen/build/test_env.py). Skip
-    # them all here so this Phase 2 e2e stays hermetic and free of
-    # subprocess plumbing.
+    # their own unit tests (tests/shop_gen/build/test_env.py); the
+    # ``start_sidecar`` step (T5.2) boots ``shop-backend`` against
+    # the assembled data and is exercised in its own unit test
+    # (tests/shop_gen/build/test_sidecar.py). Skip them all here so
+    # this Phase 2 e2e stays hermetic and free of subprocess plumbing.
     registry = pipeline._build_registry(config)
-    skip_ids = {"validate_hosting", "clone_template", "write_env_file"}
+    skip_ids = {"validate_hosting", "clone_template", "write_env_file", "start_sidecar"}
     phase2_steps = [step for step in registry.all() if step.id not in skip_ids]
     result = run_pipeline(phase2_steps, ctx)
 

@@ -301,6 +301,7 @@ def test_phase1_two_seed_end_to_end_no_llm(tmp_path: Path) -> None:
     with (
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
     ):
         result = pipeline.run(config)
 
