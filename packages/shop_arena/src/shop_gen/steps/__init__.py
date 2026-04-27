@@ -4,7 +4,9 @@ The :mod:`shop_gen.steps.base` module defines the typed contract every
 pipeline step satisfies (``Step`` Protocol, ``StepContext``, ``StepStatus``,
 and the ``InputRef`` union). The :mod:`shop_gen.steps.state` module owns
 the ``state.json`` reader/writer and the per-step fingerprint hash. The
-companion runner lands in T1.4 and consumes both.
+:mod:`shop_gen.steps.runner` module owns DAG resolution, staleness
+detection, and topological execution. The pipeline entrypoint (T1.6)
+consumes all three.
 
 Spec: ``docs/specs/shop_arena/shop_gen.md`` §5.7.
 """
@@ -18,6 +20,17 @@ from shop_gen.steps.base import (
     StepContext,
     StepInput,
     StepStatus,
+)
+from shop_gen.steps.runner import (
+    CycleError,
+    DAGError,
+    DuplicateStepError,
+    MissingDependencyError,
+    Registry,
+    RunResult,
+    compute_staleness,
+    resolve_dag,
+    run_pipeline,
 )
 from shop_gen.steps.state import (
     SCHEMA_VERSION,
@@ -37,8 +50,14 @@ __all__ = [
     "SCHEMA_VERSION",
     "STATE_DIR_NAME",
     "STATE_FILE_NAME",
+    "CycleError",
+    "DAGError",
+    "DuplicateStepError",
     "FileInput",
     "InputRef",
+    "MissingDependencyError",
+    "Registry",
+    "RunResult",
     "StateFile",
     "Step",
     "StepContext",
@@ -46,8 +65,11 @@ __all__ = [
     "StepStateRecord",
     "StepStatus",
     "compute_fingerprint",
+    "compute_staleness",
     "hash_file",
     "read_state",
+    "resolve_dag",
+    "run_pipeline",
     "state_path",
     "upsert_step_state",
     "write_state",
