@@ -21,6 +21,11 @@ from shop_gen.data_synth.collections import (
     SynthCollectionsStep,
     synth_collections_from_identity,
 )
+from shop_gen.data_synth.details import (
+    ProductDetail,
+    SynthProductDetailsStep,
+    synth_product_details_for_collection,
+)
 from shop_gen.data_synth.identity import (
     Identity,
     IdentitySynthError,
@@ -66,6 +71,7 @@ __all__ = [
     "PaymentSettings",
     "Policy",
     "Product",
+    "ProductDetail",
     "ProductImage",
     "ProductOption",
     "ProductSkeleton",
@@ -77,6 +83,7 @@ __all__ = [
     "SynthIdentityStep",
     "SynthPagesStep",
     "SynthPoliciesStep",
+    "SynthProductDetailsStep",
     "SynthProductSkeletonsStep",
     "SynthStoreStep",
     "pick_name_from_allowlist",
@@ -84,6 +91,7 @@ __all__ = [
     "synth_identity_from_manual",
     "synth_pages_from_identity",
     "synth_policies_from_identity",
+    "synth_product_details_for_collection",
     "synth_product_skeletons_from_collections",
     "synth_store_from_identity",
 ]

@@ -42,6 +42,7 @@ from shop_gen.data_synth import (
     SynthIdentityStep,
     SynthPagesStep,
     SynthPoliciesStep,
+    SynthProductDetailsStep,
     SynthProductSkeletonsStep,
     SynthStoreStep,
 )
@@ -342,9 +343,10 @@ def _register_data_synth(
 
     Currently registers ``synth_identity`` (T3.3), the three
     identity-fanout steps ``synth_store`` / ``synth_pages`` /
-    ``synth_policies`` (T3.4), ``synth_collections`` (T3.5), and
-    ``synth_product_skeletons`` (T3.6). Subsequent M3 tasks
-    (T3.7-T3.11) will register the rest of the Phase 2 sub-DAG here.
+    ``synth_policies`` (T3.4), ``synth_collections`` (T3.5),
+    ``synth_product_skeletons`` (T3.6), and ``synth_product_details``
+    (T3.7). Subsequent M3 tasks (T3.8-T3.11) will register the rest
+    of the Phase 2 sub-DAG here.
 
     Args:
         registry: Registry to mutate.
@@ -373,6 +375,7 @@ def _register_data_synth(
         SynthCollectionsStep(manual_step_ids=stats_aware_manual_ids),
     )
     registry.register(SynthProductSkeletonsStep())
+    registry.register(SynthProductDetailsStep())
 
 
 def _register_data_validation(registry: Registry) -> None:
