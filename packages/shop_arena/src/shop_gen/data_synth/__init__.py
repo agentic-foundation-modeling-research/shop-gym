@@ -8,6 +8,9 @@ synthesis step (T3.3-T3.11):
   ``shop_backend`` v0.1 dataset contract (spec §8.1.1).
 * :mod:`shop_gen.data_synth.identity` — ``synth_identity`` step,
   the :class:`Identity` schema, and the deterministic name picker.
+* :mod:`shop_gen.data_synth.assemble` — terminal ``assemble_data`` step
+  (spec §5.3 + §5.6) that emits the final ``data/*.json`` and runs the
+  brand-leak scrub.
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -20,6 +23,13 @@ from shop_gen.data_synth.alt_text import (
     AltTextPayload,
     SynthAltTextStep,
     synth_alt_text_for_collection,
+)
+from shop_gen.data_synth.assemble import (
+    AssembleDataStep,
+    AssembledData,
+    BrandLeakError,
+    assemble_records,
+    scan_for_brand_leaks,
 )
 from shop_gen.data_synth.collections import (
     CollectionDraft,
@@ -77,7 +87,10 @@ from shop_gen.data_synth.store import SynthStoreStep, synth_store_from_identity
 __all__ = [
     "AIBackend",
     "AltTextPayload",
+    "AssembleDataStep",
+    "AssembledData",
     "BrandColors",
+    "BrandLeakError",
     "Collection",
     "CollectionDraft",
     "GenImagesStep",
@@ -109,8 +122,10 @@ __all__ = [
     "SynthProductDetailsStep",
     "SynthProductSkeletonsStep",
     "SynthStoreStep",
+    "assemble_records",
     "get_backend",
     "pick_name_from_allowlist",
+    "scan_for_brand_leaks",
     "synth_alt_text_for_collection",
     "synth_collections_from_identity",
     "synth_identity_from_manual",

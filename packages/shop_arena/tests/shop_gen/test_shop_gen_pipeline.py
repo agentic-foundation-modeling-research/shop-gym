@@ -125,6 +125,7 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "synth_alt_text",
         "gen_images",
         "synth_navigation",
+        "assemble_data",
     )
     for phase in ("data_validation", "build", "final_eval"):
         assert grouped[phase] == ()
@@ -208,6 +209,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
         "synth_alt_text",
         "gen_images",
         "synth_navigation",
+        "assemble_data",
     ]
 
 
@@ -232,6 +234,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "synth_alt_text",
         "gen_images",
         "synth_navigation",
+        "assemble_data",
     ]
 
 
