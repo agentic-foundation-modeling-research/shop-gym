@@ -31,7 +31,7 @@ Depends on: [`docs/impl/verifiers_implementation.md`](verifiers_implementation.m
 ### M2 · Phase 1 — Manual Merge
 
 - [x] **T2.1** — `src/shop_gen/manual_merge/capabilities.py`: per-area merge rules from spec §9.2 (booleans union, lists union+dedup, enums majority + descriptor-tiebreak via LLM). Validates against the closed `Capabilities` schema imported from `shop_explore`. Returns `(Capabilities, list[Conflict])`. Step id `merge_capabilities`. **Check:** unit tests for each rule type + tie-breaking path with stub LLM.
-- [ ] **T2.2** — `src/shop_gen/manual_merge/prose.py`: section-by-section LLM merge of the seed `manual.md`s, conditioned on the merged capabilities. Step id `merge_manual_prose`. **Check:** unit test with fixture seeds + stub LLM asserts section count + that the prose mentions only allowlist brands.
+- [x] **T2.2** — `src/shop_gen/manual_merge/prose.py`: section-by-section LLM merge of the seed `manual.md`s, conditioned on the merged capabilities. Step id `merge_manual_prose`. **Check:** unit test with fixture seeds + stub LLM asserts section count + that the prose mentions only allowlist brands.
 - [ ] **T2.3** — `src/shop_gen/manual_merge/stats.py`: deterministic recompute from merged caps + seed prefetch summaries (no LLM). Step id `compute_merge_stats`. **Check:** unit test against fixture seeds.
 - [ ] **T2.4** — `src/shop_gen/manual_merge/manifest.py`: write `manual/manifest.json` with seed list, per-area merge conflicts, write history. Step id `write_merge_manifest`. **Check:** schema validation.
 - [ ] **T2.5** — `src/shop_gen/manual_merge/prompts/`: `merge_capabilities_tiebreak.md`, `merge_manual_prose.md`. **Check:** lint-only.
