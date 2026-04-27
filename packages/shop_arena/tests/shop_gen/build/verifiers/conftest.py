@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from harness.plan.tasks import TaskList
-from harness.runtimes.base import RuntimeIterationResult
+from harness.runtimes.base import AgentRuntime, RuntimeIterationResult
 from harness.verifiers import VerifierContext
 
 
@@ -23,6 +23,10 @@ class _StubRuntime:
 
     Verifier tests never invoke ``run_iteration``; the stub exists only
     to satisfy the ``VerifierContext.runtime: AgentRuntime`` contract.
+    Tests that need an :class:`~harness.runtimes.LLMCompleter` (the LLM
+    verifiers under T5.5) define their own stub locally — the
+    completer-shape is small enough that inlining keeps each test
+    file self-contained.
     """
 
     def run_iteration(
@@ -68,7 +72,7 @@ def make_ctx(artifact_dir: Path) -> Callable[..., VerifierContext]:
 
     Returns:
         A callable accepting overrides for ``selected_task_id``,
-        ``iter_id``, ``run_dir``, ``plan``, and (rarely)
+        ``iter_id``, ``run_dir``, ``plan``, ``runtime``, and (rarely)
         ``artifact_dir``.
     """
 
@@ -79,19 +83,22 @@ def make_ctx(artifact_dir: Path) -> Callable[..., VerifierContext]:
         run_dir: Path | None = None,
         plan: TaskList | None = None,
         artifact_dir_override: Path | None = None,
+        runtime: AgentRuntime | None = None,
     ) -> VerifierContext:
         artifact = artifact_dir_override if artifact_dir_override is not None else artifact_dir
         if run_dir is None:
             run_dir = artifact.parent
         if plan is None:
             plan = TaskList(tasks=())
+        if runtime is None:
+            runtime = _StubRuntime()
         return VerifierContext(
             run_dir=run_dir,
             iter_id=iter_id,
             selected_task_id=selected_task_id,
             plan=plan,
             artifact_dir=artifact,
-            runtime=_StubRuntime(),
+            runtime=runtime,
         )
 
     return _factory

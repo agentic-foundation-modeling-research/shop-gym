@@ -42,6 +42,8 @@ _AGENTS_FILE: Final[str] = "agents.md"
 _PLANNER_FILE: Final[str] = "planner.md"
 _EXECUTE_FILE: Final[str] = "execute.md"
 _CONSOLIDATE_EXECUTE_FILE: Final[str] = "consolidate_execute.md"
+_QUALITY_JUDGE_FILE: Final[str] = "quality_judge.md"
+_CROSS_TASK_CONSISTENCY_FILE: Final[str] = "cross_task_consistency.md"
 
 VERIFIER_FEEDBACK_PLACEHOLDER: Final[str] = "{{verifier_feedback}}"
 """The placeholder the harness renders with verifier feedback (verifiers spec §5.5).
@@ -144,6 +146,46 @@ def load_consolidate_execute_prompt() -> str:
     return body
 
 
+@cache
+def load_quality_judge_prompt() -> str:
+    """Return the ``str.format()`` template for the ``quality_judge`` verifier (T5.5).
+
+    The template carries three slots:
+
+    * ``{task_id}`` — selected task id at dispatch time.
+    * ``{capabilities}`` — JSON-rendered ``capabilities.json`` body.
+    * ``{source_blocks}`` — concatenated hydrogen source files for
+      review.
+
+    Returns:
+        The template body, terminated by a single newline.
+
+    Raises:
+        FileNotFoundError: ``quality_judge.md`` is missing.
+    """
+    return _read_prompt_file(_QUALITY_JUDGE_FILE)
+
+
+@cache
+def load_cross_task_consistency_prompt() -> str:
+    """Return the ``str.format()`` template for the ``cross_task_consistency`` verifier (T5.5).
+
+    The template carries two slots:
+
+    * ``{collection_handles}`` — JSON-rendered list of collection
+      handles from ``data/collections.json``.
+    * ``{source_blocks}`` — concatenated hydrogen source files for
+      review.
+
+    Returns:
+        The template body, terminated by a single newline.
+
+    Raises:
+        FileNotFoundError: ``cross_task_consistency.md`` is missing.
+    """
+    return _read_prompt_file(_CROSS_TASK_CONSISTENCY_FILE)
+
+
 def _read_prompt_file(name: str) -> str:
     """Read ``<prompts dir>/<name>`` as UTF-8 text."""
     return (_PROMPTS_DIR / name).read_text(encoding="utf-8")
@@ -153,6 +195,8 @@ __all__ = [
     "VERIFIER_FEEDBACK_PLACEHOLDER",
     "load_agents_md",
     "load_consolidate_execute_prompt",
+    "load_cross_task_consistency_prompt",
     "load_execute_prompt",
     "load_planner_prompt",
+    "load_quality_judge_prompt",
 ]

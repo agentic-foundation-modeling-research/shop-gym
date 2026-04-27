@@ -24,11 +24,11 @@ sidecar lifecycle land:
 
 * :mod:`shop_gen.build.verifiers` — rule-based verifiers used by the
   T5.6 loop driver: ``tsc``/``build``/``routes_200``/``data_in_use``/
-  ``nav_coverage``/``no_brand_leak`` (T5.4). LLM-based verifiers
-  (``quality_judge``, ``cross_task_consistency``) land in T5.5.
+  ``nav_coverage``/``no_brand_leak`` (T5.4) plus the LLM-based
+  ``quality_judge`` and ``cross_task_consistency`` judges (T5.5).
 
-Later tasks (T5.5-T5.10) populate the LLM verifiers and the
-harness-loop driver under this same package.
+Later tasks (T5.6-T5.10) wire the harness-loop driver against the
+verifier set under this same package.
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -41,8 +41,10 @@ from shop_gen.build.prompts import (
     VERIFIER_FEEDBACK_PLACEHOLDER,
     load_agents_md,
     load_consolidate_execute_prompt,
+    load_cross_task_consistency_prompt,
     load_execute_prompt,
     load_planner_prompt,
+    load_quality_judge_prompt,
 )
 from shop_gen.build.sidecar import (
     SidecarHandle,
@@ -52,12 +54,14 @@ from shop_gen.build.sidecar import (
 )
 from shop_gen.build.verifiers import (
     BuildVerifier,
+    CrossTaskConsistencyVerifier,
     DataInUseVerifier,
     DevServerFactory,
     GraphQLOperationError,
     GraphQLOperationRef,
     NavCoverageVerifier,
     NoBrandLeakVerifier,
+    QualityJudgeVerifier,
     Routes200Verifier,
     SchemaIntrospection,
     TscVerifier,
@@ -67,12 +71,14 @@ __all__ = [
     "VERIFIER_FEEDBACK_PLACEHOLDER",
     "BuildVerifier",
     "CloneTemplateStep",
+    "CrossTaskConsistencyVerifier",
     "DataInUseVerifier",
     "DevServerFactory",
     "GraphQLOperationError",
     "GraphQLOperationRef",
     "NavCoverageVerifier",
     "NoBrandLeakVerifier",
+    "QualityJudgeVerifier",
     "Routes200Verifier",
     "SchemaIntrospection",
     "SidecarHandle",
@@ -82,7 +88,9 @@ __all__ = [
     "WriteEnvFileStep",
     "load_agents_md",
     "load_consolidate_execute_prompt",
+    "load_cross_task_consistency_prompt",
     "load_execute_prompt",
     "load_planner_prompt",
+    "load_quality_judge_prompt",
     "sidecar_lifecycle",
 ]

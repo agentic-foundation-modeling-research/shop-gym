@@ -27,8 +27,8 @@ The v0.1 verifier set lives here:
   ``hydrogen/app/**/*.{tsx,ts,css,md}``. Applies to every ``gen_*``
   task.
 
-LLM-based verifiers (``quality_judge``, ``cross_task_consistency``) land
-in T5.5 alongside this set.
+LLM-based verifiers (``quality_judge``, ``cross_task_consistency``)
+land alongside this set under T5.5.
 
 The package is import-safe: no I/O, no env reads, and no side effects
 at import time.
@@ -37,6 +37,7 @@ at import time.
 from __future__ import annotations
 
 from shop_gen.build.verifiers.build import BuildVerifier
+from shop_gen.build.verifiers.cross_task_consistency import CrossTaskConsistencyVerifier
 from shop_gen.build.verifiers.data_in_use import (
     DataInUseVerifier,
     GraphQLOperationError,
@@ -45,6 +46,7 @@ from shop_gen.build.verifiers.data_in_use import (
 )
 from shop_gen.build.verifiers.nav_coverage import NavCoverageVerifier
 from shop_gen.build.verifiers.no_brand_leak import NoBrandLeakVerifier
+from shop_gen.build.verifiers.quality_judge import QualityJudgeVerifier
 from shop_gen.build.verifiers.routes_200 import (
     DevServerFactory,
     Routes200Verifier,
@@ -53,12 +55,14 @@ from shop_gen.build.verifiers.tsc import TscVerifier
 
 __all__ = [
     "BuildVerifier",
+    "CrossTaskConsistencyVerifier",
     "DataInUseVerifier",
     "DevServerFactory",
     "GraphQLOperationError",
     "GraphQLOperationRef",
     "NavCoverageVerifier",
     "NoBrandLeakVerifier",
+    "QualityJudgeVerifier",
     "Routes200Verifier",
     "SchemaIntrospection",
     "TscVerifier",

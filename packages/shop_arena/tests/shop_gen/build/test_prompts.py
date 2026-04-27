@@ -22,8 +22,10 @@ from shop_gen.build.prompts import (
     VERIFIER_FEEDBACK_PLACEHOLDER,
     load_agents_md,
     load_consolidate_execute_prompt,
+    load_cross_task_consistency_prompt,
     load_execute_prompt,
     load_planner_prompt,
+    load_quality_judge_prompt,
 )
 
 # The four loaders T5.3 ships, keyed by the prompt-file slot they
@@ -34,6 +36,8 @@ _LOADERS: Final[dict[str, Callable[[], str]]] = {
     "planner.md": load_planner_prompt,
     "execute.md": load_execute_prompt,
     "consolidate_execute.md": load_consolidate_execute_prompt,
+    "quality_judge.md": load_quality_judge_prompt,
+    "cross_task_consistency.md": load_cross_task_consistency_prompt,
 }
 
 # The two executor bodies must carry the verifier-feedback placeholder.
@@ -187,3 +191,31 @@ def test_loaders_are_cached() -> None:
             f"{loader.__name__}: loader is not cached — "
             "expected identical object identity across calls."
         )
+
+
+def test_quality_judge_prompt_carries_required_format_slots() -> None:
+    """The ``quality_judge`` template must accept the slots T5.5 fills in.
+
+    The verifier renders ``task_id`` / ``capabilities`` / ``source_blocks``
+    via ``str.format()``; a missing placeholder would crash with
+    ``KeyError`` at the first dispatch. The test exercises the format
+    call directly with placeholder values to lock the contract.
+    """
+    body = load_quality_judge_prompt()
+    rendered = body.format(
+        task_id="gen_homepage",
+        capabilities="{}",
+        source_blocks="### x",
+    )
+    assert "gen_homepage" in rendered
+    assert "### x" in rendered
+
+
+def test_cross_task_consistency_prompt_carries_required_format_slots() -> None:
+    """The ``cross_task_consistency`` template must accept the T5.5 slots."""
+    body = load_cross_task_consistency_prompt()
+    rendered = body.format(
+        collection_handles="[]",
+        source_blocks="### x",
+    )
+    assert "### x" in rendered
