@@ -62,7 +62,7 @@ Depends on: [`docs/impl/verifiers_implementation.md`](verifiers_implementation.m
 
 - [x] **T4.1** — `src/shop_gen/data_validation/schema_check.py`: `validate_schema` step. Re-validate `data/*.json` with the pydantic models from T3.2. Spec §5.4. **Check:** unit test on valid + corrupted fixtures.
 - [x] **T4.2** — `src/shop_gen/data_validation/hosting_check.py`: `validate_hosting` step. Spawn `shop-backend <data> <port>` (free port), run the spec §5.4 query suite (shop, products, collections, collection-by-handle, product-by-handle, cart lifecycle, search, image GET). Tear down the process on completion or failure. Writes `data_validation.json`. **Check:** integration test against a known-good fixture dataset; failure test against a dataset with empty `collections.json`.
-- [ ] **T4.3** — Tests against a real `shop_backend` build under `pnpm --filter @shop-gym/shop-backend build` (CI step). **Check:** SC2 satisfied.
+- [x] **T4.3** — Tests against a real `shop_backend` build under `pnpm --filter @shop-gym/shop-backend build` (CI step). **Check:** SC2 satisfied.
 
 **M4 acceptance:** SC2 satisfied; hosting check is green on the M3 fixture.
 
