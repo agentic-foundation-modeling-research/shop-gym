@@ -94,7 +94,7 @@ Depends on M0 (harness verifier extension).
 ### M7 · v0.1.0
 
 - [x] **T7.1** — `src/shop_gen/__init__.py` re-exports public surface only (`run`, `ShopGenConfig`, `ShopGenResult`). Bump `_version.py` to `0.1.0`. **Check:** `from shop_gen import __version__` returns `"0.1.0"`.
-- [ ] **T7.2** — `packages/shop_arena/src/shop_gen/README.md`: usage example, runtime selection, step DAG quick-reference, output layout, record-cassette workflow. **Check:** README snippet runs end-to-end against the M5 cassette.
+- [x] **T7.2** — `packages/shop_arena/src/shop_gen/README.md`: usage example, runtime selection, step DAG quick-reference, output layout, record-cassette workflow. **Check:** README snippet runs end-to-end against the M5 cassette.
 - [ ] **T7.3** — Update `docs/specs/README.md` ShopArena row to point at the spec + impl. Update repo `README.md` `shop_gen` bullet to describe v0.1 status. Update `packages/shop_arena/README.md` to drop the "Scaffolded; not yet implemented" line. **Check:** links resolve.
 - [ ] **T7.4** — Tag `shop-gen-v0.1.0`. Bump `packages/shop_arena/pyproject.toml` `version` if shop_arena is independently versioned. **Check:** tag pushed.
 
