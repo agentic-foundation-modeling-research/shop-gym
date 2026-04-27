@@ -70,7 +70,7 @@ Depends on: [`docs/impl/verifiers_implementation.md`](verifiers_implementation.m
 
 Depends on M0 (harness verifier extension).
 
-- [ ] **T5.1** — `src/shop_gen/build/env.py`: `clone_template` step (cp -R from `templates/hydrogen/`); `write_env_file` step (`.env` with `PUBLIC_STORE_DOMAIN=localhost:<port>` and the resolved sidecar URL). Spec §5.5.1. **Check:** unit test asserts copied tree byte-equivalent to template (modulo `.env`); `.env` contains expected keys.
+- [x] **T5.1** — `src/shop_gen/build/env.py`: `clone_template` step (cp -R from `templates/hydrogen/`); `write_env_file` step (`.env` with `PUBLIC_STORE_DOMAIN=localhost:<port>` and the resolved sidecar URL). Spec §5.5.1. **Check:** unit test asserts copied tree byte-equivalent to template (modulo `.env`); `.env` contains expected keys.
 - [ ] **T5.2** — `src/shop_gen/build/sidecar.py`: `start_sidecar` step + lifecycle helper. Picks a free port, spawns `shop-backend`, polls `/health` until ready, returns a context manager that kills the process on exit (incl. signal handlers). One sidecar per loop. Spec §7-resolved. **Check:** unit test asserts cleanup on normal exit, on test-induced crash, and on SIGTERM.
 - [ ] **T5.3** — `src/shop_gen/build/prompts/`: `agents.md`, `planner.md`, `execute.md` (with `{{verifier_feedback}}` slot), `consolidate_execute.md` (purpose-built for the consolidate task). Spec §5.5.2 + §5.5.4. **Check:** lint-only; presence of `{{verifier_feedback}}` placeholder asserted by test.
 - [ ] **T5.4** — `src/shop_gen/build/verifiers/tsc.py`, `build.py`, `routes_200.py`, `data_in_use.py`, `nav_coverage.py`, `no_brand_leak.py`. Spec §5.5.3. **Check:** unit tests per verifier with synthetic hydrogen trees (passing + failing).

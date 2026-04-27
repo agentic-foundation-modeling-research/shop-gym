@@ -105,7 +105,7 @@ def test_list_steps_returns_every_phase_in_order() -> None:
 
 
 def test_list_steps_only_lists_registered_phases() -> None:
-    """Phase 1 + Phase 2 + Phase 3 (T4.1) list registered steps; later phases stay empty."""
+    """Phase 1-4 (T5.1) list registered steps; ``final_eval`` stays empty."""
     grouped = list_steps()
     assert grouped["manual_merge"] == (
         "copy_seed_manual",
@@ -128,8 +128,8 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "assemble_data",
     )
     assert grouped["data_validation"] == ("validate_schema", "validate_hosting")
-    for phase in ("build", "final_eval"):
-        assert grouped[phase] == ()
+    assert grouped["build"] == ("clone_template", "write_env_file")
+    assert grouped["final_eval"] == ()
 
 
 def test_list_steps_unions_single_and_multi_seed_branches() -> None:
@@ -213,6 +213,8 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
         "assemble_data",
         "validate_schema",
         "validate_hosting",
+        "clone_template",
+        "write_env_file",
     ]
 
 
@@ -240,6 +242,8 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "assemble_data",
         "validate_schema",
         "validate_hosting",
+        "clone_template",
+        "write_env_file",
     ]
 
 
@@ -282,6 +286,7 @@ def test_run_with_no_registered_steps_writes_no_state(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
     ):
         run(ShopGenConfig(seeds=[seed], out_dir=out_dir))
     assert not state_path(out_dir).exists()
@@ -301,6 +306,7 @@ def test_run_drives_registered_step_to_completion(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
     ):
         run(config)
 
