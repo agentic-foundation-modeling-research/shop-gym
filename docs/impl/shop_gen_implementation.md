@@ -85,7 +85,7 @@ Depends on M0 (harness verifier extension).
 
 ### M6 · Phase 5 — Final Eval
 
-- [ ] **T6.1** — `src/shop_gen/final_eval/playwright_smoke.py`: spawn dev server, run smoke flow (home → collection → product → add-to-cart → checkout-redirect), capture screenshots. Spec §5.5.5. **Check:** unit test against the M5 fixture artifact.
+- [x] **T6.1** — `src/shop_gen/final_eval/playwright_smoke.py`: spawn dev server, run smoke flow (home → collection → product → add-to-cart → checkout-redirect), capture screenshots. Spec §5.5.5. **Check:** unit test against the M5 fixture artifact.
 - [ ] **T6.2** — `src/shop_gen/final_eval/prompts/`: `quality_judge.md` for the post-build LLM judge. **Check:** lint-only.
 - [ ] **T6.3** — `final_eval` step writes `final_eval.json` with screenshot paths + LLM verdict. **Advisory** — never blocks the run. **Check:** unit test asserts non-blocking on FAIL verdict.
 
