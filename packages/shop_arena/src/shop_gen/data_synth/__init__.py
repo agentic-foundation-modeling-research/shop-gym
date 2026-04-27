@@ -38,6 +38,13 @@ from shop_gen.data_synth.identity import (
     pick_name_from_allowlist,
     synth_identity_from_manual,
 )
+from shop_gen.data_synth.images import (
+    AIBackend,
+    GenImagesStep,
+    ImageBackend,
+    PlaceholderBackend,
+    get_backend,
+)
 from shop_gen.data_synth.navigation import (
     SynthNavigationStep,
     synth_navigation_from_collections,
@@ -68,17 +75,21 @@ from shop_gen.data_synth.skeletons import (
 from shop_gen.data_synth.store import SynthStoreStep, synth_store_from_identity
 
 __all__ = [
+    "AIBackend",
     "AltTextPayload",
     "BrandColors",
     "Collection",
     "CollectionDraft",
+    "GenImagesStep",
     "Identity",
     "IdentitySynthError",
+    "ImageBackend",
     "Navigation",
     "NavigationItem",
     "NavigationItemType",
     "Page",
     "PaymentSettings",
+    "PlaceholderBackend",
     "Policy",
     "Product",
     "ProductDetail",
@@ -98,6 +109,7 @@ __all__ = [
     "SynthProductDetailsStep",
     "SynthProductSkeletonsStep",
     "SynthStoreStep",
+    "get_backend",
     "pick_name_from_allowlist",
     "synth_alt_text_for_collection",
     "synth_collections_from_identity",

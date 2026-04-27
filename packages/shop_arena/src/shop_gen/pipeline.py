@@ -38,6 +38,7 @@ from typing import Final
 
 from shop_gen.config import ShopGenConfig, ShopGenResult
 from shop_gen.data_synth import (
+    GenImagesStep,
     SynthAltTextStep,
     SynthCollectionsStep,
     SynthIdentityStep,
@@ -347,9 +348,10 @@ def _register_data_synth(
     identity-fanout steps ``synth_store`` / ``synth_pages`` /
     ``synth_policies`` (T3.4), ``synth_collections`` (T3.5),
     ``synth_product_skeletons`` (T3.6), ``synth_product_details``
-    (T3.7), ``synth_navigation`` (T3.8), and ``synth_alt_text``
-    (T3.9). Subsequent M3 tasks (T3.10-T3.11) will register the rest
-    of the Phase 2 sub-DAG here.
+    (T3.7), ``synth_navigation`` (T3.8), ``synth_alt_text``
+    (T3.9), and ``gen_images`` (T3.10). The remaining M3 task
+    (T3.11 ``assemble_data``) will register the rest of the
+    Phase 2 sub-DAG here.
 
     Args:
         registry: Registry to mutate.
@@ -380,6 +382,7 @@ def _register_data_synth(
     registry.register(SynthProductSkeletonsStep())
     registry.register(SynthProductDetailsStep())
     registry.register(SynthAltTextStep())
+    registry.register(GenImagesStep())
     registry.register(SynthNavigationStep(manual_step_ids=manual_ids))
 
 

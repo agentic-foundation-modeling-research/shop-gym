@@ -123,6 +123,7 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "synth_product_skeletons",
         "synth_product_details",
         "synth_alt_text",
+        "gen_images",
         "synth_navigation",
     )
     for phase in ("data_validation", "build", "final_eval"):
@@ -205,6 +206,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
         "synth_product_skeletons",
         "synth_product_details",
         "synth_alt_text",
+        "gen_images",
         "synth_navigation",
     ]
 
@@ -228,6 +230,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "synth_product_skeletons",
         "synth_product_details",
         "synth_alt_text",
+        "gen_images",
         "synth_navigation",
     ]
 
