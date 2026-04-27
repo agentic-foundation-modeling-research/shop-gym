@@ -105,7 +105,7 @@ def test_list_steps_returns_every_phase_in_order() -> None:
 
 
 def test_list_steps_only_lists_registered_phases() -> None:
-    """Phase 1 + Phase 2 (T3.3-T3.4) list registered steps; later phases stay empty until M4-M6."""
+    """Phase 1 + Phase 2 + Phase 3 (T4.1) list registered steps; later phases stay empty."""
     grouped = list_steps()
     assert grouped["manual_merge"] == (
         "copy_seed_manual",
@@ -127,7 +127,8 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "synth_navigation",
         "assemble_data",
     )
-    for phase in ("data_validation", "build", "final_eval"):
+    assert grouped["data_validation"] == ("validate_schema",)
+    for phase in ("build", "final_eval"):
         assert grouped[phase] == ()
 
 
@@ -210,6 +211,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
         "gen_images",
         "synth_navigation",
         "assemble_data",
+        "validate_schema",
     ]
 
 
@@ -235,6 +237,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "gen_images",
         "synth_navigation",
         "assemble_data",
+        "validate_schema",
     ]
 
 
@@ -250,7 +253,10 @@ def test_run_creates_out_dir_and_returns_artifact_paths(tmp_path: Path) -> None:
 
     # ``synth_identity`` (T3.3) requires an LLM completer; this test
     # asserts only the result-path shape, so patch out Phase 2 here.
-    with patch.object(pipeline, "_register_data_synth", lambda reg, **_: None):
+    with (
+        patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+    ):
         result = run(config)
 
     assert out_dir.is_dir()
@@ -273,6 +279,7 @@ def test_run_with_no_registered_steps_writes_no_state(tmp_path: Path) -> None:
     with (
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
     ):
         run(ShopGenConfig(seeds=[seed], out_dir=out_dir))
     assert not state_path(out_dir).exists()
@@ -291,6 +298,7 @@ def test_run_drives_registered_step_to_completion(tmp_path: Path) -> None:
     with (
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
     ):
         run(config)
 
@@ -315,6 +323,7 @@ def test_run_default_out_dir_for_single_seed(tmp_path: Path) -> None:
     with (
         _chdir(cwd),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
     ):
         result = run(ShopGenConfig(seeds=[seed]))
 
@@ -343,6 +352,7 @@ def test_run_uses_explicit_name_for_default_out_dir(tmp_path: Path) -> None:
         _chdir(cwd),
         patch.object(pipeline, "_register_manual_merge", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
     ):
         result = run(ShopGenConfig(seeds=seeds, name="acme"))
 
@@ -367,7 +377,10 @@ def test_run_is_idempotent_on_second_invocation(tmp_path: Path) -> None:
         (out_dir / "data").mkdir(parents=True, exist_ok=True)
         (out_dir / "data" / "smoke.json").write_bytes(b"ok")
 
-    with patch.object(pipeline, "_register_data_synth", _register):
+    with (
+        patch.object(pipeline, "_register_data_synth", _register),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+    ):
         run(config)
         _do_run()
         # State file now records FRESH; second invocation must skip the step.

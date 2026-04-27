@@ -424,8 +424,7 @@ class _StubCompleter:
                     f"no canned response registered for step={step_id!r}",
                 )
         raise AssertionError(
-            "prompt does not match any known Phase 2 step marker; "
-            "first 200 chars: " + prompt[:200],
+            "prompt does not match any known Phase 2 step marker; first 200 chars: " + prompt[:200],
         )
 
 
@@ -439,8 +438,7 @@ def _route_collection_prompt(prompt: str, handles: list[str]) -> str:
         if f'"handle": "{handle}"' in prompt:
             return handle
     raise AssertionError(
-        f"prompt does not reference any of {handles!r}; "
-        f"first 200 chars: {prompt[:200]}",
+        f"prompt does not reference any of {handles!r}; first 200 chars: {prompt[:200]}",
     )
 
 
@@ -511,6 +509,10 @@ _EXPECTED_STEP_IDS: frozenset[str] = frozenset(
         "gen_images",
         "synth_navigation",
         "assemble_data",
+        # Phase 3 ``validate_schema`` (T4.1) sits at the same registry
+        # level and is config-independent, so it runs as part of the
+        # full pipeline once Phase 2 emits a valid ``data/`` tree.
+        "validate_schema",
     },
 )
 
@@ -525,9 +527,7 @@ def _assert_all_steps_fresh(out_dir: Path) -> None:
     for step_id in _EXPECTED_STEP_IDS:
         record = state.steps.get(step_id)
         assert record is not None, f"{step_id!r} not recorded in state.json"
-        assert record.status is StepStatus.FRESH, (
-            f"{step_id!r} expected FRESH, got {record.status}"
-        )
+        assert record.status is StepStatus.FRESH, f"{step_id!r} expected FRESH, got {record.status}"
         assert record.fingerprint is not None
 
 

@@ -298,7 +298,10 @@ def test_phase1_two_seed_end_to_end_no_llm(tmp_path: Path) -> None:
     config = ShopGenConfig(seeds=[seed_a, seed_b], out_dir=out_dir)
     # Phase 2 ``synth_identity`` (T3.3) needs an LLM completer; this
     # test exercises Phase 1 only, so patch the data-synth registration.
-    with patch.object(pipeline, "_register_data_synth", lambda reg, **_: None):
+    with (
+        patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+    ):
         result = pipeline.run(config)
 
     assert result.out_dir == out_dir
@@ -529,7 +532,10 @@ def test_phase1_three_seed_end_to_end_with_llm(tmp_path: Path) -> None:
     # ``synth_identity`` (T3.3) needs an LLM completer of its own; this
     # test exercises Phase 1 only, so patch the data-synth registration
     # before snapshotting the registry.
-    with patch.object(pipeline, "_register_data_synth", lambda reg, **_: None):
+    with (
+        patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+    ):
         registry = pipeline._build_registry(config)
     result = run_pipeline(registry.all(), ctx)
 

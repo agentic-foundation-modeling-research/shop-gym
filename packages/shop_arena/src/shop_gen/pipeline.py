@@ -50,6 +50,7 @@ from shop_gen.data_synth import (
     SynthProductSkeletonsStep,
     SynthStoreStep,
 )
+from shop_gen.data_validation import ValidateSchemaStep
 from shop_gen.manual_merge import (
     ComputeMergeStatsStep,
     CopySeedManualStep,
@@ -389,10 +390,10 @@ def _register_data_synth(
 def _register_data_validation(registry: Registry) -> None:
     """Register Phase 3 data-validation steps.
 
-    Wired up in M4 (impl plan T4.1-T4.2); a no-op until those tasks
-    land.
+    Currently registers ``validate_schema`` (T4.1). The companion
+    ``validate_hosting`` step lands in T4.2.
     """
-    del registry  # placeholder until M4 lands.
+    registry.register(ValidateSchemaStep())
 
 
 def _register_build(registry: Registry) -> None:
