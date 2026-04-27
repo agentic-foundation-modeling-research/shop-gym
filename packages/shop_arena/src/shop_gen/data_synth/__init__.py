@@ -33,6 +33,10 @@ from shop_gen.data_synth.identity import (
     pick_name_from_allowlist,
     synth_identity_from_manual,
 )
+from shop_gen.data_synth.navigation import (
+    SynthNavigationStep,
+    synth_navigation_from_collections,
+)
 from shop_gen.data_synth.pages import SynthPagesStep, synth_pages_from_identity
 from shop_gen.data_synth.policies import SynthPoliciesStep, synth_policies_from_identity
 from shop_gen.data_synth.schema import (
@@ -81,6 +85,7 @@ __all__ = [
     "StoreBrand",
     "SynthCollectionsStep",
     "SynthIdentityStep",
+    "SynthNavigationStep",
     "SynthPagesStep",
     "SynthPoliciesStep",
     "SynthProductDetailsStep",
@@ -89,6 +94,7 @@ __all__ = [
     "pick_name_from_allowlist",
     "synth_collections_from_identity",
     "synth_identity_from_manual",
+    "synth_navigation_from_collections",
     "synth_pages_from_identity",
     "synth_policies_from_identity",
     "synth_product_details_for_collection",
