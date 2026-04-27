@@ -8,7 +8,7 @@ together produce reproducible shopping environments and evaluation datasets.
 
 | Package | Lang | Role |
 |---|---|---|
-| [`packages/shop_arena`](packages/shop_arena) | Python | **ShopArena** — Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from any live storefront. Ships two modules: `shop_gen` (generation pipeline) and [`shop_explore`](packages/shop_arena/src/shop_explore) (storefront exploration; **v0.1 in progress** — see [spec](docs/specs/shop_arena/shop_explore.md) and [impl plan](docs/impl/shop_explore_implementation.md)). |
+| [`packages/shop_arena`](packages/shop_arena) | Python | **ShopArena** — Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from any live storefront. Ships two modules: [`shop_gen`](packages/shop_arena/src/shop_gen) (generation pipeline; **v0.1.0** — see [spec](docs/specs/shop_arena/shop_gen.md) and [impl plan](docs/impl/shop_gen_implementation.md)) and [`shop_explore`](packages/shop_arena/src/shop_explore) (storefront exploration; **v0.1 in progress** — see [spec](docs/specs/shop_arena/shop_explore.md) and [impl plan](docs/impl/shop_explore_implementation.md)). |
 | [`packages/shop_guru`](packages/shop_guru) | Python | **ShopGuru** — Automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation structure, and policies to synthesize grounded evaluation tasks across 7 skill categories. |
 | [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server that mirrors Shopify's Storefront/Admin API against SandboxShop data. Serves both as a benchmarking backend and an RL environment. |
 
@@ -75,9 +75,12 @@ shop-gym/
 
 ## Status
 
-Early development. `shop_arena/shop_explore` is at **v0.1 (in progress)** —
-M1–M3 plus M5 docs landed; M4 live-runtime smoke + final tag pending. See
-[`docs/impl/shop_explore_implementation.md`](docs/impl/shop_explore_implementation.md)
+Early development. `shop_arena/shop_gen` is at **v0.1.0** — M0–M6
+landed (step DAG, manual merge, data synth, validation, build harness
+loop, advisory final eval). `shop_arena/shop_explore` is at **v0.1
+(in progress)** — M1–M3 plus M5 docs landed; M4 live-runtime smoke +
+final tag pending. See [`docs/impl/shop_gen_implementation.md`](docs/impl/shop_gen_implementation.md)
+and [`docs/impl/shop_explore_implementation.md`](docs/impl/shop_explore_implementation.md)
 for milestone status. Other packages contain placeholder entrypoints only.
 See `docs/specs/` for planned design.
 

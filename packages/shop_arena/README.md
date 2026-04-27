@@ -5,8 +5,10 @@ Environment Factory that generates deterministic, self-contained sandbox shops
 
 The `shop-arena` distribution ships two top-level modules:
 
-- **`shop_gen`** — main SandboxShop generation pipeline. *Scaffolded; not yet
-  implemented.* See `docs/specs/` for the planned design.
+- **`shop_gen`** — main SandboxShop generation pipeline. *v0.1.0* —
+  step DAG runner, manual merge, data synthesis, hosting validation,
+  build-harness loop, and advisory final eval. See
+  [`src/shop_gen/README.md`](src/shop_gen/README.md) for module-level docs.
 - **`shop_explore`** — storefront exploration pipeline that produces an
   anonymized **Shop Manual** (prose + structured capabilities + stats) from a
   live storefront. *v0.1 in progress* — prefetch, capabilities schema/merge,
@@ -24,7 +26,7 @@ uv sync
 ## Usage
 
 ```bash
-uv run shop-gen --help        # placeholder; prints "not implemented yet"
+uv run shop-gen --help        # functional v0.1 surface
 uv run shop-explore --help    # functional v0.1 surface
 ```
 
