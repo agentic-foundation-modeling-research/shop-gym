@@ -36,7 +36,11 @@ from pathlib import Path
 from typing import Final
 
 from shop_gen.config import ShopGenConfig, ShopGenResult
-from shop_gen.manual_merge import MergeCapabilitiesStep, MergeManualProseStep
+from shop_gen.manual_merge import (
+    ComputeMergeStatsStep,
+    MergeCapabilitiesStep,
+    MergeManualProseStep,
+)
 from shop_gen.steps.base import StepContext, StepStatus
 from shop_gen.steps.runner import Registry, RunResult, run_pipeline
 from shop_gen.steps.state import read_state, state_path
@@ -257,9 +261,9 @@ def _build_registry_from_branch(
 def _register_manual_merge(registry: Registry, *, config: ShopGenConfig | None = None) -> None:
     """Register Phase 1 multi-seed manual-merge steps (impl plan T2.1-T2.5).
 
-    Currently registers ``merge_capabilities`` (T2.1) and
-    ``merge_manual_prose`` (T2.2). T2.3-T2.5 add ``compute_merge_stats``
-    and ``write_merge_manifest``.
+    Currently registers ``merge_capabilities`` (T2.1),
+    ``merge_manual_prose`` (T2.2), and ``compute_merge_stats`` (T2.3).
+    T2.4-T2.5 add ``write_merge_manifest`` and prompt assets.
 
     Args:
         registry: Registry to mutate.
@@ -271,13 +275,16 @@ def _register_manual_merge(registry: Registry, *, config: ShopGenConfig | None =
     if config is None:
         seed_capabilities_paths: tuple[Path, ...] = ()
         seed_manual_paths: tuple[Path, ...] = ()
+        seed_stats_paths: tuple[Path, ...] = ()
     else:
         seed_capabilities_paths = tuple(
             seed / "artifact" / "capabilities.json" for seed in config.seeds
         )
         seed_manual_paths = tuple(seed / "artifact" / "manual.md" for seed in config.seeds)
+        seed_stats_paths = tuple(seed / "artifact" / "stats.json" for seed in config.seeds)
     registry.register(MergeCapabilitiesStep(seed_capabilities_paths=seed_capabilities_paths))
     registry.register(MergeManualProseStep(seed_manual_paths=seed_manual_paths))
+    registry.register(ComputeMergeStatsStep(seed_stats_paths=seed_stats_paths))
 
 
 def _register_single_seed_manual(registry: Registry) -> None:

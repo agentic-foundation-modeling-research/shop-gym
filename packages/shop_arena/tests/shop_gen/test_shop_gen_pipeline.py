@@ -94,7 +94,11 @@ def test_list_steps_returns_every_phase_in_order() -> None:
 def test_list_steps_only_lists_registered_phases() -> None:
     """Phase 1 lists landed M2 steps; later phases stay empty until M3-M6."""
     grouped = list_steps()
-    assert grouped["manual_merge"] == ("merge_capabilities", "merge_manual_prose")
+    assert grouped["manual_merge"] == (
+        "merge_capabilities",
+        "merge_manual_prose",
+        "compute_merge_stats",
+    )
     for phase in ("data_synth", "data_validation", "build", "final_eval"):
         assert grouped[phase] == ()
 
@@ -173,7 +177,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
     multi = pipeline._build_registry(
         ShopGenConfig(seeds=multi_seeds, out_dir=tmp_path / "b"),
     )
-    assert multi.ids() == ["merge_capabilities", "merge_manual_prose"]
+    assert multi.ids() == ["merge_capabilities", "merge_manual_prose", "compute_merge_stats"]
 
 
 # --------------------------------------------------------------------------- #

@@ -10,8 +10,11 @@ Implements the multi-seed manual-merge sub-DAG documented in
 * :mod:`shop_gen.manual_merge.prose` — ``merge_manual_prose`` step +
   the pure :func:`merge_manual_prose_seeds` helper.
 
-Future submodules (T2.3-T2.6) will add the deterministic stats
-recompute, manifest write, and the single-seed copy shortcut.
+* :mod:`shop_gen.manual_merge.stats` — ``compute_merge_stats`` step +
+  the pure :func:`merge_stats_seeds` helper.
+
+Future submodules (T2.4-T2.6) will add the merge manifest writer and
+the single-seed copy shortcut.
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -28,11 +31,19 @@ from shop_gen.manual_merge.prose import (
     MergeManualProseStep,
     merge_manual_prose_seeds,
 )
+from shop_gen.manual_merge.stats import (
+    ComputeMergeStatsStep,
+    StatsValidationError,
+    merge_stats_seeds,
+)
 
 __all__ = [
+    "ComputeMergeStatsStep",
     "MergeCapabilitiesStep",
     "MergeConflict",
     "MergeManualProseStep",
+    "StatsValidationError",
     "merge_capabilities_seeds",
     "merge_manual_prose_seeds",
+    "merge_stats_seeds",
 ]
