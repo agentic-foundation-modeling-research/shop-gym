@@ -1,15 +1,17 @@
 {
-  "version": "0.1",
-  "comment": "Fake-brand allowlist for shop_gen. See docs/specs/shop_arena/shop_gen.md §5.6. Static at v0.1; programmatic per-shop generation is a v0.2 follow-up. Changes are versioned API.",
+  "version": "0.1.2",
+  "comment": "Fake-brand allowlist for shop_gen. See docs/specs/shop_arena/shop_gen.md §5.6 and docs/brand_allowlist.md. Tokens triple-checked for real-brand collision on 2026-04-26 and trimmed to the top-10 safest. Static at v0.1.x; programmatic per-shop generation is a v0.2 follow-up. Changes are versioned API.",
   "brands": [
-    {"token": "Vendarena",      "composition": "vendor + arena"},
-    {"token": "AisleArena",     "composition": "aisle + arena"},
-    {"token": "Shopliseum",     "composition": "shop + coliseum"},
-    {"token": "CartColiseum",   "composition": "cart + coliseum"},
-    {"token": "StockyardArena", "composition": "stockyard + arena"},
-    {"token": "AgoraDome",      "composition": "agora (Greek marketplace) + dome"},
-    {"token": "AgoraCage",      "composition": "agora (Greek marketplace) + cage"},
-    {"token": "AgoraPit",       "composition": "agora (Greek marketplace) + pit"}
+    {"token": "AisleArena",  "composition": "aisle + arena"},
+    {"token": "Shopliseum",  "composition": "shop + coliseum"},
+    {"token": "AgoraCage",   "composition": "agora (Greek marketplace) + cage"},
+    {"token": "Cartrome",    "composition": "cart + (velo)drome"},
+    {"token": "Shopodrome",  "composition": "shop + (velo)drome"},
+    {"token": "Shoplodrome", "composition": "shop + (velo)drome (variant)"},
+    {"token": "Aisleodrome", "composition": "aisle + (velo)drome"},
+    {"token": "Cartanvil",   "composition": "cart + anvil"},
+    {"token": "Carthaeum",   "composition": "cart + atheneum"},
+    {"token": "Aisleum",     "composition": "aisle + Latin -um suffix"}
   ],
   "safe_nouns": {
     "comment": "Capitalized tokens the allowlist scanner treats as non-brand-shaped. Grow as needed; categories deliberately narrow.",
