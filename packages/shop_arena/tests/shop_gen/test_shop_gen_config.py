@@ -1,0 +1,279 @@
+"""Unit tests for :mod:`shop_gen.config`.
+
+Covers the validation requirements from
+``docs/impl/shop_gen_implementation.md`` T1.1:
+
+* ``seeds`` requires at least one entry.
+* ``max_iters <= 0`` is rejected.
+* Unknown ``image_backend`` values are rejected.
+* Unknown ``runtime`` values are rejected.
+* Defaults match spec §4.1.
+* :class:`ShopGenResult` round-trips and forbids unknown fields.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from shop_gen.config import (
+    DEFAULT_COLLECTIONS,
+    DEFAULT_IMAGE_BACKEND,
+    DEFAULT_IMAGES_PER_PRODUCT,
+    DEFAULT_MAX_ITERS,
+    DEFAULT_MODEL,
+    DEFAULT_PRODUCTS_PER_COLLECTION,
+    DEFAULT_RUNTIME,
+    CatalogConfig,
+    ShopGenConfig,
+    ShopGenResult,
+)
+
+
+def _seed(tmp_path: Path, name: str = "seed-a") -> Path:
+    """Materialise a temp directory shaped like a shop_explore seed."""
+    seed = tmp_path / name
+    seed.mkdir()
+    return seed
+
+
+# --------------------------------------------------------------------------- #
+# CatalogConfig
+# --------------------------------------------------------------------------- #
+
+
+def test_catalog_config_defaults_match_spec() -> None:
+    cat = CatalogConfig()
+    assert cat.collections == DEFAULT_COLLECTIONS
+    assert cat.products_per_collection == DEFAULT_PRODUCTS_PER_COLLECTION
+    assert cat.images_per_product == DEFAULT_IMAGES_PER_PRODUCT
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["collections", "products_per_collection", "images_per_product"],
+)
+@pytest.mark.parametrize("bad", [0, -1, -42])
+def test_catalog_config_rejects_non_positive_counts(field: str, bad: int) -> None:
+    with pytest.raises(ValidationError):
+        CatalogConfig(**{field: bad})  # type: ignore[arg-type]
+
+
+def test_catalog_config_rejects_extra_fields() -> None:
+    with pytest.raises(ValidationError):
+        CatalogConfig(unknown=1)  # type: ignore[call-arg]
+
+
+def test_catalog_config_is_frozen() -> None:
+    cat = CatalogConfig()
+    with pytest.raises(ValidationError):
+        cat.collections = 5  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------- #
+# ShopGenConfig — defaults
+# --------------------------------------------------------------------------- #
+
+
+def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed])
+    assert cfg.seeds == (seed,)
+    assert cfg.out_dir is None
+    assert cfg.name is None
+    assert cfg.runtime == DEFAULT_RUNTIME
+    assert cfg.model == DEFAULT_MODEL
+    assert cfg.max_iters == DEFAULT_MAX_ITERS
+    assert cfg.image_backend == DEFAULT_IMAGE_BACKEND
+    assert cfg.catalog == CatalogConfig()
+
+
+def test_shop_gen_config_default_model_pins_opus_4_7() -> None:
+    """Repo-wide default agent model is pinned to Anthropic Opus 4.7."""
+    assert DEFAULT_MODEL == "anthropic/claude-opus-4-7"
+
+
+def test_shop_gen_config_default_max_iters_is_30() -> None:
+    """Spec §4.1: build-loop budget defaults to 30."""
+    assert DEFAULT_MAX_ITERS == 30  # noqa: PLR2004
+
+
+def test_shop_gen_config_default_image_backend_is_placeholder() -> None:
+    """Spec §4.1: v0.1 ships ``placeholder`` as the default backend."""
+    assert DEFAULT_IMAGE_BACKEND == "placeholder"
+
+
+# --------------------------------------------------------------------------- #
+# ShopGenConfig — seeds validation
+# --------------------------------------------------------------------------- #
+
+
+def test_shop_gen_config_rejects_empty_seeds() -> None:
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[])
+
+
+def test_shop_gen_config_accepts_single_seed_path(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=seed)  # type: ignore[arg-type]
+    assert cfg.seeds == (seed,)
+
+
+def test_shop_gen_config_accepts_single_seed_string(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=str(seed))  # type: ignore[arg-type]
+    assert cfg.seeds == (seed,)
+
+
+def test_shop_gen_config_accepts_multiple_seeds(tmp_path: Path) -> None:
+    a = _seed(tmp_path, "a")
+    b = _seed(tmp_path, "b")
+    c = _seed(tmp_path, "c")
+    cfg = ShopGenConfig(seeds=[a, b, c])
+    assert cfg.seeds == (a, b, c)
+
+
+def test_shop_gen_config_coerces_string_seeds_to_paths(tmp_path: Path) -> None:
+    a = _seed(tmp_path, "a")
+    b = _seed(tmp_path, "b")
+    cfg = ShopGenConfig(seeds=[str(a), str(b)])
+    assert cfg.seeds == (a, b)
+    assert all(isinstance(s, Path) for s in cfg.seeds)
+
+
+def test_shop_gen_config_accepts_missing_seed_path(tmp_path: Path) -> None:
+    """A non-existent seed path is accepted at construction time.
+
+    The orchestrator re-checks before reading; constructing the config
+    is purely a typed-validation step.
+    """
+    missing = tmp_path / "no-such-seed"
+    cfg = ShopGenConfig(seeds=[missing])
+    assert cfg.seeds == (missing,)
+
+
+def test_shop_gen_config_rejects_seed_pointing_at_file(tmp_path: Path) -> None:
+    f = tmp_path / "a.txt"
+    f.write_text("hi")
+    with pytest.raises(ValidationError, match="must be a directory"):
+        ShopGenConfig(seeds=[f])
+
+
+# --------------------------------------------------------------------------- #
+# ShopGenConfig — scalar validation
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("bad", [0, -1, -100])
+def test_shop_gen_config_rejects_non_positive_max_iters(tmp_path: Path, bad: int) -> None:
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], max_iters=bad)
+
+
+def test_shop_gen_config_rejects_unknown_image_backend(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], image_backend="dalle")  # type: ignore[arg-type]
+
+
+def test_shop_gen_config_rejects_unknown_runtime(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], runtime="gpt")  # type: ignore[arg-type]
+
+
+def test_shop_gen_config_rejects_empty_name(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError, match="non-empty"):
+        ShopGenConfig(seeds=[seed], name="   ")
+
+
+def test_shop_gen_config_accepts_explicit_name(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], name="lumen-thread")
+    assert cfg.name == "lumen-thread"
+
+
+def test_shop_gen_config_accepts_none_model_to_use_runtime_default(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], model=None)
+    assert cfg.model is None
+
+
+def test_shop_gen_config_accepts_explicit_catalog(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    n_collections = 4
+    n_products = 5
+    n_images = 1
+    cfg = ShopGenConfig(
+        seeds=[seed],
+        catalog=CatalogConfig(
+            collections=n_collections,
+            products_per_collection=n_products,
+            images_per_product=n_images,
+        ),
+    )
+    assert cfg.catalog.collections == n_collections
+    assert cfg.catalog.products_per_collection == n_products
+    assert cfg.catalog.images_per_product == n_images
+
+
+def test_shop_gen_config_rejects_extra_fields(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], unknown="x")  # type: ignore[call-arg]
+
+
+def test_shop_gen_config_is_frozen(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed])
+    with pytest.raises(ValidationError):
+        cfg.max_iters = 5  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------- #
+# ShopGenResult
+# --------------------------------------------------------------------------- #
+
+
+def _result(out_dir: Path) -> ShopGenResult:
+    return ShopGenResult(
+        out_dir=out_dir,
+        manual_dir=out_dir / "manual",
+        identity_path=out_dir / "identity.json",
+        data_dir=out_dir / "data",
+        hydrogen_dir=out_dir / "hydrogen",
+        data_validation_path=out_dir / "data_validation.json",
+        final_eval_path=out_dir / "final_eval.json",
+        build_run_dir=out_dir / "runs" / "build",
+    )
+
+
+def test_shop_gen_result_round_trip(tmp_path: Path) -> None:
+    result = _result(tmp_path)
+    again = ShopGenResult.model_validate(result.model_dump())
+    assert again == result
+
+
+def test_shop_gen_result_rejects_extra_fields(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        ShopGenResult(  # type: ignore[call-arg]
+            out_dir=tmp_path,
+            manual_dir=tmp_path / "manual",
+            identity_path=tmp_path / "identity.json",
+            data_dir=tmp_path / "data",
+            hydrogen_dir=tmp_path / "hydrogen",
+            data_validation_path=tmp_path / "data_validation.json",
+            final_eval_path=tmp_path / "final_eval.json",
+            build_run_dir=tmp_path / "runs" / "build",
+            extra="x",
+        )
+
+
+def test_shop_gen_result_is_frozen(tmp_path: Path) -> None:
+    result = _result(tmp_path)
+    with pytest.raises(ValidationError):
+        result.out_dir = tmp_path / "other"  # type: ignore[misc]

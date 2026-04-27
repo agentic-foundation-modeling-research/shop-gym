@@ -18,7 +18,7 @@ Depends on: [`docs/impl/verifiers_implementation.md`](verifiers_implementation.m
 
 ### M1 · Step DAG runner + CLI
 
-- [ ] **T1.1** — `src/shop_gen/config.py`: pydantic `ShopGenConfig` (seeds, out_dir, name, runtime, model, catalog, max_iters, image_backend), `CatalogConfig`, `ShopGenResult`. Spec §4.1. **Check:** invalid configs (zero seeds, non-positive `max_iters`, unknown `image_backend`) raise `ValidationError`.
+- [x] **T1.1** — `src/shop_gen/config.py`: pydantic `ShopGenConfig` (seeds, out_dir, name, runtime, model, catalog, max_iters, image_backend), `CatalogConfig`, `ShopGenResult`. Spec §4.1. **Check:** invalid configs (zero seeds, non-positive `max_iters`, unknown `image_backend`) raise `ValidationError`.
 - [ ] **T1.2** — `src/shop_gen/steps/base.py`: `Step` Protocol (`id`, `phase`, `inputs`, `outputs`, `depends_on`, `version`, `run(ctx)`), `StepContext`, `StepStatus` enum, `InputRef` union (file path | step id). Spec §5.7.1. **Check:** type-check clean; example concrete step compiles.
 - [ ] **T1.3** — `src/shop_gen/steps/state.py`: `state.json` reader/writer; per-step fingerprint = sha256 over (input file hashes ⊕ upstream fingerprints ⊕ step `version`). Atomic writes (tmp + rename). Spec §5.7. **Check:** unit test for fingerprint stability + atomic-write under simulated crash.
 - [ ] **T1.4** — `src/shop_gen/steps/runner.py`: register steps, resolve DAG (cycle detection), compute staleness (output missing OR input changed OR upstream stale), topologically run stale steps. Spec §5.7. **Check:** unit tests for stale cascade, missing-output detection, cycle rejection, idempotent re-run (no-op when up-to-date).
@@ -100,13 +100,6 @@ Depends on M0 (harness verifier extension).
 
 **M7 acceptance:** v0.1.0 tagged; SC1–SC7 all satisfied on fixtures.
 
-### M8 · AI image backend (post-v0.1)
-
-- [ ] **T8.1** — `data_synth/images.py` AI backend: implements `ImageBackend` against an image-gen API (provider TBD). Reads alt-text from `synth_alt_text` output. Writes PNG to `data/images/`. **Check:** integration test gated behind env var; placeholder unaffected.
-- [ ] **T8.2** — Cost / rate-limit guards: per-run budget cap; abort with a clear error when exceeded. **Check:** unit test with stub backend asserts abort path.
-- [ ] **T8.3** — Tag `shop-gen-v0.2.0`.
-
-**M8 acceptance:** AI image generation usable behind a flag without disturbing v0.1 placeholder defaults.
 
 ---
 
@@ -122,4 +115,3 @@ Depends on M0 (harness verifier extension).
 | M5        | T5.1–T5.10  | Phase 4 build harness loop; SC3 + SC6 (depends on M0)                                 |
 | M6        | T6.1–T6.3   | Phase 5 final eval (advisory)                                                         |
 | M7        | T7.1–T7.4   | docs + README + tag; SC1–SC7 on fixtures                                              |
-| M8        | T8.1–T8.3   | AI image backend (post-v0.1)                                                          |
