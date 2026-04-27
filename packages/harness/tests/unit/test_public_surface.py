@@ -10,7 +10,9 @@ import importlib
 
 import harness
 
-# Exact names listed in `docs/specs/harness/plan_exec_loop.md` §8.1.
+# Exact names listed in `docs/specs/harness/plan_exec_loop.md` §8.1
+# plus the verifier-extension surface defined in
+# `docs/specs/harness/verifiers.md` §9.1.
 _EXPECTED_PUBLIC: frozenset[str] = frozenset(
     {
         # Types
@@ -26,6 +28,12 @@ _EXPECTED_PUBLIC: frozenset[str] = frozenset(
         "PlanExecLoopConfig",
         "PlanExecLoopResult",
         "Prompts",
+        # Verifier extension (verifiers.md §9.1)
+        "Verdict",
+        "Verifier",
+        "VerifierContext",
+        "VerifierResult",
+        "VerifierRun",
         # Entry points
         "get_runtime",
         "run_plan_exec_loop",

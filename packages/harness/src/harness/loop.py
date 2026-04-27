@@ -47,6 +47,11 @@ from harness.telemetry import (
 )
 from harness.telemetry.recovery import scan_iter_dirs
 from harness.trajectory import IterationMetadata, ProtocolCheckResult, Trajectory
+from harness.verifiers.dispatch import (
+    dispatch_verifiers,
+    render_feedback_for_prompt,
+)
+from harness.verifiers.protocol import VerifierRun
 from harness.workspace import Workspace
 
 _log = logging.getLogger(__name__)
@@ -54,6 +59,8 @@ _log = logging.getLogger(__name__)
 _HARNESS_CONTROL_HEADER_TEMPLATE: Final[str] = (
     "<<<harness-control>>>\nselected_task_id: {selected_task_id}\n<<<end>>>\n\n"
 )
+_VERIFIER_FEEDBACK_PLACEHOLDER: Final[str] = "{{verifier_feedback}}"
+_VERIFIER_FEEDBACK_FILENAME: Final[str] = "feedback.md"
 _TRAJECTORY_FILENAME: Final[str] = "trajectory.json"
 _METADATA_FILENAME: Final[str] = "metadata.json"
 _PROTOCOL_FILENAME: Final[str] = "protocol.json"
@@ -199,6 +206,7 @@ class _LoopState:
         self._exec_iter_baseline = 0
         self._trajectory_paths: list[str] = []
         self._final_status: FinalStatus | None = None
+        self._verifier_runs: list[VerifierRun] = []
 
     # ------------------------------------------------------------------
     # Resume hooks
@@ -348,7 +356,12 @@ class _LoopState:
 
         self._workspace.snapshot_plan(exec_dir / _PLAN_BEFORE_FILENAME)
 
-        prompt = _compose_executor_prompt(self._config.prompts.execute, selected.id)
+        feedback = self._previous_verifier_feedback(next_count)
+        prompt = _compose_executor_prompt(
+            self._config.prompts.execute,
+            selected.id,
+            verifier_feedback=feedback,
+        )
         _log.info(
             "invoking %s for %s (task=%s)",
             type(self._runtime).__name__,
@@ -397,6 +410,19 @@ class _LoopState:
             ),
         )
 
+        dispatch_outcome = dispatch_verifiers(
+            verifiers=self._config.verifiers,
+            iter_dir=exec_dir,
+            iter_id=exec_id,
+            run_dir=self._workspace.run_dir,
+            selected_task_id=selected.id,
+            plan=after,
+            artifact_dir=self._workspace.artifact_dir,
+            runtime=self._runtime,
+            feedback_max_chars=self._config.verifier_feedback_max_chars,
+        )
+        self._verifier_runs.extend(dispatch_outcome.runs)
+
         if not protocol_result.passed:
             self._final_status = FinalStatus.PROTOCOL_VIOLATION
             self._rewrite_run_summary()
@@ -404,6 +430,28 @@ class _LoopState:
 
         self._rewrite_run_summary()
         return True
+
+    def _previous_verifier_feedback(self, next_count: int) -> str:
+        """Return the previous executor iteration's `feedback.md` body.
+
+        Returns the empty string when no prior iteration exists or when
+        the prior dispatch did not write feedback. Truncated per
+        ``config.verifier_feedback_max_chars`` (the full body remains on
+        disk per spec §5.5).
+        """
+        if next_count <= 1:
+            return ""
+        prev_id = exec_iter_id(next_count - 1)
+        prev_feedback = (
+            iter_dir(self._workspace, prev_id)
+            / "checks"
+            / "verifiers"
+            / _VERIFIER_FEEDBACK_FILENAME
+        )
+        return render_feedback_for_prompt(
+            prev_feedback,
+            max_chars=self._config.verifier_feedback_max_chars,
+        )
 
     # ------------------------------------------------------------------
     # Runtime + summary helpers
@@ -453,6 +501,7 @@ class _LoopState:
             exec_iter_count=self._exec_iter_count,
             trajectory_paths=tuple(self._trajectory_paths),
             tasks_final=_safe_parse_tasks(self._workspace),
+            verifier_runs=tuple(self._verifier_runs),
         )
         snapshot = dict(self._config_snapshot)
         snapshot["resume_history"] = [
@@ -490,10 +539,26 @@ class _IterationOutcome:
         self.error_status = error_status
 
 
-def _compose_executor_prompt(execute_body: str, selected_task_id: str) -> str:
-    """Prepend the fixed `<<<harness-control>>>` header to the executor prompt."""
+def _compose_executor_prompt(
+    execute_body: str,
+    selected_task_id: str,
+    *,
+    verifier_feedback: str = "",
+) -> str:
+    """Prepend the harness-control header and render `{{verifier_feedback}}`.
+
+    The header carries the selected task id (spec §5.5). The optional
+    `{{verifier_feedback}}` slot is rendered from the previous
+    iteration's `feedback.md` (verifiers spec §5.5). When the executor
+    body does not include the placeholder, no injection happens — the
+    caller decides whether the agent should see verifier feedback.
+    """
     header = _HARNESS_CONTROL_HEADER_TEMPLATE.format(selected_task_id=selected_task_id)
-    return header + execute_body
+    rendered_body = execute_body.replace(
+        _VERIFIER_FEEDBACK_PLACEHOLDER,
+        verifier_feedback,
+    )
+    return header + rendered_body
 
 
 def _normalize_trajectory(result: RuntimeIterationResult, prompt: str) -> Trajectory:
@@ -611,8 +676,14 @@ def _build_exec_metadata(
 
 
 def _build_config_snapshot(config: PlanExecLoopConfig) -> dict[str, Any]:
-    """Return a JSON-safe echo of `config` for `run.json`'s `config_snapshot`."""
-    return config.model_dump(mode="json")
+    """Return a JSON-safe echo of `config` for `run.json`'s `config_snapshot`.
+
+    The ``verifiers`` field is excluded because verifier instances are
+    caller-owned objects (typically with bound runtime references) and
+    are not JSON-serialisable. The numeric ``verifier_feedback_max_chars``
+    is preserved.
+    """
+    return config.model_dump(mode="json", exclude={"verifiers"})
 
 
 # ---------------------------------------------------------------------------

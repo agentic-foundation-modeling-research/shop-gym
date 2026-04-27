@@ -14,7 +14,7 @@ Depends on: [`docs/impl/verifiers_implementation.md`](verifiers_implementation.m
 
 ### M0 · Harness verifier extension (external)
 
-- [ ] **T0.1** — Land [`verifiers_implementation.md`](verifiers_implementation.md) M1–M3. **Check:** `harness-v0.3.0` tag; `from harness import Verifier, VerifierContext, VerifierResult` works. **Required before M5.**
+- [x] **T0.1** — Land [`verifiers_implementation.md`](verifiers_implementation.md) M1–M3. **Check:** `harness-v0.3.0` tag; `from harness import Verifier, VerifierContext, VerifierResult` works. **Required before M5.**
 
 ### M1 · Step DAG runner + CLI
 

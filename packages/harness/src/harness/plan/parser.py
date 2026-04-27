@@ -101,13 +101,19 @@ def parse(text: str) -> TaskList:
 
 
 def select_next(tasks: TaskList) -> Task | None:
-    """Return the highest-priority PENDING task, or `None` if none remain.
+    """Return the highest-priority retryable task, or `None` if none remain.
+
+    A task is retryable when its status is ``PENDING`` (the planner left
+    it for an executor) or ``IN_PROGRESS`` (a verifier rewrote a
+    previously-terminal marker back to ``[~]`` per
+    ``docs/specs/harness/verifiers.md`` §5.4, or an executor crashed
+    mid-flip leaving ``[~]`` on disk).
 
     Ties on `priority` are broken by source order (the earlier task wins).
     """
     best: Task | None = None
     for task in tasks.tasks:
-        if task.status is not TaskStatus.PENDING:
+        if task.status not in (TaskStatus.PENDING, TaskStatus.IN_PROGRESS):
             continue
         if best is None or task.priority > best.priority:
             best = task

@@ -137,14 +137,27 @@ def test_parse_rejects_trailing_garbage_after_id() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_select_next_returns_none_when_no_pending() -> None:
+def test_select_next_returns_none_when_no_retryable() -> None:
+    tl = TaskList(
+        tasks=(
+            Task(id="a", status=TaskStatus.DONE),
+            Task(id="b", status=TaskStatus.BLOCKED),
+        )
+    )
+    assert select_next(tl) is None
+
+
+def test_select_next_picks_in_progress_for_retry() -> None:
+    """Verifier-rewritten `[~]` tasks are retryable (verifiers.md §5.4)."""
     tl = TaskList(
         tasks=(
             Task(id="a", status=TaskStatus.DONE),
             Task(id="b", status=TaskStatus.IN_PROGRESS),
         )
     )
-    assert select_next(tl) is None
+    chosen = select_next(tl)
+    assert chosen is not None
+    assert chosen.id == "b"
 
 
 def test_select_next_returns_highest_priority_pending() -> None:

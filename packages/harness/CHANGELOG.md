@@ -4,6 +4,42 @@ All notable changes to `harness` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-04-27
+
+Implements the [verifier extension spec](../../docs/specs/harness/verifiers.md)
+(``shop_gen`` M5 prerequisite). Backward compatible: callers that omit
+`PlanExecLoopConfig.verifiers` see byte-identical telemetry to 0.2.0.
+
+### Added
+
+- **Verifier module** (`harness.verifiers`): `Verdict`, `VerifierResult`,
+  `VerifierContext`, `Verifier` (Protocol), `VerifierRun` (telemetry
+  record). Public re-exports from `harness.__init__`.
+- **Config / result extension**: `PlanExecLoopConfig.verifiers` (default
+  empty) and `PlanExecLoopConfig.verifier_feedback_max_chars` (default
+  4000); `PlanExecLoopResult.verifier_runs` populated from per-iteration
+  dispatch summaries.
+- **Per-iteration dispatch** (`harness.verifiers.dispatch`): runs
+  applicable verifiers sequentially after every executor iteration's
+  protocol checks, persists `iters/<id>/checks/verifiers/<name>.json`
+  per call, traps exceptions as `Verdict.ERROR`, and on any `FAIL`
+  rewrites `[x]`/`[!]` → `[~]` for the selected task.
+- **Prompt feedback slot**: `feedback.md` writer concatenates non-empty
+  per-verifier feedback under `## <name>` headers; the next executor
+  iteration's prompt template renders `{{verifier_feedback}}` from the
+  previous iteration's `feedback.md`, truncated to
+  `verifier_feedback_max_chars` with a `[...truncated]` suffix.
+- **`select_next` retry semantics**: now picks `IN_PROGRESS` (`[~]`)
+  tasks in addition to PENDING, so a verifier-rewritten task is
+  re-selected on the next iteration. Non-verifier runs are unaffected
+  because executors flip `[~]` → `[x]`/`[!]` within a single iteration.
+- **Reference verifier fixtures** under
+  `packages/harness/tests/integration/verifiers/`: `AlwaysPass`,
+  `AlwaysFail`, `RaisesException`, and `LLMCompleterDriven`. Reusable
+  from downstream consumers.
+
+[0.3.0]: https://github.com/Shopify/shop-gym/releases/tag/harness-v0.3.0
+
 ## [0.2.0] — 2026-04-25
 
 Implements the

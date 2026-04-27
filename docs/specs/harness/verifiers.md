@@ -1,6 +1,6 @@
 # Verifier Extension (`packages/harness`)
 
-Status: **Spec (draft)** · Version: **0.1**
+Status: **Implemented in `harness` 0.3.0** · Version: **0.1**
 Owners: ShopGym
 
 > An additive, opt-in extension to `run_plan_exec_loop` that lets

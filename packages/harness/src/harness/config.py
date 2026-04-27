@@ -23,6 +23,7 @@ from typing import Any, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from harness.plan.tasks import Task
+from harness.verifiers.protocol import Verifier, VerifierRun
 
 
 class Prompts(BaseModel):
@@ -63,9 +64,15 @@ class PlanExecLoopConfig(BaseModel):
         max_iters: Maximum number of executor iterations. The planner
             iteration is outside this budget. Must be > 0.
         timeout: Per-iteration wall-clock timeout in seconds. Must be > 0.
+        verifiers: Caller-supplied verifier list dispatched after every
+            executor iteration (verifiers spec §5.2). Default: empty
+            tuple — no dispatch, byte-identical to the v0.2 contract.
+        verifier_feedback_max_chars: Truncation budget for feedback
+            injected into the next prompt's ``{{verifier_feedback}}``
+            slot. Full body always lands on disk.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     run_dir: Path
     prompts: Prompts
@@ -73,6 +80,8 @@ class PlanExecLoopConfig(BaseModel):
     artifact_seed_dir: Path | None = None
     max_iters: int = Field(gt=0)
     timeout: float = Field(gt=0)
+    verifiers: tuple[Verifier, ...] = ()
+    verifier_feedback_max_chars: int = Field(default=4000, gt=0)
 
     @field_validator("artifact_seed_dir")
     @classmethod
@@ -116,6 +125,10 @@ class PlanExecLoopResult(BaseModel):
         trajectory_paths: Ordered, run-dir-relative paths to every
             iteration's `trajectory.json`. Planner first, then executors.
         tasks_final: Final parsed `plan.md` task snapshot, in source order.
+        verifier_runs: Flat sequence of every verifier invocation across
+            the run, in dispatch order. Empty when no verifiers are
+            configured. Persisted as the ``verifier_runs`` array in
+            `run.json` (verifiers spec §5.6).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -126,6 +139,7 @@ class PlanExecLoopResult(BaseModel):
     exec_iter_count: int = Field(ge=0)
     trajectory_paths: tuple[str, ...] = ()
     tasks_final: tuple[Task, ...] = ()
+    verifier_runs: tuple[VerifierRun, ...] = ()
 
     @model_validator(mode="after")
     def _trajectory_count_matches_iter_counts(self) -> PlanExecLoopResult:
