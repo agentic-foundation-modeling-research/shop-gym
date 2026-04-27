@@ -1,0 +1,22 @@
+{
+  "version": "0.1",
+  "comment": "Fake-brand allowlist for shop_gen. See docs/specs/shop_arena/shop_gen.md §5.6. Static at v0.1; programmatic per-shop generation is a v0.2 follow-up. Changes are versioned API.",
+  "brands": [
+    {"token": "Vendarena",      "composition": "vendor + arena"},
+    {"token": "AisleArena",     "composition": "aisle + arena"},
+    {"token": "Shopliseum",     "composition": "shop + coliseum"},
+    {"token": "CartColiseum",   "composition": "cart + coliseum"},
+    {"token": "StockyardArena", "composition": "stockyard + arena"},
+    {"token": "AgoraDome",      "composition": "agora (Greek marketplace) + dome"},
+    {"token": "AgoraCage",      "composition": "agora (Greek marketplace) + cage"},
+    {"token": "AgoraPit",       "composition": "agora (Greek marketplace) + pit"}
+  ],
+  "safe_nouns": {
+    "comment": "Capitalized tokens the allowlist scanner treats as non-brand-shaped. Grow as needed; categories deliberately narrow.",
+    "colors":     ["Black", "White", "Red", "Blue", "Green", "Yellow", "Pink", "Purple", "Orange", "Brown", "Grey", "Gray", "Beige", "Ivory", "Navy", "Olive", "Tan", "Charcoal", "Gold", "Silver", "Bronze", "Cream", "Khaki"],
+    "materials":  ["Cotton", "Wool", "Silk", "Leather", "Denim", "Linen", "Polyester", "Nylon", "Cashmere", "Velvet", "Suede", "Bamboo", "Ceramic", "Glass", "Steel", "Aluminum", "Brass", "Copper", "Wood", "Plastic", "Rubber"],
+    "units":      ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "EU", "UK", "US", "ML", "L", "G", "KG", "OZ", "LB", "FT", "IN", "CM", "MM"],
+    "countries":  ["USA", "UK", "EU", "Canada", "Mexico", "France", "Germany", "Italy", "Spain", "Japan", "China", "India", "Brazil", "Australia"],
+    "stopwords":  ["I", "A", "An", "The", "And", "Or", "But", "If", "Then", "When", "While", "For", "With", "Without", "From", "To", "In", "On", "At", "By", "Of", "Yes", "No"]
+  }
+}
