@@ -18,7 +18,7 @@ into validating ``out_dir``.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -32,6 +32,15 @@ DEFAULT_MAX_ITERS = 20
 
 DEFAULT_TIMEOUT_SECONDS = 1800.0
 """Default per-iteration timeout in seconds (spec §4.1)."""
+
+DEFAULT_MODEL: Final[str] = "anthropic/claude-opus-4-7"
+"""Default model identifier forwarded to the agent runtime.
+
+Pinned at the application layer (not the harness `PiRuntime`) so the
+repo-wide default is visible at the user-facing entrypoint and the
+harness package stays unopinionated about which model `pi` drives.
+Override per-run via `ExploreConfig.model` or the ``--model`` CLI flag.
+"""
 
 
 class ExploreConfig(BaseModel):
@@ -47,6 +56,14 @@ class ExploreConfig(BaseModel):
             workspace for resume (resume.md §5.6). The harness validates
             the resume identity tuple before any subprocess is spawned.
         runtime: Agent runtime to drive the plan/exec loop.
+        model: Model identifier forwarded to the runtime as ``--model``.
+            Defaults to :data:`DEFAULT_MODEL`. Set to ``None`` to skip
+            the flag entirely and let the runtime pick its own default.
+            For ``runtime="pi"`` the value follows ``pi``'s ``--model``
+            grammar (patterns like ``sonnet:high`` or provider-prefixed
+            IDs like ``anthropic/claude-opus-4-7``); for
+            ``runtime="claude_code"`` it follows the ``claude`` CLI's
+            grammar (``opus``, ``claude-opus-4-7``, …).
         max_iters: Executor iteration budget. Strictly positive. On
             resume this is the *additional* budget granted to the new
             attempt (resume.md §5).
@@ -61,6 +78,7 @@ class ExploreConfig(BaseModel):
     url: str
     out_dir: Path | None = None
     runtime: RuntimeName = "pi"
+    model: str | None = DEFAULT_MODEL
     max_iters: int = Field(default=DEFAULT_MAX_ITERS, gt=0)
     timeout: float = Field(default=DEFAULT_TIMEOUT_SECONDS, gt=0)
     force_resume: bool = False

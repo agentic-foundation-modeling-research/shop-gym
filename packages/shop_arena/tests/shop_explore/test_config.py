@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from harness.config import FinalStatus
 from shop_explore.config import (
     DEFAULT_MAX_ITERS,
+    DEFAULT_MODEL,
     DEFAULT_TIMEOUT_SECONDS,
     ExploreConfig,
     ExploreResult,
@@ -33,8 +34,24 @@ def test_explore_config_defaults_match_spec() -> None:
     assert cfg.url == "https://example-shop.com"
     assert cfg.out_dir is None
     assert cfg.runtime == "pi"
+    assert cfg.model == DEFAULT_MODEL
     assert cfg.max_iters == DEFAULT_MAX_ITERS
     assert cfg.timeout == DEFAULT_TIMEOUT_SECONDS
+
+
+def test_explore_config_default_model_pins_opus_4_7() -> None:
+    """Repo-wide default agent model is pinned to Anthropic Opus 4.7."""
+    assert DEFAULT_MODEL == "anthropic/claude-opus-4-7"
+
+
+def test_explore_config_accepts_explicit_model() -> None:
+    cfg = ExploreConfig(url="https://example-shop.com", model="sonnet:high")
+    assert cfg.model == "sonnet:high"
+
+
+def test_explore_config_accepts_none_model_to_use_runtime_default() -> None:
+    cfg = ExploreConfig(url="https://example-shop.com", model=None)
+    assert cfg.model is None
 
 
 def test_explore_config_accepts_http_and_https() -> None:

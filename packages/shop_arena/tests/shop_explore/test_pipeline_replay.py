@@ -120,7 +120,7 @@ def test_pipeline_replay_runs_end_to_end_against_drawer_shop_cassette(
     """Full pipeline drives the cassette through replay and yields the §5.4 artifact tree."""
     _stub_storefront(respx.mock)
 
-    def fake_get_runtime(name: str) -> Any:
+    def fake_get_runtime(name: str, **_kwargs: Any) -> Any:
         # The pipeline asks for the configured runtime by name; for the
         # replay test we hand back a ReplayRuntime rooted at the
         # hand-crafted cassette regardless of name.
@@ -315,7 +315,7 @@ def test_pipeline_replay_runs_end_to_end_against_alt_cassettes(
     cassette_dir = Path(__file__).resolve().parent / "cassettes" / fixture.name
     _stub_storefront_at(respx.mock, fixture.base_url)
 
-    def fake_get_runtime(name: str) -> Any:
+    def fake_get_runtime(name: str, **_kwargs: Any) -> Any:
         assert name == "pi"
         return ReplayRuntime(scenario_dir=cassette_dir)
 

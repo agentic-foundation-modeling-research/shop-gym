@@ -36,6 +36,7 @@ from shop_explore import cli as cli_mod
 from shop_explore.cli import EXIT_OK, EXIT_USAGE, main
 from shop_explore.config import (
     DEFAULT_MAX_ITERS,
+    DEFAULT_MODEL,
     DEFAULT_TIMEOUT_SECONDS,
     ExploreConfig,
     ExploreResult,
@@ -175,7 +176,7 @@ def test_synthesize_only_fails_loudly_when_runtime_lacks_completer(
     class _NoCompleterRuntime:
         """Stand-in runtime missing the optional ``complete`` method."""
 
-    def fake_get_runtime(_name: str) -> _NoCompleterRuntime:
+    def fake_get_runtime(_name: str, **_kwargs: object) -> _NoCompleterRuntime:
         return _NoCompleterRuntime()
 
     monkeypatch.setattr(cli_mod, "get_runtime", fake_get_runtime)
@@ -220,7 +221,7 @@ def test_synthesize_only_routes_manual_call_through_completer_runtime(
             captured["timeout"] = timeout
             return f"# Shop Manual\n\n{sentinel_body}\n"
 
-    def fake_get_runtime(_name: str) -> _CompleterRuntime:
+    def fake_get_runtime(_name: str, **_kwargs: object) -> _CompleterRuntime:
         return _CompleterRuntime()
 
     monkeypatch.setattr(cli_mod, "get_runtime", fake_get_runtime)
@@ -452,3 +453,32 @@ def test_explore_fresh_run_uses_spec_defaults(
     assert config.max_iters == DEFAULT_MAX_ITERS
     assert config.timeout == DEFAULT_TIMEOUT_SECONDS
     assert config.force_resume is False
+    assert config.model == DEFAULT_MODEL
+
+
+def test_explore_fresh_run_passes_explicit_model_to_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--model M`` overrides the repo-wide default in ``ExploreConfig``."""
+    fresh_dir = tmp_path / "fresh"
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    rc = main(["--out", str(fresh_dir), "--model", "sonnet:high", BASE_URL])
+
+    assert rc == EXIT_OK
+    assert captured["config"].model == "sonnet:high"
+
+
+def test_explore_fresh_run_empty_model_opts_out_of_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--model ''`` skips ``--model`` and lets the runtime pick its default."""
+    fresh_dir = tmp_path / "fresh"
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    rc = main(["--out", str(fresh_dir), "--model", "", BASE_URL])
+
+    assert rc == EXIT_OK
+    assert captured["config"].model is None

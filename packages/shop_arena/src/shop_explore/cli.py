@@ -40,7 +40,12 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 
 from harness import get_runtime
-from shop_explore.config import DEFAULT_MAX_ITERS, DEFAULT_TIMEOUT_SECONDS, ExploreConfig
+from shop_explore.config import (
+    DEFAULT_MAX_ITERS,
+    DEFAULT_MODEL,
+    DEFAULT_TIMEOUT_SECONDS,
+    ExploreConfig,
+)
 from shop_explore.pipeline import build_runtime_llm, explore
 from shop_explore.prefetch import ShopUnreachableError
 from shop_explore.prefetch import run as run_prefetch
@@ -115,6 +120,17 @@ def _build_parser() -> argparse.ArgumentParser:
             "Agent runtime for the plan/exec loop. Defaults to 'pi' for fresh runs; "
             "on resume (--out points at an existing run dir) defaults to the prior "
             "run's runtime and must match if supplied."
+        ),
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        metavar="MODEL",
+        help=(
+            "Model identifier forwarded to the runtime as --model. Defaults to "
+            f"{DEFAULT_MODEL!r} for fresh runs; on resume defaults to the prior "
+            "run's value. Pass the empty string to skip the flag entirely and "
+            "let the runtime use its own default."
         ),
     )
     parser.add_argument(
@@ -202,8 +218,9 @@ def _run_synthesize_only(args: argparse.Namespace) -> int:
 
     manual_prompt = _load_manual_prompt()
     runtime_name = args.runtime if args.runtime is not None else "pi"
+    model = _resolve_model_arg(args.model)
     timeout = args.timeout if args.timeout is not None else DEFAULT_TIMEOUT_SECONDS
-    runtime = get_runtime(runtime_name)
+    runtime = get_runtime(runtime_name, **_runtime_kwargs(model))
     try:
         llm = build_runtime_llm(runtime, timeout=timeout)
         result = run_synthesize(run_dir, llm=llm, manual_prompt=manual_prompt)
@@ -224,9 +241,11 @@ def _run_explore(args: argparse.Namespace) -> int:
     * ``--max-iters`` and ``--timeout`` default to the prior run's values
       when not supplied on the command line. Per resume.md §5,
       ``max_iters`` is granted as *additional* budget by the harness.
-    * ``--runtime`` defaults to the prior runtime; if supplied, it must
-      match — otherwise we exit with :data:`EXIT_USAGE` before any
-      subprocess is spawned.
+    * ``--runtime`` and ``--model`` default to the prior run's values; if
+      supplied, ``--runtime`` must match — otherwise we exit with
+      :data:`EXIT_USAGE` before any subprocess is spawned. ``--model`` is
+      not strictly identity-checked because the harness does not include
+      it in the resume identity tuple.
     * The positional ``url`` must match the prior run's URL.
     * ``--force-resume`` is forwarded to the harness via
       :class:`shop_explore.config.ExploreConfig` so the §5.5 refusal
@@ -255,9 +274,7 @@ def _run_explore(args: argparse.Namespace) -> int:
             )
             return EXIT_USAGE
 
-    runtime = (
-        args.runtime if args.runtime is not None else _prior_or(prior, "runtime", "pi")
-    )
+    runtime = args.runtime if args.runtime is not None else _prior_or(prior, "runtime", "pi")
     max_iters = (
         args.max_iters
         if args.max_iters is not None
@@ -268,11 +285,17 @@ def _run_explore(args: argparse.Namespace) -> int:
         if args.timeout is not None
         else _prior_or(prior, "timeout", DEFAULT_TIMEOUT_SECONDS)
     )
+    model = (
+        _resolve_model_arg(args.model)
+        if args.model is not None
+        else _prior_or(prior, "model", DEFAULT_MODEL)
+    )
 
     config = ExploreConfig(
         url=args.url,
         out_dir=args.out,
         runtime=runtime,
+        model=model,
         max_iters=max_iters,
         timeout=timeout,
         force_resume=args.force_resume,
@@ -327,6 +350,26 @@ def _prior_or(prior: dict[str, Any] | None, key: str, default: Any) -> Any:
         return default
     value = prior.get(key)
     return default if value is None else value
+
+
+def _resolve_model_arg(value: str | None) -> str | None:
+    """Map ``--model`` argv to the value forwarded to the runtime.
+
+    ``None`` (flag omitted on a fresh run) yields :data:`DEFAULT_MODEL`.
+    The empty string ``""`` is the explicit opt-out: pass ``None`` to
+    the runtime so no ``--model`` flag is forwarded and the runtime's
+    own default applies.
+    """
+    if value is None:
+        return DEFAULT_MODEL
+    if value == "":
+        return None
+    return value
+
+
+def _runtime_kwargs(model: str | None) -> dict[str, Any]:
+    """Build ``**kwargs`` for :func:`harness.get_runtime` given a model."""
+    return {"model": model} if model is not None else {}
 
 
 def _load_manual_prompt() -> str:

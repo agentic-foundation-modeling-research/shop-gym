@@ -89,7 +89,7 @@ assert result.manual_path.exists()
 
 ```
 shop-explore <url> [--out PATH] [--runtime {pi,claude_code}]
-                   [--max-iters N] [--timeout SECONDS]
+                   [--model MODEL] [--max-iters N] [--timeout SECONDS]
                    [--force-resume]
                    [--prefetch-only] [--synthesize-only PATH]
 ```
@@ -144,9 +144,9 @@ Pointing `--out` at an existing `run_dir` triggers resume mode (see
 [`docs/specs/harness/resume.md` §5.6](../../../../docs/specs/harness/resume.md#56-shop-explore-cli)).
 The CLI reads the prior `run.json`'s `config_snapshot` and:
 
-* Defaults `--runtime`, `--max-iters`, and `--timeout` to the prior
-  values when not supplied (per resume.md §5, `max_iters` is granted as
-  *additional* budget, not a lifetime total).
+* Defaults `--runtime`, `--model`, `--max-iters`, and `--timeout` to the
+  prior values when not supplied (per resume.md §5, `max_iters` is granted
+  as *additional* budget, not a lifetime total).
 * Errors out with exit code `2` if the supplied positional `<url>` or
   `--runtime` does not match the prior run.
 * Forwards `--force-resume` to the harness so the §5.5 refusal policy
@@ -273,8 +273,8 @@ plan/exec loop. Resolution goes through `harness.get_runtime` (see
 
 | Runtime       | Notes                                                                  |
 | ------------- | ---------------------------------------------------------------------- |
-| `pi`          | **Default.** Native `pi` runtime; required for live storefront runs.  |
-| `claude_code` | Alternative runtime selectable via `harness.get_runtime("claude_code")`. |
+| `pi`          | **Default.** Native `pi` runtime; required for live storefront runs. The default model is `anthropic/claude-opus-4-7` (override with `--model M`; pass `--model ""` to fall back to `pi`'s built-in default). |
+| `claude_code` | Alternative runtime selectable via `harness.get_runtime("claude_code")`. The `--model` flag is forwarded as `claude --model`; if you set it for `pi` syntax (`anthropic/...`), pass `--model ""` or a `claude`-friendly value when switching. |
 
 Tests use `harness.runtimes.replay` directly (not exposed as a CLI
 choice) so CI never pays for live LLM calls. See

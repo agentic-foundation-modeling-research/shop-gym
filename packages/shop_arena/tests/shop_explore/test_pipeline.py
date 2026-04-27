@@ -138,8 +138,9 @@ def test_explore_passes_seeded_config_to_harness(
     captured: dict[str, Any] = {}
     stub_runtime = _StubRuntime()
 
-    def fake_get_runtime(name: str) -> Any:
+    def fake_get_runtime(name: str, **kwargs: Any) -> Any:
         captured["runtime_name"] = name
+        captured["runtime_kwargs"] = kwargs
         return stub_runtime
 
     def fake_run_plan_exec_loop(
@@ -173,6 +174,7 @@ def test_explore_passes_seeded_config_to_harness(
         url=BASE_URL,
         out_dir=out_dir,
         runtime="pi",
+        model="sonnet:high",
         max_iters=MAX_ITERS,
         timeout=TIMEOUT_SECONDS,
     )
@@ -180,6 +182,8 @@ def test_explore_passes_seeded_config_to_harness(
 
     # Runtime selection passed the configured name through to the registry.
     assert captured["runtime_name"] == "pi"
+    # `model` from the config threads through `get_runtime` to the runtime ctor.
+    assert captured["runtime_kwargs"] == {"model": "sonnet:high"}
     assert captured["runtime"] is stub_runtime
 
     loop_config = captured["config"]
@@ -218,6 +222,49 @@ def test_explore_passes_seeded_config_to_harness(
     assert not loop_config.artifact_seed_dir.exists()
 
 
+@respx.mock
+def test_explore_omits_model_kwarg_when_config_model_is_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``ExploreConfig.model=None`` opts out: no ``model=`` kwarg to ``get_runtime``."""
+    _stub_storefront(respx.mock)
+    captured: dict[str, Any] = {}
+    stub_runtime = _StubRuntime()
+
+    def fake_get_runtime(name: str, **kwargs: Any) -> Any:
+        captured["runtime_kwargs"] = kwargs
+        return stub_runtime
+
+    def fake_run_plan_exec_loop(
+        loop_config: PlanExecLoopConfig, runtime: Any, **_kwargs: Any
+    ) -> PlanExecLoopResult:
+        loop_config.run_dir.mkdir(parents=True, exist_ok=True)
+        _seed_artifact_for_synthesis(loop_config.run_dir)
+        return PlanExecLoopResult(
+            run_dir=loop_config.run_dir,
+            final_status=FinalStatus.COMPLETED,
+            plan_iter_count=0,
+            exec_iter_count=0,
+            trajectory_paths=(),
+            tasks_final=(),
+        )
+
+    monkeypatch.setattr(pipeline_mod, "get_runtime", fake_get_runtime)
+    monkeypatch.setattr(pipeline_mod, "run_plan_exec_loop", fake_run_plan_exec_loop)
+
+    config = ExploreConfig(
+        url=BASE_URL,
+        out_dir=tmp_path / "run",
+        runtime="pi",
+        model=None,
+        max_iters=MAX_ITERS,
+        timeout=TIMEOUT_SECONDS,
+    )
+    pipeline_mod.explore(config, llm=_StubLLM())
+
+    assert captured["runtime_kwargs"] == {}
+
+
 def test_explore_uses_default_run_dir_when_out_dir_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -225,7 +272,7 @@ def test_explore_uses_default_run_dir_when_out_dir_missing(
 
     captured: dict[str, Any] = {}
 
-    def fake_get_runtime(name: str) -> Any:
+    def fake_get_runtime(name: str, **_kwargs: Any) -> Any:
         return object()
 
     def fake_run_plan_exec_loop(
@@ -312,7 +359,7 @@ def test_explore_routes_synthesis_call_through_completer_runtime(
 
     runtime = _CompleterRuntime()
 
-    def fake_get_runtime(name: str) -> Any:
+    def fake_get_runtime(name: str, **_kwargs: Any) -> Any:
         captured["runtime_name"] = name
         return runtime
 
@@ -554,7 +601,7 @@ def test_explore_pins_playwright_session_env_during_harness_loop(
     sentinel_prev = "prior-session-value"
     monkeypatch.setenv("PLAYWRIGHT_CLI_SESSION", sentinel_prev)
 
-    def fake_get_runtime(name: str) -> Any:
+    def fake_get_runtime(name: str, **_kwargs: Any) -> Any:
         return _StubRuntime()
 
     def fake_run_plan_exec_loop(

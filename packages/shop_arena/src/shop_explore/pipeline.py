@@ -163,10 +163,12 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
             max_iters=config.max_iters,
             timeout=config.timeout,
         )
-        runtime = get_runtime(config.runtime)
+        runtime_kwargs = {"model": config.model} if config.model is not None else {}
+        runtime = get_runtime(config.runtime, **runtime_kwargs)
         _log.info(
-            "starting plan/exec loop (runtime=%s, max_iters=%d, timeout=%.0fs)",
+            "starting plan/exec loop (runtime=%s, model=%s, max_iters=%d, timeout=%.0fs)",
             config.runtime,
+            config.model if config.model is not None else "<runtime-default>",
             config.max_iters,
             config.timeout,
         )
