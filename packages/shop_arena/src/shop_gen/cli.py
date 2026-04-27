@@ -29,6 +29,9 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from harness.plan import TaskStatus, parse
+from harness.plan.parser import InvalidPlanError
+from shop_gen.build.redo import RedoError, append_redo_task
 from shop_gen.config import (
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_MAX_ITERS,
@@ -43,6 +46,7 @@ from shop_gen.pipeline import (
     PHASES,
     StatusReport,
     list_steps,
+    resolve_out_dir,
     run,
     status,
 )
@@ -275,7 +279,16 @@ def _run_default(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
         print(f"shop-gen: invalid configuration: {exc}", file=sys.stderr)
         return EXIT_CONFIG
 
-    force_ids = _resolve_force_ids(args)
+    try:
+        force_ids, redo_message = _maybe_apply_redo(config, args)
+    except InvalidPlanError as exc:
+        print(f"shop-gen: cannot parse build plan.md: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+    except RedoError as exc:
+        print(f"shop-gen: redo failed: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+    if redo_message is not None:
+        print(redo_message, file=sys.stderr)
 
     try:
         run(config, force_ids=force_ids)
@@ -324,6 +337,13 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
     )
 
 
+_BUILD_LOOP_STEP_ID = "run_build_harness_loop"
+"""Step id forced stale by an append-redo invocation (T5.7)."""
+
+_BUILD_PLAN_REL = Path("runs") / "build" / "plan.md"
+"""Run-relative path of the build harness loop's ``plan.md`` snapshot."""
+
+
 def _resolve_force_ids(args: argparse.Namespace) -> frozenset[str]:
     """Map ``--from`` / ``--only`` to the runner's ``force_ids`` plumbing."""
     if args.from_step is not None:
@@ -331,6 +351,66 @@ def _resolve_force_ids(args: argparse.Namespace) -> frozenset[str]:
     if args.only_step is not None:
         return frozenset({args.only_step})
     return frozenset()
+
+
+def _maybe_apply_redo(
+    config: ShopGenConfig,
+    args: argparse.Namespace,
+) -> tuple[frozenset[str], str | None]:
+    """Run T5.7's append-redo when ``--only`` targets a DONE build-loop task.
+
+    Spec §5.7.3 maps ``--only gen_<task>`` against a completed build dir to:
+
+    1. Append a fresh ``<task>_redo_<N>`` PENDING bullet to
+       ``runs/build/plan.md``.
+    2. Force-rerun ``run_build_harness_loop`` so the harness re-enters
+       resume mode (``force=True`` in v0.1) and selects the new task.
+
+    The ``--only`` flag still routes through the runner's ``force_ids``
+    plumbing for *Python* steps; this helper only intercepts when the
+    flag's argument matches a ``[x]`` task id in the build-loop
+    ``plan.md``. Any other case (no ``--only``, no out_dir on disk, no
+    ``plan.md``, or the id refers to a Python step / unknown id) falls
+    through to the regular force-ids path.
+
+    Returns:
+        Tuple of (force_ids, redo_message). ``redo_message`` is ``None``
+        when no redo was triggered; otherwise it carries the human-
+        readable summary the CLI prints to stderr before invoking
+        :func:`shop_gen.pipeline.run`.
+
+    Raises:
+        harness.plan.parser.InvalidPlanError: ``plan.md`` is structurally
+            invalid. The CLI maps this to :data:`EXIT_RUNTIME`.
+        shop_gen.build.redo.RedoError: The append-redo request itself
+            failed (target id unknown or non-DONE). Mapped to
+            :data:`EXIT_RUNTIME` by the CLI.
+    """
+    force_ids = _resolve_force_ids(args)
+    if args.only_step is None:
+        return force_ids, None
+
+    try:
+        out_dir = resolve_out_dir(config)
+    except ValueError:
+        # Multi-seed without --name. The downstream ``run()`` call
+        # raises the same error so the existing handler in
+        # :func:`_run_default` reports it as a config error.
+        return force_ids, None
+    plan_path = out_dir / _BUILD_PLAN_REL
+    if not plan_path.is_file():
+        return force_ids, None
+
+    plan = parse(plan_path.read_text(encoding="utf-8"))
+
+    target = plan.by_id(args.only_step)
+    if target is None or target.status is not TaskStatus.DONE:
+        return force_ids, None
+
+    new_id = append_redo_task(plan_path, args.only_step)
+
+    message = f"shop-gen: appended {new_id!r} to {plan_path}; forcing {_BUILD_LOOP_STEP_ID!r}"
+    return frozenset({_BUILD_LOOP_STEP_ID}), message
 
 
 __all__ = [

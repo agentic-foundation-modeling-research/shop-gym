@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 
 from shop_gen import cli as cli_mod
-from shop_gen.cli import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, main
+from shop_gen.cli import EXIT_CONFIG, EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, main
 from shop_gen.config import (
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_MAX_ITERS,
@@ -392,3 +392,133 @@ def test_default_run_surfaces_runner_dag_error(
     rc = main([str(seed), "--out-dir", str(tmp_path / "out")])
     assert rc != EXIT_OK
     assert "DAG error" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# T5.7 — append-redo for `--only gen_<task>` against a completed build dir
+# --------------------------------------------------------------------------- #
+
+_COMPLETED_BUILD_PLAN = """\
+# Plan
+
+## Tasks
+
+- [x] gen_theme — ship the theme tokens [priority: 9]
+- [x] gen_navigation — wire the header / footer [priority: 8]
+- [x] gen_homepage — render the hero [priority: 7]
+- [x] consolidate — REQUIRED final task [priority: 1]
+"""
+
+
+def _seed_completed_build_plan(out_dir: Path) -> Path:
+    """Lay out a completed-run ``plan.md`` snapshot under ``out_dir``."""
+    plan_path = out_dir / "runs" / "build" / "plan.md"
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    plan_path.write_text(_COMPLETED_BUILD_PLAN, encoding="utf-8")
+    return plan_path
+
+
+def test_only_appends_redo_against_completed_build_task(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """T5.7: ``--only gen_homepage`` against a completed build dir appends ``_redo_1``
+
+    and forces ``run_build_harness_loop`` instead of the literal ``--only`` arg."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    plan_path = _seed_completed_build_plan(out_dir)
+    original = plan_path.read_text(encoding="utf-8")
+
+    rc = main([str(seed), "--out-dir", str(out_dir), "--only", "gen_homepage"])
+
+    assert rc == EXIT_OK
+    assert captured_run["force_ids"] == frozenset({"run_build_harness_loop"})
+    after = plan_path.read_text(encoding="utf-8")
+    assert "gen_homepage_redo_1" in after
+    # T5.7 (a): the original [x] line is preserved verbatim.
+    for line in original.splitlines():
+        assert line in after.splitlines()
+    err = capsys.readouterr().err
+    assert "gen_homepage_redo_1" in err
+
+
+def test_only_increments_redo_suffix_on_followup(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """T5.7 (c): a follow-up ``--only`` against the same task increments the suffix."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    plan_path = _seed_completed_build_plan(out_dir)
+
+    rc1 = main([str(seed), "--out-dir", str(out_dir), "--only", "gen_homepage"])
+    rc2 = main([str(seed), "--out-dir", str(out_dir), "--only", "gen_homepage"])
+
+    assert rc1 == EXIT_OK
+    assert rc2 == EXIT_OK
+    after = plan_path.read_text(encoding="utf-8")
+    assert "gen_homepage_redo_1" in after
+    assert "gen_homepage_redo_2" in after
+    # The most recent invocation is the one captured by the stub.
+    assert captured_run["force_ids"] == frozenset({"run_build_harness_loop"})
+
+
+def test_only_falls_through_when_target_is_pending(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Non-DONE tasks are still owned by the harness — ``--only`` falls through."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    plan_path = out_dir / "runs" / "build" / "plan.md"
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    plan_path.write_text(
+        "## Tasks\n\n- [ ] gen_homepage — pending [priority: 7]\n",
+        encoding="utf-8",
+    )
+    before = plan_path.read_text(encoding="utf-8")
+
+    rc = main([str(seed), "--out-dir", str(out_dir), "--only", "gen_homepage"])
+
+    assert rc == EXIT_OK
+    # No redo append — file unchanged, regular ``force_ids`` plumbing kicks in.
+    assert plan_path.read_text(encoding="utf-8") == before
+    assert captured_run["force_ids"] == frozenset({"gen_homepage"})
+
+
+def test_only_falls_through_when_no_build_plan_exists(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Without a build ``plan.md``, ``--only`` keeps the regular force-ids path."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    rc = main([str(seed), "--out-dir", str(out_dir), "--only", "synth_identity"])
+
+    assert rc == EXIT_OK
+    assert captured_run["force_ids"] == frozenset({"synth_identity"})
+
+
+def test_only_surfaces_invalid_build_plan(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A corrupted ``plan.md`` exits via :data:`EXIT_RUNTIME`."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    plan_path = out_dir / "runs" / "build" / "plan.md"
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    plan_path.write_text("# no tasks heading\n", encoding="utf-8")
+
+    rc = main([str(seed), "--out-dir", str(out_dir), "--only", "gen_homepage"])
+
+    assert rc == EXIT_RUNTIME
+    assert "cannot parse" in capsys.readouterr().err

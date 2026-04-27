@@ -56,6 +56,7 @@ from shop_gen.build.prompts import (
     load_planner_prompt,
     load_quality_judge_prompt,
 )
+from shop_gen.build.redo import RedoError, append_redo_task
 from shop_gen.build.sidecar import (
     SidecarHandle,
     SidecarLifecycleError,
@@ -90,6 +91,7 @@ __all__ = [
     "NavCoverageVerifier",
     "NoBrandLeakVerifier",
     "QualityJudgeVerifier",
+    "RedoError",
     "Routes200Verifier",
     "RunBuildHarnessLoopStep",
     "RuntimeFactory",
@@ -101,6 +103,7 @@ __all__ = [
     "TscVerifier",
     "VerifiersFactory",
     "WriteEnvFileStep",
+    "append_redo_task",
     "default_verifiers_factory",
     "load_agents_md",
     "load_consolidate_execute_prompt",

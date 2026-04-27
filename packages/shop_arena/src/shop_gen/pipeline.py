@@ -164,7 +164,7 @@ def run(
         Exception: Any exception raised by a registered ``Step.run`` is
             re-raised after the runner persists ``StepStatus.FAILED``.
     """
-    out_dir = _resolve_out_dir(config)
+    out_dir = resolve_out_dir(config)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     registry = _build_registry(config)
@@ -443,7 +443,7 @@ def _register_final_eval(registry: Registry) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _resolve_out_dir(config: ShopGenConfig) -> Path:
+def resolve_out_dir(config: ShopGenConfig) -> Path:
     """Return ``config.out_dir`` or the default ``outputs/shops/<name>/``.
 
     A multi-seed run with no explicit ``name`` *and* no ``out_dir``
@@ -498,6 +498,7 @@ __all__ = [
     "StatusReport",
     "StepStatusEntry",
     "list_steps",
+    "resolve_out_dir",
     "run",
     "status",
 ]
