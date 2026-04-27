@@ -31,11 +31,13 @@ import.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
 from shop_gen.config import ShopGenConfig, ShopGenResult
+from shop_gen.data_synth import SynthIdentityStep
 from shop_gen.manual_merge import (
     ComputeMergeStatsStep,
     CopySeedManualStep,
@@ -251,9 +253,11 @@ def _build_registry_from_branch(
     registry = Registry()
     if multi_seed:
         _register_manual_merge(registry, config=config)
+        manual_step_ids: tuple[str, ...] = ("merge_capabilities", "merge_manual_prose")
     else:
         _register_single_seed_manual(registry, config=config)
-    _register_data_synth(registry)
+        manual_step_ids = ("copy_seed_manual",)
+    _register_data_synth(registry, manual_step_ids=manual_step_ids)
     _register_data_validation(registry)
     _register_build(registry)
     _register_final_eval(registry)
@@ -312,13 +316,29 @@ def _register_single_seed_manual(
     registry.register(CopySeedManualStep(seed_dir=seed_dir))
 
 
-def _register_data_synth(registry: Registry) -> None:
+def _register_data_synth(
+    registry: Registry,
+    *,
+    manual_step_ids: Sequence[str] = (),
+) -> None:
     """Register Phase 2 data-synthesis steps.
 
-    Wired up in M3 (impl plan T3.3-T3.11); a no-op until those tasks
-    land.
+    Currently registers the ``synth_identity`` step (impl plan T3.3).
+    Subsequent M3 tasks (T3.4-T3.11) will register the rest of the
+    Phase 2 sub-DAG here.
+
+    Args:
+        registry: Registry to mutate.
+        manual_step_ids: Upstream step ids that produce the merged
+            ``manual/`` directory (``synth_identity`` cascades from
+            those upstream fingerprints). Multi-seed runs pass
+            ``("merge_capabilities", "merge_manual_prose")``;
+            single-seed runs pass ``("copy_seed_manual",)``. Empty in
+            the listing branch (``--list-steps`` does not bind to a
+            specific seed count); the placeholder still surfaces the
+            step id in :func:`list_steps`.
     """
-    del registry  # placeholder until M3 lands.
+    registry.register(SynthIdentityStep(manual_step_ids=tuple(manual_step_ids)))
 
 
 def _register_data_validation(registry: Registry) -> None:

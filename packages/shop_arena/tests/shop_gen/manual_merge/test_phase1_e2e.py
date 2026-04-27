@@ -37,6 +37,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 from harness.runtimes import LLMCompleter
 from shop_explore.capabilities import Capabilities
@@ -295,7 +296,10 @@ def test_phase1_two_seed_end_to_end_no_llm(tmp_path: Path) -> None:
 
     out_dir = tmp_path / "out"
     config = ShopGenConfig(seeds=[seed_a, seed_b], out_dir=out_dir)
-    result = pipeline.run(config)
+    # Phase 2 ``synth_identity`` (T3.3) needs an LLM completer; this
+    # test exercises Phase 1 only, so patch the data-synth registration.
+    with patch.object(pipeline, "_register_data_synth", lambda reg, **_: None):
+        result = pipeline.run(config)
 
     assert result.out_dir == out_dir
     _assert_phase1_outputs_present(out_dir)
@@ -521,8 +525,12 @@ def test_phase1_three_seed_end_to_end_with_llm(tmp_path: Path) -> None:
     )
 
     # Drive the same DAG ``pipeline.run`` would build, but with the runtime
-    # injected so the prose merge can call the stub completer.
-    registry = pipeline._build_registry(config)
+    # injected so the prose merge can call the stub completer. Phase 2
+    # ``synth_identity`` (T3.3) needs an LLM completer of its own; this
+    # test exercises Phase 1 only, so patch the data-synth registration
+    # before snapshotting the registry.
+    with patch.object(pipeline, "_register_data_synth", lambda reg, **_: None):
+        registry = pipeline._build_registry(config)
     result = run_pipeline(registry.all(), ctx)
 
     # Topological order with id-sorted tie-breaking (spec §5.7,

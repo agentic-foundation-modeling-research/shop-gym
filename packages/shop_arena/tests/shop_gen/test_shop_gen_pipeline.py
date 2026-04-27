@@ -105,7 +105,7 @@ def test_list_steps_returns_every_phase_in_order() -> None:
 
 
 def test_list_steps_only_lists_registered_phases() -> None:
-    """Phase 1 lists landed M2 steps; later phases stay empty until M3-M6."""
+    """Phase 1 + Phase 2 (T3.3) list registered steps; later phases stay empty until M4-M6."""
     grouped = list_steps()
     assert grouped["manual_merge"] == (
         "copy_seed_manual",
@@ -114,7 +114,8 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "compute_merge_stats",
         "write_merge_manifest",
     )
-    for phase in ("data_synth", "data_validation", "build", "final_eval"):
+    assert grouped["data_synth"] == ("synth_identity",)
+    for phase in ("data_validation", "build", "final_eval"):
         assert grouped[phase] == ()
 
 
@@ -184,7 +185,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
     single = pipeline._build_registry(
         ShopGenConfig(seeds=[seed], out_dir=tmp_path / "a"),
     )
-    assert single.ids() == ["copy_seed_manual"]
+    assert single.ids() == ["copy_seed_manual", "synth_identity"]
 
 
 def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) -> None:
@@ -198,6 +199,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "merge_manual_prose",
         "compute_merge_stats",
         "write_merge_manifest",
+        "synth_identity",
     ]
 
 
@@ -211,7 +213,10 @@ def test_run_creates_out_dir_and_returns_artifact_paths(tmp_path: Path) -> None:
     out_dir = tmp_path / "shop"
     config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
 
-    result = run(config)
+    # ``synth_identity`` (T3.3) requires an LLM completer; this test
+    # asserts only the result-path shape, so patch out Phase 2 here.
+    with patch.object(pipeline, "_register_data_synth", lambda reg, **_: None):
+        result = run(config)
 
     assert out_dir.is_dir()
     assert result.out_dir == out_dir
@@ -228,9 +233,12 @@ def test_run_with_no_registered_steps_writes_no_state(tmp_path: Path) -> None:
     """An empty registry resolves to zero stale steps; ``state.json`` is untouched."""
     [seed] = _make_seeds(tmp_path, 1)
     out_dir = tmp_path / "shop"
-    # Patch out the single-seed manual-merge registration so the registry
-    # is genuinely empty (this test asserts runner behaviour, not Phase 1).
-    with patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None):
+    # Patch out every registration hook so the registry is genuinely
+    # empty (this test asserts runner behaviour, not phase contents).
+    with (
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+    ):
         run(ShopGenConfig(seeds=[seed], out_dir=out_dir))
     assert not state_path(out_dir).exists()
 
@@ -242,7 +250,7 @@ def test_run_drives_registered_step_to_completion(tmp_path: Path) -> None:
     config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
     step = _NoOpStep("smoke", "data_synth")
 
-    def _register(reg: Registry) -> None:
+    def _register(reg: Registry, **_: object) -> None:
         reg.register(cast(Step, step))
 
     with (
@@ -267,7 +275,12 @@ def test_run_default_out_dir_for_single_seed(tmp_path: Path) -> None:
     cwd = tmp_path / "workspace"
     cwd.mkdir()
 
-    with _chdir(cwd):
+    # ``synth_identity`` (T3.3) requires an LLM completer; this test
+    # asserts only the resolved out-dir, so patch out Phase 2 here.
+    with (
+        _chdir(cwd),
+        patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+    ):
         result = run(ShopGenConfig(seeds=[seed]))
 
     assert result.out_dir == Path("outputs") / "shops" / seed.name
@@ -288,9 +301,14 @@ def test_run_uses_explicit_name_for_default_out_dir(tmp_path: Path) -> None:
     cwd.mkdir()
 
     # The merge_capabilities step (T2.1) reads each seed's
-    # capabilities.json; this test only exercises out_dir resolution,
-    # so patch the manual-merge registration to a no-op.
-    with _chdir(cwd), patch.object(pipeline, "_register_manual_merge", lambda reg, **_: None):
+    # capabilities.json and ``synth_identity`` (T3.3) needs an LLM;
+    # this test only exercises out_dir resolution, so patch both
+    # registrations to no-ops.
+    with (
+        _chdir(cwd),
+        patch.object(pipeline, "_register_manual_merge", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+    ):
         result = run(ShopGenConfig(seeds=seeds, name="acme"))
 
     assert result.out_dir == Path("outputs") / "shops" / "acme"
@@ -306,7 +324,7 @@ def test_run_is_idempotent_on_second_invocation(tmp_path: Path) -> None:
     step = _NoOpStep("smoke", "data_synth")
     step.outputs = [Path("data/smoke.json")]
 
-    def _register(reg: Registry) -> None:
+    def _register(reg: Registry, **_: object) -> None:
         reg.register(cast(Step, step))
 
     def _do_run() -> None:
