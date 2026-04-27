@@ -1,0 +1,337 @@
+[
+  {
+    "id": 9048676991150,
+    "title": "Tickless Anti Tick Collar",
+    "handle": "tickless-anti-tick-collar",
+    "description_html": "<p>Chemical-free tick repellent collar that uses ultrasonic pulses to keep ticks and fleas off your dog.</p>",
+    "vendor": "Mock Pet Foods",
+    "product_type": "",
+    "tags": [
+      "Anti tick",
+      "Collar",
+      "Dog supplies"
+    ],
+    "published_at": "2026-03-17T11:05:00-04:00",
+    "created_at": "2026-03-17T11:02:29-04:00",
+    "updated_at": "2026-04-14T21:21:14-04:00",
+    "options": [
+      {
+        "name": "Blue",
+        "position": 1,
+        "values": [
+          "Blue",
+          "Yellow"
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "id": 47642512195758,
+        "title": "Blue",
+        "sku": null,
+        "price": "79.99",
+        "compare_at_price": null,
+        "available": true,
+        "option1": "Blue",
+        "option2": null,
+        "option3": null,
+        "position": 1,
+        "requires_shipping": true
+      },
+      {
+        "id": 47642514456750,
+        "title": "Yellow",
+        "sku": null,
+        "price": "79.99",
+        "compare_at_price": null,
+        "available": true,
+        "option1": "Yellow",
+        "option2": null,
+        "option3": null,
+        "position": 2,
+        "requires_shipping": true
+      }
+    ],
+    "images": [
+      {
+        "id": 43482199916718,
+        "src": "products/tickless-anti-tick-collar-1.jpg",
+        "alt": null,
+        "width": 3264,
+        "height": 2448,
+        "position": 1
+      },
+      {
+        "id": 43482201850030,
+        "src": "products/tickless-anti-tick-collar-2.jpg",
+        "alt": null,
+        "width": 3264,
+        "height": 2448,
+        "position": 2
+      }
+    ]
+  },
+  {
+    "id": 8938306273454,
+    "title": "Fuzzyard Mushroom Dog Toys",
+    "handle": "fuzzyard-mushroom-dog-toys",
+    "description_html": "<p>Plush mushroom-shaped squeaky dog toys made from durable fabric. Perfect for fetch and tug.</p>",
+    "vendor": "Mock Pet Foods",
+    "product_type": "Dog Toys",
+    "tags": [
+      "Dog Toy",
+      "Mushroom",
+      "Stuffed animal"
+    ],
+    "published_at": "2025-12-10T12:01:58-05:00",
+    "created_at": "2025-12-10T11:54:36-05:00",
+    "updated_at": "2026-04-14T21:21:14-04:00",
+    "options": [
+      {
+        "name": "Giggles Mushroom",
+        "position": 1,
+        "values": [
+          "Giggles Mushroom",
+          "Cosmo Mushroom",
+          "Rainbow Mushroom",
+          "Disco Randy Mushroom"
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "id": 47242666836142,
+        "title": "Giggles Mushroom",
+        "sku": null,
+        "price": "19.99",
+        "compare_at_price": null,
+        "available": true,
+        "option1": "Giggles Mushroom",
+        "option2": null,
+        "option3": null,
+        "position": 1,
+        "requires_shipping": true
+      },
+      {
+        "id": 47242687709358,
+        "title": "Cosmo Mushroom",
+        "sku": null,
+        "price": "19.99",
+        "compare_at_price": null,
+        "available": true,
+        "option1": "Cosmo Mushroom",
+        "option2": null,
+        "option3": null,
+        "position": 2,
+        "requires_shipping": true
+      },
+      {
+        "id": 47242695737518,
+        "title": "Rainbow Mushroom",
+        "sku": null,
+        "price": "19.99",
+        "compare_at_price": null,
+        "available": true,
+        "option1": "Rainbow Mushroom",
+        "option2": null,
+        "option3": null,
+        "position": 3,
+        "requires_shipping": true
+      },
+      {
+        "id": 47242720215214,
+        "title": "Disco Randy Mushroom",
+        "sku": null,
+        "price": "19.99",
+        "compare_at_price": null,
+        "available": true,
+        "option1": "Disco Randy Mushroom",
+        "option2": null,
+        "option3": null,
+        "position": 4,
+        "requires_shipping": true
+      }
+    ],
+    "images": [
+      {
+        "id": 42308704796846,
+        "src": "products/fuzzyard-mushroom-dog-toys-1.jpg",
+        "alt": null,
+        "width": 3264,
+        "height": 2448,
+        "position": 1
+      },
+      {
+        "id": 42308715249838,
+        "src": "products/fuzzyard-mushroom-dog-toys-2.jpg",
+        "alt": null,
+        "width": 3264,
+        "height": 2448,
+        "position": 2
+      },
+      {
+        "id": 42308721082542,
+        "src": "products/fuzzyard-mushroom-dog-toys-3.jpg",
+        "alt": null,
+        "width": 3264,
+        "height": 2448,
+        "position": 3
+      },
+      {
+        "id": 42308754342062,
+        "src": "products/fuzzyard-mushroom-dog-toys-4.jpg",
+        "alt": null,
+        "width": 3264,
+        "height": 2448,
+        "position": 4
+      }
+    ]
+  },
+  {
+    "id": 8251198963886,
+    "title": "Go! Skin and coat chicken with grains 12lb dog",
+    "handle": "go-skin-and-coat-chicken-with-grains-12lb",
+    "description_html": "<p>Premium chicken-based dog food formulated to support healthy skin and a glossy coat.</p>",
+    "vendor": "Mock Pet Foods",
+    "product_type": "Dog food",
+    "tags": [],
+    "published_at": "2024-03-12T10:39:52-04:00",
+    "created_at": "2024-03-12T10:39:09-04:00",
+    "updated_at": "2026-04-14T21:21:15-04:00",
+    "options": [
+      {
+        "name": "Title",
+        "position": 1,
+        "values": [
+          "Default Title"
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "id": 44795897643182,
+        "title": "Default Title",
+        "sku": "",
+        "price": "54.99",
+        "compare_at_price": null,
+        "available": true,
+        "option1": "Default Title",
+        "option2": null,
+        "option3": null,
+        "position": 1,
+        "requires_shipping": true
+      }
+    ],
+    "images": [
+      {
+        "id": 35669283274926,
+        "src": "products/go-skin-and-coat-chicken-with-grains-12lb-1.jpg",
+        "alt": null,
+        "width": 3264,
+        "height": 2448,
+        "position": 1
+      }
+    ]
+  },
+  {
+    "id": 9052155642030,
+    "title": "Applaws Mackerel and Sardines 70g",
+    "handle": "applaws-mackerel-and-sardines-70g",
+    "description_html": "<p>Natural wet cat food with mackerel and sardines in broth. Grain-free, no additives.</p>",
+    "vendor": "Mock Pet Foods",
+    "product_type": "",
+    "tags": [
+      "Applaws",
+      "Mackerel",
+      "wet cat food"
+    ],
+    "published_at": "2026-03-23T10:27:39-04:00",
+    "created_at": "2026-03-23T10:25:37-04:00",
+    "updated_at": "2026-04-14T21:21:14-04:00",
+    "options": [
+      {
+        "name": "Title",
+        "position": 1,
+        "values": [
+          "Default Title"
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "id": 47662525055150,
+        "title": "Default Title",
+        "sku": null,
+        "price": "2.49",
+        "compare_at_price": null,
+        "available": false,
+        "option1": "Default Title",
+        "option2": null,
+        "option3": null,
+        "position": 1,
+        "requires_shipping": true
+      }
+    ],
+    "images": [
+      {
+        "id": 43543025057966,
+        "src": "products/applaws-mackerel-and-sardines-70g-1.jpg",
+        "alt": null,
+        "width": 3264,
+        "height": 2448,
+        "position": 1
+      }
+    ]
+  },
+  {
+    "id": 9061637816494,
+    "title": "Bluestem Toothbrush",
+    "handle": "bluestem-toothbrush",
+    "description_html": "<p>Dual-headed dental toothbrush for cats and dogs. Helps reduce plaque buildup.</p>",
+    "vendor": "Mock Pet Foods",
+    "product_type": "",
+    "tags": [
+      "Cat",
+      "Dog",
+      "Teeth Cleaning",
+      "Toothbrush"
+    ],
+    "published_at": "2026-04-01T12:30:46-04:00",
+    "created_at": "2026-04-01T12:27:37-04:00",
+    "updated_at": "2026-04-14T21:21:14-04:00",
+    "options": [
+      {
+        "name": "Title",
+        "position": 1,
+        "values": [
+          "Default Title"
+        ]
+      }
+    ],
+    "variants": [
+      {
+        "id": 47694728298670,
+        "title": "Default Title",
+        "sku": null,
+        "price": "12.99",
+        "compare_at_price": null,
+        "available": true,
+        "option1": "Default Title",
+        "option2": null,
+        "option3": null,
+        "position": 1,
+        "requires_shipping": true
+      }
+    ],
+    "images": [
+      {
+        "id": 43657463496878,
+        "src": "products/bluestem-toothbrush-1.jpg",
+        "alt": null,
+        "width": 3264,
+        "height": 2448,
+        "position": 1
+      }
+    ]
+  }
+]
