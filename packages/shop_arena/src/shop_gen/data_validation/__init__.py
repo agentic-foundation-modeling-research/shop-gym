@@ -7,6 +7,9 @@ step in the table:
 * :mod:`shop_gen.data_validation.schema_check` —
   ``validate_schema`` step + the pure
   :func:`validate_data_dir` helper.
+* :mod:`shop_gen.data_validation.hosting_check` —
+  ``validate_hosting`` step + the pure
+  :func:`run_hosting_checks` helper.
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -14,6 +17,12 @@ import.
 
 from __future__ import annotations
 
+from shop_gen.data_validation.hosting_check import (
+    HostingValidationError,
+    ValidateHostingStep,
+    find_shop_backend_cli,
+    run_hosting_checks,
+)
 from shop_gen.data_validation.schema_check import (
     SchemaValidationError,
     ValidateSchemaStep,
@@ -21,7 +30,11 @@ from shop_gen.data_validation.schema_check import (
 )
 
 __all__ = [
+    "HostingValidationError",
     "SchemaValidationError",
+    "ValidateHostingStep",
     "ValidateSchemaStep",
+    "find_shop_backend_cli",
+    "run_hosting_checks",
     "validate_data_dir",
 ]

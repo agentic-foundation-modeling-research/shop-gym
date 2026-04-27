@@ -643,9 +643,14 @@ def test_phase2_single_seed_end_to_end(tmp_path: Path) -> None:
     # The pipeline's public ``run()`` entrypoint does not currently
     # plumb a runtime through ``StepContext``; drive the same registered
     # DAG via ``run_pipeline`` directly so the stub completer reaches
-    # every Phase 2 step.
+    # every Phase 2 step. ``validate_hosting`` (T4.2) boots
+    # ``shop-backend`` against the synthesized data and is exercised in
+    # its own integration test (tests/shop_gen/data_validation/
+    # test_hosting_check.py); skip it here so this Phase 2 e2e stays
+    # hermetic and free of subprocess plumbing.
     registry = pipeline._build_registry(config)
-    result = run_pipeline(registry.all(), ctx)
+    phase2_steps = [step for step in registry.all() if step.id != "validate_hosting"]
+    result = run_pipeline(phase2_steps, ctx)
 
     assert set(result.ran) == set(_EXPECTED_STEP_IDS)
     assert result.skipped == ()

@@ -127,7 +127,7 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "synth_navigation",
         "assemble_data",
     )
-    assert grouped["data_validation"] == ("validate_schema",)
+    assert grouped["data_validation"] == ("validate_schema", "validate_hosting")
     for phase in ("build", "final_eval"):
         assert grouped[phase] == ()
 
@@ -212,6 +212,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
         "synth_navigation",
         "assemble_data",
         "validate_schema",
+        "validate_hosting",
     ]
 
 
@@ -238,6 +239,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "synth_navigation",
         "assemble_data",
         "validate_schema",
+        "validate_hosting",
     ]
 
 

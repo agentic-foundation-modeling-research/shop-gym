@@ -50,7 +50,7 @@ from shop_gen.data_synth import (
     SynthProductSkeletonsStep,
     SynthStoreStep,
 )
-from shop_gen.data_validation import ValidateSchemaStep
+from shop_gen.data_validation import ValidateHostingStep, ValidateSchemaStep
 from shop_gen.manual_merge import (
     ComputeMergeStatsStep,
     CopySeedManualStep,
@@ -390,10 +390,12 @@ def _register_data_synth(
 def _register_data_validation(registry: Registry) -> None:
     """Register Phase 3 data-validation steps.
 
-    Currently registers ``validate_schema`` (T4.1). The companion
-    ``validate_hosting`` step lands in T4.2.
+    Registers ``validate_schema`` (T4.1) and ``validate_hosting``
+    (T4.2) — the in-memory closed-schema check feeding the
+    boot-and-query hosting check that publishes ``data_validation.json``.
     """
     registry.register(ValidateSchemaStep())
+    registry.register(ValidateHostingStep())
 
 
 def _register_build(registry: Registry) -> None:
