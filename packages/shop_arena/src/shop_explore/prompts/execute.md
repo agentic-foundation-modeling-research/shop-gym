@@ -57,6 +57,29 @@ edit any other task's checkbox.
 
 ---
 
+## Tool-use efficiency
+
+Each tool call costs ~3 s of fixed overhead plus LLM streaming time;
+wasted calls add up to several minutes over a run. Two rules to keep
+the per-task budget tight:
+
+1. **Do not re-read screenshots / snapshots after capturing them.**
+   A successful `pw.js screenshot --output …` produces the file;
+   trust the exit status. Verification re-reads cost ~5 s + ~120
+   LLM tokens each, and a 16-section homepage burns ~100 s on this
+   alone. Read a PNG only when you need to *interpret* an unexpected
+   state (popup blocked the capture, layout looks wrong) — not as a
+   sanity check.
+2. **Batch playwright calls.** When capturing N states or measuring
+   N elements, prefer one bash block over N tool calls:
+   - **One** `pw.js eval "() => ({ hero: …, cart: …, footer: … })"`
+     returning a dict beats N separate `eval` calls.
+   - **One** bash loop that scrolls + screenshots every section in a
+     single subprocess beats N separate `pw.js screenshot` calls.
+   - Group `mkdir` + first `pw.js` call into the same bash block.
+
+---
+
 ## Per-element template
 
 `parts/<task_id>.md` is the *source of structural detail* the synthesis

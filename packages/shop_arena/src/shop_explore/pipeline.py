@@ -31,9 +31,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import re
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -60,6 +64,18 @@ _CAPABILITIES_SCHEMA_PATH = Path(__file__).resolve().parent / "capabilities" / "
 _PLAYWRIGHT_SKILL_RELPATH = "pi-playwright/skills/playwright-browser"
 """Relative path of the playwright skill under the JS package manager's global root."""
 
+_PLAYWRIGHT_SESSION_ENV = "PLAYWRIGHT_CLI_SESSION"
+"""Env var that pins the ``pw.js`` browser session id (see ``runtime.js``)."""
+
+_PLAYWRIGHT_PREOPEN_TIMEOUT = 30.0
+"""Wall-clock budget for the one-off ``pw.js open`` browser warm-up."""
+
+_PLAYWRIGHT_CLOSE_TIMEOUT = 10.0
+"""Wall-clock budget for the post-loop ``pw.js close`` cleanup."""
+
+_PLAYWRIGHT_SESSION_SAFE_RE = re.compile(r"[^a-z0-9._-]+")
+"""Mirrors ``runtime.js`` ``sanitizeSessionName`` so we hand it valid input."""
+
 _DEFAULT_OUTPUT_ROOT = Path("outputs") / "shop_manuals"
 """Default parent of ``<domain>/<run_id>/`` when ``ExploreConfig.out_dir`` is omitted."""
 
@@ -79,7 +95,9 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
     2. Run :func:`shop_explore.prefetch.run` into a temporary seed dir
        (the harness later copies that tree into ``run_dir/artifact/``).
     3. Load the bundled prompt resources.
-    4. Build a :class:`harness.PlanExecLoopConfig` and invoke
+    4. Pre-open a shared playwright browser session keyed on ``run_dir``
+       (so executor iterations skip cold-start) and build a
+       :class:`harness.PlanExecLoopConfig` to invoke
        :func:`harness.run_plan_exec_loop` with the configured runtime.
     5. Return an :class:`ExploreResult` whose paths point at the
        eventual published artifacts under ``run_dir/artifact/``. These
@@ -127,6 +145,8 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
     execute_prompt = (_PROMPTS_DIR / "execute.md").read_text(encoding="utf-8")
     manual_prompt = (_PROMPTS_DIR / "synthesize_manual.md").read_text(encoding="utf-8")
 
+    skill_dir = _resolve_playwright_skill_dir()
+    session = _derive_playwright_session(run_dir)
     seed_root = Path(tempfile.mkdtemp(prefix="shop-explore-seed-"))
     try:
         seed_dir = seed_root / "artifact_seed"
@@ -150,7 +170,8 @@ def explore(config: ExploreConfig, *, llm: LLMClient | None = None) -> ExploreRe
             config.max_iters,
             config.timeout,
         )
-        loop_result = run_plan_exec_loop(loop_config, runtime, force=config.force_resume)
+        with _playwright_session(skill_dir, session=session):
+            loop_result = run_plan_exec_loop(loop_config, runtime, force=config.force_resume)
         _log.info(
             "plan/exec loop done: final_status=%s, plan_iters=%d, exec_iters=%d",
             loop_result.final_status.value,
@@ -314,6 +335,123 @@ def _resolve_playwright_skill_dir() -> Path | None:
         if (candidate / "SKILL.md").is_file():
             return candidate
     return None
+
+
+def _derive_playwright_session(run_dir: Path) -> str:
+    """Return a stable, sanitized ``pw.js`` session id for ``run_dir``.
+
+    The session id is what `pi-playwright`'s ``runtime.js`` uses to key
+    the persistent browser daemon (see ``sanitizeSessionName``). Pinning
+    one per ``run_dir`` lets the harness pre-open the browser once and
+    have every executor iteration's ``pw.js`` invocation transparently
+    attach to the same daemon — no cold-start penalty after the first
+    iteration, and parallel ``shop_explore`` runs against the same
+    checkout don't collide.
+
+    The id is deterministic so resume runs reattach to the same session
+    if it's still alive.
+    """
+    raw = f"shop-explore-{run_dir.name}".lower()
+    sanitized = _PLAYWRIGHT_SESSION_SAFE_RE.sub("-", raw).strip("-.")
+    return sanitized or "shop-explore"
+
+
+@contextmanager
+def _playwright_session(skill_dir: Path | None, *, session: str) -> Iterator[None]:
+    """Pin ``$PLAYWRIGHT_CLI_SESSION`` and pre-open / post-close a browser.
+
+    Sets ``PLAYWRIGHT_CLI_SESSION`` for the duration of the block so
+    ``pw.js`` invocations spawned by the harness (and the bash tools the
+    agent drives) all attach to the same browser daemon. Pre-opens the
+    browser via ``pw.js open about:blank`` before yielding and best-effort
+    closes it on exit. Both side-effects are skipped when the skill
+    cannot be located — the env var is still pinned so any later
+    ``pw.js`` call fails with a consistent session name.
+
+    The pre-open is best-effort: a non-zero exit, missing ``node``, or
+    timeout is logged and the loop continues, because ``pw.js`` will
+    auto-open on its first ``goto`` anyway. We accept the cold-start
+    penalty in that case rather than abort the run.
+
+    Args:
+        skill_dir: Resolved playwright skill directory, or ``None`` when
+            the resolver couldn't find it on this machine.
+        session: Sanitized session id from :func:`_derive_playwright_session`.
+
+    Yields:
+        ``None``. The browser daemon (when reachable) is alive for the
+        duration of the ``with`` block.
+    """
+    prev = os.environ.get(_PLAYWRIGHT_SESSION_ENV)
+    os.environ[_PLAYWRIGHT_SESSION_ENV] = session
+    try:
+        if skill_dir is not None:
+            _preopen_browser(skill_dir, session=session)
+        try:
+            yield
+        finally:
+            if skill_dir is not None:
+                _close_browser(skill_dir, session=session)
+    finally:
+        if prev is None:
+            os.environ.pop(_PLAYWRIGHT_SESSION_ENV, None)
+        else:
+            os.environ[_PLAYWRIGHT_SESSION_ENV] = prev
+
+
+def _preopen_browser(skill_dir: Path, *, session: str) -> None:
+    """Best-effort ``pw.js open about:blank`` to warm the browser daemon.
+
+    Eliminates the ~10 s cold-start the planner iteration otherwise pays
+    on its first ``pw.js goto`` and prevents the agent from misfiring on
+    "Browser '<session>' is not open" errors that cost 5+ tool calls per
+    misstep (observed in ``hexclad`` exec-0001).
+    """
+    pw_js = skill_dir / "scripts" / "pw.js"
+    if not pw_js.is_file():
+        _log.warning("playwright skill present but pw.js missing at %s", pw_js)
+        return
+    argv = ["node", str(pw_js), "open", "about:blank"]
+    try:
+        proc = subprocess.run(
+            argv,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_PLAYWRIGHT_PREOPEN_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        _log.warning("pre-opening playwright browser failed: %s", exc)
+        return
+    if proc.returncode != 0:
+        _log.warning(
+            "pre-opening playwright browser returned %d (session=%s); "
+            "first pw.js call will cold-start",
+            proc.returncode,
+            session,
+        )
+        return
+    _log.info("playwright browser pre-opened (session=%s)", session)
+
+
+def _close_browser(skill_dir: Path, *, session: str) -> None:
+    """Best-effort ``pw.js close`` to release the browser daemon."""
+    pw_js = skill_dir / "scripts" / "pw.js"
+    if not pw_js.is_file():
+        return
+    argv = ["node", str(pw_js), "close"]
+    try:
+        subprocess.run(
+            argv,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_PLAYWRIGHT_CLOSE_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        _log.warning("closing playwright browser failed: %s", exc)
+        return
+    _log.info("playwright browser closed (session=%s)", session)
 
 
 def _default_run_dir(config: ExploreConfig) -> Path:

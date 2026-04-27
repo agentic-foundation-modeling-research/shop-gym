@@ -57,6 +57,16 @@ first time it tries to drive the browser. The pipeline logs a
 `could not resolve pi-playwright skill dir` warning at startup when
 this happens — watch for it.
 
+The pipeline pre-opens a shared `pw.js` browser session (`pw.js open
+about:blank`) before the harness loop starts and closes it after, so
+executor iterations skip the cold-start penalty and don't waste tool
+calls on `Browser '<session>' is not open` errors. The session id is
+derived from the run dir name and exported as `PLAYWRIGHT_CLI_SESSION`
+for the duration of the loop. The pre-open is best-effort: if `pnpm`,
+`node`, or the playwright skill is missing, a warning is logged and
+the run continues (the agent's first `pw.js goto` will then cold-start
+the browser itself).
+
 The `--prefetch-only` and `--synthesize-only` flows do not touch the
 agent runtime or the browser skill, so the only hard requirement for
 those is `uv sync`.

@@ -18,6 +18,7 @@ client (M3 — the silent fallback masked LLM-client misconfiguration).
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -32,12 +33,31 @@ from shop_explore import pipeline as pipeline_mod
 from shop_explore.config import ExploreConfig
 from shop_explore.pipeline import (
     RUN_ID_HASH_LEN,
+    _derive_playwright_session,
     _render_agents_md,
     _resolve_playwright_skill_dir,
     build_runtime_llm,
 )
 from shop_explore.prefetch import PrefetchResult
 from shop_explore.synthesize import SynthesisError
+
+
+@pytest.fixture(autouse=True)
+def _stub_playwright_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skip the real ``pw.js open / close`` for every test in this module.
+
+    The pipeline pre-opens a browser session before invoking the harness
+    loop (cuts cold-start for executor iterations); these unit tests only
+    exercise wiring shape and don't need a live browser. Replacing the
+    helpers with no-ops keeps the test hermetic and ~7x faster locally.
+    """
+
+    def _noop(skill_dir: Path | None, *, session: str) -> None:
+        return None
+
+    monkeypatch.setattr(pipeline_mod, "_preopen_browser", _noop)
+    monkeypatch.setattr(pipeline_mod, "_close_browser", _noop)
+
 
 BASE_URL = "https://example-shop.com"
 MAX_ITERS = 4
@@ -490,6 +510,99 @@ def test_resolve_playwright_skill_dir_returns_none_when_missing(
     monkeypatch.setattr(pipeline_mod.subprocess, "run", fake_run)
 
     assert _resolve_playwright_skill_dir() is None
+
+
+def test_derive_playwright_session_is_stable_and_safe() -> None:
+    """Session id is deterministic and matches `runtime.js` ``sanitizeSessionName``.
+
+    The id is derived from ``run_dir.name`` so resume runs reattach to
+    the same browser daemon. Sanitization keeps it within the
+    ``[a-z0-9._-]`` charset accepted by `pi-playwright`.
+    """
+    run_dir = Path("/tmp/runs/example-shop.com/20260427T041144Z-f0d30a86")
+
+    first = _derive_playwright_session(run_dir)
+    second = _derive_playwright_session(run_dir)
+
+    assert first == second
+    assert first == "shop-explore-20260427t041144z-f0d30a86"
+    # Mirrors the JS regex /[^a-z0-9._-]+/.
+    assert all(ch.islower() or ch.isdigit() or ch in "._-" for ch in first)
+
+
+def test_derive_playwright_session_falls_back_when_run_dir_unsafe() -> None:
+    """Pathological run-dir names still produce a non-empty sanitized id."""
+    run_dir = Path("/tmp/!!!")
+
+    session = _derive_playwright_session(run_dir)
+
+    # Sanitization can collapse the entire suffix; the helper falls back
+    # to ``shop-explore`` so the env var is never empty.
+    assert session
+    assert session == "shop-explore" or session.startswith("shop-explore-")
+
+
+@respx.mock
+def test_explore_pins_playwright_session_env_during_harness_loop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`PLAYWRIGHT_CLI_SESSION` is set for harness invocations and restored after."""
+    _stub_storefront(respx.mock)
+
+    captured: dict[str, Any] = {}
+    sentinel_prev = "prior-session-value"
+    monkeypatch.setenv("PLAYWRIGHT_CLI_SESSION", sentinel_prev)
+
+    def fake_get_runtime(name: str) -> Any:
+        return _StubRuntime()
+
+    def fake_run_plan_exec_loop(
+        loop_config: PlanExecLoopConfig, runtime: Any, **_kwargs: Any
+    ) -> PlanExecLoopResult:
+        captured["session_during_loop"] = os.environ.get("PLAYWRIGHT_CLI_SESSION")
+        loop_config.run_dir.mkdir(parents=True, exist_ok=True)
+        _seed_artifact_for_synthesis(loop_config.run_dir)
+        return PlanExecLoopResult(
+            run_dir=loop_config.run_dir,
+            final_status=FinalStatus.COMPLETED,
+            plan_iter_count=0,
+            exec_iter_count=0,
+        )
+
+    preopen_calls: list[str] = []
+    close_calls: list[str] = []
+
+    def fake_preopen(skill_dir: Path | None, *, session: str) -> None:
+        preopen_calls.append(session)
+
+    def fake_close(skill_dir: Path | None, *, session: str) -> None:
+        close_calls.append(session)
+
+    monkeypatch.setattr(pipeline_mod, "_preopen_browser", fake_preopen)
+    monkeypatch.setattr(pipeline_mod, "_close_browser", fake_close)
+    monkeypatch.setattr(pipeline_mod, "get_runtime", fake_get_runtime)
+    monkeypatch.setattr(pipeline_mod, "run_plan_exec_loop", fake_run_plan_exec_loop)
+
+    out_dir = tmp_path / "run"
+    config = ExploreConfig(
+        url=BASE_URL,
+        out_dir=out_dir,
+        runtime="pi",
+        max_iters=MAX_ITERS,
+        timeout=TIMEOUT_SECONDS,
+    )
+    pipeline_mod.explore(config, llm=_StubLLM())
+
+    expected_session = _derive_playwright_session(out_dir)
+    # Pre-open + close were both invoked exactly once with the run-keyed session.
+    assert preopen_calls == [expected_session]
+    assert close_calls == [expected_session]
+    # During the harness loop, `PLAYWRIGHT_CLI_SESSION` was the run-keyed id
+    # (so every `pw.js` subprocess attaches to the pre-opened daemon).
+    assert captured["session_during_loop"] == expected_session
+    # After explore returns, the prior env var value is restored intact.
+    assert os.environ.get("PLAYWRIGHT_CLI_SESSION") == sentinel_prev
 
 
 def _seed_artifact_for_synthesis(run_dir: Path) -> None:

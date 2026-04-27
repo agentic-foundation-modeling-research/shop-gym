@@ -88,11 +88,13 @@ All browsing — for both planner and executor — goes through the
 requests from inside an iteration; the prefetch step has already done
 that for the URLs we need.
 
-The harness has already resolved the skill path. Use it directly —
-do not search for it:
+The harness has already resolved the skill path **and pre-opened a
+browser session for you**. Both are baked into your environment:
 
 ```bash
 SKILL_DIR="{{PLAYWRIGHT_SKILL_DIR}}"
+# PLAYWRIGHT_CLI_SESSION is exported by the harness; pw.js picks it up
+# automatically. Do not override it.
 ```
 
 Then invoke the wrapper for every browser action:
@@ -103,7 +105,8 @@ node "$SKILL_DIR/scripts/pw.js" <command> [...args]
 
 Useful commands (full list in the skill's `SKILL.md`):
 
-- `goto <url>` — navigate.
+- `goto <url>` — navigate. **First call.** No need for `open` first;
+  the harness already opened the browser.
 - `snapshot --output <path>` — write an a11y snapshot to a file.
   Always snapshot **before** clicking/filling so element refs resolve.
 - `click <ref>` / `fill <ref> <value>` / `select <ref> <value>` —
@@ -116,15 +119,29 @@ Conventions:
 
 - Run **headless** by default. Pass `--headed` only if a human-driven
   debug session has set it.
-- One browser session per iteration is enough; the skill manages it
-  automatically. Do not set `PLAYWRIGHT_CLI_SESSION` unless you
-  explicitly need parallel sessions.
+- The browser session is shared across the run by the harness.
+  **Do not** call `pw.js open` (already done) or `pw.js close`
+  (the harness owns lifecycle), and **never** invoke `playwright-cli`
+  or `playwright` binaries directly — only `pw.js` has the session
+  pinned. Calling them directly produces
+  `Browser '<session>' is not open` errors and wastes 5+ tool calls
+  per misstep.
+- **Batch related calls into one bash invocation** when capturing
+  many states. Examples:
+  - One `eval` returning a dict of all section Y-coords beats N
+    separate `eval` calls (each costs ~5–10 s of subprocess startup).
+  - One bash block that loops `scrollTo + screenshot --output` over
+    every section beats N separate `pw.js screenshot` calls.
 - Save every snapshot and every screenshot **to a file under the
   evidence dir** (see §4). Do not paste large payloads into the
   context window.
+- **Don't read screenshots back as verification.** A successful
+  `pw.js screenshot --output …` call has already produced the file;
+  trust the exit status. Only `read` a PNG when you need to
+  *interpret* an unexpected page state (e.g. a popup blocked the
+  capture). Verification re-reads cost ~5 s + ~120 LLM tokens each.
 - Dismiss cookie banners / popups once at the top of a task; record
   their presence in `caps.json` then move on.
-
 ---
 
 ## 4. File-write conventions
