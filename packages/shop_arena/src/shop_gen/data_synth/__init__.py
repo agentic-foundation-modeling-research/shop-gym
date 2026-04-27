@@ -16,6 +16,11 @@ import.
 from __future__ import annotations
 
 from shop_gen.data_synth._synth_helpers import StageSynthError
+from shop_gen.data_synth.alt_text import (
+    AltTextPayload,
+    SynthAltTextStep,
+    synth_alt_text_for_collection,
+)
 from shop_gen.data_synth.collections import (
     CollectionDraft,
     SynthCollectionsStep,
@@ -63,6 +68,7 @@ from shop_gen.data_synth.skeletons import (
 from shop_gen.data_synth.store import SynthStoreStep, synth_store_from_identity
 
 __all__ = [
+    "AltTextPayload",
     "BrandColors",
     "Collection",
     "CollectionDraft",
@@ -83,6 +89,7 @@ __all__ = [
     "StageSynthError",
     "Store",
     "StoreBrand",
+    "SynthAltTextStep",
     "SynthCollectionsStep",
     "SynthIdentityStep",
     "SynthNavigationStep",
@@ -92,6 +99,7 @@ __all__ = [
     "SynthProductSkeletonsStep",
     "SynthStoreStep",
     "pick_name_from_allowlist",
+    "synth_alt_text_for_collection",
     "synth_collections_from_identity",
     "synth_identity_from_manual",
     "synth_navigation_from_collections",

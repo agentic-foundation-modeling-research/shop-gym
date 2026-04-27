@@ -33,6 +33,7 @@ _COLLECTIONS_FILE: Final[str] = "synth_collections.md"
 _PRODUCT_SKELETONS_FILE: Final[str] = "synth_product_skeletons.md"
 _PRODUCT_DETAILS_FILE: Final[str] = "synth_product_details.md"
 _NAVIGATION_FILE: Final[str] = "synth_navigation.md"
+_ALT_TEXT_FILE: Final[str] = "synth_alt_text.md"
 _DIVIDER: Final[str] = "\n---\n"
 
 
@@ -167,6 +168,23 @@ def load_synth_navigation_template() -> str:
     return _read_template_body(_NAVIGATION_FILE)
 
 
+@cache
+def load_synth_alt_text_template() -> str:
+    """Return the ``synth_alt_text`` ``str.format()`` body.
+
+    Returns:
+        The template body. Format placeholders: ``{collection}``,
+        ``{products}``, ``{images_per_product}``, ``{min_chars}``,
+        ``{max_chars}``.
+
+    Raises:
+        FileNotFoundError: ``synth_alt_text.md`` is missing.
+        ValueError: The file does not contain the ``---`` divider that
+            separates the documentation header from the template body.
+    """
+    return _read_template_body(_ALT_TEXT_FILE)
+
+
 def _read_template_body(name: str) -> str:
     """Read ``<prompts dir>/<name>`` and return everything after the first ``---``.
 
@@ -191,6 +209,7 @@ def _read_template_body(name: str) -> str:
 
 
 __all__ = [
+    "load_synth_alt_text_template",
     "load_synth_collections_template",
     "load_synth_identity_template",
     "load_synth_navigation_template",
