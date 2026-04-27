@@ -79,7 +79,7 @@ Depends on M0 (harness verifier extension).
 - [x] **T5.7** — Append-redo logic for `--only gen_<task>`: when the user invokes `--only` against a build-loop task that already has `[x]` in `runs/build/plan.md`, append a `<task>_redo_<N>` PENDING task and re-invoke the loop with `force_resume=True`. Spec §5.7.3. **Check:** unit test asserts (a) original `[x]` untouched, (b) `<task>_redo_1` appended, (c) follow-up `--only` increments the suffix.
 - [x] **T5.8** — `consolidate` task contract: planner prompt requires it as the lowest-priority task; if the planner omits it the orchestrator appends it deterministically before the harness runs. Spec §5.5.4. **Check:** unit test on a planner output missing `consolidate` asserts orchestrator appends it.
 - [x] **T5.9** — Replay cassette: a complete build-loop fixture covering `gen_theme`, `gen_navigation`, `gen_homepage`, `consolidate`. Hand-crafted under `tests/shop_gen/cassettes/fixture_build_loop/`. **Check:** `tests/shop_gen/test_build_loop_replay.py` runs the full Phase 4 deterministically without API keys.
-- [ ] **T5.10** — End-to-end test from `data/` (M4 fixture) → working `hydrogen/`. **Check:** SC3 + SC6 satisfied under replay.
+- [x] **T5.10** — End-to-end test from `data/` (M4 fixture) → working `hydrogen/`. **Check:** SC3 + SC6 satisfied under replay.
 
 **M5 acceptance:** SC3 + SC6 satisfied; replay cassette green in CI.
 
