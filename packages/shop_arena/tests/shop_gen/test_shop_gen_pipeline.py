@@ -105,7 +105,7 @@ def test_list_steps_returns_every_phase_in_order() -> None:
 
 
 def test_list_steps_only_lists_registered_phases() -> None:
-    """Phase 1 + Phase 2 (T3.3) list registered steps; later phases stay empty until M4-M6."""
+    """Phase 1 + Phase 2 (T3.3-T3.4) list registered steps; later phases stay empty until M4-M6."""
     grouped = list_steps()
     assert grouped["manual_merge"] == (
         "copy_seed_manual",
@@ -114,7 +114,12 @@ def test_list_steps_only_lists_registered_phases() -> None:
         "compute_merge_stats",
         "write_merge_manifest",
     )
-    assert grouped["data_synth"] == ("synth_identity",)
+    assert grouped["data_synth"] == (
+        "synth_identity",
+        "synth_store",
+        "synth_pages",
+        "synth_policies",
+    )
     for phase in ("data_validation", "build", "final_eval"):
         assert grouped[phase] == ()
 
@@ -185,7 +190,13 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
     single = pipeline._build_registry(
         ShopGenConfig(seeds=[seed], out_dir=tmp_path / "a"),
     )
-    assert single.ids() == ["copy_seed_manual", "synth_identity"]
+    assert single.ids() == [
+        "copy_seed_manual",
+        "synth_identity",
+        "synth_store",
+        "synth_pages",
+        "synth_policies",
+    ]
 
 
 def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) -> None:
@@ -200,6 +211,9 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
         "compute_merge_stats",
         "write_merge_manifest",
         "synth_identity",
+        "synth_store",
+        "synth_pages",
+        "synth_policies",
     ]
 
 

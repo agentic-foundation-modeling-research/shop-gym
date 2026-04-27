@@ -26,6 +26,9 @@ from typing import Final
 
 _PROMPTS_DIR: Final[Path] = Path(__file__).resolve().parent / "prompts"
 _IDENTITY_FILE: Final[str] = "synth_identity.md"
+_STORE_FILE: Final[str] = "synth_store.md"
+_PAGES_FILE: Final[str] = "synth_pages.md"
+_POLICIES_FILE: Final[str] = "synth_policies.md"
 _DIVIDER: Final[str] = "\n---\n"
 
 
@@ -47,6 +50,52 @@ def load_synth_identity_template() -> str:
             separates the documentation header from the template body.
     """
     return _read_template_body(_IDENTITY_FILE)
+
+
+@cache
+def load_synth_store_template() -> str:
+    """Return the ``synth_store`` ``str.format()`` body.
+
+    Returns:
+        The template body. Format placeholders: ``{identity}``.
+
+    Raises:
+        FileNotFoundError: ``synth_store.md`` is missing.
+        ValueError: The file does not contain the ``---`` divider that
+            separates the documentation header from the template body.
+    """
+    return _read_template_body(_STORE_FILE)
+
+
+@cache
+def load_synth_pages_template() -> str:
+    """Return the ``synth_pages`` ``str.format()`` body.
+
+    Returns:
+        The template body. Format placeholders: ``{identity}``,
+        ``{capabilities}``.
+
+    Raises:
+        FileNotFoundError: ``synth_pages.md`` is missing.
+        ValueError: The file does not contain the ``---`` divider that
+            separates the documentation header from the template body.
+    """
+    return _read_template_body(_PAGES_FILE)
+
+
+@cache
+def load_synth_policies_template() -> str:
+    """Return the ``synth_policies`` ``str.format()`` body.
+
+    Returns:
+        The template body. Format placeholders: ``{identity}``.
+
+    Raises:
+        FileNotFoundError: ``synth_policies.md`` is missing.
+        ValueError: The file does not contain the ``---`` divider that
+            separates the documentation header from the template body.
+    """
+    return _read_template_body(_POLICIES_FILE)
 
 
 def _read_template_body(name: str) -> str:
@@ -74,4 +123,7 @@ def _read_template_body(name: str) -> str:
 
 __all__ = [
     "load_synth_identity_template",
+    "load_synth_pages_template",
+    "load_synth_policies_template",
+    "load_synth_store_template",
 ]

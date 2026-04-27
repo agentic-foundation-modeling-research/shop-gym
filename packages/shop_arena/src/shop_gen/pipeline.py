@@ -37,7 +37,12 @@ from pathlib import Path
 from typing import Final
 
 from shop_gen.config import ShopGenConfig, ShopGenResult
-from shop_gen.data_synth import SynthIdentityStep
+from shop_gen.data_synth import (
+    SynthIdentityStep,
+    SynthPagesStep,
+    SynthPoliciesStep,
+    SynthStoreStep,
+)
 from shop_gen.manual_merge import (
     ComputeMergeStatsStep,
     CopySeedManualStep,
@@ -323,22 +328,26 @@ def _register_data_synth(
 ) -> None:
     """Register Phase 2 data-synthesis steps.
 
-    Currently registers the ``synth_identity`` step (impl plan T3.3).
-    Subsequent M3 tasks (T3.4-T3.11) will register the rest of the
-    Phase 2 sub-DAG here.
+    Currently registers ``synth_identity`` (T3.3) plus the three
+    identity-fanout steps ``synth_store`` / ``synth_pages`` /
+    ``synth_policies`` (T3.4). Subsequent M3 tasks (T3.5-T3.11) will
+    register the rest of the Phase 2 sub-DAG here.
 
     Args:
         registry: Registry to mutate.
         manual_step_ids: Upstream step ids that produce the merged
-            ``manual/`` directory (``synth_identity`` cascades from
-            those upstream fingerprints). Multi-seed runs pass
+            ``manual/`` directory. Multi-seed runs pass
             ``("merge_capabilities", "merge_manual_prose")``;
             single-seed runs pass ``("copy_seed_manual",)``. Empty in
             the listing branch (``--list-steps`` does not bind to a
             specific seed count); the placeholder still surfaces the
-            step id in :func:`list_steps`.
+            step ids in :func:`shop_gen.pipeline.list_steps`.
     """
-    registry.register(SynthIdentityStep(manual_step_ids=tuple(manual_step_ids)))
+    manual_ids = tuple(manual_step_ids)
+    registry.register(SynthIdentityStep(manual_step_ids=manual_ids))
+    registry.register(SynthStoreStep())
+    registry.register(SynthPagesStep(manual_step_ids=manual_ids))
+    registry.register(SynthPoliciesStep())
 
 
 def _register_data_validation(registry: Registry) -> None:
