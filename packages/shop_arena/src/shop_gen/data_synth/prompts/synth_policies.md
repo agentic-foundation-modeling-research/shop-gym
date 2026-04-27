@@ -41,3 +41,5 @@ Rules:
   trademark by name.
 - Output JSON only. No markdown code fences, no commentary, no
   trailing prose.
+
+{brand_safety}

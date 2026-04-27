@@ -42,6 +42,9 @@ Rules:
 - Do NOT include a `name` field. The orchestrator picks the brand
   name from a curated allowlist; any `name` you emit is discarded.
 - The descriptor must be brand-free: no real-company proper nouns,
-  no trademarks, no celebrity names.
+  no trademarks, no celebrity names. The descriptor is a plain
+  noun phrase, not a brand-shaped token.
 - Output JSON only. No markdown code fences, no commentary, no
   trailing prose.
+
+{brand_safety}

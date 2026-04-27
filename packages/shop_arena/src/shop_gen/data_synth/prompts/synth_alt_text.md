@@ -59,3 +59,5 @@ Rules:
   trailing prose.
 - Cover every product handle. Missing handles fail the step.
 - Do not invent extra handles. Extra keys fail the step.
+
+{brand_safety}
