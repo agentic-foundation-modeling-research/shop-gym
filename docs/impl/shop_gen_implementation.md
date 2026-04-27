@@ -34,7 +34,7 @@ Depends on: [`docs/impl/verifiers_implementation.md`](verifiers_implementation.m
 - [x] **T2.2** — `src/shop_gen/manual_merge/prose.py`: section-by-section LLM merge of the seed `manual.md`s, conditioned on the merged capabilities. Step id `merge_manual_prose`. **Check:** unit test with fixture seeds + stub LLM asserts section count + that the prose mentions only allowlist brands.
 - [x] **T2.3** — `src/shop_gen/manual_merge/stats.py`: deterministic recompute from merged caps + seed prefetch summaries (no LLM). Step id `compute_merge_stats`. **Check:** unit test against fixture seeds.
 - [x] **T2.4** — `src/shop_gen/manual_merge/manifest.py`: write `manual/manifest.json` with seed list, per-area merge conflicts, write history. Step id `write_merge_manifest`. **Check:** schema validation.
-- [ ] **T2.5** — `src/shop_gen/manual_merge/prompts/`: `merge_capabilities_tiebreak.md`, `merge_manual_prose.md`. **Check:** lint-only.
+- [x] **T2.5** — `src/shop_gen/manual_merge/prompts/`: `merge_capabilities_tiebreak.md`, `merge_manual_prose.md`. **Check:** lint-only.
 - [x] **T2.6** — Single-seed shortcut: when `len(seeds) == 1`, register a single `copy_seed_manual` step that copies the seed verbatim into `manual/`. Spec §5.2. **Check:** unit test asserts no LLM calls and identical bytes.
 - [ ] **T2.7** — Tests: end-to-end Phase 1 against 2-seed and 3-seed fixtures; assert `manual/` populated and capabilities pass schema.
 

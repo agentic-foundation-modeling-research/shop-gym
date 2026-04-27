@@ -43,6 +43,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from harness.runtimes import LLMCompleter
 from shop_explore.capabilities import Capabilities, CapabilitiesValidationError
+from shop_gen.manual_merge.prompts import load_capabilities_tiebreak_templates
 from shop_gen.steps.base import FileInput, InputRef, StepContext
 
 _PHASE: Final[str] = "manual_merge"
@@ -121,37 +122,6 @@ _RULES: Final[dict[str, str]] = {
 # descriptor LLM call sees the merged tone; ``shop.descriptor`` runs
 # next so layout/style tiebreaks can condition on it.
 _PRIORITY_ORDER: Final[tuple[str, ...]] = ("shop.tone", "shop.descriptor")
-
-
-_DESCRIPTOR_PROMPT_TEMPLATE: Final[str] = """\
-You are merging the brand-free descriptors of multiple storefronts \
-into one. The merged storefront combines elements from each.
-
-Merged tone tags (treat as ground truth): {tone}
-
-Each input descriptor is brand-free. Output ONE merged descriptor that:
-- is one short phrase (max 12 words),
-- is brand-free (no proper nouns of real companies, no trademarks),
-- is consistent with the merged tone tags,
-- is plain prose, no quotes, no trailing punctuation.
-
-Inputs:
-{descriptors}
-
-Output: a single line containing only the merged descriptor.
-"""
-
-_LAYOUT_TIEBREAK_PROMPT_TEMPLATE: Final[str] = """\
-You are picking one storefront layout/style enum for ``{path}``.
-
-Candidates: {candidates}
-Merged storefront descriptor (treat as ground truth): {descriptor}
-
-Pick the candidate that is most consistent with the descriptor.
-
-Output: a single line containing exactly one of the candidate values, \
-with no quotes or extra text.
-"""
 
 
 class MergeConflict(BaseModel):
@@ -642,7 +612,7 @@ def _llm_descriptor(
         raise ValueError(
             f"{path}: descriptor disagreement requires a runtime with LLMCompleter; got None",
         )
-    prompt = _DESCRIPTOR_PROMPT_TEMPLATE.format(
+    prompt = load_capabilities_tiebreak_templates()["descriptor"].format(
         tone=", ".join(tone) if tone else "(none)",
         descriptors="\n".join(f"- {value}" for _, value in descriptors),
     )
@@ -674,7 +644,7 @@ def _ask_layout_tiebreak(
     """
     if completer is None or descriptor is None:
         return None
-    prompt = _LAYOUT_TIEBREAK_PROMPT_TEMPLATE.format(
+    prompt = load_capabilities_tiebreak_templates()["layout"].format(
         path=path,
         candidates=", ".join(candidates),
         descriptor=descriptor,
