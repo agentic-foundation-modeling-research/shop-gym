@@ -347,11 +347,11 @@ predictable path under it.
 │   └── images/                 # placeholder SVGs (v0.1) or AI images (v0.2)
 ├── hydrogen/                   # PUBLISHED — generated Hydrogen app
 ├── data_validation.json        # PUBLISHED — schema + hosting check verdict
+├── sidecar.json                # PUBLISHED — start_sidecar pre-flight verdict
 ├── final_eval.json             # PUBLISHED — advisory quality verdict (never blocks)
 ├── runs/
 │   └── build/                  # debugging — harness run dir for Phase 4
 │       ├── plan.md
-│       ├── sidecar.json
 │       ├── run.json
 │       ├── iters/exec-NNNN/
 │       └── artifact/

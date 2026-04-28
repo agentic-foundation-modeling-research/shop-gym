@@ -535,7 +535,7 @@ def _register_build(registry: Registry) -> None:
       ``hydrogen/.env`` with the resolved sidecar URL (spec §5.5.1).
     * ``start_sidecar`` boots ``shop-backend`` against the assembled
       ``data/`` tree on that port to validate the spawn sequence and
-      records the verdict in ``runs/build/sidecar.json``.
+      records the verdict in ``sidecar.json``.
     * ``run_build_harness_loop`` wires
       :class:`harness.PlanExecLoopConfig` against the prompts +
       verifier set, spawns the long-lived sidecar, and invokes

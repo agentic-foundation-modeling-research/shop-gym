@@ -11,7 +11,7 @@ sidecar lifecycle land:
   resolved sidecar URL into ``hydrogen/.env``.
 * :mod:`shop_gen.build.sidecar` — ``start_sidecar`` (T5.2) boots
   ``shop-backend`` against ``<out_dir>/data/`` to verify the spawn
-  sequence and writes ``runs/build/sidecar.json`` capturing the
+  sequence and writes ``sidecar.json`` capturing the
   resolved port + argv. Exposes :func:`sidecar_lifecycle` — the
   context-manager helper the harness loop driver (T5.6) reuses to
   hold the long-lived sidecar that the build loop talks to.

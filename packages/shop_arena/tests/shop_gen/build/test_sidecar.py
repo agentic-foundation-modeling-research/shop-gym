@@ -143,9 +143,9 @@ def test_start_sidecar_step_satisfies_step_protocol() -> None:
     assert isinstance(step, Step)
     assert step.id == "start_sidecar"
     assert step.phase == "build"
-    assert step.outputs == [Path("runs") / "build" / "sidecar.json"]
+    assert step.outputs == [Path("sidecar.json")]
     assert step.depends_on == ["write_env_file", "assemble_data"]
-    assert step.version == 1
+    assert step.version == 2
 
 
 def test_start_sidecar_inputs_cover_env_dep_and_assemble_data() -> None:
@@ -396,7 +396,7 @@ def test_sidecar_lifecycle_raises_when_health_times_out() -> None:
 
 
 def test_start_sidecar_step_writes_sidecar_json(tmp_path: Path) -> None:
-    """The step writes ``runs/build/sidecar.json`` against the bundled CLI."""
+    """The step writes ``sidecar.json`` against the bundled CLI."""
     if not _backend_available():
         pytest.skip(_BACKEND_REASON)
 
@@ -419,7 +419,7 @@ def test_start_sidecar_step_writes_sidecar_json(tmp_path: Path) -> None:
 
     StartSidecarStep().run(ctx)
 
-    report = out_dir / "runs" / "build" / "sidecar.json"
+    report = out_dir / "sidecar.json"
     assert report.is_file()
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert payload["ok"] is True

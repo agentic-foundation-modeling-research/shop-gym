@@ -16,7 +16,7 @@ to via ``PUBLIC_STORE_DOMAIN``. Exposes two public surfaces:
   ``packages/shop_backend/dist/cli.js``, boots the sidecar once via
   :func:`sidecar_lifecycle` to verify the spawn sequence works against
   the freshly assembled ``data/`` tree, then writes
-  ``<out_dir>/runs/build/sidecar.json`` with the resolved
+  ``<out_dir>/sidecar.json`` with the resolved
   port / URL / argv / store-name. The long-lived sidecar that the
   build loop talks to is spawned by ``run_build_harness_loop`` (T5.6)
   using the same :func:`sidecar_lifecycle` helper — one sidecar per
@@ -30,7 +30,7 @@ Step contract (spec §5.7.1):
   source) and ``assemble_data`` (the six ``data/*.json`` files
   shop-backend loads on boot are that step's declared outputs, so a
   ``StepInput`` reference is the canonical freshness signal).
-* ``outputs``: ``[runs/build/sidecar.json]``.
+* ``outputs``: ``[sidecar.json]``.
 * ``depends_on``: ``[write_env_file, assemble_data]``.
 
 Module is import-safe: no I/O, no env reads, no side effects at import
@@ -58,7 +58,7 @@ from shop_gen.steps.base import InputRef, StepContext, StepInput
 
 _PHASE: Final[str] = "build"
 _STEP_ID: Final[str] = "start_sidecar"
-_STEP_VERSION: Final[int] = 1
+_STEP_VERSION: Final[int] = 2
 
 _UPSTREAM_WRITE_ENV: Final[str] = "write_env_file"
 _UPSTREAM_ASSEMBLE_DATA: Final[str] = "assemble_data"
@@ -69,8 +69,14 @@ _DATA_DIR: Final[Path] = Path("data")
 _HYDROGEN_ENV: Final[Path] = Path("hydrogen") / ".env"
 """Run-relative location of the ``.env`` written by ``write_env_file``."""
 
-_SIDECAR_REPORT: Final[Path] = Path("runs") / "build" / "sidecar.json"
-"""Run-relative path of the JSON verdict the step writes."""
+_SIDECAR_REPORT: Final[Path] = Path("sidecar.json")
+"""Run-relative path of the JSON verdict the step writes.
+
+Sibling of ``data_validation.json`` / ``final_eval.json``. Kept *outside*
+``runs/build/`` because that subtree is owned by ``run_build_harness_loop``
+as the harness ``run_dir``: anything pre-existing there forces the harness
+into resume mode (`Workspace.open`), which fails the identity check.
+"""
 
 _DATA_FILES: Final[tuple[str, ...]] = (
     "store.json",
@@ -219,7 +225,7 @@ class StartSidecarStep:
     written into ``<out_dir>/hydrogen/.env`` by
     :class:`shop_gen.build.env.WriteEnvFileStep`, asserts ``/health``
     responds, captures the verdict in
-    ``<out_dir>/runs/build/sidecar.json``, then tears the subprocess
+    ``<out_dir>/sidecar.json``, then tears the subprocess
     down. The long-lived sidecar that the build loop talks to is
     spawned later by ``run_build_harness_loop`` (T5.6) using the same
     :func:`sidecar_lifecycle` helper.
@@ -230,7 +236,7 @@ class StartSidecarStep:
         inputs: Two :class:`StepInput` references — ``write_env_file``
             source) and ``assemble_data`` (the dataset shop-backend
             loads on boot, declared as that step's outputs).
-        outputs: ``[runs/build/sidecar.json]``.
+        outputs: ``[sidecar.json]``.
         depends_on: ``[write_env_file, assemble_data]``.
         version: Bumped when the sidecar lifecycle contract changes.
     """
