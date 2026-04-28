@@ -47,6 +47,10 @@ select = [
   "RUF",               # ruff-specific
 ]
 ignore = ["PLR0913"]
+# Greek letters used in mathematical notation across packages (Spearman ρ
+# in shop_probe.judge.calibration, etc.) — keep them as written rather than
+# masquerading as Latin look-alikes.
+allowed-confusables = ["ρ"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

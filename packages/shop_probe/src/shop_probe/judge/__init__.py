@@ -9,6 +9,12 @@ from shop_probe.judge.anonymize import (
     anonymize_trajectory,
     hash_token,
 )
+from shop_probe.judge.calibration import (
+    DimensionCalibration,
+    HumanCalibration,
+    HumanLikertCall,
+    compute_human_calibration,
+)
 from shop_probe.judge.kappa import (
     CrossJudgeAgreement,
     compute_cross_judge_kappa,
@@ -86,6 +92,9 @@ __all__ = [
     "REQUIRED_PAIRWISE_PLACEHOLDERS",
     "AnonymizationPlan",
     "CrossJudgeAgreement",
+    "DimensionCalibration",
+    "HumanCalibration",
+    "HumanLikertCall",
     "JudgeAccuracy",
     "JudgeCallable",
     "JudgePromptLoadError",
@@ -117,6 +126,7 @@ __all__ = [
     "build_experimental_pairs",
     "build_task_pairs",
     "compute_cross_judge_kappa",
+    "compute_human_calibration",
     "compute_likert_distributions",
     "evaluate_swap_consistency",
     "hash_token",
