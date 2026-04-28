@@ -107,11 +107,52 @@ def test_cli_run_emits_valid_probe_report(tmp_path: Path) -> None:
     # Every rubric probe captured at least one screenshot.
     assert {e.id for e in rubric.entries}.issubset(captured)
 
+    # Axis-A-only run leaves the axis-B surface field unset.
+    assert report.surface is None
+
+
+def test_cli_run_axes_a_b_populates_report_surface(tmp_path: Path) -> None:
+    """Spec §7 M2 gate: ``shop-probe run --axes A,B`` populates ``report.surface``."""
+    out_path = tmp_path / "report.json"
+    evidence_dir = tmp_path / "evidence"
+    with SandboxShop() as base_url:
+        rc = main(
+            [
+                "run",
+                base_url,
+                "--label",
+                "sandbox/fixture",
+                "--rubric",
+                "v1",
+                "--axes",
+                "A,B",
+                "--kind",
+                "sandbox",
+                "--pair-id",
+                "pair_fixture",
+                "--out",
+                str(out_path),
+                "--evidence-dir",
+                str(evidence_dir),
+            ]
+        )
+    assert rc == EXIT_OK
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    report = ProbeReport.model_validate(payload)
+
+    # Axis A still aggregates correctly under the combined run.
+    assert report.coverage_core == pytest.approx(1.0)
+
+    # Axis B — surface metrics populated; T2.3 gate: distinct_templates >= 3.
+    assert report.surface is not None
+    assert report.surface.distinct_templates >= 3  # noqa: PLR2004
+    assert report.surface.routes_crawled > 0
+
 
 def test_cli_run_rejects_unsupported_axes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """M1 only wires axis A; B/C land in later milestones."""
+    """M2 wires axes A and A,B; axis C lands in M4."""
     rc = main(
         [
             "run",
@@ -119,7 +160,7 @@ def test_cli_run_rejects_unsupported_axes(
             "--label",
             "sandbox/fixture",
             "--axes",
-            "A,B",
+            "A,B,C",
             "--kind",
             "sandbox",
             "--pair-id",

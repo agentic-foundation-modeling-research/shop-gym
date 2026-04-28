@@ -1,5 +1,12 @@
 """ShopProbe: structural-fidelity measurement instrument for Shopify-shaped storefronts."""
 
+# `__version__` is defined before any submodule imports so that modules
+# pulled in transitively (e.g. ``shop_probe.probes._runner``) can read it
+# while ``shop_probe`` itself is still being initialised — the alternative
+# is a circular import via ``shop_probe.report`` → ``shop_probe.surface``
+# → ``shop_probe.probes._runner`` → ``shop_probe``.
+__version__ = "0.0.0"
+
 from shop_probe.report import (
     BrowserMeta,
     CategoryScore,
@@ -12,8 +19,6 @@ from shop_probe.report import (
     ProbeResult,
 )
 from shop_probe.targets import Cohort, Pair, Target, TargetKind
-
-__version__ = "0.0.0"
 
 __all__ = [
     "BrowserMeta",

@@ -19,9 +19,9 @@ the public contract the paper figures read from, so unknown fields and
 silent mutation are rejected. The module is import-safe — it performs
 no I/O at import time.
 
-The ``surface: SurfaceMetrics`` field from spec §5.6 is added when
-axis B is wired in T2.3 (spec §7 M2). T1.5 lands the axis-A and
-axis-C surface area of the schema only.
+The ``surface: SurfaceMetrics`` field from spec §5.6 is populated when
+axis B is run (see ``shop-probe run --axes A,B``). For axis-A-only runs
+it stays ``None`` so the closed schema still validates.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from shop_probe.surface.metrics import SurfaceMetrics
 from shop_probe.targets import Target
 
 EvidenceKind = Literal["screenshot", "dom_snapshot", "a11y_snapshot", "har"]
@@ -222,14 +223,12 @@ class ProbeReport(BaseModel):
     * **Axis A** (``probe_results`` … ``coverage_weighted``) — per-leaf
       results, per-category rollup, and the four headline coverage
       numbers per spec §5.3.
+    * **Axis B** (``surface``) — crawl-derived surface-area metrics
+      (spec §5.4); ``None`` on axis-A-only runs.
     * **Axis C + stability** (``judge_calls`` … ``flake_rate_per_probe``)
       — pairwise-judge calls (empty for unpaired or axis-A-only runs)
       and the rerun index + per-probe flake rate from N=3 reruns
       (spec §5.8).
-
-    Per spec §5.6 the schema also carries a ``surface: SurfaceMetrics``
-    field for axis B; that field is wired in T2.3 (spec §7 M2) once
-    :class:`shop_probe.surface.metrics.SurfaceMetrics` lands in T2.1.
 
     Attributes:
         target: The storefront under test (see :class:`Target`).
@@ -249,6 +248,9 @@ class ProbeReport(BaseModel):
         coverage_advanced: Weighted coverage over ``level == "advanced"``
             probes (always 0 in v1 — advanced probes ship in v1.1).
         coverage_weighted: Weighted-mean coverage across categories.
+        surface: Crawl-derived axis-B surface-area metrics
+            (:class:`shop_probe.surface.metrics.SurfaceMetrics`); ``None``
+            on axis-A-only runs.
         judge_calls: Axis-C pairwise judge calls; empty for unpaired
             targets or axis-A-only runs.
         rerun_index: 1-indexed run number within the N=3 rerun group
@@ -274,6 +276,9 @@ class ProbeReport(BaseModel):
     coverage_modern: float = Field(ge=0.0, le=1.0)
     coverage_advanced: float = Field(ge=0.0, le=1.0)
     coverage_weighted: float = Field(ge=0.0, le=1.0)
+
+    # Axis B — surface area (None for axis-A-only runs, spec §5.6)
+    surface: SurfaceMetrics | None = None
 
     # Axis C — empty for unpaired / axis-A-only runs (spec §5.6)
     judge_calls: tuple[JudgeCall, ...] = ()

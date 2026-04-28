@@ -26,9 +26,10 @@ For ``--axes A`` the command:
 5. Embeds the rubric version + content hash, runner version, and the
    pinned Playwright/Chromium runtime metadata into a closed
    :class:`ProbeReport` (spec §5.6 + §5.8) and writes it to ``--out``.
-
-Axes B and C are wired in later milestones (spec §7 M2 / M4); requesting
-them today returns a usage error.
+When ``--axes`` includes ``B`` the command additionally drives a
+:class:`SurfaceCrawler` against the same target and embeds the resulting
+:class:`SurfaceMetrics` in ``report.surface``. Axis C is wired in M4;
+requesting it today returns a usage error.
 
 The module is import-safe: it performs no I/O at import time.
 """
@@ -67,6 +68,8 @@ from shop_probe.report import (
     ProbeResult,
 )
 from shop_probe.rubric import Rubric, load_rubric
+from shop_probe.surface import SurfaceMetrics
+from shop_probe.surface.crawler import SurfaceCrawler
 from shop_probe.targets import Target
 
 EXIT_OK: Final[int] = 0
@@ -135,7 +138,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--axes",
         default="A",
-        help="Comma-separated axes to run. Today only 'A' is implemented.",
+        help="Comma-separated axes to run. Supported: 'A' (M1), 'A,B' (M2).",
     )
     run.add_argument(
         "--kind",
@@ -171,10 +174,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def _cmd_run(args: argparse.Namespace) -> int:
     """Handler for ``shop-probe run``."""
     axes = _parse_axes(args.axes)
-    if axes != ("A",):
+    if axes not in {("A",), ("A", "B")}:
         print(
             f"shop-probe: --axes={args.axes!r} not supported yet "
-            "(only 'A' is wired in M1; 'B' lands in M2, 'C' in M4).",
+            "(supported today: 'A' and 'A,B'; axis C lands in M4).",
             file=sys.stderr,
         )
         return EXIT_USAGE
@@ -205,11 +208,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
     )
 
     report = asyncio.run(
-        _run_axis_a(
+        _run(
             target=target,
             rubric=rubric,
             evidence_root=evidence_root,
             rerun_index=args.rerun_index,
+            run_axis_a="A" in axes,
+            run_axis_b="B" in axes,
         )
     )
 
@@ -218,7 +223,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(
         f"shop-probe: wrote {out_path} "
         f"(coverage_core={report.coverage_core:.3f}, "
-        f"coverage_weighted={report.coverage_weighted:.3f})"
+        f"coverage_weighted={report.coverage_weighted:.3f}"
+        + (
+            f", surface.distinct_templates={report.surface.distinct_templates}"
+            if report.surface is not None
+            else ""
+        )
+        + ")"
     )
     return EXIT_OK
 
@@ -304,42 +315,53 @@ async def _discover_sample_urls(
     return discovered["collection"], discovered["product"]
 
 
-async def _run_axis_a(
+async def _run(
     *,
     target: Target,
     rubric: Rubric,
     evidence_root: Path,
     rerun_index: int,
+    run_axis_a: bool,
+    run_axis_b: bool,
 ) -> ProbeReport:
-    """Run every rubric leaf and assemble the closed :class:`ProbeReport`."""
+    """Run the requested axes and assemble the closed :class:`ProbeReport`."""
     started = datetime.now(UTC)
     results: list[ProbeResult] = []
-    chromium_version: str
-    async with ProbeRunner(evidence_root=evidence_root) as runner:
-        chromium_version = runner.chromium_version
-        sample_collection_url, sample_product_url = await _discover_sample_urls(
-            runner, target.base_url
-        )
-        for entry in rubric.entries:
-            probe = _resolve_probe(entry.probe)
-            outcome = await runner.run(
-                probe,
-                base_url=target.base_url,
-                probe_id=entry.id,
-                sample_product_url=sample_product_url,
-                sample_collection_url=sample_collection_url,
-            )
-            results.append(
-                ProbeResult(
-                    id=entry.id,
-                    passed=outcome.passed,
-                    evidence=outcome.evidence,
-                    notes=outcome.notes,
-                    duration_ms=outcome.duration_ms,
-                )
-            )
+    categories: tuple[CategoryScore, ...] = ()
+    c_core = c_modern = c_advanced = c_weighted = 0.0
+    chromium_version = "unknown"
 
-    categories, c_core, c_modern, c_advanced, c_weighted = _aggregate_coverage(rubric, results)
+    if run_axis_a:
+        async with ProbeRunner(evidence_root=evidence_root) as runner:
+            chromium_version = runner.chromium_version
+            sample_collection_url, sample_product_url = await _discover_sample_urls(
+                runner, target.base_url
+            )
+            for entry in rubric.entries:
+                probe = _resolve_probe(entry.probe)
+                outcome = await runner.run(
+                    probe,
+                    base_url=target.base_url,
+                    probe_id=entry.id,
+                    sample_product_url=sample_product_url,
+                    sample_collection_url=sample_collection_url,
+                )
+                results.append(
+                    ProbeResult(
+                        id=entry.id,
+                        passed=outcome.passed,
+                        evidence=outcome.evidence,
+                        notes=outcome.notes,
+                        duration_ms=outcome.duration_ms,
+                    )
+                )
+        categories, c_core, c_modern, c_advanced, c_weighted = _aggregate_coverage(rubric, results)
+
+    surface: SurfaceMetrics | None = None
+    if run_axis_b:
+        async with SurfaceCrawler() as crawler:
+            surface = await crawler.crawl(target.base_url)
+
     runtime = BrowserMeta(
         python_version=platform.python_version(),
         playwright_version=_safe_pkg_version("playwright"),
@@ -361,6 +383,7 @@ async def _run_axis_a(
         coverage_modern=c_modern,
         coverage_advanced=c_advanced,
         coverage_weighted=c_weighted,
+        surface=surface,
         rerun_index=rerun_index,
     )
 

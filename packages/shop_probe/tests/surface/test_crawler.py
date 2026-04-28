@@ -31,7 +31,8 @@ if str(_TESTS_ROOT) not in sys.path:
 
 from _sandbox import SandboxShop  # noqa: E402 — sys.path adjustment above
 
-from shop_probe.surface import SurfaceCrawler, SurfaceMetrics  # noqa: E402
+from shop_probe.surface import SurfaceMetrics  # noqa: E402
+from shop_probe.surface.crawler import SurfaceCrawler  # noqa: E402
 
 
 @pytest.fixture(scope="module")
