@@ -7,6 +7,7 @@
 # → ``shop_probe.probes._runner`` → ``shop_probe``.
 __version__ = "0.0.0"
 
+from shop_probe.cohort import CohortLoadError, load_cohort, load_cohort_bytes
 from shop_probe.report import (
     BrowserMeta,
     CategoryScore,
@@ -24,6 +25,7 @@ __all__ = [
     "BrowserMeta",
     "CategoryScore",
     "Cohort",
+    "CohortLoadError",
     "EvidenceKind",
     "EvidenceRef",
     "JudgeCall",
@@ -35,4 +37,6 @@ __all__ = [
     "Target",
     "TargetKind",
     "__version__",
+    "load_cohort",
+    "load_cohort_bytes",
 ]

@@ -1,0 +1,67 @@
+# ShopProbe v0.1 cohort (spec §8.2).
+#
+# Three (source, sandbox) pairs plus three unpaired real shops, which
+# together form the 6-real-shop reference population (spec §5.2).
+#
+# Every Target row is fully explicit (label / base_url / kind / pair_id)
+# so this file validates directly via `shop_probe.targets.Cohort`.
+#
+# Several `base_url` values and the three `real_unpaired` slots are
+# deliberately set to "TBD" pending the decisions tracked in spec §8.5
+# open questions 1 and 3 (T5.1 is the gate that closes them).
+version: "0.1"
+
+pairs:
+  - id: pair_hardware
+    source:
+      label: source/hardware
+      base_url: https://hardware.shopify.com
+      kind: source
+      pair_id: pair_hardware
+    sandbox:
+      label: sandbox/hardware
+      base_url: https://shop-arena-51aad95a-126018801413.us-central1.run.app
+      kind: sandbox
+      pair_id: pair_hardware
+
+  - id: pair_hexclad
+    source:
+      label: source/hexclad
+      base_url: https://hexclad.com
+      kind: source
+      pair_id: pair_hexclad
+      notes: "Bot detection mitigation TBD per spec §8.5 open question 2."
+    sandbox:
+      label: sandbox/hexclad
+      base_url: TBD
+      kind: sandbox
+      pair_id: pair_hexclad
+      notes: "Sandbox URL TBD per spec §8.5 open question 3."
+
+  - id: pair_aloyoga
+    source:
+      label: source/aloyoga
+      base_url: https://aloyoga.com
+      kind: source
+      pair_id: pair_aloyoga
+      notes: "Bot detection mitigation TBD per spec §8.5 open question 2."
+    sandbox:
+      label: sandbox/aloyoga
+      base_url: TBD
+      kind: sandbox
+      pair_id: pair_aloyoga
+      notes: "Sandbox URL TBD per spec §8.5 open question 3."
+
+real_unpaired:
+  - label: real/TBD_1
+    base_url: TBD
+    kind: real_unpaired
+    notes: "TBD per spec §8.5 open question 1."
+  - label: real/TBD_2
+    base_url: TBD
+    kind: real_unpaired
+    notes: "TBD per spec §8.5 open question 1."
+  - label: real/TBD_3
+    base_url: TBD
+    kind: real_unpaired
+    notes: "TBD per spec §8.5 open question 1."
