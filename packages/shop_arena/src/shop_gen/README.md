@@ -54,21 +54,61 @@ or sidecar prerequisites — see [Testing](#testing) below.
 
 ### CLI
 
+Four workflows cover the typical use cases. All four take the same
+positional `<seed_dir>...` and `--out-dir <dir>` arguments; the flags
+below select *which* steps run.
+
+**1. Full run** — every stale step end-to-end. Idempotent; re-running
+with the same `--out-dir` is a no-op once everything is up to date.
+
 ```bash
-# Default: run every stale step. Idempotent.
 uv run shop-gen <seed_dir>... --out-dir outputs/shops/my-shop
+```
 
-# Step-targeted re-runs
-uv run shop-gen --from synth_identity   <seed>...   # rerun step + downstream
-uv run shop-gen --only gen_homepage     <seed>...   # rerun a single build-loop task
-uv run shop-gen --to assemble_data      <seed>...   # halt after Phase 2 (skip validate_hosting + build + final_eval)
+**2. Re-run a specific step (cascade downstream)** — `--from <step>`
+marks the named step and every downstream descendant stale on disk and
+re-runs them. `--only <step>` is the build-loop redo flag from spec
+§5.7.3: when invoked against a `[x]` task in
+`<out_dir>/runs/build/plan.md` it appends a fresh `<task>_redo_<N>`
+PENDING bullet and forces `run_build_harness_loop` to resume — the
+original `[x]` is never mutated.
 
-# Passive controls
+```bash
+uv run shop-gen --from synth_collections <seed>... --out-dir outputs/shops/my-shop
+uv run shop-gen --only gen_homepage      <seed>... --out-dir outputs/shops/my-shop
+```
+
+**3. Run up to a step (halt early)** — `--to <step>` slices the
+registry to `<step>` plus every transitive ancestor before execution,
+so the runner halts once `<step>` produces its outputs. Useful for
+stopping at a phase boundary (e.g. `--to assemble_data` produces the
+full `data/` tree without booting the `shop-backend` sidecar or
+running the build loop). Composes with `--from` / `--only`;
+force-stale ids must lie inside the slice.
+
+```bash
+uv run shop-gen --to assemble_data <seed>... --out-dir outputs/shops/my-shop
+```
+
+**4. Fresh run from scratch** — pick a different `--out-dir`. There is
+no destructive `--fresh` flag; a clean output directory gives you a
+deterministic clean run without putting an existing workspace at risk.
+
+```bash
+uv run shop-gen <seed>... --out-dir outputs/shops/my-shop-v2
+```
+
+#### Passive controls
+
+```bash
 uv run shop-gen --status     --out-dir outputs/shops/my-shop
 uv run shop-gen --list-steps
+```
 
-# Scale + behavior knobs
-uv run shop-gen <seed>... \
+#### Scale + behavior knobs
+
+```bash
+uv run shop-gen <seed>... --out-dir outputs/shops/my-shop \
     --collections 10 \
     --products-per-collection 20 \
     --images-per-product 2 \
@@ -82,21 +122,6 @@ uv run shop-gen <seed>... \
 directory produced by `shop-explore`. Pass two or more seeds to
 trigger Phase 1 (manual merge); a single seed takes the byte-for-byte
 copy fast path.
-
-`--from <step>` marks the named step and every downstream descendant
-stale on disk and re-runs them. `--only <step>` is the build-loop
-redo flag from spec §5.7.3: when invoked against a `[x]` task in
-`<out_dir>/runs/build/plan.md` it appends a fresh
-`<task>_redo_<N>` PENDING bullet and forces
-`run_build_harness_loop` to resume — the original `[x]` is never
-mutated.
-
-`--to <step>` slices the registry to `<step>` plus every transitive
-ancestor before execution, so the runner halts once `<step>` produces
-its outputs. Useful for stopping after a phase boundary (e.g.
-`--to assemble_data` produces the full `data/` tree without booting
-the `shop-backend` sidecar or running the build loop). Composes with
-`--from` / `--only`; force-stale ids must lie inside the slice.
 
 ### Library
 
@@ -151,7 +176,17 @@ entrypoint accepts a custom `LLMCompleter` for tests.
 
 The pipeline is a DAG of named steps grouped into five phases. The
 orchestrator computes staleness per step and re-runs only what's
-needed. `shop-gen --list-steps` prints the live registry.
+needed. `shop-gen --list-steps` prints the live registry; the table
+below is the same set, frozen as a copy/paste reference for
+`--from` / `--to` / `--only`.
+
+| Phase             | Steps (in registration order)                                                                                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `manual_merge`    | `copy_seed_manual` (single-seed)  •  `merge_capabilities`, `merge_manual_prose`, `compute_merge_stats`, `write_merge_manifest` (multi-seed)                                                                  |
+| `data_synth`      | `synth_identity`, `synth_store`, `synth_pages`, `synth_policies`, `synth_collections`, `synth_product_skeletons`, `synth_product_details`, `synth_alt_text`, `gen_images`, `synth_navigation`, `assemble_data` |
+| `data_validation` | `validate_schema`, `validate_hosting`                                                                                                                                                                        |
+| `build`           | `clone_template`, `write_env_file`, `start_sidecar`, `run_build_harness_loop`                                                                                                                                |
+| `final_eval`      | `final_eval`                                                                                                                                                                                                 |
 
 ```
 [phase 1: manual_merge]                     [phase 2: data_synth]
