@@ -1,0 +1,177 @@
+"""End-to-end test for ``shop-probe run --axes A`` (T1.8 — spec §7 M1 gate).
+
+Drives the CLI against the localhost SandboxShop fixture and asserts the
+emitted JSON validates as a closed :class:`ProbeReport`. M1 acceptance:
+
+* every rubric leaf in ``rubric/v1.yaml`` produces a ``ProbeResult`` row;
+* per-level + weighted coverage are computed per spec §5.3;
+* the rubric version + content hash, runner version, and the pinned
+  Playwright/Chromium runtime metadata are embedded in the report
+  header per spec §5.6 + §5.8;
+* the SandboxShop fixture is built to satisfy every M1 ``core`` probe,
+  so ``coverage_core`` lands at 1.0 (full pass) on a clean run.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+from shop_probe.cli import EXIT_OK, EXIT_USAGE, main
+from shop_probe.report import ProbeReport
+from shop_probe.rubric import load_rubric
+
+# `tests/` is on sys.path via pytest's rootdir; `_sandbox.py` lives there.
+_TESTS_ROOT = Path(__file__).resolve().parent
+if str(_TESTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TESTS_ROOT))
+
+from _sandbox import SandboxShop  # noqa: E402 — sys.path adjustment above
+
+_RUBRIC_V1_PATH: Path = (
+    Path(__file__).resolve().parent.parent / "src" / "shop_probe" / "rubric" / "v1.yaml"
+)
+
+
+def test_cli_run_emits_valid_probe_report(tmp_path: Path) -> None:
+    """Spec §7 M1 gate: ``shop-probe run --axes A`` against a localhost
+    SandboxShop produces a valid :class:`ProbeReport`."""
+    out_path = tmp_path / "report.json"
+    evidence_dir = tmp_path / "evidence"
+    with SandboxShop() as base_url:
+        rc = main(
+            [
+                "run",
+                base_url,
+                "--label",
+                "sandbox/fixture",
+                "--rubric",
+                "v1",
+                "--axes",
+                "A",
+                "--kind",
+                "sandbox",
+                "--pair-id",
+                "pair_fixture",
+                "--out",
+                str(out_path),
+                "--evidence-dir",
+                str(evidence_dir),
+            ]
+        )
+    assert rc == EXIT_OK
+    assert out_path.is_file()
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    report = ProbeReport.model_validate(payload)
+
+    # Every rubric leaf produced one ProbeResult row.
+    rubric = load_rubric(_RUBRIC_V1_PATH)
+    assert {r.id for r in report.probe_results} == {e.id for e in rubric.entries}
+
+    # Header carries the rubric version + content hash and runner metadata.
+    assert report.rubric_version == rubric.version
+    assert report.rubric_hash == rubric.content_hash
+    assert report.runner_version  # populated, non-empty
+    assert report.runtime.viewport == (1280, 800)
+    assert report.runtime.headless is True
+    assert "ShopProbe/" in report.runtime.user_agent
+    assert report.runtime.chromium_version
+    assert report.runtime.playwright_version
+
+    # The fixture is built to pass every M1 core probe.
+    assert report.coverage_core == pytest.approx(1.0)
+    assert report.coverage_weighted == pytest.approx(1.0)
+    # No modern / advanced probes ship in M1 — those slots stay at 0.0.
+    assert report.coverage_modern == 0.0
+    assert report.coverage_advanced == 0.0
+
+    # Per-category rollups cover the M1 slice.
+    assert {c.category for c in report.categories} == {
+        "site_shell",
+        "collection",
+        "product",
+        "cart",
+    }
+    for cat in report.categories:
+        assert cat.weight_total > 0
+        assert cat.coverage == pytest.approx(1.0)
+
+    # Evidence trail landed under the requested directory.
+    assert evidence_dir.is_dir()
+    # At least one PNG screenshot per probe id under evidence root.
+    captured = {p.parent.name for p in evidence_dir.rglob("*.png")}
+    # Every rubric probe captured at least one screenshot.
+    assert {e.id for e in rubric.entries}.issubset(captured)
+
+
+def test_cli_run_rejects_unsupported_axes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """M1 only wires axis A; B/C land in later milestones."""
+    rc = main(
+        [
+            "run",
+            "http://localhost:0",
+            "--label",
+            "sandbox/fixture",
+            "--axes",
+            "A,B",
+            "--kind",
+            "sandbox",
+            "--pair-id",
+            "pair_fixture",
+            "--out",
+            str(tmp_path / "report.json"),
+        ]
+    )
+    assert rc == EXIT_USAGE
+    captured = capsys.readouterr()
+    assert "not supported" in captured.err
+
+
+def test_cli_run_rejects_inconsistent_kind_and_pair_id(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--kind sandbox`` without ``--pair-id`` violates the Target invariant."""
+    rc = main(
+        [
+            "run",
+            "http://localhost:0",
+            "--label",
+            "sandbox/fixture",
+            "--kind",
+            "sandbox",
+            "--out",
+            str(tmp_path / "report.json"),
+        ]
+    )
+    assert rc == EXIT_USAGE
+    captured = capsys.readouterr()
+    assert "invalid target" in captured.err
+
+
+def test_cli_run_rejects_missing_rubric(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Unknown rubric names fail loudly before any browser launches."""
+    rc = main(
+        [
+            "run",
+            "http://localhost:0",
+            "--label",
+            "sandbox/fixture",
+            "--rubric",
+            "v999_missing",
+            "--kind",
+            "sandbox",
+            "--pair-id",
+            "pair_fixture",
+            "--out",
+            str(tmp_path / "report.json"),
+        ]
+    )
+    assert rc == EXIT_USAGE
+    captured = capsys.readouterr()
+    assert "v999_missing" in captured.err

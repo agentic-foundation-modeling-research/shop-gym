@@ -245,6 +245,23 @@ class ProbeRunner:
         self.evidence_root.mkdir(parents=True, exist_ok=True)
         return self
 
+    @property
+    def browser(self) -> Browser:
+        """Return the live :class:`Browser` instance.
+
+        Raises:
+            RuntimeError: If accessed outside the ``async with`` block.
+        """
+        if self._browser is None:
+            msg = "ProbeRunner must be used as an async context manager"
+            raise RuntimeError(msg)
+        return self._browser
+
+    @property
+    def chromium_version(self) -> str:
+        """Browser binary version reported by Playwright (spec §5.3 + §5.8)."""
+        return self.browser.version
+
     async def __aexit__(
         self,
         exc_type: type[BaseException] | None,

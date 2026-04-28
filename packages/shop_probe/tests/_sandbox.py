@@ -31,6 +31,7 @@ from __future__ import annotations
 import http.server
 import socketserver
 import threading
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from types import TracebackType
@@ -221,9 +222,34 @@ def _wrap(body: str, *, title: str = "Cart — FixtureShop") -> str:
 # HTTP server
 # --------------------------------------------------------------------------- #
 
+_SESSION_COOKIE: Final[str] = "shop_probe_session"
+"""Cookie name carrying the per-context cart session id."""
+
 
 class _Handler(http.server.BaseHTTPRequestHandler):
-    """Handler bound to the parent :class:`SandboxShop` via ``server.shop``."""
+    """Handler bound to the parent :class:`SandboxShop` via ``server.shop``.
+
+    Cart state is keyed by an HTTP cookie so each isolated browser context
+    (one per probe call in :class:`shop_probe.probes._runner.ProbeRunner`)
+    sees its own cart, mirroring how real Shopify storefronts scope cart
+    state by session id.
+    """
+
+    def _existing_session_id(self) -> str | None:
+        """Return the session id from the request cookie, or ``None``."""
+        cookie_header = self.headers.get("Cookie", "") or ""
+        for part in cookie_header.split(";"):
+            key, _, value = part.strip().partition("=")
+            if key == _SESSION_COOKIE and value:
+                return value
+        return None
+
+    def _ensure_session_id(self) -> tuple[str, bool]:
+        """Return ``(session_id, is_new)``; mints a fresh id when missing."""
+        existing = self._existing_session_id()
+        if existing is not None:
+            return existing, False
+        return uuid.uuid4().hex, True
 
     def _send(
         self,
@@ -231,17 +257,28 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         body: bytes,
         *,
         content_type: str = "text/html; charset=utf-8",
+        set_session: str | None = None,
     ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        if set_session is not None:
+            self.send_header(
+                "Set-Cookie",
+                f"{_SESSION_COOKIE}={set_session}; Path=/; HttpOnly",
+            )
         self.end_headers()
         self.wfile.write(body)
 
-    def _redirect(self, location: str) -> None:
+    def _redirect(self, location: str, *, set_session: str | None = None) -> None:
         self.send_response(303)
         self.send_header("Location", location)
         self.send_header("Content-Length", "0")
+        if set_session is not None:
+            self.send_header(
+                "Set-Cookie",
+                f"{_SESSION_COOKIE}={set_session}; Path=/; HttpOnly",
+            )
         self.end_headers()
 
     def do_GET(self) -> None:
@@ -257,7 +294,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, _PRODUCT_HTML.encode("utf-8"))
             return
         if path == "/cart":
-            body = _CART_WITH_ITEM_BODY if shop.cart_has_item() else _CART_EMPTY_BODY
+            sid = self._existing_session_id()
+            populated = sid is not None and shop.cart_has_item(sid)
+            body = _CART_WITH_ITEM_BODY if populated else _CART_EMPTY_BODY
             self._send(200, _wrap(body).encode("utf-8"))
             return
         if path.startswith("/static/"):
@@ -273,11 +312,14 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.rfile.read(length)  # discard form body; cart is single-product fixture
         path = self.path.split("?", 1)[0]
         if path == "/cart/add":
-            shop.add_to_cart()
-            self._redirect("/cart")
+            sid, is_new = self._ensure_session_id()
+            shop.add_to_cart(sid)
+            self._redirect("/cart", set_session=sid if is_new else None)
             return
         if path == "/cart/remove":
-            shop.clear_cart()
+            sid = self._existing_session_id()
+            if sid is not None:
+                shop.clear_cart(sid)
             self._redirect("/cart")
             return
         self._send(404, b"<h1>Not Found</h1>")
@@ -311,29 +353,29 @@ class SandboxShop:
     Use as a context manager. ``base_url`` is yielded once the server is
     bound to an ephemeral port and serving requests on a daemon thread.
 
-    Cart state is **fresh per instance** — tests that need an empty cart
-    create a new fixture, tests that need a populated cart simulate the
-    add-to-cart flow through the storefront UI.
+    Cart state is held **per HTTP session** (keyed by a cookie set on the
+    first ``POST /cart/add``). Each isolated Playwright browser context
+    therefore sees its own cart — matching real Shopify session scoping.
     """
 
     def __init__(self) -> None:
         self._server: _Server | None = None
         self._thread: threading.Thread | None = None
-        self._cart_count: int = 0
+        self._carts: dict[str, int] = {}
 
     # --- cart state used by the handler --------------------------------- #
 
-    def cart_has_item(self) -> bool:
-        """Return whether the in-memory cart has at least one line item."""
-        return self._cart_count > 0
+    def cart_has_item(self, session_id: str) -> bool:
+        """Return whether the cart for ``session_id`` has at least one line item."""
+        return self._carts.get(session_id, 0) > 0
 
-    def add_to_cart(self) -> None:
-        """Increment the cart line-item counter (POST /cart/add)."""
-        self._cart_count += 1
+    def add_to_cart(self, session_id: str) -> None:
+        """Increment the cart line-item counter for ``session_id`` (POST /cart/add)."""
+        self._carts[session_id] = self._carts.get(session_id, 0) + 1
 
-    def clear_cart(self) -> None:
-        """Empty the cart (POST /cart/remove)."""
-        self._cart_count = 0
+    def clear_cart(self, session_id: str) -> None:
+        """Empty the cart for ``session_id`` (POST /cart/remove)."""
+        self._carts.pop(session_id, None)
 
     # --- lifecycle ------------------------------------------------------- #
 
