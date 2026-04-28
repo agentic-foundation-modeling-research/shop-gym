@@ -35,12 +35,13 @@ from shop_gen.build.redo import RedoError, append_redo_task
 from shop_gen.config import (
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_MAX_ITERS,
-    DEFAULT_MODEL,
+    DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_RUNTIME,
     CatalogConfig,
     ImageBackend,
     RuntimeName,
     ShopGenConfig,
+    default_model_for,
 )
 from shop_gen.pipeline import (
     PHASES,
@@ -138,12 +139,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default=DEFAULT_MODEL,
+        default=None,
         metavar="MODEL",
         help=(
-            "Model identifier forwarded to the runtime as --model. Default: "
-            f"{DEFAULT_MODEL!r}. Pass the empty string to skip the flag and let "
-            "the runtime use its own default."
+            "Model identifier forwarded to the runtime as --model. Defaults are"
+            " per-runtime: "
+            f"{DEFAULT_MODEL_BY_RUNTIME['pi']!r} for runtime=pi, "
+            f"{DEFAULT_MODEL_BY_RUNTIME['claude_code']!r} for runtime=claude_code."
+            " Pass the empty string to skip the flag entirely and let the"
+            " runtime use its own default."
         ),
     )
     parser.add_argument(
@@ -319,10 +323,20 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
         catalog_kwargs["images_per_product"] = args.images_per_product
     catalog = CatalogConfig(**catalog_kwargs)
 
-    # Empty --model means "skip the flag and let the runtime pick its default".
-    model: str | None = args.model if args.model != "" else None
-
     runtime: RuntimeName = args.runtime
+    # ``--model`` semantics:
+    #   - omitted (None)  → fill the per-runtime application default.
+    #   - empty string "" → explicit opt-out; pass None so no --model flag
+    #                       is forwarded and the runtime's own default applies.
+    #   - any other str   → forward verbatim (subject to grammar validation
+    #                       in :class:`ShopGenConfig`).
+    if args.model is None:
+        model: str | None = default_model_for(runtime)
+    elif args.model == "":
+        model = None
+    else:
+        model = args.model
+
     image_backend: ImageBackend = args.image_backend
 
     return ShopGenConfig(

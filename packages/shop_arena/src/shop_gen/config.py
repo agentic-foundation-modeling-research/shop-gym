@@ -18,10 +18,13 @@ checks happen only when a config is *constructed*.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from harness.runtimes import validate_model_grammar
 
 RuntimeName = Literal["pi", "claude_code"]
 """Name of the agent runtime to drive the build-loop plan/exec phase."""
@@ -37,15 +40,38 @@ this same flag.
 DEFAULT_RUNTIME: Final[RuntimeName] = "pi"
 """Default agent runtime forwarded to the build harness loop."""
 
-DEFAULT_MODEL: Final[str] = "anthropic/claude-opus-4-7"
-"""Default model identifier forwarded to the runtime.
+DEFAULT_MODEL_BY_RUNTIME: Final[Mapping[RuntimeName, str]] = {
+    "pi": "anthropic/claude-opus-4-7",
+    "claude_code": "opus",
+}
+"""Per-runtime default model identifier in each runtime's native grammar.
 
-Pinned at the application layer (not the harness `PiRuntime`) so the
-repo-wide default is visible at the user-facing entrypoint and the
-harness package stays unopinionated about which model `pi` drives.
-Override per-run via :attr:`ShopGenConfig.model` or the ``--model``
-CLI flag.
+``pi`` uses provider-prefixed IDs (``anthropic/...``); the ``claude_code``
+CLI uses bare aliases (``opus``, ``sonnet``) or pinned IDs
+(``claude-opus-4-5``). The mapping pins the same Opus tier across both,
+expressed in the grammar each runtime expects — a single-grammar default
+would silently break the other runtime's CLI three layers downstream.
+
+Pinned at the application layer (not the harness runtimes) so the
+repo-wide defaults are visible at the user-facing entrypoint and the
+harness package stays unopinionated about which model each runtime
+drives. Override per-run via :attr:`ShopGenConfig.model` or the
+``--model`` CLI flag; pass ``--model ""`` to skip the flag and let the
+runtime apply its own default.
 """
+
+
+def default_model_for(runtime: RuntimeName) -> str:
+    """Return the repo-wide default agent model for ``runtime``.
+
+    Args:
+        runtime: Target agent runtime name.
+
+    Returns:
+        The default model identifier in ``runtime``'s native grammar.
+    """
+    return DEFAULT_MODEL_BY_RUNTIME[runtime]
+
 
 DEFAULT_MAX_ITERS: Final[int] = 30
 """Default executor budget for the build-loop (spec §4.1)."""
@@ -104,10 +130,15 @@ class ShopGenConfig(BaseModel):
             pipeline derive a name from the seed domain (single seed)
             or from ``identity.descriptor`` (multi-seed).
         runtime: Agent runtime to drive the Phase 4 build loop.
-        model: Model identifier forwarded to the runtime as
-            ``--model``. Defaults to :data:`DEFAULT_MODEL`. Set to
-            ``None`` to skip the flag and let the runtime pick its
-            own default.
+        model: Model identifier forwarded to the runtime as ``--model``.
+            ``None`` (the default) means "skip the flag and let the
+            runtime apply its own default". The CLI fills in
+            :func:`default_model_for` per ``runtime`` when ``--model`` is
+            omitted; programmatic callers can do the same or pass an
+            explicit value. Grammar is runtime-specific (see
+            :data:`DEFAULT_MODEL_BY_RUNTIME`); supplying a ``pi``-grammar
+            string with ``runtime="claude_code"`` (or vice versa) raises
+            ``ValidationError`` at config-construction time.
         catalog: Scale knobs (see :class:`CatalogConfig`).
         max_iters: Executor iteration budget for the build loop.
             Strictly positive.
@@ -121,7 +152,7 @@ class ShopGenConfig(BaseModel):
     out_dir: Path | None = None
     name: str | None = None
     runtime: RuntimeName = DEFAULT_RUNTIME
-    model: str | None = DEFAULT_MODEL
+    model: str | None = None
     catalog: CatalogConfig = Field(default_factory=CatalogConfig)
     max_iters: int = Field(default=DEFAULT_MAX_ITERS, gt=0)
     image_backend: ImageBackend = DEFAULT_IMAGE_BACKEND
@@ -165,6 +196,18 @@ class ShopGenConfig(BaseModel):
         for seed in self.seeds:
             if seed.exists() and not seed.is_dir():
                 raise ValueError(f"seed must be a directory, got file: {seed}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_model_grammar(self) -> ShopGenConfig:
+        """Reject ``model`` strings that don't match ``runtime``'s grammar.
+
+        Catches the common foot-gun of pairing a ``pi``-grammar model
+        (``anthropic/...``) with ``--runtime claude_code`` — the `claude`
+        CLI silently rejects the provider prefix three layers downstream.
+        Delegates to :func:`harness.runtimes.validate_model_grammar`.
+        """
+        validate_model_grammar(self.model, self.runtime)
         return self
 
 

@@ -15,6 +15,7 @@ relaxation introduced by ``docs/specs/harness/resume.md`` §5.6:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
@@ -22,10 +23,12 @@ from pydantic import ValidationError
 from harness.config import FinalStatus
 from shop_explore.config import (
     DEFAULT_MAX_ITERS,
-    DEFAULT_MODEL,
+    DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_TIMEOUT_SECONDS,
     ExploreConfig,
     ExploreResult,
+    RuntimeName,
+    default_model_for,
 )
 
 
@@ -34,14 +37,20 @@ def test_explore_config_defaults_match_spec() -> None:
     assert cfg.url == "https://example-shop.com"
     assert cfg.out_dir is None
     assert cfg.runtime == "pi"
-    assert cfg.model == DEFAULT_MODEL
+    assert cfg.model is None
     assert cfg.max_iters == DEFAULT_MAX_ITERS
     assert cfg.timeout == DEFAULT_TIMEOUT_SECONDS
 
 
-def test_explore_config_default_model_pins_opus_4_7() -> None:
-    """Repo-wide default agent model is pinned to Anthropic Opus 4.7."""
-    assert DEFAULT_MODEL == "anthropic/claude-opus-4-7"
+def test_default_model_for_returns_per_runtime_pinned_opus() -> None:
+    """Per-runtime defaults pin Opus in each runtime's native grammar."""
+    assert default_model_for("pi") == "anthropic/claude-opus-4-7"
+    assert default_model_for("claude_code") == "opus"
+
+
+def test_default_model_by_runtime_covers_every_runtime_name() -> None:
+    """Every ``RuntimeName`` literal has an entry in the defaults map."""
+    assert set(DEFAULT_MODEL_BY_RUNTIME.keys()) == set(get_args(RuntimeName))
 
 
 def test_explore_config_accepts_explicit_model() -> None:
@@ -52,6 +61,41 @@ def test_explore_config_accepts_explicit_model() -> None:
 def test_explore_config_accepts_none_model_to_use_runtime_default() -> None:
     cfg = ExploreConfig(url="https://example-shop.com", model=None)
     assert cfg.model is None
+
+
+def test_explore_config_rejects_pi_grammar_model_with_claude_code_runtime() -> None:
+    """Provider-prefixed IDs (``anthropic/...``) are pi grammar; reject them for claude_code.
+
+    Regression for the bug where the single repo-wide default
+    ``anthropic/claude-opus-4-7`` was forwarded verbatim to the ``claude``
+    CLI, which silently rejects the provider prefix far downstream.
+    """
+    with pytest.raises(ValidationError, match="provider-prefixed"):
+        ExploreConfig(
+            url="https://example-shop.com",
+            runtime="claude_code",
+            model="anthropic/claude-opus-4-7",
+        )
+
+
+def test_explore_config_accepts_claude_code_aliases() -> None:
+    """Bare aliases like ``opus`` are valid `claude` CLI grammar."""
+    cfg = ExploreConfig(
+        url="https://example-shop.com",
+        runtime="claude_code",
+        model="opus",
+    )
+    assert cfg.model == "opus"
+
+
+def test_explore_config_accepts_pi_grammar_model_with_pi_runtime() -> None:
+    """Provider-prefixed IDs are fine for runtime=pi (the only place they belong)."""
+    cfg = ExploreConfig(
+        url="https://example-shop.com",
+        runtime="pi",
+        model="anthropic/claude-opus-4-7",
+    )
+    assert cfg.model == "anthropic/claude-opus-4-7"
 
 
 def test_explore_config_accepts_http_and_https() -> None:

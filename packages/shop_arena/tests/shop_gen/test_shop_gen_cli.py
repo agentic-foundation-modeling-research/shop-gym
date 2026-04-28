@@ -33,9 +33,9 @@ from shop_gen.cli import EXIT_CONFIG, EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, main
 from shop_gen.config import (
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_MAX_ITERS,
-    DEFAULT_MODEL,
     DEFAULT_RUNTIME,
     ShopGenConfig,
+    default_model_for,
 )
 from shop_gen.pipeline import PHASES
 from shop_gen.steps.base import StepStatus
@@ -187,7 +187,7 @@ def test_default_run_builds_config_with_defaults(
     assert config.out_dir == out_dir
     assert config.name is None
     assert config.runtime == DEFAULT_RUNTIME
-    assert config.model == DEFAULT_MODEL
+    assert config.model == default_model_for("pi")
     assert config.max_iters == DEFAULT_MAX_ITERS
     assert config.image_backend == DEFAULT_IMAGE_BACKEND
     assert config.catalog.collections > 0
@@ -211,7 +211,7 @@ def test_default_run_threads_scale_and_runtime_knobs(
             "--runtime",
             "claude_code",
             "--model",
-            "anthropic/claude-3-5",
+            "claude-3-5-sonnet",
             "--max-iters",
             str(_EXPECTED_MAX_ITERS),
             "--collections",
@@ -229,7 +229,7 @@ def test_default_run_threads_scale_and_runtime_knobs(
     config = captured_run["config"]
     assert config.name == "acme"
     assert config.runtime == "claude_code"
-    assert config.model == "anthropic/claude-3-5"
+    assert config.model == "claude-3-5-sonnet"
     assert config.max_iters == _EXPECTED_MAX_ITERS
     assert config.catalog.collections == _EXPECTED_COLLECTIONS
     assert config.catalog.products_per_collection == _EXPECTED_PRODUCTS_PER_COLLECTION
@@ -246,6 +246,35 @@ def test_empty_model_flag_skips_runtime_default(
     rc = main([str(seed), "--out-dir", str(tmp_path / "out"), "--model", ""])
     assert rc == EXIT_OK
     assert captured_run["config"].model is None
+
+
+def test_default_run_rejects_pi_grammar_model_with_claude_code_runtime(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--runtime claude_code --model anthropic/...`` exits ``EXIT_CONFIG`` fast.
+
+    The pydantic ``ValidationError`` raised by
+    :func:`harness.runtimes.validate_model_grammar` is rendered as a CLI
+    config error rather than a stack trace, and the pipeline never runs.
+    """
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--runtime",
+            "claude_code",
+            "--model",
+            "anthropic/claude-opus-4-7",
+        ]
+    )
+    assert rc == EXIT_CONFIG
+    assert "config" not in captured_run
+    err = capsys.readouterr().err
+    assert "provider-prefixed" in err
 
 
 def test_default_run_accepts_multiple_seeds(

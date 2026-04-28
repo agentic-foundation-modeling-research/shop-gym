@@ -39,12 +39,16 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlsplit
 
+from pydantic import ValidationError
+
 from harness import get_runtime
 from shop_explore.config import (
     DEFAULT_MAX_ITERS,
-    DEFAULT_MODEL,
+    DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_TIMEOUT_SECONDS,
     ExploreConfig,
+    RuntimeName,
+    default_model_for,
 )
 from shop_explore.pipeline import build_runtime_llm, explore
 from shop_explore.prefetch import ShopUnreachableError
@@ -127,10 +131,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="MODEL",
         help=(
-            "Model identifier forwarded to the runtime as --model. Defaults to "
-            f"{DEFAULT_MODEL!r} for fresh runs; on resume defaults to the prior "
-            "run's value. Pass the empty string to skip the flag entirely and "
-            "let the runtime use its own default."
+            "Model identifier forwarded to the runtime as --model. Defaults are"
+            " per-runtime: "
+            f"{DEFAULT_MODEL_BY_RUNTIME['pi']!r} for runtime=pi, "
+            f"{DEFAULT_MODEL_BY_RUNTIME['claude_code']!r} for runtime=claude_code."
+            " On resume defaults to the prior run's value. Pass the empty"
+            " string to skip the flag entirely and let the runtime use its"
+            " own default."
         ),
     )
     parser.add_argument(
@@ -217,8 +224,8 @@ def _run_synthesize_only(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     manual_prompt = _load_manual_prompt()
-    runtime_name = args.runtime if args.runtime is not None else "pi"
-    model = _resolve_model_arg(args.model)
+    runtime_name: RuntimeName = args.runtime if args.runtime is not None else "pi"
+    model = _resolve_model_arg(args.model, runtime_name)
     timeout = args.timeout if args.timeout is not None else DEFAULT_TIMEOUT_SECONDS
     runtime = get_runtime(runtime_name, **_runtime_kwargs(model))
     try:
@@ -274,7 +281,9 @@ def _run_explore(args: argparse.Namespace) -> int:
             )
             return EXIT_USAGE
 
-    runtime = args.runtime if args.runtime is not None else _prior_or(prior, "runtime", "pi")
+    runtime: RuntimeName = (
+        args.runtime if args.runtime is not None else _prior_or(prior, "runtime", "pi")
+    )
     max_iters = (
         args.max_iters
         if args.max_iters is not None
@@ -286,20 +295,24 @@ def _run_explore(args: argparse.Namespace) -> int:
         else _prior_or(prior, "timeout", DEFAULT_TIMEOUT_SECONDS)
     )
     model = (
-        _resolve_model_arg(args.model)
+        _resolve_model_arg(args.model, runtime)
         if args.model is not None
-        else _prior_or(prior, "model", DEFAULT_MODEL)
+        else _prior_or(prior, "model", default_model_for(runtime))
     )
 
-    config = ExploreConfig(
-        url=args.url,
-        out_dir=args.out,
-        runtime=runtime,
-        model=model,
-        max_iters=max_iters,
-        timeout=timeout,
-        force_resume=args.force_resume,
-    )
+    try:
+        config = ExploreConfig(
+            url=args.url,
+            out_dir=args.out,
+            runtime=runtime,
+            model=model,
+            max_iters=max_iters,
+            timeout=timeout,
+            force_resume=args.force_resume,
+        )
+    except ValidationError as exc:
+        print(f"shop-explore: invalid configuration: {exc}", file=sys.stderr)
+        return EXIT_USAGE
     try:
         result = explore(config)
     except ShopUnreachableError as exc:
@@ -352,16 +365,16 @@ def _prior_or(prior: dict[str, Any] | None, key: str, default: Any) -> Any:
     return default if value is None else value
 
 
-def _resolve_model_arg(value: str | None) -> str | None:
+def _resolve_model_arg(value: str | None, runtime: RuntimeName) -> str | None:
     """Map ``--model`` argv to the value forwarded to the runtime.
 
-    ``None`` (flag omitted on a fresh run) yields :data:`DEFAULT_MODEL`.
-    The empty string ``""`` is the explicit opt-out: pass ``None`` to
-    the runtime so no ``--model`` flag is forwarded and the runtime's
-    own default applies.
+    ``None`` (flag omitted on a fresh run) yields the per-runtime default
+    via :func:`default_model_for`. The empty string ``""`` is the explicit
+    opt-out: pass ``None`` to the runtime so no ``--model`` flag is
+    forwarded and the runtime's own default applies.
     """
     if value is None:
-        return DEFAULT_MODEL
+        return default_model_for(runtime)
     if value == "":
         return None
     return value

@@ -118,10 +118,16 @@ to emulate `--from <step>` programmatically.
 loop. Resolution goes through `harness.get_runtime` (see
 `packages/harness`).
 
-| Runtime       | Notes                                                                  |
-| ------------- | ---------------------------------------------------------------------- |
-| `pi`          | **Default.** Native `pi` runtime; required for live runs. The default model is `anthropic/claude-opus-4-7` (override with `--model M`; pass `--model ""` to fall back to `pi`'s built-in default). |
-| `claude_code` | Alternative runtime. The `--model` flag is forwarded as `claude --model`; pass `--model ""` or a `claude`-friendly value when switching from the `pi` default. |
+| Runtime       | Default model                  | Notes                                                                  |
+| ------------- | ------------------------------ | ---------------------------------------------------------------------- |
+| `pi`          | `anthropic/claude-opus-4-7`    | **Default.** Native `pi` runtime; required for live runs. Model follows `pi`'s grammar (`sonnet:high`, `anthropic/...`). |
+| `claude_code` | `opus`                         | Alternative runtime; `--model` is forwarded as `claude --model` and follows the `claude` CLI's grammar (aliases like `opus`/`sonnet`, or pinned IDs like `claude-opus-4-5`). |
+
+The default model is per-runtime so the same `--model`-omitted invocation
+works for both grammars. Override per-run with `--model M`; pass `--model ""`
+to skip the flag and let the runtime use its built-in default. Mixing the
+two grammars (e.g. `--runtime claude_code --model anthropic/foo`) is
+rejected at config-construction time with a `ValidationError`.
 
 Tests use `harness.runtimes.replay` directly (not exposed as a CLI
 choice) so CI never pays for live LLM calls. See

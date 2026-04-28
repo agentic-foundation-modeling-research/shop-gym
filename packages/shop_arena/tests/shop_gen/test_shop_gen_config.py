@@ -14,6 +14,7 @@ Covers the validation requirements from
 from __future__ import annotations
 
 from pathlib import Path
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
@@ -23,12 +24,14 @@ from shop_gen.config import (
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_IMAGES_PER_PRODUCT,
     DEFAULT_MAX_ITERS,
-    DEFAULT_MODEL,
+    DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_PRODUCTS_PER_COLLECTION,
     DEFAULT_RUNTIME,
     CatalogConfig,
+    RuntimeName,
     ShopGenConfig,
     ShopGenResult,
+    default_model_for,
 )
 
 
@@ -84,15 +87,41 @@ def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
     assert cfg.out_dir is None
     assert cfg.name is None
     assert cfg.runtime == DEFAULT_RUNTIME
-    assert cfg.model == DEFAULT_MODEL
+    assert cfg.model is None
     assert cfg.max_iters == DEFAULT_MAX_ITERS
     assert cfg.image_backend == DEFAULT_IMAGE_BACKEND
     assert cfg.catalog == CatalogConfig()
 
 
-def test_shop_gen_config_default_model_pins_opus_4_7() -> None:
-    """Repo-wide default agent model is pinned to Anthropic Opus 4.7."""
-    assert DEFAULT_MODEL == "anthropic/claude-opus-4-7"
+def test_default_model_for_returns_per_runtime_pinned_opus() -> None:
+    """Per-runtime defaults pin Opus in each runtime's native grammar."""
+    assert default_model_for("pi") == "anthropic/claude-opus-4-7"
+    assert default_model_for("claude_code") == "opus"
+
+
+def test_default_model_by_runtime_covers_every_runtime_name() -> None:
+    """Every ``RuntimeName`` literal has an entry in the defaults map."""
+    assert set(DEFAULT_MODEL_BY_RUNTIME.keys()) == set(get_args(RuntimeName))
+
+
+def test_shop_gen_config_rejects_pi_grammar_model_with_claude_code_runtime(
+    tmp_path: Path,
+) -> None:
+    """Provider-prefixed IDs (``anthropic/...``) are pi grammar; reject for claude_code."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError, match="provider-prefixed"):
+        ShopGenConfig(
+            seeds=[seed],
+            runtime="claude_code",
+            model="anthropic/claude-opus-4-7",
+        )
+
+
+def test_shop_gen_config_accepts_claude_code_aliases(tmp_path: Path) -> None:
+    """Bare aliases like ``opus`` are valid `claude` CLI grammar."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], runtime="claude_code", model="opus")
+    assert cfg.model == "opus"
 
 
 def test_shop_gen_config_default_max_iters_is_30() -> None:

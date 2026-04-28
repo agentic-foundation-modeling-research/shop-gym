@@ -36,10 +36,10 @@ from shop_explore import cli as cli_mod
 from shop_explore.cli import EXIT_OK, EXIT_USAGE, main
 from shop_explore.config import (
     DEFAULT_MAX_ITERS,
-    DEFAULT_MODEL,
     DEFAULT_TIMEOUT_SECONDS,
     ExploreConfig,
     ExploreResult,
+    default_model_for,
 )
 
 BASE_URL = "https://example-shop.com"
@@ -453,7 +453,28 @@ def test_explore_fresh_run_uses_spec_defaults(
     assert config.max_iters == DEFAULT_MAX_ITERS
     assert config.timeout == DEFAULT_TIMEOUT_SECONDS
     assert config.force_resume is False
-    assert config.model == DEFAULT_MODEL
+    assert config.model == default_model_for("pi")
+
+
+def test_explore_fresh_run_claude_code_uses_per_runtime_default_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--runtime claude_code`` without ``--model`` picks the claude-grammar default.
+
+    Regression for the bug where the single repo-wide ``DEFAULT_MODEL``
+    (``anthropic/claude-opus-4-7``) was forwarded verbatim to the
+    ``claude`` CLI, which rejects the ``anthropic/`` provider prefix.
+    """
+    fresh_dir = tmp_path / "fresh"
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    rc = main(["--out", str(fresh_dir), "--runtime", "claude_code", BASE_URL])
+
+    assert rc == EXIT_OK
+    config = captured["config"]
+    assert config.runtime == "claude_code"
+    assert config.model == default_model_for("claude_code")
 
 
 def test_explore_fresh_run_passes_explicit_model_to_runtime(
@@ -482,3 +503,35 @@ def test_explore_fresh_run_empty_model_opts_out_of_default(
 
     assert rc == EXIT_OK
     assert captured["config"].model is None
+
+
+def test_explore_fresh_run_rejects_pi_grammar_model_with_claude_code_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--runtime claude_code --model anthropic/...`` exits ``EXIT_USAGE`` fast.
+
+    The pydantic ``ValidationError`` from
+    :func:`harness.runtimes.validate_model_grammar` is rendered as a CLI
+    usage error rather than a stack trace, and `explore()` is never
+    invoked.
+    """
+    fresh_dir = tmp_path / "fresh"
+    captured: dict[str, ExploreConfig] = {}
+    _stub_explore(monkeypatch, captured)
+
+    rc = main(
+        [
+            "--out",
+            str(fresh_dir),
+            "--runtime",
+            "claude_code",
+            "--model",
+            "anthropic/claude-opus-4-7",
+            BASE_URL,
+        ]
+    )
+
+    assert rc == EXIT_USAGE
+    assert "config" not in captured
+    err = capsys.readouterr().err
+    assert "provider-prefixed" in err
