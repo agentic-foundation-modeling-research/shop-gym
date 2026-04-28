@@ -92,7 +92,7 @@ versioned reports without manual editing (spec §4, §7 M6).
 ### M6 · Aggregation + paper figures (spec §7 M6)
 
 - [x] **T6.1** — `report_writer/tables.py`: per-pair fidelity table per spec §8.4 row 1 — one row per pair, three numbers per row + cohort-level intra-real control row. **Check:** rendered from versioned reports without manual editing.
-- [ ] **T6.2** — `report_writer/figures.py`: radar chart per spec §8.4 row 2 — per-category coverage with the 6-real-shop envelope shaded; sandboxes overlaid as polygons. **Check:** SVG/PNG output reproducible from `cohort/` reports.
+- [x] **T6.2** — `report_writer/figures.py`: radar chart per spec §8.4 row 2 — per-category coverage with the 6-real-shop envelope shaded; sandboxes overlaid as polygons. **Check:** SVG/PNG output reproducible from `cohort/` reports.
 - [ ] **T6.3** — Surface bar chart per spec §8.4 row 3 — per-metric sandbox value, source value, and `[min, max]` range over the 6 real shops as a range bar. **Check:** rendered from versioned reports.
 - [ ] **T6.4** — Turing chart per spec §8.4 row 4 — experimental judge accuracy per pair AND intra-real control accuracy with bootstrap 95% CIs; plots `|experimental − control|` against ε. **Check:** rendered from versioned reports.
 - [ ] **T6.5** — `cli.py`: `shop-probe report --cohort cohort.yaml --out figures/` per spec §4 wires T6.1–T6.4. **Check:** spec §7 M6 gate — figures 1–4 of the paper rendered from `cohort/` reports without manual editing.
