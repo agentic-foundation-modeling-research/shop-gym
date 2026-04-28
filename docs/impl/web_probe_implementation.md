@@ -69,7 +69,7 @@ versioned reports without manual editing (spec §4, §7 M6).
 
 ### M4 · Axis C v1 — blinded pairwise judge (spec §7 M4)
 
-- [ ] **T4.1** — `judge/trajectory.py`: closed `Trajectory` pydantic schema per spec §5.5 — ordered `(action, observation, reasoning)` tuples, screenshots, accessibility-tree snapshots. `extra="forbid"`. **Check:** schema round-trip tests.
+- [x] **T4.1** — `judge/trajectory.py`: closed `Trajectory` pydantic schema per spec §5.5 — ordered `(action, observation, reasoning)` tuples, screenshots, accessibility-tree snapshots. `extra="forbid"`. **Check:** schema round-trip tests.
 - [ ] **T4.2** — `judge/agent.py`: wrap `packages/harness` plan/exec loop with a Playwright runtime against the target URL; persist `Trajectory` per spec §5.5 step 2. **Check:** runs end-to-end against localhost SandboxShop; saved trajectory validates.
 - [ ] **T4.3** — `judge/tasks/v1.yaml`: ~10 judge-diagnostic tasks per spec §5.5 step 1 (visually rich, multi-page, interaction-heavy). Independent from the 108-task ShopGuru benchmark per spec §5.5.1. **Check:** loader validates; tasks reviewed for diagnosticity.
 - [ ] **T4.4** — Trajectory anonymization per spec §5.5 step 3: strip URL, brand strings, theme identifiers, OG metadata, favicon, distinctive product names; replace catalog identifiers with stable hashes. **Check:** unit test asserts no source-domain / brand / first-N-product-title leakage post-anonymization.
