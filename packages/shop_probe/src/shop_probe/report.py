@@ -29,7 +29,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shop_probe.surface.metrics import SurfaceMetrics
 from shop_probe.targets import Target
@@ -209,6 +209,41 @@ class JudgeCall(BaseModel):
     response_text: str
 
 
+class JudgeModelPin(BaseModel):
+    """Pinned LLM judge model identity (spec §5.5 step 5 + guardrails).
+
+    The spec §5.5 guardrails require pinning ``model + version + temperature``
+    in the report metadata so reviewers can re-attribute every
+    :class:`JudgeCall` to a specific model revision. v1 ships **one OpenAI
+    flagship model** (e.g. ``gpt-5``) at ``temperature=0`` (spec §5.5 step 5).
+
+    The model identity also enters the judge runtime via
+    :class:`shop_probe.judge.llm.PinnedJudge` — the same value is embedded
+    in the report header *and* threaded through every LLM call so the two
+    cannot drift across a run.
+
+    Attributes:
+        provider: LLM provider identifier (e.g. ``"openai"``). Free-form
+            string; the v1 cohort run pins ``"openai"``.
+        model: Model family name (e.g. ``"gpt-5"``). Pinned per spec §5.5
+            step 5.
+        model_version: Specific model revision the call resolved to
+            (e.g. ``"gpt-5-2025-09-01"``). Pinned per spec §5.5 guardrails
+            so revisioned upgrades surface as a different report header.
+        temperature: Sampling temperature. Spec §5.5 step 5 mandates
+            ``0.0``; the schema accepts ``[0, 2]`` so v1.1 cross-judge
+            sensitivity studies can re-use the same field without a
+            schema bump.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, protected_namespaces=())
+
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    model_version: str = Field(min_length=1)
+    temperature: float = Field(ge=0.0, le=2.0)
+
+
 class ProbeReport(BaseModel):
     """Closed report emitted per target per run (spec §5.6).
 
@@ -250,10 +285,12 @@ class ProbeReport(BaseModel):
         coverage_weighted: Weighted-mean coverage across categories.
         surface: Crawl-derived axis-B surface-area metrics
             (:class:`shop_probe.surface.metrics.SurfaceMetrics`); ``None``
-            on axis-A-only runs.
         judge_calls: Axis-C pairwise judge calls; empty for unpaired
             targets or axis-A-only runs.
-        rerun_index: 1-indexed run number within the N=3 rerun group
+        judge_model: Pinned LLM judge model + version + temperature
+            (spec §5.5 guardrails). Required when ``judge_calls`` is
+            non-empty so every reported call traces to a pinned model;
+            ``None`` on axis-A/B-only runs.
             (spec §5.8).
         flake_rate_per_probe: ``probe_id -> flake_rate ∈ [0, 1]`` from
             the rerun group; populated by the aggregation step.
@@ -282,7 +319,20 @@ class ProbeReport(BaseModel):
 
     # Axis C — empty for unpaired / axis-A-only runs (spec §5.6)
     judge_calls: tuple[JudgeCall, ...] = ()
+    judge_model: JudgeModelPin | None = None
 
     # Stability (spec §5.8)
     rerun_index: int = Field(ge=1)
     flake_rate_per_probe: dict[str, float] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_judge_model_pinned(self) -> ProbeReport:
+        """Reject reports that emit judge calls without a pinned model."""
+        if self.judge_calls and self.judge_model is None:
+            msg = (
+                "ProbeReport has judge_calls but no judge_model; spec §5.5 "
+                "guardrails require a pinned model + version + temperature "
+                "whenever the report carries axis-C calls"
+            )
+            raise ValueError(msg)
+        return self

@@ -25,6 +25,7 @@ from shop_probe.report import (
     CategoryScore,
     EvidenceRef,
     JudgeCall,
+    JudgeModelPin,
     ProbeReport,
     ProbeResult,
 )
@@ -99,6 +100,15 @@ def _judge_call() -> JudgeCall:
     )
 
 
+def _judge_model_pin() -> JudgeModelPin:
+    return JudgeModelPin(
+        provider="openai",
+        model="gpt-5",
+        model_version="gpt-5-2025-09-01",
+        temperature=0.0,
+    )
+
+
 def _probe_report(**overrides: object) -> ProbeReport:
     base: dict[str, object] = {
         "target": _SANDBOX_TARGET,
@@ -114,6 +124,7 @@ def _probe_report(**overrides: object) -> ProbeReport:
         "coverage_advanced": 0.0,
         "coverage_weighted": 0.74,
         "judge_calls": (_judge_call(),),
+        "judge_model": _judge_model_pin(),
         "rerun_index": 1,
         "flake_rate_per_probe": {"site_shell.header.sticky": 0.0},
     }
@@ -308,3 +319,72 @@ def test_probe_report_rejects_coverage_above_one() -> None:
 def test_probe_report_rejects_non_hex_rubric_hash() -> None:
     with pytest.raises(ValidationError):
         _probe_report(rubric_hash="not-a-real-hash")
+
+
+# --------------------------------------------------------------------------- #
+# JudgeModelPin (T4.6 — spec §5.5 step 5 + guardrails).
+# --------------------------------------------------------------------------- #
+
+
+def test_judge_model_pin_json_round_trip() -> None:
+    pin = _judge_model_pin()
+    assert JudgeModelPin.model_validate_json(pin.model_dump_json()) == pin
+
+
+def test_judge_model_pin_rejects_unknown_field() -> None:
+    payload = _judge_model_pin().model_dump()
+    payload["top_p"] = 0.9
+    with pytest.raises(ValidationError, match="top_p"):
+        JudgeModelPin.model_validate(payload)
+
+
+def test_judge_model_pin_is_frozen() -> None:
+    pin = _judge_model_pin()
+    with pytest.raises(ValidationError):
+        pin.model = "gpt-4"  # type: ignore[misc]
+
+
+def test_judge_model_pin_rejects_negative_temperature() -> None:
+    with pytest.raises(ValidationError):
+        JudgeModelPin(
+            provider="openai",
+            model="gpt-5",
+            model_version="gpt-5-2025-09-01",
+            temperature=-0.1,
+        )
+
+
+def test_judge_model_pin_accepts_v1_default_temperature_zero() -> None:
+    pin = JudgeModelPin(
+        provider="openai",
+        model="gpt-5",
+        model_version="gpt-5-2025-09-01",
+        temperature=0.0,
+    )
+    assert pin.temperature == 0.0
+
+
+def test_probe_report_with_judge_calls_requires_judge_model_pin() -> None:
+    """Spec §5.5 guardrails: a report carrying axis-C calls must pin the model."""
+    with pytest.raises(ValidationError, match="judge_model"):
+        _probe_report(judge_model=None)
+
+
+def test_probe_report_axis_a_only_run_omits_judge_model_pin() -> None:
+    """Axis-A/B-only runs may carry no judge calls and no model pin."""
+    report = _probe_report(judge_calls=(), judge_model=None)
+    assert report.judge_calls == ()
+    assert report.judge_model is None
+    assert ProbeReport.model_validate_json(report.model_dump_json()) == report
+
+
+def test_probe_report_pins_judge_model_in_header() -> None:
+    """T4.6 check: pin assertions in report header."""
+    report = _probe_report()
+    assert report.judge_model is not None
+    assert report.judge_model.provider == "openai"
+    assert report.judge_model.model == "gpt-5"
+    assert report.judge_model.temperature == 0.0
+    payload = json.loads(report.model_dump_json())
+    assert payload["judge_model"]["model"] == "gpt-5"
+    assert payload["judge_model"]["temperature"] == 0.0

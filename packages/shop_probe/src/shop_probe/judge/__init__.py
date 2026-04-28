@@ -9,6 +9,11 @@ from shop_probe.judge.anonymize import (
     anonymize_trajectory,
     hash_token,
 )
+from shop_probe.judge.llm import (
+    LLMClient,
+    PinnedJudge,
+    PinnedJudgeOutcome,
+)
 from shop_probe.judge.pairwise import (
     PairCondition,
     PairwisePair,
@@ -64,8 +69,11 @@ __all__ = [
     "JudgeTaskLoadError",
     "JudgeTaskSet",
     "JudgeTaskSurface",
+    "LLMClient",
     "PairCondition",
     "PairwisePair",
+    "PinnedJudge",
+    "PinnedJudgeOutcome",
     "Presentation",
     "SwapConsistencyResult",
     "Trajectory",
