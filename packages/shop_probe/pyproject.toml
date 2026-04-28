@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shop-probe"
+version = "0.0.0"
+description = "ShopProbe: structural-fidelity measurement instrument for Shopify-shaped storefronts."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "ShopGym" }]
+license = { text = "MIT" }
+dependencies = [
+  "pydantic>=2.8",
+  "pyyaml>=6.0",
+  "httpx>=0.27",
+  "playwright>=1.48",
+]
+
+[project.scripts]
+shop-probe = "shop_probe.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shop_probe"]

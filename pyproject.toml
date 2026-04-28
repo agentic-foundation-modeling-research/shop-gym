@@ -5,7 +5,7 @@ description = "ShopGym: sandbox shop websites for building and evaluating shoppi
 requires-python = ">=3.11"
 
 [tool.uv.workspace]
-members = ["packages/shop_guru", "packages/shop_arena", "packages/harness"]
+members = ["packages/shop_guru", "packages/shop_arena", "packages/harness", "packages/shop_probe"]
 
 [dependency-groups]
 dev = [
@@ -18,17 +18,19 @@ dev = [
   "shop-arena",
   "shop-guru",
   "harness",
+  "shop-probe",
 ]
 
 [tool.uv.sources]
 shop-arena = { workspace = true }
 shop-guru = { workspace = true }
 harness = { workspace = true }
+shop-probe = { workspace = true }
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["packages/shop_guru/src", "packages/shop_arena/src", "packages/harness/src"]
+src = ["packages/shop_guru/src", "packages/shop_arena/src", "packages/harness/src", "packages/shop_probe/src"]
 
 [tool.ruff.lint]
 select = [
@@ -53,13 +55,13 @@ convention = "google"
 quote-style = "double"
 
 [tool.pyright]
-include = ["packages/shop_guru/src", "packages/shop_arena/src", "packages/harness/src"]
+include = ["packages/shop_guru/src", "packages/shop_arena/src", "packages/harness/src", "packages/shop_probe/src"]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
-testpaths = ["packages/shop_guru/tests", "packages/shop_arena/tests", "packages/harness/tests"]
+testpaths = ["packages/shop_guru/tests", "packages/shop_arena/tests", "packages/harness/tests", "packages/shop_probe/tests"]
 addopts = "-ra --strict-markers"
 markers = [
   "smoke: live-CLI smoke tests; gated by HARNESS_SMOKE_* env vars",
