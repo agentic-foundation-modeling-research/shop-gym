@@ -52,7 +52,7 @@ versioned reports without manual editing (spec §4, §7 M6).
 
 ### M2 · Axis B + cohort wiring (spec §7 M2)
 
-- [ ] **T2.1** — `surface/metrics.py`: `SurfaceMetrics` pydantic model per spec §5.4 (11 fields). `extra="forbid"`. **Check:** schema unit tests.
+- [x] **T2.1** — `surface/metrics.py`: `SurfaceMetrics` pydantic model per spec §5.4 (11 fields). `extra="forbid"`. **Check:** schema unit tests.
 - [ ] **T2.2** — `surface/crawler.py`: depth-2 crawl from `/`, full enumeration of `/collections/*`, sampled `/products/*` up to N=20 per spec §5.4. Computes structural template fingerprint, interactables (median + p95), forms/fields, catalog counts, `filter × sort` state-space, gzipped DOM size, a11y-node counts. **Check:** unit tests against localhost fixture validate each metric independently.
 - [ ] **T2.3** — Wire axis B into `cli.py`: `--axes A,B` populates `report.surface`. **Check:** combined report validates; `surface.distinct_templates ≥ 3` on the localhost SandboxShop.
 - [ ] **T2.4** — `cohort.yaml` per spec §8.2: 3 sandbox/source pairs (hardware, hexclad, aloyoga) + 3 `real_unpaired` slots (TBD per spec §8.5 open question 1). Loadable via `targets.Cohort`. **Check:** loader validates; each `pair_id` ties exactly one `sandbox` and one `source`.
