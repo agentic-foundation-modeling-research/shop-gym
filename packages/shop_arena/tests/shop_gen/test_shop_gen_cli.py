@@ -68,9 +68,11 @@ def captured_run(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         config: ShopGenConfig,
         *,
         force_ids: frozenset[str] = frozenset(),
+        stop_at: str | None = None,
     ) -> None:
         captured["config"] = config
         captured["force_ids"] = force_ids
+        captured["stop_at"] = stop_at
 
     monkeypatch.setattr(cli_mod, "run", fake_run)
     return captured
@@ -390,6 +392,72 @@ def test_from_and_only_are_mutually_exclusive(
     assert "not allowed" in capsys.readouterr().err.lower()
 
 
+def test_to_threads_stop_at(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    seed = _make_seed(tmp_path)
+    rc = main([str(seed), "--out-dir", str(tmp_path / "out"), "--to", "assemble_data"])
+    assert rc == EXIT_OK
+    assert captured_run["stop_at"] == "assemble_data"
+    assert captured_run["force_ids"] == frozenset()
+
+
+def test_to_defaults_to_none_when_omitted(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    seed = _make_seed(tmp_path)
+    rc = main([str(seed), "--out-dir", str(tmp_path / "out")])
+    assert rc == EXIT_OK
+    assert captured_run["stop_at"] is None
+
+
+def test_to_composes_with_from(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """``--to`` and ``--from`` are independent: the slice plus the force-stale set."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--from",
+            "synth_collections",
+            "--to",
+            "assemble_data",
+        ],
+    )
+    assert rc == EXIT_OK
+    assert captured_run["force_ids"] == frozenset({"synth_collections"})
+    assert captured_run["stop_at"] == "assemble_data"
+
+
+def test_to_surfaces_value_error_from_pipeline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An unknown ``--to STEP`` raises ``ValueError`` in pipeline.run; surface as config error."""
+
+    def fake_run(
+        _config: ShopGenConfig,
+        *,
+        force_ids: frozenset[str] = frozenset(),
+        stop_at: str | None = None,
+    ) -> None:
+        del force_ids
+        raise ValueError(f"--to target {stop_at!r} is not registered for this run")
+
+    monkeypatch.setattr(cli_mod, "run", fake_run)
+    seed = _make_seed(tmp_path)
+    rc = main([str(seed), "--out-dir", str(tmp_path / "out"), "--to", "ghost"])
+    assert rc == EXIT_CONFIG
+    assert "ghost" in capsys.readouterr().err
+
+
 def test_status_and_list_steps_are_mutually_exclusive(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -410,8 +478,13 @@ def test_default_run_surfaces_runner_dag_error(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def boom(_config: ShopGenConfig, *, force_ids: frozenset[str] = frozenset()) -> None:
-        del force_ids
+    def boom(
+        _config: ShopGenConfig,
+        *,
+        force_ids: frozenset[str] = frozenset(),
+        stop_at: str | None = None,
+    ) -> None:
+        del force_ids, stop_at
         raise CycleError("simulated cycle")
 
     monkeypatch.setattr(cli_mod, "run", boom)

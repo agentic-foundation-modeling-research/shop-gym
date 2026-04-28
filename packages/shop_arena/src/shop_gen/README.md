@@ -61,6 +61,7 @@ uv run shop-gen <seed_dir>... --out-dir outputs/shops/my-shop
 # Step-targeted re-runs
 uv run shop-gen --from synth_identity   <seed>...   # rerun step + downstream
 uv run shop-gen --only gen_homepage     <seed>...   # rerun a single build-loop task
+uv run shop-gen --to assemble_data      <seed>...   # halt after Phase 2 (skip validate_hosting + build + final_eval)
 
 # Passive controls
 uv run shop-gen --status     --out-dir outputs/shops/my-shop
@@ -89,6 +90,13 @@ redo flag from spec §5.7.3: when invoked against a `[x]` task in
 `<task>_redo_<N>` PENDING bullet and forces
 `run_build_harness_loop` to resume — the original `[x]` is never
 mutated.
+
+`--to <step>` slices the registry to `<step>` plus every transitive
+ancestor before execution, so the runner halts once `<step>` produces
+its outputs. Useful for stopping after a phase boundary (e.g.
+`--to assemble_data` produces the full `data/` tree without booting
+the `shop-backend` sidecar or running the build loop). Composes with
+`--from` / `--only`; force-stale ids must lie inside the slice.
 
 ### Library
 

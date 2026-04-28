@@ -150,6 +150,50 @@ def resolve_dag(steps: Iterable[Step]) -> list[Step]:
     return order
 
 
+def select_ancestors_inclusive(steps: Iterable[Step], stop_at: str) -> list[Step]:
+    """Return ``stop_at`` and every transitive ``depends_on`` ancestor.
+
+    Used by :func:`shop_gen.pipeline.run` to honour the CLI's ``--to STEP``
+    flag (spec §5.7.4): the runner is restricted to the upstream cone of
+    ``stop_at`` so the pipeline halts once that step has produced its
+    outputs. Order within the returned list is irrelevant — callers pass
+    it through :func:`resolve_dag` before execution.
+
+    Args:
+        steps: Steps to slice. The full per-run registry is the typical
+            input.
+        stop_at: Step id at which execution should stop.
+
+    Returns:
+        A list containing ``stop_at`` and all of its transitive
+            ancestors. No duplicates; order is registration order with
+            ancestors filtered in.
+
+    Raises:
+        MissingDependencyError: ``stop_at`` is not present in ``steps``,
+            or one of its transitive ``depends_on`` ids is unregistered.
+    """
+    by_id: dict[str, Step] = {step.id: step for step in steps}
+    if stop_at not in by_id:
+        raise MissingDependencyError(
+            f"--to target {stop_at!r} is not registered for this run",
+        )
+    keep: set[str] = set()
+    pending: list[str] = [stop_at]
+    while pending:
+        sid = pending.pop()
+        if sid in keep:
+            continue
+        step = by_id.get(sid)
+        if step is None:
+            raise MissingDependencyError(
+                f"step {stop_at!r} transitively depends on unregistered step {sid!r}",
+            )
+        keep.add(sid)
+        pending.extend(step.depends_on)
+    return [step for step in by_id.values() if step.id in keep]
+
+
 def _validate_dependencies(by_id: dict[str, Step]) -> None:
     """Validate ``depends_on`` closure and the ``StepInput`` ⊆ ``depends_on`` rule.
 
@@ -391,4 +435,5 @@ __all__ = [
     "compute_staleness",
     "resolve_dag",
     "run_pipeline",
+    "select_ancestors_inclusive",
 ]

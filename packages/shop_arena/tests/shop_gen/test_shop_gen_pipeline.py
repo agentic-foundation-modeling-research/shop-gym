@@ -419,6 +419,93 @@ def test_run_is_idempotent_on_second_invocation(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# stop_at (--to STEP)
+# --------------------------------------------------------------------------- #
+
+
+def _register_chain(reg: Registry, steps: list[_NoOpStep]) -> None:
+    for step in steps:
+        reg.register(cast(Step, step))
+
+
+def _make_chain(*ids: str) -> list[_NoOpStep]:
+    """Build a linear chain ``id[0] <- id[1] <- ... <- id[-1]`` of no-op steps."""
+    chain: list[_NoOpStep] = []
+    for idx, sid in enumerate(ids):
+        step = _NoOpStep(sid, "data_synth")
+        if idx > 0:
+            step.depends_on = [ids[idx - 1]]
+        chain.append(step)
+    return chain
+
+
+def test_run_stop_at_only_executes_target_and_ancestors(tmp_path: Path) -> None:
+    """``stop_at`` slices the registry to the upstream cone of the target."""
+    [seed] = _make_seeds(tmp_path, 1)
+    out_dir = tmp_path / "shop"
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    chain = _make_chain("alpha", "beta", "gamma", "delta")
+
+    with (
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(
+            pipeline,
+            "_register_data_synth",
+            lambda reg, **_: _register_chain(reg, chain),
+        ),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+    ):
+        run(config, stop_at="beta")
+
+    calls = {step.id: step.calls for step in chain}
+    assert calls == {"alpha": 1, "beta": 1, "gamma": 0, "delta": 0}
+
+
+def test_run_stop_at_unknown_step_raises_value_error(tmp_path: Path) -> None:
+    [seed] = _make_seeds(tmp_path, 1)
+    out_dir = tmp_path / "shop"
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    chain = _make_chain("alpha", "beta")
+
+    with (
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(
+            pipeline,
+            "_register_data_synth",
+            lambda reg, **_: _register_chain(reg, chain),
+        ),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        pytest.raises(ValueError, match="ghost"),
+    ):
+        run(config, stop_at="ghost")
+
+
+def test_run_stop_at_rejects_force_id_outside_cone(tmp_path: Path) -> None:
+    """``--from STEP`` outside the slice surfaces a clear config error."""
+    [seed] = _make_seeds(tmp_path, 1)
+    out_dir = tmp_path / "shop"
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    chain = _make_chain("alpha", "beta", "gamma")
+
+    with (
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(
+            pipeline,
+            "_register_data_synth",
+            lambda reg, **_: _register_chain(reg, chain),
+        ),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        pytest.raises(ValueError, match="upstream cone"),
+    ):
+        run(config, force_ids=frozenset({"gamma"}), stop_at="alpha")
+
+# --------------------------------------------------------------------------- #
 # status
 # --------------------------------------------------------------------------- #
 

@@ -65,8 +65,14 @@ from shop_gen.manual_merge import (
     MergeManualProseStep,
     WriteMergeManifestStep,
 )
-from shop_gen.steps.base import StepContext, StepStatus
-from shop_gen.steps.runner import Registry, RunResult, run_pipeline
+from shop_gen.steps.base import Step, StepContext, StepStatus
+from shop_gen.steps.runner import (
+    MissingDependencyError,
+    Registry,
+    RunResult,
+    run_pipeline,
+    select_ancestors_inclusive,
+)
 from shop_gen.steps.state import read_state, state_path
 
 PHASES: Final[tuple[str, ...]] = (
@@ -133,6 +139,7 @@ def run(
     config: ShopGenConfig,
     *,
     force_ids: frozenset[str] = frozenset(),
+    stop_at: str | None = None,
 ) -> ShopGenResult:
     """Execute the ``shop_gen`` pipeline for ``config``.
 
@@ -150,6 +157,11 @@ def run(
             fingerprint. Plumbing for the CLI's ``--from`` / ``--only``
             flags (spec §5.7.4); downstream descendants cascade to
             stale via :func:`shop_gen.steps.runner.compute_staleness`.
+        stop_at: Optional step id at which to halt the run. When set,
+            the registry is sliced to ``stop_at`` and every transitive
+            ancestor via :func:`shop_gen.steps.runner.select_ancestors_inclusive`
+            — every step strictly downstream is dropped before
+            execution. Plumbing for the CLI's ``--to`` flag.
 
     Returns:
         A :class:`~shop_gen.config.ShopGenResult` anchored at the
@@ -157,7 +169,9 @@ def run(
 
     Raises:
         ValueError: ``config.out_dir`` is ``None`` and a default cannot
-            be derived (multi-seed without an explicit ``name``).
+            be derived (multi-seed without an explicit ``name``); or
+            ``stop_at`` is not a registered step id; or a member of
+            ``force_ids`` is not in the upstream cone of ``stop_at``.
         shop_gen.steps.runner.CycleError: ``depends_on`` contains a
             cycle.
         shop_gen.steps.runner.MissingDependencyError: A registered
@@ -169,11 +183,22 @@ def run(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     registry = _build_registry(config)
+    steps: list[Step] = registry.all()
+    if stop_at is not None:
+        try:
+            steps = select_ancestors_inclusive(steps, stop_at)
+        except MissingDependencyError as exc:
+            raise ValueError(str(exc)) from exc
+        kept_ids = {step.id for step in steps}
+        outside = sorted(force_ids - kept_ids)
+        if outside:
+            raise ValueError(
+                f"force_ids {outside!r} are not in the upstream cone of --to {stop_at!r}",
+            )
     ctx = StepContext(config=config, out_dir=out_dir)
-    _: RunResult = run_pipeline(registry.all(), ctx, force_ids=force_ids)
+    _: RunResult = run_pipeline(steps, ctx, force_ids=force_ids)
 
     return _result_for(out_dir)
-
 
 def status(out_dir: Path) -> StatusReport:
     """Read ``state.json`` from ``out_dir`` and project a status table.

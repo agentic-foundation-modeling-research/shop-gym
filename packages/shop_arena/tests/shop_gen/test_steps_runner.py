@@ -35,6 +35,7 @@ from shop_gen.steps.runner import (
     compute_staleness,
     resolve_dag,
     run_pipeline,
+    select_ancestors_inclusive,
 )
 from shop_gen.steps.state import (
     StateFile,
@@ -166,6 +167,59 @@ def test_resolve_dag_accepts_diamond() -> None:
     assert order[0] == "a"
     assert order[-1] == "d"
     assert set(order[1:3]) == {"b", "c"}
+
+
+# --------------------------------------------------------------------------- #
+# select_ancestors_inclusive
+# --------------------------------------------------------------------------- #
+
+
+def test_select_ancestors_inclusive_returns_chain_to_target() -> None:
+    a = _RecordingStep(id="a")
+    b = _RecordingStep(id="b", depends_on=["a"])
+    c = _RecordingStep(id="c", depends_on=["b"])
+    d = _RecordingStep(id="d", depends_on=["c"])
+    kept = {
+        step.id
+        for step in select_ancestors_inclusive(
+            [_as_step(a), _as_step(b), _as_step(c), _as_step(d)],
+            stop_at="c",
+        )
+    }
+    assert kept == {"a", "b", "c"}
+
+
+def test_select_ancestors_inclusive_drops_strictly_downstream_branches() -> None:
+    """A diamond beneath ``stop_at`` is excluded; siblings outside the cone are dropped."""
+    a = _RecordingStep(id="a")
+    b = _RecordingStep(id="b", depends_on=["a"])
+    c = _RecordingStep(id="c", depends_on=["a"])
+    d = _RecordingStep(id="d", depends_on=["b", "c"])
+    e = _RecordingStep(id="e", depends_on=["d"])
+    f = _RecordingStep(id="f")  # parallel branch unrelated to d
+    steps = [_as_step(a), _as_step(b), _as_step(c), _as_step(d), _as_step(e), _as_step(f)]
+    kept = {step.id for step in select_ancestors_inclusive(steps, stop_at="d")}
+    assert kept == {"a", "b", "c", "d"}
+
+
+def test_select_ancestors_inclusive_returns_only_target_for_root() -> None:
+    a = _RecordingStep(id="a")
+    b = _RecordingStep(id="b", depends_on=["a"])
+    kept = {step.id for step in select_ancestors_inclusive([_as_step(a), _as_step(b)], stop_at="a")}
+    assert kept == {"a"}
+
+
+def test_select_ancestors_inclusive_rejects_unknown_target() -> None:
+    a = _RecordingStep(id="a")
+    with pytest.raises(MissingDependencyError, match="ghost"):
+        select_ancestors_inclusive([_as_step(a)], stop_at="ghost")
+
+
+def test_select_ancestors_inclusive_rejects_unregistered_ancestor() -> None:
+    """A dangling ``depends_on`` edge in the upstream cone surfaces clearly."""
+    a = _RecordingStep(id="a", depends_on=["phantom"])
+    with pytest.raises(MissingDependencyError, match="phantom"):
+        select_ancestors_inclusive([_as_step(a)], stop_at="a")
 
 
 # --------------------------------------------------------------------------- #

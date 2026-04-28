@@ -210,6 +210,17 @@ def _build_parser() -> argparse.ArgumentParser:
             "lands when concrete steps require it."
         ),
     )
+    parser.add_argument(
+        "--to",
+        dest="to_step",
+        default=None,
+        metavar="STEP",
+        help=(
+            "Stop the run at <step>: drops every step strictly downstream "
+            "of <step> from the registry before execution, so only <step> "
+            "and its transitive ancestors run. Composes with --from / --only."
+        ),
+    )
 
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -295,7 +306,7 @@ def _run_default(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
         print(redo_message, file=sys.stderr)
 
     try:
-        run(config, force_ids=force_ids)
+        run(config, force_ids=force_ids, stop_at=args.to_step)
     except (CycleError, MissingDependencyError) as exc:
         print(f"shop-gen: pipeline DAG error: {exc}", file=sys.stderr)
         return EXIT_RUNTIME
