@@ -255,6 +255,75 @@ is the `--only gen_<task>` redo flow above.
 
 ---
 
+## Re-runs and staleness
+
+Re-running `shop-gen` against the same `--out-dir` is **idempotent**:
+every step that is already up to date is skipped, and only stale
+steps run. This is what makes Workflow 2 (re-run a specific step) and
+Workflow 3 (halt at a step, then continue later) safe and cheap.
+
+### When is a step stale?
+
+A step is marked stale (re-run) if **any** of these are true; otherwise
+it is fresh and skipped:
+
+| # | Trigger                                                                                                            | Typical cause                                                            |
+| - | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| 1 | Step id is in `force_ids`                                                                                          | You passed `--from <id>` or `--only <id>`                                |
+| 2 | Any upstream step is stale                                                                                         | Cascade — re-running A re-runs everything downstream of A                |
+| 3 | No state record • fingerprint is `None` • last status was `FAILED` / `RUNNING` / `PENDING`                         | First run, prior crash, prior failure (`RUNNING` left over = mid-run kill) |
+| 4 | Any declared output file is missing on disk                                                                        | You deleted artifacts under `<out_dir>/`                                 |
+| 5 | Any declared input file is missing, or an upstream `StepInput` has no fingerprint                                  | Seed file got moved/deleted, upstream step never ran                     |
+| 6 | Recorded fingerprint ≠ freshly computed fingerprint                                                                | A seed file's bytes changed                                              |
+
+The fingerprint is `sha256` over each declared input: file contents
+for `FileInput`, upstream fingerprint for `StepInput`. Edits to seed
+files therefore cascade through the DAG automatically (rows 2 + 6).
+
+### Where state lives
+
+`<out_dir>/.shop_gen/state.json` — per-step status, fingerprint, and
+ISO-8601 timestamp. The runner writes it after every transition
+(`RUNNING` on entry, `FRESH` on success, `FAILED` on exception), so a
+crash mid-run is recoverable: the next invocation picks up from the
+last clean checkpoint.
+
+### Inspecting a workspace before re-running
+
+```bash
+# Per-step status table (id, phase, status, fingerprint, last ts).
+uv run shop-gen --status --out-dir outputs/shops/my-shop
+
+# Raw record — useful when you want to diff fingerprints across runs.
+cat outputs/shops/my-shop/.shop_gen/state.json
+```
+
+The progress logs (see [Progress logging](#progress-logging)) also
+make staleness visible per step. A re-run with one stale upstream
+looks like:
+
+```
+22:01:14 shop-gen INFO: start run — out_dir=outputs/shops/my-shop seeds=1 …
+22:01:14 shop-gen INFO: skip copy_seed_manual (manual_merge) — fresh
+22:01:14 shop-gen INFO: skip synth_identity (data_synth) — fresh
+22:01:14 shop-gen INFO: run  synth_collections (data_synth) — starting     ← stale
+22:01:42 shop-gen INFO: done synth_collections (data_synth) — ok in 27.84s
+22:01:42 shop-gen INFO: run  synth_navigation (data_synth) — starting       ← cascade
+…
+22:02:18 shop-gen INFO: end run   — ran=4 skipped=7 total=1m04.2s
+```
+
+### Subtle case: untracked file mutations
+
+The fingerprint cascade only sees files a step has *declared* as
+`FileInput` / `StepInput`. If you mutate a workspace file that no step
+declares (e.g. you hand-edit `data/products.json` after Phase 2
+completes), the runner has no way to detect the change and will
+happily skip downstream steps. Stick to editing seeds, or use
+`--from <step>` to force the cone of re-runs explicitly.
+
+---
+
 ## Output layout
 
 `out_dir` is the run workspace. Every published artifact lives at a
