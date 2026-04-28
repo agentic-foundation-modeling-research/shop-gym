@@ -76,7 +76,7 @@ versioned reports without manual editing (spec §4, §7 M6).
 - [x] **T4.5** — `judge/pairwise.py`: pair construction per spec §5.5 step 4 — experimental `(sandbox_i, source_i)` and control `(real_a, real_b)` (sampled without replacement from 6 real shops). **Check:** unit test asserts experimental + control populations are disjoint where required and that the 6-real-shop pool is honored.
 - [ ] **T4.6** — Pinned single-judge wiring per spec §5.5 step 5 + §5.5 guardrails: one OpenAI flagship model (e.g. `gpt-5`); temperature 0; pin model + version in `BrowserMeta`/report metadata; save full prompt + full response per call; force evidence citation; discard calls without evidence. **Check:** golden-prompt unit test using a stub LLM; pin assertions in report header.
 - [x] **T4.7** — `judge/prompts/v1/system.md` + `judge/prompts/v1/pairwise.md` per spec §8.3. Identical prompt for experimental and control pairs; judge unaware of condition (spec §5.5 step 5). **Check:** lint-only; prompt content hash embedded in `JudgeCall.prompt_hash`.
-- [ ] **T4.8** — Position-bias check per spec §5.5 step 6: re-run with A/B swapped; drop pairs where the judge flips on swap; report drop rate. **Check:** swap-consistency unit test on a stub-judge fixture.
+- [x] **T4.8** — Position-bias check per spec §5.5 step 6: re-run with A/B swapped; drop pairs where the judge flips on swap; report drop rate. **Check:** swap-consistency unit test on a stub-judge fixture.
 - [ ] **T4.9** — Run pairwise judge on `pair_hardware` per spec §7 M4 gate. **Check:** spec §7 M4 gate — swap-inconsistency rate ≤ 5%; HAR captures + screenshots saved; control-pair construction validated against the 6-real-shop list.
 
 **M4 acceptance:** spec §7 M4 gate.

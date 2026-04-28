@@ -22,6 +22,15 @@ from shop_probe.judge.prompts import (
     JudgePromptSet,
     load_judge_prompts,
 )
+from shop_probe.judge.swap import (
+    JudgeCallable,
+    Presentation,
+    SwapConsistencyResult,
+    evaluate_swap_consistency,
+    is_swap_consistent,
+    presentations_for,
+    swap_drop_rate,
+)
 from shop_probe.judge.tasks import (
     JudgeTask,
     JudgeTaskInteraction,
@@ -45,6 +54,7 @@ __all__ = [
     "REDACTED_THEME",
     "REQUIRED_PAIRWISE_PLACEHOLDERS",
     "AnonymizationPlan",
+    "JudgeCallable",
     "JudgePromptLoadError",
     "JudgePromptSet",
     "JudgeTask",
@@ -54,6 +64,8 @@ __all__ = [
     "JudgeTaskSurface",
     "PairCondition",
     "PairwisePair",
+    "Presentation",
+    "SwapConsistencyResult",
     "Trajectory",
     "TrajectoryAction",
     "TrajectoryObservation",
@@ -63,9 +75,13 @@ __all__ = [
     "build_control_pairs",
     "build_experimental_pairs",
     "build_task_pairs",
+    "evaluate_swap_consistency",
     "hash_token",
+    "is_swap_consistent",
     "load_judge_prompts",
     "load_judge_tasks",
     "load_judge_tasks_bytes",
+    "presentations_for",
     "real_shop_pool",
+    "swap_drop_rate",
 ]
