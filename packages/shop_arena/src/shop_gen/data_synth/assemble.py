@@ -14,14 +14,18 @@ six published files under ``<out_dir>/data/``:
 * ``policies.json``
 * ``navigation.json``
 
-After the pydantic-validated payload is built, the orchestrator runs
-the :mod:`shop_gen.brands.allowlist` scanner over every string field.
-Any non-allowlisted brand-shaped token (spec §5.6) is a step-fatal
-:class:`BrandLeakError`; before raising, the step **rewinds the
-upstream synthesis step's state record** (status → ``PENDING``,
-fingerprint → ``None``) so the next pipeline run regenerates the
-offending stage rather than reusing the cached output. There is no
-silent redaction (spec §5.6: "A leak is a loud failure").
+After the pydantic-validated payload is built, the orchestrator would
+historically run the :mod:`shop_gen.brands.allowlist` scanner over
+every string field. **As of v0.1.x that assemble-time scrub is
+disabled** (see spec §5.6 "Current status"): the simple
+``[A-Z][A-Za-z]+`` tokenizer cannot distinguish brand-shaped tokens
+from Title-Cased English plurals, which dominate legitimate
+storefront navigation ("Card Readers", "Pin Pads", "Receipt
+Printers"). The build-loop ``no_brand_leak`` verifier (§5.5.3) still
+runs over ``hydrogen/app/**``. The helpers (:func:`scan_for_brand_leaks`,
+:class:`BrandLeakError`, :func:`_walk_strings`, :func:`_step_for_field_path`)
+remain in this module so a smarter v0.2 tokenizer can re-enable the
+scrub without re-deriving the field-path → upstream-step mapping.
 
 Step contract (spec §5.7.1):
 
@@ -65,13 +69,7 @@ from shop_gen.data_synth.schema import (
     Store,
 )
 from shop_gen.data_synth.skeletons import ProductSkeleton
-from shop_gen.steps.base import InputRef, StepContext, StepInput, StepStatus
-from shop_gen.steps.state import (
-    StepStateRecord,
-    read_state,
-    upsert_step_state,
-    write_state,
-)
+from shop_gen.steps.base import InputRef, StepContext, StepInput
 
 _PHASE: Final[str] = "data_synth"
 _STEP_ID: Final[str] = "assemble_data"
@@ -373,7 +371,12 @@ class AssembleDataStep:
         self.version: int = _STEP_VERSION
 
     def run(self, ctx: StepContext) -> None:
-        """Assemble the final ``data/*.json`` files and run the brand-leak scrub.
+        """Assemble the final ``data/*.json`` files.
+
+        The assemble-time brand-leak scrub is currently disabled (see
+        the module docstring and spec §5.6 "Current status"); brand
+        safety is enforced at build time by the ``no_brand_leak``
+        verifier (§5.5.3) over ``hydrogen/app/**``.
 
         Args:
             ctx: Execution context. ``ctx.runtime`` is unused — the step
@@ -383,10 +386,6 @@ class AssembleDataStep:
             FileNotFoundError: Any upstream cached file is missing.
             StageSynthError: A cached file is malformed or a skeleton
                 has no matching detail / image entry.
-            BrandLeakError: The allowlist scanner found a
-                non-allowlisted brand-shaped token. The offending
-                upstream step's state record is rewound before the
-                exception propagates.
         """
         identity = _load_json_object(ctx.out_dir / _IN_IDENTITY, label="identity.json")
         store_payload = _load_json_object(ctx.out_dir / _IN_STORE, label="store cache")
@@ -420,17 +419,7 @@ class AssembleDataStep:
             image_manifest=image_manifest,
             navigation_payload=navigation_payload,
         )
-
-        leak = scan_for_brand_leaks(data)
-        if leak is not None:
-            field_path, hit = leak
-            upstream_id = _step_for_field_path(field_path)
-            _rewind_upstream_state(out_dir=ctx.out_dir, step_id=upstream_id)
-            raise BrandLeakError(
-                field_path=field_path,
-                token=hit.token,
-                upstream_step_id=upstream_id,
-            )
+        # Brand-leak scrub disabled — see module docstring + spec §5.6.
 
         _write_outputs(ctx.out_dir, data)
 
@@ -730,44 +719,21 @@ def _walk_strings(
     return None
 
 
-def _step_for_field_path(field_path: str) -> str:
+def _step_for_field_path(field_path: str) -> str:  # pyright: ignore[reportUnusedFunction]
     """Map a field path onto the upstream step that authored those bytes.
 
     Falls back to ``synth_product_details`` (the most common synthesis
     surface) when the prefix is unknown so the scanner still rewinds
     *something* useful rather than failing silently.
+
+    Currently no in-module caller — the assemble-time scrub is disabled
+    in v0.1.x (spec §5.6 "Current status"). Kept available so a future
+    re-enable does not need to re-derive the field-path → upstream-step
+    mapping; covered by ``test_step_for_field_path_*`` in
+    ``test_assemble.py``.
     """
     head = field_path.split(".", 1)[0].split("[", 1)[0]
     return _FIELD_PATH_TO_STEP.get(head, _UPSTREAM_DETAILS)
-
-
-def _rewind_upstream_state(*, out_dir: Path, step_id: str) -> None:
-    """Reset the state record for ``step_id`` so the next run re-synthesises it.
-
-    The runner's :func:`compute_staleness` treats records with status
-    :data:`StepStatus.PENDING` and ``fingerprint=None`` as stale (spec
-    §5.7), so the next ``run_pipeline`` invocation will re-execute the
-    upstream step before retrying ``assemble_data``.
-
-    Idempotent: when ``step_id`` is absent from ``state.json`` the
-    function is a no-op (the step has not run yet, so there is nothing
-    to rewind).
-    """
-    state = read_state(out_dir)
-    prior = state.steps.get(step_id)
-    if prior is None:
-        return
-    state = upsert_step_state(
-        state,
-        StepStateRecord(
-            id=prior.id,
-            phase=prior.phase,
-            status=StepStatus.PENDING,
-            fingerprint=None,
-            ts=prior.ts,
-        ),
-    )
-    write_state(out_dir, state)
 
 
 # --------------------------------------------------------------------------- #

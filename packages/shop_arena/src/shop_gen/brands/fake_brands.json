@@ -1,6 +1,6 @@
 {
-  "version": "0.1.2",
-  "comment": "Fake-brand allowlist for shop_gen. See docs/specs/shop_arena/shop_gen.md §5.6 and docs/brand_allowlist.md. Tokens triple-checked for real-brand collision on 2026-04-26 and trimmed to the top-10 safest. Static at v0.1.x; programmatic per-shop generation is a v0.2 follow-up. Changes are versioned API.",
+  "version": "0.1.3",
+  "comment": "Fake-brand allowlist for shop_gen. See docs/specs/shop_arena/shop_gen.md §5.6 and docs/brand_allowlist.md. Tokens triple-checked for real-brand collision on 2026-04-26 and trimmed to the top-10 safest. Static at v0.1.x; programmatic per-shop generation is a v0.2 follow-up. v0.1.3 added the 'ui_nouns' safe-noun category to absorb common storefront/menu vocabulary (Support, Info, Compatibility, ...) per spec §5.6 (\"the safe-noun list will grow\"). Changes are versioned API.",
   "brands": [
     {"token": "AisleArena",  "composition": "aisle + arena"},
     {"token": "Shopliseum",  "composition": "shop + coliseum"},
@@ -19,6 +19,7 @@
     "materials":  ["Cotton", "Wool", "Silk", "Leather", "Denim", "Linen", "Polyester", "Nylon", "Cashmere", "Velvet", "Suede", "Bamboo", "Ceramic", "Glass", "Steel", "Aluminum", "Brass", "Copper", "Wood", "Plastic", "Rubber"],
     "units":      ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "EU", "UK", "US", "ML", "L", "G", "KG", "OZ", "LB", "FT", "IN", "CM", "MM"],
     "countries":  ["USA", "UK", "EU", "Canada", "Mexico", "France", "Germany", "Italy", "Spain", "Japan", "China", "India", "Brazil", "Australia"],
-    "stopwords":  ["I", "A", "An", "The", "And", "Or", "But", "If", "Then", "When", "While", "For", "With", "Without", "From", "To", "In", "On", "At", "By", "Of", "Yes", "No"]
+    "stopwords":  ["I", "A", "An", "The", "And", "Or", "But", "If", "Then", "When", "While", "For", "With", "Without", "From", "To", "In", "On", "At", "By", "Of", "Yes", "No"],
+    "ui_nouns":   ["Home", "About", "Contact", "Support", "Help", "FAQ", "FAQs", "Info", "Information", "Service", "Services", "Account", "Login", "Logout", "Cart", "Checkout", "Wishlist", "Search", "Privacy", "Terms", "Returns", "Shipping", "Compatibility", "Program", "Hardware", "Software", "Rental", "Featured", "New", "Sale", "Catalog", "Catalogue", "Collections", "Blog", "News", "Press", "Careers", "Jobs", "Stores", "Store", "Locations", "Warranty", "Guide", "Guides"]
   }
 }

@@ -606,6 +606,34 @@ brands (with the 8-element allowlist embedded in the feedback).
   brand-shaped) are absorbed by the safe-noun list; we accept
   that the safe-noun list will grow.
 
+**Current status (v0.1.x):**
+
+The **assemble-time scanner is currently disabled** in
+`AssembleDataStep` — the safe-noun absorption strategy did not scale.
+The tokenizer is intentionally simple (`[A-Z][A-Za-z]+`), and
+Title-Cased English plurals dominate legitimate storefront
+navigation: collection menus produce strings like "Card Readers",
+"Pin Pads", "Receipt Printers", "Barcode Scanners", "Cash
+Drawers", "Tablet Stands", "Power Supplies", "Cleaning Supplies".
+Each non-sentence-initial plural is brand-shaped under the regex,
+and growing `safe_nouns` to cover every common English noun is an
+unbounded whack-a-mole that defeats the purpose of an allowlist
+("exhaustive for our scope").
+
+Brand safety is therefore enforced **only at build time** via the
+`no_brand_leak` verifier (§5.5.3) over `hydrogen/app/**`. The
+synthesis prompts continue to instruct the LLM not to mention real
+brands, but `data/*.json` is not post-validated.
+
+The helpers (`scan_for_brand_leaks`, `BrandLeakError`,
+`_walk_strings`, `_step_for_field_path`) remain in
+`shop_gen.data_synth.assemble` and are unit-tested, so a v0.2
+tokenizer (e.g. dictionary-aware: skip tokens whose lowercase form
+is in a common-English dictionary; flag only TitleCase compounds
+and ALL-CAPS abbreviations) can re-enable the scrub by restoring
+the call site in `AssembleDataStep.run` without re-deriving the
+field-path → upstream-step mapping or the rewind contract.
+
 ### 5.7 Step DAG + resume model
 
 The pipeline is a small DAG of steps. The orchestrator does three

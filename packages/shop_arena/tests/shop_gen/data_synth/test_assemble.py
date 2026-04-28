@@ -6,11 +6,11 @@ Covers the T3.11 requirements from
 * Happy path: assemble the six ``data/*.json`` files from a fully
   populated stage cache + ``identity.json``; deterministic numeric
   ids; pydantic-validated outputs.
-* Brand-leak failure path: a non-allowlisted brand-shaped token in
-  any string field is a step-fatal :class:`BrandLeakError`; the
-  upstream synthesis step's state record is rewound (status ⇒
-  ``PENDING``, fingerprint ⇒ ``None``) so the next pipeline run
-  re-synthesises the offending stage.
+* Pure-helper coverage of the (currently disabled at the step level)
+  brand-leak scrub: :func:`scan_for_brand_leaks` and
+  :func:`_step_for_field_path`. The assemble-time invocation is
+  disabled in v0.1.x — see spec §5.6 "Current status" — so the step
+  itself no longer raises :class:`BrandLeakError`.
 * Cross-collection handle conflict resolution at assembly time
   (spec §5.3).
 * Step contract: id, phase, outputs, depends_on, version; pipeline
@@ -34,7 +34,6 @@ from shop_gen.brands.allowlist import load_allowlist
 from shop_gen.config import ShopGenConfig
 from shop_gen.data_synth import (
     AssembleDataStep,
-    BrandLeakError,
     Collection,
     CollectionDraft,
     Navigation,
@@ -53,14 +52,8 @@ from shop_gen.data_synth.assemble import (
     _step_for_field_path,
 )
 from shop_gen.pipeline import list_steps
-from shop_gen.steps.base import StepContext, StepStatus
+from shop_gen.steps.base import StepContext
 from shop_gen.steps.runner import Registry, run_pipeline
-from shop_gen.steps.state import (
-    StateFile,
-    StepStateRecord,
-    read_state,
-    write_state,
-)
 
 # --------------------------------------------------------------------------- #
 # Fixture helpers
@@ -752,107 +745,6 @@ def test_step_run_missing_images_manifest_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="images manifest"):
         AssembleDataStep().run(ctx)
 
-
-# --------------------------------------------------------------------------- #
-# AssembleDataStep.run — brand-leak failure path
-# --------------------------------------------------------------------------- #
-
-
-def _seed_state_with_fresh_step(out_dir: Path, *, step_id: str, phase: str) -> None:
-    """Seed ``state.json`` with one ``FRESH`` record so rewinding has somewhere to land."""
-    state = StateFile(
-        steps={
-            step_id: StepStateRecord(
-                id=step_id,
-                phase=phase,
-                status=StepStatus.FRESH,
-                fingerprint="abc",
-                ts="2024-01-01T00:00:00Z",
-            ),
-        },
-    )
-    write_state(out_dir, state)
-
-
-def test_step_run_brand_leak_raises_and_rewinds_upstream(tmp_path: Path) -> None:
-    seed = _make_seed(tmp_path)
-    out_dir = tmp_path / "out"
-    leaky_pages = [
-        {
-            "handle": "about",
-            "title": "About",
-            "body_html": "<p>partnered with RealBrand on every shipment.</p>",
-        },
-    ]
-    _materialise_workspace(out_dir, pages=leaky_pages)
-    _seed_state_with_fresh_step(out_dir, step_id="synth_pages", phase="data_synth")
-
-    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
-    ctx = StepContext(config=config, out_dir=out_dir, runtime=None)
-
-    with pytest.raises(BrandLeakError) as excinfo:
-        AssembleDataStep().run(ctx)
-    err = excinfo.value
-    assert err.token == "RealBrand"
-    assert err.upstream_step_id == "synth_pages"
-    assert err.field_path.startswith("pages[")
-
-    # No data/*.json should have been written when the scrub fired.
-    assert not (out_dir / "data" / "pages.json").exists()
-
-    # Upstream state record was rewound to PENDING with no fingerprint.
-    state = read_state(out_dir)
-    assert state.steps["synth_pages"].status == StepStatus.PENDING
-    assert state.steps["synth_pages"].fingerprint is None
-
-
-def test_step_run_brand_leak_in_product_routes_to_details(tmp_path: Path) -> None:
-    """A leak inside a product's ``description_html`` rewinds ``synth_product_details``."""
-    seed = _make_seed(tmp_path)
-    out_dir = tmp_path / "out"
-    leaky_details = dict(_DETAILS_BY_HANDLE)
-    leaky_details["warm-winter-coat"] = _detail(
-        "warm-winter-coat",
-        description_html="<p>RealBrand quality at a fair price.</p>",
-    )
-    _materialise_workspace(out_dir, details_by_handle=leaky_details)
-    _seed_state_with_fresh_step(out_dir, step_id="synth_product_details", phase="data_synth")
-
-    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
-    ctx = StepContext(config=config, out_dir=out_dir, runtime=None)
-
-    with pytest.raises(BrandLeakError) as excinfo:
-        AssembleDataStep().run(ctx)
-    err = excinfo.value
-    assert err.upstream_step_id == "synth_product_details"
-    assert err.token == "RealBrand"
-
-    state = read_state(out_dir)
-    assert state.steps["synth_product_details"].status == StepStatus.PENDING
-    assert state.steps["synth_product_details"].fingerprint is None
-
-
-def test_step_run_brand_leak_with_no_prior_state_does_not_crash(tmp_path: Path) -> None:
-    """Rewinding is a no-op when the upstream has not run yet."""
-    seed = _make_seed(tmp_path)
-    out_dir = tmp_path / "out"
-    leaky_pages = [
-        {
-            "handle": "about",
-            "title": "About",
-            "body_html": "<p>partnered with RealBrand on every shipment.</p>",
-        },
-    ]
-    _materialise_workspace(out_dir, pages=leaky_pages)
-    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
-    ctx = StepContext(config=config, out_dir=out_dir, runtime=None)
-
-    with pytest.raises(BrandLeakError):
-        AssembleDataStep().run(ctx)
-    # state.json may or may not exist; the absence of the upstream record
-    # is silently tolerated by ``_rewind_upstream_state``.
-    state = read_state(out_dir)
-    assert "synth_pages" not in state.steps
 
 
 # --------------------------------------------------------------------------- #
