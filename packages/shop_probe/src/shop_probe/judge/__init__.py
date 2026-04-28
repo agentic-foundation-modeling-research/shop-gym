@@ -9,6 +9,10 @@ from shop_probe.judge.anonymize import (
     anonymize_trajectory,
     hash_token,
 )
+from shop_probe.judge.kappa import (
+    CrossJudgeAgreement,
+    compute_cross_judge_kappa,
+)
 from shop_probe.judge.llm import (
     LLMClient,
     PinnedJudge,
@@ -61,6 +65,7 @@ __all__ = [
     "REDACTED_THEME",
     "REQUIRED_PAIRWISE_PLACEHOLDERS",
     "AnonymizationPlan",
+    "CrossJudgeAgreement",
     "JudgeCallable",
     "JudgePromptLoadError",
     "JudgePromptSet",
@@ -85,6 +90,7 @@ __all__ = [
     "build_control_pairs",
     "build_experimental_pairs",
     "build_task_pairs",
+    "compute_cross_judge_kappa",
     "evaluate_swap_consistency",
     "hash_token",
     "is_swap_consistent",

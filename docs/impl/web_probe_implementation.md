@@ -101,7 +101,7 @@ versioned reports without manual editing (spec §4, §7 M6).
 
 ### M7 · v1.1 stretch (spec §7 M7, §5.9)
 
-- [ ] **T7.1** — Second judge family (Claude or Gemini) for cross-judge agreement per spec §5.9 + §7 M7. **Check:** cross-judge κ reported.
+- [x] **T7.1** — Second judge family (Claude or Gemini) for cross-judge agreement per spec §5.9 + §7 M7. **Check:** cross-judge κ reported.
 - [ ] **T7.2** — Likert quality dimensions (visual coherence, copy realism, error plausibility) per spec §5.9. **Check:** per-dimension Likert distributions in the report.
 - [ ] **T7.3** — ~50-trace human-judge calibration per spec §5.9 + §7 M7. **Check:** Spearman ρ between human and LLM judge reported per dimension.
 - [x] **T7.4** — `authenticated: true` + transactional probes (login, signup, account, checkout) per spec §5.9. **Check:** rubric version bumped; probes gated behind `--include-auth`.
