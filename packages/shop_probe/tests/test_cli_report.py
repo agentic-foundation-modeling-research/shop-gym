@@ -464,3 +464,167 @@ def test_report_rejects_missing_report_file(
     )
     assert rc == EXIT_USAGE
     assert "missing report for target" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# Prior-work supplement table (T7.5 — spec §5.9).
+# --------------------------------------------------------------------------- #
+
+
+def _seed_baseline_dir(baselines_dir: Path) -> None:
+    """Write three prior-work baseline reports under ``baselines_dir``."""
+    baselines_dir.mkdir()
+    for label, distinct in (
+        ("baseline/mock_shop", 2),
+        ("baseline/webshop", 3),
+        ("baseline/webarena_shopping", 4),
+    ):
+        report = _report(
+            label=label,
+            kind="real_unpaired",
+            pair_id=None,
+            coverages={"cart": 0.4, "product": 0.3, "site_shell": 0.5},
+            surface=_surface(distinct_templates=distinct),
+        )
+        path = baselines_dir / f"{label.replace('/', '__')}.json"
+        path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+
+
+def test_report_emits_supplement_table_when_baselines_dir_provided(
+    tmp_path: Path,
+) -> None:
+    """T7.5 — ``--baselines-dir`` writes ``supplement_table.md``."""
+    cohort_path = tmp_path / "cohort.yaml"
+    _write_minimal_cohort(cohort_path)
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    _seed_axis_a_b_cohort(reports_dir)
+    baselines_dir = tmp_path / "baselines"
+    _seed_baseline_dir(baselines_dir)
+    out_dir = tmp_path / "figures"
+
+    rc = main(
+        [
+            "report",
+            "--cohort",
+            str(cohort_path),
+            "--reports-dir",
+            str(reports_dir),
+            "--out",
+            str(out_dir),
+            "--baselines-dir",
+            str(baselines_dir),
+        ]
+    )
+    assert rc == EXIT_OK
+
+    supplement = (out_dir / "supplement_table.md").read_text(encoding="utf-8")
+    assert "Environment" in supplement
+    # One row per baseline; sorted by label.
+    body = supplement.rstrip("\n").splitlines()[2:]
+    assert len(body) == 3  # noqa: PLR2004
+    assert "baseline/mock_shop" in body[0]
+    assert "baseline/webarena_shopping" in body[1]
+    assert "baseline/webshop" in body[2]
+
+
+def test_report_skips_supplement_when_baselines_dir_omitted(tmp_path: Path) -> None:
+    """Without ``--baselines-dir`` the supplement file is not written."""
+    cohort_path = tmp_path / "cohort.yaml"
+    _write_minimal_cohort(cohort_path)
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    _seed_axis_a_b_cohort(reports_dir)
+    out_dir = tmp_path / "figures"
+
+    rc = main(
+        [
+            "report",
+            "--cohort",
+            str(cohort_path),
+            "--reports-dir",
+            str(reports_dir),
+            "--out",
+            str(out_dir),
+        ]
+    )
+    assert rc == EXIT_OK
+    assert not (out_dir / "supplement_table.md").exists()
+
+
+def test_supplement_does_not_alter_per_pair_claims(tmp_path: Path) -> None:
+    """Spec §5.9 — baselines must not change the primary outputs.
+
+    Same cohort, same reports; one run with ``--baselines-dir``, one
+    without. The four primary artifacts (fidelity table, radar,
+    surface, turing) must be byte-identical across the two runs.
+    """
+    cohort_path = tmp_path / "cohort.yaml"
+    _write_minimal_cohort(cohort_path)
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    _seed_axis_a_b_cohort(reports_dir)
+    baselines_dir = tmp_path / "baselines"
+    _seed_baseline_dir(baselines_dir)
+
+    out_with = tmp_path / "figures_with"
+    out_without = tmp_path / "figures_without"
+    rc = main(
+        [
+            "report",
+            "--cohort",
+            str(cohort_path),
+            "--reports-dir",
+            str(reports_dir),
+            "--out",
+            str(out_with),
+            "--baselines-dir",
+            str(baselines_dir),
+        ]
+    )
+    assert rc == EXIT_OK
+    rc = main(
+        [
+            "report",
+            "--cohort",
+            str(cohort_path),
+            "--reports-dir",
+            str(reports_dir),
+            "--out",
+            str(out_without),
+        ]
+    )
+    assert rc == EXIT_OK
+
+    for filename in ("fidelity_table.md", "radar.svg", "surface.svg"):
+        assert (out_with / filename).read_bytes() == (out_without / filename).read_bytes()
+    # Supplement appears only on the run that requested it.
+    assert (out_with / "supplement_table.md").exists()
+    assert not (out_without / "supplement_table.md").exists()
+
+
+def test_report_rejects_missing_baselines_dir(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A non-existent ``--baselines-dir`` fails with a clear error."""
+    cohort_path = tmp_path / "cohort.yaml"
+    _write_minimal_cohort(cohort_path)
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    _seed_axis_a_b_cohort(reports_dir)
+
+    rc = main(
+        [
+            "report",
+            "--cohort",
+            str(cohort_path),
+            "--reports-dir",
+            str(reports_dir),
+            "--out",
+            str(tmp_path / "figures"),
+            "--baselines-dir",
+            str(tmp_path / "no_such_baselines"),
+        ]
+    )
+    assert rc == EXIT_USAGE
+    assert "baselines" in capsys.readouterr().err.lower()

@@ -64,6 +64,12 @@ requesting it today returns a usage error.
 All four outputs render from versioned reports without manual editing
 (spec §7 M6 gate).
 
+When ``--baselines-dir`` is supplied (T7.5 — spec §5.9 / M7) the
+command additionally emits ``supplement_table.md``: a prior-work
+environment table (Mock Shop, WebShop, WebArena-Shopping) rendered
+alongside the primary outputs. The per-pair claims are not altered —
+baseline reports never enter the cohort fidelity computation.
+
 The module is import-safe: it performs no I/O at import time.
 """
 
@@ -112,6 +118,7 @@ from shop_probe.report import (
 from shop_probe.report_writer import (
     PairTuringData,
     render_pair_fidelity_table,
+    render_prior_work_supplement_table,
     render_radar_chart_svg,
     render_surface_bar_chart_svg,
     render_turing_chart_svg,
@@ -146,6 +153,8 @@ _FIDELITY_TABLE_FILENAME: Final[str] = "fidelity_table.md"
 _RADAR_CHART_FILENAME: Final[str] = "radar.svg"
 _SURFACE_CHART_FILENAME: Final[str] = "surface.svg"
 _TURING_CHART_FILENAME: Final[str] = "turing.svg"
+_SUPPLEMENT_TABLE_FILENAME: Final[str] = "supplement_table.md"
+"""Filename for the T7.5 prior-work environment supplement table."""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -279,6 +288,16 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Seed for the Turing chart bootstrap resampler.",
+    )
+    report.add_argument(
+        "--baselines-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Optional directory of baseline ProbeReport JSONs (one per file). "
+            "When provided, a prior-work supplement table is written alongside "
+            "the primary outputs without altering per-pair claims (T7.5 \u2014 spec \u00a75.9)."
+        ),
     )
     return parser
 
@@ -596,6 +615,7 @@ def _cmd_report(args: argparse.Namespace) -> int:
     epsilon: float = args.epsilon
     bootstrap_iters: int = args.bootstrap_iters
     bootstrap_seed: int = args.bootstrap_seed
+    baselines_dir: Path | None = args.baselines_dir
 
     try:
         cohort = load_cohort(cohort_path)
@@ -687,8 +707,35 @@ def _cmd_report(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
+    if baselines_dir is not None:
+        result = _write_supplement_table(out_dir, baselines_dir)
+        if isinstance(result, int):
+            return result
+        written.append(result)
+
     print("shop-probe: wrote " + ", ".join(str(p) for p in written))
     return EXIT_OK
+
+
+def _write_supplement_table(out_dir: Path, baselines_dir: Path) -> Path | int:
+    """Render the prior-work supplement table (T7.5 — spec §5.9).
+
+    Returns the on-disk path on success, or :data:`EXIT_USAGE` when
+    ``baselines_dir`` is missing or contains an invalid report. Pulled
+    out of :func:`_cmd_report` to keep that function under the per-handler
+    statement budget.
+    """
+    try:
+        baseline_reports = _load_baseline_reports(baselines_dir)
+    except (FileNotFoundError, ValidationError, ValueError) as err:
+        print(f"shop-probe: {err}", file=sys.stderr)
+        return EXIT_USAGE
+    supplement_path = out_dir / _SUPPLEMENT_TABLE_FILENAME
+    supplement_path.write_text(
+        render_prior_work_supplement_table(baseline_reports),
+        encoding="utf-8",
+    )
+    return supplement_path
 
 
 def _label_to_filename(label: str) -> str:
@@ -726,6 +773,33 @@ def _load_cohort_reports(
     source_reports = tuple(_load_report(reports_dir, p.source) for p in cohort.pairs)
     real_unpaired_reports = tuple(_load_report(reports_dir, t) for t in cohort.real_unpaired)
     return sandbox_reports, source_reports, real_unpaired_reports
+
+
+def _load_baseline_reports(baselines_dir: Path) -> tuple[ProbeReport, ...]:
+    """Load every ``*.json`` :class:`ProbeReport` from a baseline directory.
+
+    Used by ``shop-probe report --baselines-dir`` (T7.5 — spec §5.9). The
+    directory holds one :class:`ProbeReport` per prior-work environment
+    (Mock Shop, WebShop, WebArena-Shopping). Files are loaded by sorted
+    filename so the in-memory tuple is deterministic; the supplement
+    renderer re-sorts by :attr:`Target.label` for the final byte-stable
+    output.
+
+    Raises:
+        FileNotFoundError: ``baselines_dir`` does not exist or is not a
+            directory.
+        pydantic.ValidationError: a JSON file does not validate as a
+            :class:`ProbeReport` (propagated unchanged).
+    """
+    if not baselines_dir.is_dir():
+        msg = f"baselines directory does not exist: {baselines_dir}"
+        raise FileNotFoundError(msg)
+    paths = sorted(baselines_dir.glob("*.json"))
+    reports: list[ProbeReport] = []
+    for path in paths:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        reports.append(ProbeReport.model_validate(payload))
+    return tuple(reports)
 
 
 def _build_cohort_fidelity(
