@@ -218,8 +218,12 @@ predictable path under it.
 ├── runs/
 │   └── build/                  # debugging — harness run dir for Phase 4
 │       ├── plan.md
+│       ├── sidecar.json
+│       ├── run.json
 │       ├── iters/exec-NNNN/
-│       └── artifact/hydrogen/
+│       └── artifact/
+│           ├── hydrogen/
+│           └── data/
 └── .shop_gen/                  # internal — step state + cached intermediates
     ├── state.json              # per-step status, fingerprints, timestamps
     └── stage_cache/            # cached Phase 2 stage outputs
@@ -236,7 +240,7 @@ the current run actually completed.
 
 Every brand-shaped string in `data/*.json` and
 `hydrogen/app/**/*.{tsx,ts,css,md}` is drawn from the static
-8-token allowlist at `brands/fake_brands.json`. Two enforcement
+10-token allowlist at `brands/fake_brands.json`. Two enforcement
 passes back this up:
 
 - **`assemble_data`** runs the allowlist scanner over every string
@@ -338,6 +342,7 @@ loop tag.
 packages/shop_arena/src/shop_gen/
 ├── __init__.py                  # re-exports run, ShopGenConfig, ShopGenResult, __version__
 ├── _version.py
+├── py.typed                     # PEP 561 typing marker
 ├── cli.py                       # argparse → pipeline dispatch
 ├── pipeline.py                  # phase-aware step registry + run/status/list_steps
 ├── config.py                    # ShopGenConfig + ShopGenResult (pydantic v2)

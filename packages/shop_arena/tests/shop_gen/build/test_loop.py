@@ -63,6 +63,7 @@ from shop_gen.build.verifiers import (
     Routes200Verifier,
     TscVerifier,
 )
+from shop_gen.build.verifiers._subprocess import CompletedSubprocess
 from shop_gen.config import ShopGenConfig
 from shop_gen.pipeline import list_steps
 from shop_gen.steps.base import FileInput, Step, StepContext, StepInput
@@ -92,6 +93,21 @@ def _stub_sidecar_factory(*, argv: Sequence[str], port: int) -> Iterator[Sidecar
     del argv
     assert port == _PORT
     yield _stub_handle()
+
+
+def _stub_install_runner(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    timeout: float,
+) -> CompletedSubprocess:
+    """Stub :class:`SubprocessRunner` for ``pnpm install`` — always succeeds.
+
+    Keeps the loop-step unit tests hermetic: they exercise the artifact-tree
+    materialisation path without requiring ``pnpm`` on ``$PATH``.
+    """
+    del argv, cwd, timeout
+    return CompletedSubprocess(returncode=0, stdout="", stderr="")
 
 
 class _StubRuntime:
@@ -315,6 +331,7 @@ def test_step_run_passes_expected_loop_config_to_harness(tmp_path: Path) -> None
         runtime_factory=_stub_runtime_factory_for(stub_runtime),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_verifiers_factory,
+        install_runner=_stub_install_runner,
     )
 
     with patch(
@@ -375,6 +392,7 @@ def test_step_run_seeds_only_manual_and_layers_hydrogen_data_after(tmp_path: Pat
         runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_empty_verifiers_factory,
+        install_runner=_stub_install_runner,
     )
 
     with patch(
@@ -433,6 +451,7 @@ def test_step_run_raises_when_manual_dir_missing(tmp_path: Path) -> None:
         runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_empty_verifiers_factory,
+        install_runner=_stub_install_runner,
     )
 
     with (
@@ -486,6 +505,7 @@ def test_step_run_holds_sidecar_open_for_loop_call(tmp_path: Path) -> None:
         runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
         sidecar_factory=_tracking_sidecar,
         verifiers_factory=_empty_verifiers_factory,
+        install_runner=_stub_install_runner,
     )
 
     with patch(
@@ -568,6 +588,7 @@ def test_step_run_drives_real_harness_with_replay_runtime(tmp_path: Path) -> Non
         runtime_factory=_stub_runtime_factory_for(runtime),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_empty_verifiers_factory,
+        install_runner=_stub_install_runner,
     )
 
     with patch(
@@ -680,6 +701,7 @@ def test_step_run_appends_consolidate_when_planner_omits_it(tmp_path: Path) -> N
         runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_empty_verifiers_factory,
+        install_runner=_stub_install_runner,
     )
 
     with patch(
@@ -737,6 +759,7 @@ def test_step_run_skips_consolidate_append_when_planner_emits_it(tmp_path: Path)
         runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_empty_verifiers_factory,
+        install_runner=_stub_install_runner,
     )
 
     before = None

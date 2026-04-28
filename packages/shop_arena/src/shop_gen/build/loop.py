@@ -85,6 +85,11 @@ from shop_gen.build.verifiers import (
     SchemaIntrospection,
     TscVerifier,
 )
+from shop_gen.build.verifiers._subprocess import (
+    SubprocessRunner,
+    default_subprocess_runner,
+    truncate_stream,
+)
 from shop_gen.config import ShopGenConfig
 from shop_gen.data_validation.hosting_check import find_shop_backend_cli
 from shop_gen.steps.base import FileInput, InputRef, StepContext, StepInput
@@ -123,6 +128,15 @@ _ARTIFACT_DIRNAME: Final[str] = "artifact"
 
 _DEFAULT_ITER_TIMEOUT_S: Final[float] = 600.0
 """Default per-iteration wall-clock budget. Conservative for cold caches."""
+
+_INSTALL_TIMEOUT_S: Final[float] = 300.0
+"""Wall-clock budget for the per-run ``pnpm install`` inside the artifact tree.
+
+Cold pnpm-store on a fresh checkout fetches the full Hydrogen dep set
+(~500 MB across hundreds of packages); 5 minutes leaves headroom. Warm
+installs reuse the global content-addressable store and complete in
+5-10 s, so the budget is rarely the binding constraint.
+"""
 
 _EMPTY_PLAN_MD: Final[str] = "# Plan\n\n## Tasks\n"
 """Minimal valid ``plan.md`` body the loop step writes after pre-creating
@@ -235,7 +249,9 @@ class RunBuildHarnessLoopStep:
         runtime_factory: RuntimeFactory | None = None,
         sidecar_factory: SidecarFactory | None = None,
         verifiers_factory: VerifiersFactory | None = None,
+        install_runner: SubprocessRunner | None = None,
         iter_timeout_s: float = _DEFAULT_ITER_TIMEOUT_S,
+        install_timeout_s: float = _INSTALL_TIMEOUT_S,
         force: bool = True,
     ) -> None:
         """Build the step with optional injection seams.
@@ -253,8 +269,14 @@ class RunBuildHarnessLoopStep:
             verifiers_factory: Callable that builds the v0.1 verifier
                 set bound to the live sidecar. Defaults to
                 :func:`default_verifiers_factory`.
+            install_runner: Subprocess runner used to spawn ``pnpm install``
+                inside the artifact tree on first creation. Defaults to
+                :func:`shop_gen.build.verifiers._subprocess.default_subprocess_runner`.
+                Tests inject a stub.
             iter_timeout_s: Per-iteration wall-clock budget forwarded to
                 the harness. Defaults to :data:`_DEFAULT_ITER_TIMEOUT_S`.
+            install_timeout_s: Wall-clock budget for the per-run
+                ``pnpm install``. Defaults to :data:`_INSTALL_TIMEOUT_S`.
             force: Forwarded to :func:`harness.run_plan_exec_loop` as
                 ``force=...``. v0.1 always passes ``True`` because the
                 step pre-creates the workspace itself (so the harness
@@ -283,7 +305,9 @@ class RunBuildHarnessLoopStep:
         self._runtime_factory: RuntimeFactory = runtime_factory or _default_runtime_factory
         self._sidecar_factory: SidecarFactory = sidecar_factory or _default_sidecar_factory
         self._verifiers_factory: VerifiersFactory = verifiers_factory or default_verifiers_factory
+        self._install_runner: SubprocessRunner = install_runner or default_subprocess_runner
         self._iter_timeout_s = iter_timeout_s
+        self._install_timeout_s = install_timeout_s
         self._force = force
 
     def run(self, ctx: StepContext) -> None:
@@ -411,12 +435,30 @@ class RunBuildHarnessLoopStep:
         manifest *before* we add the mutable hydrogen + data trees, so
         seed-immutability checks ignore them.
 
+        After the trees are in place we run ``pnpm install --ignore-workspace
+        --frozen-lockfile`` inside the artifact's hydrogen tree. The vendored
+        template ships a normalised ``package.json`` + ``pnpm-lock.yaml``
+        but no ``node_modules/``; the install hydrates dependencies from
+        pnpm's global content-addressable store. ``--ignore-workspace`` is
+        the load-bearing flag — without it pnpm walks up to the repo root,
+        finds ``pnpm-workspace.yaml``, fails to register the artifact
+        directory as a member, and refuses to resolve the template's
+        dependencies.
+
         Returns:
             The ``force`` flag to pass to :func:`run_plan_exec_loop`. We
             always return ``True`` in v0.1: a freshly pre-created
             workspace has no ``run.json``, so the harness's resume
             refusal policy would otherwise reject the loop. The redo
             flow under T5.7 will refine this.
+
+        Raises:
+            RuntimeError: ``pnpm install`` exited with a non-zero
+                status. The captured stdout/stderr (truncated) is
+                included in the message.
+            subprocess.TimeoutExpired: ``pnpm install`` exceeded
+                ``self._install_timeout_s``. Propagated unchanged so
+                the runner records the step ``FAILED``.
         """
         run_dir = harness_config.run_dir
         if not run_dir.exists() or not any(run_dir.iterdir()):
@@ -439,7 +481,29 @@ class RunBuildHarnessLoopStep:
             # ``## Tasks`` heading so ``parse_plan`` accepts it; the
             # planner iteration overwrites the file with the real plan.
             workspace.plan_md.write_text(_EMPTY_PLAN_MD, encoding="utf-8")
+            self._install_artifact_deps(artifact_dir / _HYDROGEN_DIR.name)
         return self._force
+
+    def _install_artifact_deps(self, hydrogen_dir: Path) -> None:
+        """Run ``pnpm install --ignore-workspace --frozen-lockfile`` in ``hydrogen_dir``.
+
+        Idempotent on a populated ``node_modules/`` matching the
+        lockfile: pnpm's own up-to-date check short-circuits the
+        install. A non-zero exit raises :class:`RuntimeError` with
+        truncated stdout/stderr embedded for debugging.
+        """
+        completed = self._install_runner(
+            ("pnpm", "install", "--ignore-workspace", "--frozen-lockfile"),
+            cwd=hydrogen_dir,
+            timeout=self._install_timeout_s,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "pnpm install failed inside the artifact hydrogen tree "
+                f"({hydrogen_dir}); returncode={completed.returncode}.\n"
+                f"stdout:\n{truncate_stream(completed.stdout)}\n"
+                f"stderr:\n{truncate_stream(completed.stderr)}",
+            )
 
 
 # --------------------------------------------------------------------------- #

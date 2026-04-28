@@ -117,7 +117,7 @@ def synth_navigation_from_collections(
     expected_handles = {
         cast("str", entry["handle"])
         for entry in collections
-        if isinstance(entry, dict) and isinstance(entry.get("handle"), str)
+        if isinstance(entry.get("handle"), str)
     }
     reachable = _collection_handles_reachable(menus[_MAIN_MENU_HANDLE])
     missing_collections = expected_handles - reachable

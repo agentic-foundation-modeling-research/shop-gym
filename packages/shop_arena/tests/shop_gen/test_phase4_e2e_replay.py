@@ -436,6 +436,7 @@ def test_phase4_e2e_replay_produces_working_hydrogen_with_no_blocking_verifier(
         runtime_factory=_runtime_factory_for(runtime),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_build_verifiers_factory(data_dir=out_dir / "data"),
+        install_runner=_passing_subprocess_runner,
     )
 
     # Cassette has 1 plan + 4 executor iterations; budget allows one
@@ -509,6 +510,7 @@ def test_phase4_e2e_replay_persists_per_iteration_verifier_telemetry(
         runtime_factory=_runtime_factory_for(runtime),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_build_verifiers_factory(data_dir=out_dir / "data"),
+        install_runner=_passing_subprocess_runner,
     )
 
     step.run(_build_ctx(out_dir, max_iters=6))

@@ -29,6 +29,7 @@ from harness.plan.tasks import TaskStatus
 from harness.runtimes.replay import ReplayRuntime
 from shop_gen.build.loop import RunBuildHarnessLoopStep, RuntimeFactory
 from shop_gen.build.sidecar import SidecarHandle
+from shop_gen.build.verifiers._subprocess import CompletedSubprocess
 from shop_gen.config import ShopGenConfig
 from shop_gen.steps.base import StepContext
 
@@ -78,6 +79,17 @@ def _stub_sidecar_factory(*, argv: Sequence[str], port: int) -> Iterator[Sidecar
     del argv
     assert port == _PORT
     yield _stub_handle()
+
+
+def _stub_install_runner(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    timeout: float,
+) -> CompletedSubprocess:
+    """Stub :class:`SubprocessRunner` for the per-run ``pnpm install``."""
+    del argv, cwd, timeout
+    return CompletedSubprocess(returncode=0, stdout="", stderr="")
 
 
 def _empty_verifiers_factory(
@@ -193,6 +205,7 @@ def test_build_loop_replay_drives_four_canonical_tasks(
         runtime_factory=_runtime_factory_for(runtime),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_empty_verifiers_factory,
+        install_runner=_stub_install_runner,
     )
 
     step.run(_build_ctx(out_dir, max_iters=len(_EXPECTED_TASK_ORDER) + 1))
@@ -261,6 +274,7 @@ def test_build_loop_replay_records_selected_task_per_iteration(
         runtime_factory=_runtime_factory_for(runtime),
         sidecar_factory=_stub_sidecar_factory,
         verifiers_factory=_empty_verifiers_factory,
+        install_runner=_stub_install_runner,
     )
 
     step.run(_build_ctx(out_dir, max_iters=len(_EXPECTED_TASK_ORDER) + 1))
