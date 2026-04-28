@@ -25,6 +25,14 @@ storefront — the minimum HTML needed to exercise every probe in the
   query into a heading.
 * ``/cart.js`` — JSON endpoint for AJAX cart discovery.
 * ``POST /cart/add`` / ``POST /cart/remove`` — cart mutations.
+* ``/account/login`` — customer login form (email + password);
+  v1.1 auth surface (T7.4).
+* ``/account/register`` — customer signup form (email + password + name);
+  v1.1 auth surface (T7.4).
+* ``/account`` — logged-in customer dashboard;
+  v1.1 auth surface (T7.4).
+* ``/checkout`` — checkout page (contact + shipping + payment placeholder);
+  v1.1 transactional surface (T7.4).
 
 The cart state is held on the server instance and is therefore **isolated
 per fixture**. Tests that mutate cart state (cart line-item probes) start
@@ -429,12 +437,94 @@ _CART_WITH_ITEM_BODY: Final[str] = """\
       </form>
     </li>
   </ul>
+  <form class="cart-checkout-form" method="get" action="/checkout">
+    <button type="submit" name="checkout" class="cart-checkout-button">Checkout</button>
+  </form>
   <form class="cart-promo-form" method="post" action="/cart/discount">
     <label>
       Discount code
       <input type="text" name="discount" class="cart-promo-code" placeholder="Enter code">
     </label>
     <button type="submit">Apply</button>
+  </form>
+</main>
+"""
+
+_LOGIN_BODY: Final[str] = """\
+<main id="main-content">
+  <h1>Log in</h1>
+  <form class="customer-login" method="post" action="/account/login">
+    <label>
+      Email
+      <input type="email" name="customer[email]" autocomplete="email" required>
+    </label>
+    <label>
+      Password
+      <input type="password" name="customer[password]" autocomplete="current-password" required>
+    </label>
+    <button type="submit">Sign in</button>
+  </form>
+  <p><a href="/account/register">Create account</a></p>
+</main>
+"""
+
+_REGISTER_BODY: Final[str] = """\
+<main id="main-content">
+  <h1>Create account</h1>
+  <form class="customer-register" method="post" action="/account/register">
+    <label>
+      First name
+      <input type="text" name="customer[first_name]" autocomplete="given-name">
+    </label>
+    <label>
+      Email
+      <input type="email" name="customer[email]" autocomplete="email" required>
+    </label>
+    <label>
+      Password
+      <input type="password" name="customer[password]" autocomplete="new-password" required>
+    </label>
+    <button type="submit">Create</button>
+  </form>
+  <p><a href="/account/login">Already have an account?</a></p>
+</main>
+"""
+
+_ACCOUNT_BODY: Final[str] = """\
+<main id="main-content">
+  <h1>Your account</h1>
+  <section class="account-summary">
+    <p>Welcome back, sample customer.</p>
+    <ul class="account-nav">
+      <li><a href="/account/orders">Order history</a></li>
+      <li><a href="/account/addresses">Addresses</a></li>
+      <li><a href="/account/logout">Log out</a></li>
+    </ul>
+  </section>
+</main>
+"""
+
+_CHECKOUT_BODY: Final[str] = """\
+<main id="main-content">
+  <h1>Checkout</h1>
+  <form class="checkout-form" method="post" action="/checkout">
+    <fieldset class="checkout-contact">
+      <legend>Contact</legend>
+      <label>
+        Email
+        <input type="email" name="checkout[email]" autocomplete="email" required>
+      </label>
+    </fieldset>
+    <fieldset class="checkout-shipping">
+      <legend>Shipping address</legend>
+      <label>Full name <input type="text" name="checkout[shipping_address][name]"></label>
+      <label>Address <input type="text" name="checkout[shipping_address][address1]"></label>
+    </fieldset>
+    <fieldset class="checkout-payment">
+      <legend>Payment</legend>
+      <p class="payment-placeholder">Card details would render here in production.</p>
+    </fieldset>
+    <button type="submit" class="checkout-submit">Pay now</button>
   </form>
 </main>
 """
@@ -577,6 +667,22 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             query = qs.get("q", [""])[0]
             self._send(200, _render_search_page(query).encode("utf-8"))
+            return
+        if path == "/account/login":
+            self._send(200, _wrap(_LOGIN_BODY, title="Log in — FixtureShop").encode("utf-8"))
+            return
+        if path == "/account/register":
+            self._send(
+                200, _wrap(_REGISTER_BODY, title="Create account — FixtureShop").encode("utf-8")
+            )
+            return
+        if path == "/account":
+            self._send(
+                200, _wrap(_ACCOUNT_BODY, title="Your account — FixtureShop").encode("utf-8")
+            )
+            return
+        if path == "/checkout":
+            self._send(200, _wrap(_CHECKOUT_BODY, title="Checkout — FixtureShop").encode("utf-8"))
             return
         if path.startswith("/static/"):
             # Tiny 1x1 transparent PNG so <img> requests resolve.

@@ -224,3 +224,99 @@ def test_cli_run_rejects_missing_rubric(tmp_path: Path, capsys: pytest.CaptureFi
     assert rc == EXIT_USAGE
     captured = capsys.readouterr()
     assert "v999_missing" in captured.err
+
+
+_RUBRIC_V1_1_PATH: Path = (
+    Path(__file__).resolve().parent.parent / "src" / "shop_probe" / "rubric" / "v1.1.yaml"
+)
+
+
+def test_cli_run_v1_1_default_skips_auth_and_transactional(tmp_path: Path) -> None:
+    """T7.4: by default the v1.1 auth + transactional slice is filtered out."""
+    out_path = tmp_path / "report.json"
+    evidence_dir = tmp_path / "evidence"
+    with SandboxShop() as base_url:
+        rc = main(
+            [
+                "run",
+                base_url,
+                "--label",
+                "sandbox/fixture",
+                "--rubric",
+                "v1.1",
+                "--axes",
+                "A",
+                "--kind",
+                "sandbox",
+                "--pair-id",
+                "pair_fixture",
+                "--out",
+                str(out_path),
+                "--evidence-dir",
+                str(evidence_dir),
+            ]
+        )
+    assert rc == EXIT_OK
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    report = ProbeReport.model_validate(payload)
+    rubric = load_rubric(_RUBRIC_V1_1_PATH)
+
+    # Header pins v1.1 — we ran the v1.1 rubric, even though only the v1 slice fired.
+    assert report.rubric_version == "v1.1"
+    assert report.rubric_hash == rubric.content_hash
+
+    # Only v1 entries (the 61 unflagged ones) produced ProbeResult rows.
+    expected_ids = {e.id for e in rubric.entries if not (e.authenticated or e.transactional)}
+    assert {r.id for r in report.probe_results} == expected_ids
+
+    # No account.* / checkout.* entries are present in the report at all.
+    fired = {c.category for c in report.categories}
+    assert "account" not in fired
+    assert "checkout" not in fired
+
+    # The v1 slice still passes cleanly against the fixture.
+    assert report.coverage_core == pytest.approx(1.0)
+    assert report.coverage_modern == pytest.approx(1.0)
+    assert report.coverage_weighted == pytest.approx(1.0)
+
+
+def test_cli_run_v1_1_with_include_auth_runs_full_rubric(tmp_path: Path) -> None:
+    """T7.4: ``--include-auth`` opts the v1.1 auth + transactional slice in."""
+    out_path = tmp_path / "report.json"
+    evidence_dir = tmp_path / "evidence"
+    with SandboxShop() as base_url:
+        rc = main(
+            [
+                "run",
+                base_url,
+                "--label",
+                "sandbox/fixture",
+                "--rubric",
+                "v1.1",
+                "--axes",
+                "A",
+                "--kind",
+                "sandbox",
+                "--pair-id",
+                "pair_fixture",
+                "--out",
+                str(out_path),
+                "--evidence-dir",
+                str(evidence_dir),
+                "--include-auth",
+            ]
+        )
+    assert rc == EXIT_OK
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    report = ProbeReport.model_validate(payload)
+    rubric = load_rubric(_RUBRIC_V1_1_PATH)
+
+    # Every rubric entry produced a ProbeResult row, including the v1.1 slice.
+    assert {r.id for r in report.probe_results} == {e.id for e in rubric.entries}
+    fired = {c.category for c in report.categories}
+    assert "account" in fired
+    assert "checkout" in fired
+
+    # Fixture serves the new auth + checkout pages, so the full v1.1 rubric passes.
+    assert report.coverage_core == pytest.approx(1.0)
+    assert report.coverage_weighted == pytest.approx(1.0)

@@ -40,12 +40,14 @@ RubricCategory = Literal[
     "dynamics",
     "a11y",
     "media",
+    "account",
+    "checkout",
 ]
-"""v1 rubric categories (spec §5.3 table).
+"""v1 rubric categories (spec §5.3 table) plus the v1.1 auth + checkout slice (T7.4).
 
-Auth + checkout categories are intentionally omitted in v1 (spec §5.9);
-they ship behind ``authenticated: true`` / ``transactional: true`` in
-v1.1.
+v1 ships the first 11 categories. ``account`` and ``checkout`` ship in v1.1
+behind ``authenticated: true`` / ``transactional: true`` and are gated behind
+``shop-probe run --include-auth`` per spec §5.9.
 """
 
 

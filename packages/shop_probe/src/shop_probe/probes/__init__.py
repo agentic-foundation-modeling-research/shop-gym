@@ -14,6 +14,10 @@ The leaf modules implement the rubric in ``rubric/v1.yaml``:
   cart endpoints, debounced inputs, cart-count badge.
 * :mod:`shop_probe.probes.a11y` — skip-link, ARIA roles, alt-text coverage.
 * :mod:`shop_probe.probes.media` — lazy-load, srcset, lightbox, swatch-swap.
+* :mod:`shop_probe.probes.account` — auth surface (login / signup / account page);
+  v1.1, gated behind ``--include-auth`` (T7.4).
+* :mod:`shop_probe.probes.checkout` — checkout flow + page;
+  v1.1, gated behind ``--include-auth`` (T7.4).
 
 Each probe is an ``async def fn(page, ctx) -> ProbeOutcome`` matching
 :data:`shop_probe.probes._runner.ProbeFn`. The runner orchestrates Playwright

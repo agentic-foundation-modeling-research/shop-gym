@@ -1,4 +1,6 @@
-"""Command-line entrypoint for ShopProbe (T1.8 + T6.5 — spec §4, §5.3, §5.6, §5.8, §7 M6).
+"""Command-line entrypoint for ShopProbe.
+
+T1.8 + T6.5 + T7.4 — spec §4, §5.3, §5.6, §5.8, §5.9, §7 M6+M7.
 
 The v1 ``shop-probe`` CLI exposes two subcommands:
 
@@ -31,6 +33,11 @@ For ``--axes A`` the command:
 5. Embeds the rubric version + content hash, runner version, and the
    pinned Playwright/Chromium runtime metadata into a closed
    :class:`ProbeReport` (spec §5.6 + §5.8) and writes it to ``--out``.
+
+``--include-auth`` (T7.4 — spec §5.9 / M7) toggles the v1.1 auth + checkout
+slice. By default rubric entries flagged ``authenticated=true`` or
+``transactional=true`` are skipped before any probe runs; with the flag they
+are included. v1 has no such entries, so the gate is a no-op for v1 rubrics.
 When ``--axes`` includes ``B`` the command additionally drives a
 :class:`SurfaceCrawler` against the same target and embeds the resulting
 :class:`SurfaceMetrics` in ``report.surface``. Axis C is wired in M4;
@@ -109,7 +116,7 @@ from shop_probe.report_writer import (
     render_surface_bar_chart_svg,
     render_turing_chart_svg,
 )
-from shop_probe.rubric import Rubric, load_rubric
+from shop_probe.rubric import Rubric, RubricEntry, load_rubric
 from shop_probe.surface import SurfaceMetrics
 from shop_probe.surface.crawler import SurfaceCrawler
 from shop_probe.targets import Cohort, Target
@@ -220,6 +227,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=1,
         help="1-indexed run number within the N=3 rerun group (spec §5.8).",
     )
+    run.add_argument(
+        "--include-auth",
+        action="store_true",
+        default=False,
+        help=(
+            "Include rubric entries flagged authenticated=true or transactional=true "
+            "(v1.1 auth + checkout slice; spec §5.9 / T7.4). Default: skip them."
+        ),
+    )
 
     report = sub.add_parser(
         "report",
@@ -311,6 +327,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             rerun_index=args.rerun_index,
             run_axis_a="A" in axes,
             run_axis_b="B" in axes,
+            include_auth=args.include_auth,
         )
     )
 
@@ -419,6 +436,7 @@ async def _run(
     rerun_index: int,
     run_axis_a: bool,
     run_axis_b: bool,
+    include_auth: bool = False,
 ) -> ProbeReport:
     """Run the requested axes and assemble the closed :class:`ProbeReport`."""
     started = datetime.now(UTC)
@@ -426,6 +444,7 @@ async def _run(
     categories: tuple[CategoryScore, ...] = ()
     c_core = c_modern = c_advanced = c_weighted = 0.0
     chromium_version = "unknown"
+    selected_entries = _select_rubric_entries(rubric, include_auth=include_auth)
 
     if run_axis_a:
         async with ProbeRunner(evidence_root=evidence_root) as runner:
@@ -433,7 +452,7 @@ async def _run(
             sample_collection_url, sample_product_url = await _discover_sample_urls(
                 runner, target.base_url
             )
-            for entry in rubric.entries:
+            for entry in selected_entries:
                 probe = _resolve_probe(entry.probe)
                 outcome = await runner.run(
                     probe,
@@ -451,7 +470,9 @@ async def _run(
                         duration_ms=outcome.duration_ms,
                     )
                 )
-        categories, c_core, c_modern, c_advanced, c_weighted = _aggregate_coverage(rubric, results)
+        categories, c_core, c_modern, c_advanced, c_weighted = _aggregate_coverage(
+            selected_entries, results
+        )
 
     surface: SurfaceMetrics | None = None
     if run_axis_b:
@@ -484,8 +505,21 @@ async def _run(
     )
 
 
+def _select_rubric_entries(rubric: Rubric, *, include_auth: bool) -> tuple[RubricEntry, ...]:
+    """Filter rubric entries by the ``--include-auth`` gate (T7.4 — spec §5.9).
+
+    With ``include_auth=False`` (default), entries flagged ``authenticated=true``
+    or ``transactional=true`` are dropped before any probe runs. With
+    ``include_auth=True`` the full rubric is returned. v1 has no auth or
+    transactional entries, so the gate is a no-op for the v1 rubric.
+    """
+    if include_auth:
+        return rubric.entries
+    return tuple(e for e in rubric.entries if not (e.authenticated or e.transactional))
+
+
 def _aggregate_coverage(
-    rubric: Rubric, results: list[ProbeResult]
+    entries: tuple[RubricEntry, ...], results: list[ProbeResult]
 ) -> tuple[tuple[CategoryScore, ...], float, float, float, float]:
     """Compute per-category + per-level + weighted coverage (spec §5.3).
 
@@ -501,7 +535,7 @@ def _aggregate_coverage(
     }
     total_passed = 0.0
     total_weight = 0.0
-    for entry in rubric.entries:
+    for entry in entries:
         result = by_id[entry.id]
         if result.passed is None:
             continue

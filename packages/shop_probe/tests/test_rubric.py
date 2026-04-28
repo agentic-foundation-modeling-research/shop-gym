@@ -105,7 +105,7 @@ def test_rubric_entry_rejects_unknown_level() -> None:
 
 
 def test_rubric_entry_rejects_unknown_category() -> None:
-    raw = _entry_dict(category="checkout")
+    raw = _entry_dict(category="not-a-real-category")
     with pytest.raises(ValidationError):
         RubricEntry.model_validate(raw)
 
