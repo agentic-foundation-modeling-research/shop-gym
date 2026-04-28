@@ -1,0 +1,183 @@
+# ShopProbe rubric v1 (M1 slice).
+#
+# 20 core-level probes covering site_shell, collection, product, and cart —
+# the M1 capability-coverage subset per docs/specs/shop_arena/web_probe.md
+# §7 M1. Modern + remaining core probes (homepage, search, i18n, floating,
+# dynamics, a11y, media) ship in M3 (T3.3); advanced is dropped from v1
+# per spec §5.3.
+#
+# This file is content-addressable: shop_probe.rubric.loader hashes the
+# raw bytes and embeds the digest in every ProbeReport (spec §5.8). Edits
+# bump the version string AND the hash pinned in tests/test_rubric_v1.py.
+#
+# Probe callables (`probes.<module>.<fn>`) are forward declarations
+# resolved by the runner at execution time (T1.6 / T1.7).
+version: v1
+entries:
+  # --- site_shell (5) -------------------------------------------------------
+  - id: site_shell.header.sticky
+    category: site_shell
+    level: core
+    weight: 2
+    probe: probes.site_shell.header_is_sticky
+    description: Site header remains visible after scrolling 600px down the homepage.
+    authenticated: false
+    transactional: false
+  - id: site_shell.header.logo_links_home
+    category: site_shell
+    level: core
+    weight: 1
+    probe: probes.site_shell.header_logo_links_home
+    description: Header logo links back to the storefront root.
+    authenticated: false
+    transactional: false
+  - id: site_shell.header.cart_link
+    category: site_shell
+    level: core
+    weight: 3
+    probe: probes.site_shell.header_has_cart_link
+    description: Header exposes a cart link or icon that navigates to /cart.
+    authenticated: false
+    transactional: false
+  - id: site_shell.nav.primary_collection_link
+    category: site_shell
+    level: core
+    weight: 3
+    probe: probes.site_shell.nav_has_primary_collection_link
+    description: Primary navigation surfaces at least one /collections/* link.
+    authenticated: false
+    transactional: false
+  - id: site_shell.footer.link_group
+    category: site_shell
+    level: core
+    weight: 1
+    probe: probes.site_shell.footer_has_link_group
+    description: Footer renders at least one labeled link group.
+    authenticated: false
+    transactional: false
+
+  # --- collection (5) -------------------------------------------------------
+  - id: collection.listing.product_cards
+    category: collection
+    level: core
+    weight: 3
+    probe: probes.collection.has_product_cards
+    description: Collection page renders at least one product card with image, title, and price.
+    authenticated: false
+    transactional: false
+  - id: collection.listing.product_card_links_to_pdp
+    category: collection
+    level: core
+    weight: 3
+    probe: probes.collection.product_card_links_to_pdp
+    description: Each product card on a collection page links to a /products/* URL.
+    authenticated: false
+    transactional: false
+  - id: collection.listing.has_filters
+    category: collection
+    level: core
+    weight: 2
+    probe: probes.collection.has_filters
+    description: Collection page exposes at least one filter control.
+    authenticated: false
+    transactional: false
+  - id: collection.listing.has_sort
+    category: collection
+    level: core
+    weight: 2
+    probe: probes.collection.has_sort_control
+    description: Collection page exposes a sort control.
+    authenticated: false
+    transactional: false
+  - id: collection.pagination.present
+    category: collection
+    level: core
+    weight: 1
+    probe: probes.collection.has_pagination_or_infinite_scroll
+    description: Collection page exposes pagination, infinite scroll, or load-more when results exceed the first page.
+    authenticated: false
+    transactional: false
+
+  # --- product (5) ----------------------------------------------------------
+  - id: product.gallery.image
+    category: product
+    level: core
+    weight: 3
+    probe: probes.product.gallery_has_image
+    description: Product detail page renders at least one product image.
+    authenticated: false
+    transactional: false
+  - id: product.title.present
+    category: product
+    level: core
+    weight: 3
+    probe: probes.product.has_title
+    description: Product detail page renders the product title.
+    authenticated: false
+    transactional: false
+  - id: product.price.present
+    category: product
+    level: core
+    weight: 3
+    probe: probes.product.has_price
+    description: Product detail page renders the product price.
+    authenticated: false
+    transactional: false
+  - id: product.add_to_cart.button
+    category: product
+    level: core
+    weight: 3
+    probe: probes.product.has_add_to_cart_button
+    description: Product detail page exposes an enabled add-to-cart button.
+    authenticated: false
+    transactional: false
+  - id: product.description.present
+    category: product
+    level: core
+    weight: 1
+    probe: probes.product.has_description
+    description: Product detail page renders a product description block.
+    authenticated: false
+    transactional: false
+
+  # --- cart (5) -------------------------------------------------------------
+  - id: cart.page.renders
+    category: cart
+    level: core
+    weight: 3
+    probe: probes.cart.page_renders
+    description: The /cart route renders without an HTTP error.
+    authenticated: false
+    transactional: false
+  - id: cart.line_item.shows_after_add
+    category: cart
+    level: core
+    weight: 3
+    probe: probes.cart.shows_added_line_item
+    description: After clicking add-to-cart on a PDP, the cart shows the added line item.
+    authenticated: false
+    transactional: false
+  - id: cart.line_item.qty_editor
+    category: cart
+    level: core
+    weight: 2
+    probe: probes.cart.line_item_has_qty_editor
+    description: Cart line items expose a quantity editor.
+    authenticated: false
+    transactional: false
+  - id: cart.line_item.remove
+    category: cart
+    level: core
+    weight: 2
+    probe: probes.cart.line_item_has_remove
+    description: Cart line items expose a remove control.
+    authenticated: false
+    transactional: false
+  - id: cart.empty_state.present
+    category: cart
+    level: core
+    weight: 1
+    probe: probes.cart.empty_state_renders
+    description: An empty cart renders an empty-state message rather than a blank page.
+    authenticated: false
+    transactional: false
