@@ -173,3 +173,21 @@ async def empty_state_renders(page: Page, ctx: ProbeContext) -> ProbeOutcome:
         evidence=(shot, snap),
         notes="cart page has no recognizable empty-state copy",
     )
+
+
+async def promo_code_input(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """Cart page exposes a promo / discount code input."""
+    await page.goto(_cart_url(ctx.base_url), wait_until="domcontentloaded")
+    promo = page.locator(
+        'input[name*="discount" i], input[name*="promo" i], input[name*="coupon" i], '
+        'input[id*="discount" i], input[placeholder*="discount" i], '
+        'input[placeholder*="promo" i], input[aria-label*="discount" i]'
+    ).first
+    found = await promo.count() > 0
+    snap = await ctx.snapshot("promo-code")
+    shot = await ctx.screenshot("promo-code")
+    return ProbeOutcome(
+        passed=found,
+        evidence=(shot, snap),
+        notes=None if found else "no promo / discount code input on cart page",
+    )

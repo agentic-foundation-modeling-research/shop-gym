@@ -1,26 +1,34 @@
-"""Localhost SandboxShop fixture for axis-A probe tests (T1.7 — spec §7 M1).
+"""Localhost SandboxShop fixture for axis-A probe tests (T1.7 + T3.3).
 
 A single in-process HTTP server that serves a deterministic Shopify-shaped
-storefront — minimum HTML to exercise every M1 ``core`` probe in
-``rubric/v1.yaml``. Routes:
+storefront — the minimum HTML needed to exercise every probe in the
+``rubric/v1.yaml`` v1 slice (M1 core probes plus the M3 expansion to
+~60 probes across all 11 categories per spec §5.3). Routes:
 
-* ``/`` — homepage with sticky header, logo, primary nav
-  (with ``/collections/*`` link), header cart link, and a labeled footer
-  link group.
-* ``/collections/all`` — collection listing with at least two product cards
-  (image + title + price), filter sidebar, sort control, and pagination.
-* ``/products/sample`` — PDP with gallery image, ``<h1>`` title, price, an
+* ``/`` — homepage with sticky header, logo, primary nav (with
+  ``/collections/*`` link), header cart link, search trigger, locale +
+  currency switcher, hero section, feature grid, testimonial section,
+  cookie-consent banner, newsletter popup, chat widget, and a labeled
+  footer link group.
+* ``/collections/all`` — collection listing with at least two product
+  cards (image + title + price), filter sidebar (``<aside>``), sort
+  control, pagination, URL-state-sync links, and active-filter chips.
+* ``/products/sample`` — PDP with gallery image + thumbnails, ``<h1>``
+  title, price, variant selector (radio swatches), quantity spinner,
   enabled add-to-cart button (``<form action="/cart/add" method="post">``),
-  and a description block.
-* ``/cart`` — cart page; renders an explicit empty-state message when the
-  in-memory cart is empty, or a single line item with quantity editor +
-  remove control when populated.
-* ``POST /cart/add`` — adds the sample product to the in-memory cart and
-  redirects to ``/cart``.
+  accordion description, breadcrumbs, recommendations, lazy-loaded +
+  ``srcset`` images, and a lightbox affordance.
+* ``/cart`` — cart page with the standard empty / populated states plus a
+  promo-code input.
+* ``/search`` — search results page that renders product cards on a
+  positive query, an empty-state on ``q=zzznoresults``, and echoes the
+  query into a heading.
+* ``/cart.js`` — JSON endpoint for AJAX cart discovery.
+* ``POST /cart/add`` / ``POST /cart/remove`` — cart mutations.
 
 The cart state is held on the server instance and is therefore **isolated
-per fixture**. Tests that mutate cart state (cart line-item probes) start a
-fresh server, so ordering between probes is irrelevant.
+per fixture**. Tests that mutate cart state (cart line-item probes) start
+a fresh server, so ordering between probes is irrelevant.
 
 This module performs no I/O at import time; ``SandboxShop.__enter__`` is
 the entry point.
@@ -29,6 +37,7 @@ the entry point.
 from __future__ import annotations
 
 import http.server
+import json
 import socketserver
 import threading
 import uuid
@@ -36,20 +45,84 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from types import TracebackType
 from typing import Final
+from urllib.parse import parse_qs, urlparse
 
 # --------------------------------------------------------------------------- #
 # Page templates
 # --------------------------------------------------------------------------- #
 
+# Skip-to-content link is the very first focusable element so a11y probes
+# can find it without scrolling.
+_SKIP_LINK_HTML: Final[str] = (
+    '<a class="skip-to-content-link" href="#main-content">Skip to main content</a>'
+)
+
+# Header includes: logo, primary nav with mega menu, search combobox,
+# locale + currency switcher, cart link with badge.
 _HEADER_HTML: Final[str] = """\
 <header class="site-header" style="position: sticky; top: 0; background: #fff; padding: 12px;">
   <a class="site-logo" href="/">FixtureShop</a>
-  <nav aria-label="Primary">
-    <a href="/collections/all">All</a>
-    <a href="/collections/featured">Featured</a>
+  <nav aria-label="Primary" class="primary-nav">
+    <ul class="nav-mega-menu" data-mega-menu>
+      <li class="mega-menu__group">
+        <button aria-expanded="false" aria-controls="mega-shop">Shop</button>
+        <ul id="mega-shop" class="mega-menu__panel">
+          <li><h4>Collections</h4></li>
+          <li><a href="/collections/all">All</a></li>
+          <li><a href="/collections/featured">Featured</a></li>
+        </ul>
+      </li>
+      <li><a href="/collections/all">All</a></li>
+      <li><a href="/collections/featured">Featured</a></li>
+    </ul>
   </nav>
+  <div class="header-search" role="search">
+    <button class="header-search-trigger" type="button"
+            aria-label="Search" aria-expanded="false"
+            aria-controls="predictive-search">Search</button>
+    <input
+      class="header-search-input"
+      type="search"
+      name="q"
+      role="combobox"
+      aria-controls="predictive-search-listbox"
+      aria-expanded="false"
+      aria-autocomplete="list"
+      data-debounce="300"
+      placeholder="Search products">
+    <ul id="predictive-search-listbox" role="listbox" hidden>
+      <li role="option">Sample One</li>
+      <li role="option">Sample Two</li>
+    </ul>
+  </div>
+  <div class="header-localization">
+    <form class="locale-form" method="post" action="/localization">
+      <label class="locale-label">
+        Language
+        <select class="locale-switcher" name="locale">
+          <option value="en">English (EN)</option>
+          <option value="fr">Français (FR)</option>
+        </select>
+      </label>
+      <label class="currency-label">
+        Currency
+        <select class="currency-switcher" name="currency">
+          <option value="USD">USD $</option>
+          <option value="EUR">EUR €</option>
+        </select>
+      </label>
+      <label class="country-label">
+        Country
+        <select class="country-selector" name="country">
+          <option value="US">United States</option>
+          <option value="CA">Canada</option>
+          <option value="FR">France</option>
+        </select>
+      </label>
+    </form>
+  </div>
   <a class="header-cart-link" href="/cart" aria-label="Cart">
-    Cart (<span data-cart-count>0</span>)
+    Cart (<span class="cart-count" data-cart-count>0</span>)
   </a>
 </header>
 """
@@ -66,8 +139,60 @@ _FOOTER_HTML: Final[str] = """\
 </footer>
 """
 
+# Floating-region markup (cookie banner, newsletter popup, chat widget,
+# toast region). Rendered on every page so any probe can find them.
+_FLOATING_HTML: Final[str] = """\
+<aside class="cookie-consent-banner" data-cookie-consent role="dialog" aria-label="Cookie consent">
+  <p>We use cookies to improve your experience.</p>
+  <button type="button" class="cookie-accept">Accept</button>
+</aside>
+<dialog class="newsletter-popup" data-newsletter-popup aria-label="Newsletter signup">
+  <form>
+    <label>Email <input type="email" name="email"></label>
+    <button type="submit">Subscribe</button>
+  </form>
+</dialog>
+<button class="chat-widget-launcher" data-chat-widget aria-label="Open chat" type="button">
+  Chat
+</button>
+<div class="toast-region" role="status" aria-live="polite" data-toast-region></div>
+"""
+
 # Tall spacer so a 600px scroll on the homepage actually moves the viewport.
 _TALL_SPACER: Final[str] = '<div style="height: 3000px"></div>'
+
+_HOMEPAGE_BODY: Final[str] = """\
+<main id="main-content">
+  <section class="hero" data-section-type="hero">
+    <img src="/static/hero.png" alt="Hero collection" loading="lazy"
+         srcset="/static/hero.png 1x, /static/hero@2x.png 2x">
+    <h1>Welcome to FixtureShop</h1>
+    <p>Shop our collections.</p>
+    <a class="hero-cta" href="/collections/all">Shop all</a>
+  </section>
+  <section class="featured-collection" data-section-type="featured-collection">
+    <h2>Featured products</h2>
+    <ul class="feature-grid">
+      <li class="feature-grid__item">
+        <a href="/products/sample">
+          <img src="/static/p1.png" alt="Sample One" loading="lazy">
+          <h3>Sample One</h3>
+        </a>
+      </li>
+      <li class="feature-grid__item">
+        <a href="/products/sample-two">
+          <img src="/static/p2.png" alt="Sample Two" loading="lazy">
+          <h3>Sample Two</h3>
+        </a>
+      </li>
+    </ul>
+  </section>
+  <section class="testimonials" data-section-type="testimonials">
+    <h2>What customers are saying</h2>
+    <blockquote>"Best shop ever." — A Customer</blockquote>
+  </section>
+</main>
+"""
 
 _HOMEPAGE_HTML: Final[str] = f"""\
 <!doctype html>
@@ -75,38 +200,44 @@ _HOMEPAGE_HTML: Final[str] = f"""\
 <head>
   <meta charset="utf-8">
   <title>FixtureShop</title>
+  <style>:focus-visible {{ outline: 2px solid #06f; }}</style>
 </head>
 <body>
+{_SKIP_LINK_HTML}
 {_HEADER_HTML}
-<main>
-  <h1>Welcome to FixtureShop</h1>
-  <p>Shop our collections.</p>
-</main>
+{_HOMEPAGE_BODY}
 {_TALL_SPACER}
 {_FOOTER_HTML}
+{_FLOATING_HTML}
 </body>
 </html>
 """
 
-_COLLECTION_HTML: Final[str] = f"""\
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>All — FixtureShop</title>
-</head>
-<body>
-{_HEADER_HTML}
-<main>
-  <aside class="collection-filters" aria-label="Filters">
+_COLLECTION_BODY: Final[str] = """\
+<main id="main-content">
+  <nav aria-label="Breadcrumb" class="breadcrumbs">
+    <ol>
+      <li><a href="/">Home</a></li>
+      <li>All</li>
+    </ol>
+  </nav>
+  <ul class="active-filter-chips" aria-label="Active filters">
+    <li class="active-filter-chip"><button type="button">T-shirt &times;</button></li>
+  </ul>
+  <aside class="collection-filters sidebar-filters" aria-label="Filters">
     <h2>Filter</h2>
-    <form>
+    <form method="get" action="/collections/all">
       <fieldset>
         <legend>Type</legend>
         <label><input type="checkbox" name="type" value="t-shirt"> T-shirt</label>
         <label><input type="checkbox" name="type" value="hat"> Hat</label>
       </fieldset>
+      <button type="submit">Apply</button>
     </form>
+    <ul class="filter-links">
+      <li><a href="/collections/all?type=t-shirt">T-shirt</a></li>
+      <li><a href="/collections/all?type=hat">Hat</a></li>
+    </ul>
   </aside>
   <section class="collection-listing">
     <div class="collection-toolbar">
@@ -120,14 +251,16 @@ _COLLECTION_HTML: Final[str] = f"""\
     <ul class="product-grid">
       <li class="product-card">
         <a href="/products/sample">
-          <img src="/static/p1.png" alt="Sample one">
+          <img src="/static/p1.png" alt="Sample one" loading="lazy"
+               srcset="/static/p1.png 1x, /static/p1@2x.png 2x">
           <h3 class="product-card__title">Sample One</h3>
           <span class="product-card__price">$10.00</span>
         </a>
       </li>
       <li class="product-card">
         <a href="/products/sample-two">
-          <img src="/static/p2.png" alt="Sample two">
+          <img src="/static/p2.png" alt="Sample two" loading="lazy"
+               srcset="/static/p2.png 1x, /static/p2@2x.png 2x">
           <h3 class="product-card__title">Sample Two</h3>
           <span class="product-card__price">$20.00</span>
         </a>
@@ -138,9 +271,103 @@ _COLLECTION_HTML: Final[str] = f"""\
     </nav>
   </section>
 </main>
+"""
+
+_COLLECTION_HTML: Final[str] = f"""\
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>All — FixtureShop</title>
+  <style>:focus-visible {{ outline: 2px solid #06f; }}</style>
+</head>
+<body>
+{_SKIP_LINK_HTML}
+{_HEADER_HTML}
+{_COLLECTION_BODY}
 {_FOOTER_HTML}
+{_FLOATING_HTML}
 </body>
 </html>
+"""
+
+# PDP markup includes: gallery thumbnails, swatches that swap the main
+# image (data-swatch-image), variant radio selector, quantity spinner,
+# accordion description, breadcrumbs, recommendations, lazy-load +
+# srcset, and a lightbox-trigger button.
+_PRODUCT_BODY: Final[str] = """\
+<main id="main-content">
+  <nav aria-label="Breadcrumb" class="breadcrumbs">
+    <ol>
+      <li><a href="/">Home</a></li>
+      <li><a href="/collections/all">All</a></li>
+      <li>Sample One</li>
+    </ol>
+  </nav>
+  <div class="product-gallery" role="tablist" aria-label="Product images">
+    <img class="product-gallery__main" src="/static/p1.png" alt="Sample One main image"
+         loading="lazy"
+         srcset="/static/p1.png 1x, /static/p1@2x.png 2x">
+    <ul class="product-gallery__thumbnails">
+      <li><button role="tab" aria-selected="true" data-thumb-src="/static/p1.png">
+        <img src="/static/p1.png" alt="Sample One thumbnail 1" loading="lazy">
+      </button></li>
+      <li><button role="tab" aria-selected="false" data-thumb-src="/static/p2.png">
+        <img src="/static/p2.png" alt="Sample One thumbnail 2" loading="lazy">
+      </button></li>
+    </ul>
+    <button class="product-gallery__zoom" type="button" data-lightbox aria-label="Zoom image">
+      Zoom
+    </button>
+  </div>
+  <h1 class="product-title">Sample One</h1>
+  <div class="product-price">$10.00</div>
+  <form class="product-form" method="post" action="/cart/add">
+    <input type="hidden" name="product_id" value="sample">
+    <fieldset class="product-variants" data-variant-selector>
+      <legend>Color</legend>
+      <label class="swatch">
+        <input type="radio" name="variant" value="red" checked
+               data-swatch-image="/static/p1.png">
+        <span>Red</span>
+      </label>
+      <label class="swatch">
+        <input type="radio" name="variant" value="blue"
+               data-swatch-image="/static/p2.png">
+        <span>Blue</span>
+      </label>
+    </fieldset>
+    <label class="quantity-selector">
+      Quantity
+      <input
+        type="number"
+        name="quantity"
+        class="quantity-input"
+        aria-label="Quantity"
+        value="1"
+        min="1"
+        step="1">
+    </label>
+    <button type="submit" class="add-to-cart">Add to cart</button>
+  </form>
+  <details class="product-description product-description-accordion">
+    <summary>Description</summary>
+    <p>Sample One is a representative test product used by the
+    ShopProbe localhost fixture.</p>
+  </details>
+  <section class="product-recommendations" aria-label="Recommended products">
+    <h2>You may also like</h2>
+    <ul>
+      <li class="product-card">
+        <a href="/products/sample-two">
+          <img src="/static/p2.png" alt="Sample Two" loading="lazy">
+          <h3 class="product-card__title">Sample Two</h3>
+          <span class="product-card__price">$20.00</span>
+        </a>
+      </li>
+    </ul>
+  </section>
+</main>
 """
 
 _PRODUCT_HTML: Final[str] = f"""\
@@ -149,39 +376,35 @@ _PRODUCT_HTML: Final[str] = f"""\
 <head>
   <meta charset="utf-8">
   <title>Sample One — FixtureShop</title>
+  <style>:focus-visible {{ outline: 2px solid #06f; }}</style>
 </head>
 <body>
+{_SKIP_LINK_HTML}
 {_HEADER_HTML}
-<main>
-  <div class="product-gallery">
-    <img class="product-gallery__main" src="/static/p1.png" alt="Sample One main image">
-  </div>
-  <h1 class="product-title">Sample One</h1>
-  <div class="product-price">$10.00</div>
-  <form class="product-form" method="post" action="/cart/add">
-    <input type="hidden" name="product_id" value="sample">
-    <button type="submit" class="add-to-cart">Add to cart</button>
-  </form>
-  <section class="product-description">
-    <p>Sample One is a representative test product used by the
-    ShopProbe localhost fixture.</p>
-  </section>
-</main>
+{_PRODUCT_BODY}
 {_FOOTER_HTML}
+{_FLOATING_HTML}
 </body>
 </html>
 """
 
 _CART_EMPTY_BODY: Final[str] = """\
-<main>
+<main id="main-content">
   <h1>Your cart</h1>
   <p class="cart-empty-state">Your cart is currently empty.</p>
   <a href="/collections/all">Continue shopping</a>
+  <form class="cart-promo-form" method="post" action="/cart/discount">
+    <label>
+      Discount code
+      <input type="text" name="discount" class="cart-promo-code" placeholder="Enter code">
+    </label>
+    <button type="submit">Apply</button>
+  </form>
 </main>
 """
 
 _CART_WITH_ITEM_BODY: Final[str] = """\
-<main>
+<main id="main-content">
   <h1>Your cart</h1>
   <ul class="cart-items">
     <li class="cart-item" data-product-id="sample">
@@ -206,6 +429,13 @@ _CART_WITH_ITEM_BODY: Final[str] = """\
       </form>
     </li>
   </ul>
+  <form class="cart-promo-form" method="post" action="/cart/discount">
+    <label>
+      Discount code
+      <input type="text" name="discount" class="cart-promo-code" placeholder="Enter code">
+    </label>
+    <button type="submit">Apply</button>
+  </form>
 </main>
 """
 
@@ -213,9 +443,46 @@ _CART_WITH_ITEM_BODY: Final[str] = """\
 def _wrap(body: str, *, title: str = "Cart — FixtureShop") -> str:
     return (
         '<!doctype html>\n<html lang="en">\n<head>'
-        f'<meta charset="utf-8"><title>{title}</title></head>\n'
-        f"<body>\n{_HEADER_HTML}{body}{_FOOTER_HTML}\n</body></html>"
+        f'<meta charset="utf-8"><title>{title}</title>'
+        "<style>:focus-visible { outline: 2px solid #06f; }</style></head>\n"
+        f"<body>\n{_SKIP_LINK_HTML}{_HEADER_HTML}{body}{_FOOTER_HTML}{_FLOATING_HTML}\n"
+        "</body></html>"
     )
+
+
+def _render_search_page(query: str) -> str:
+    """Render the search results page for ``query``.
+
+    A query of ``zzznoresults`` (or empty) yields the no-results state;
+    any other query echoes back the query and renders product cards so
+    the ``search.results_page.renders`` and ``search.query_echo`` probes
+    pass.
+    """
+    safe = query.replace("<", "&lt;").replace(">", "&gt;")
+    if not query or query == "zzznoresults":
+        body = f"""\
+<main id="main-content">
+  <h1>Search results for "{safe}"</h1>
+  <p class="search-no-results">No results found for "{safe}".</p>
+</main>
+"""
+    else:
+        body = f"""\
+<main id="main-content">
+  <h1>Search results for "{safe}"</h1>
+  <p class="search-query-echo">Showing results for "{safe}"</p>
+  <ul class="product-grid">
+    <li class="product-card">
+      <a href="/products/sample">
+        <img src="/static/p1.png" alt="Sample One" loading="lazy">
+        <h3 class="product-card__title">Sample One</h3>
+        <span class="product-card__price">$10.00</span>
+      </a>
+    </li>
+  </ul>
+</main>
+"""
+    return _wrap(body, title=f'Search "{safe}" — FixtureShop')
 
 
 # --------------------------------------------------------------------------- #
@@ -281,9 +548,10 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             )
         self.end_headers()
 
-    def do_GET(self) -> None:
+    def do_GET(self) -> None:  # noqa: PLR0911 — flat route dispatcher
         shop: SandboxShop = self.server.shop  # type: ignore[attr-defined]
-        path = self.path.split("?", 1)[0]
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/":
             self._send(200, _HOMEPAGE_HTML.encode("utf-8"))
             return
@@ -298,6 +566,17 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             populated = sid is not None and shop.cart_has_item(sid)
             body = _CART_WITH_ITEM_BODY if populated else _CART_EMPTY_BODY
             self._send(200, _wrap(body).encode("utf-8"))
+            return
+        if path == "/cart.js":
+            sid = self._existing_session_id()
+            count = shop.cart_count(sid) if sid is not None else 0
+            payload = json.dumps({"item_count": count, "items": []}).encode("utf-8")
+            self._send(200, payload, content_type="application/json")
+            return
+        if path == "/search":
+            qs = parse_qs(parsed.query)
+            query = qs.get("q", [""])[0]
+            self._send(200, _render_search_page(query).encode("utf-8"))
             return
         if path.startswith("/static/"):
             # Tiny 1x1 transparent PNG so <img> requests resolve.
@@ -368,6 +647,10 @@ class SandboxShop:
     def cart_has_item(self, session_id: str) -> bool:
         """Return whether the cart for ``session_id`` has at least one line item."""
         return self._carts.get(session_id, 0) > 0
+
+    def cart_count(self, session_id: str) -> int:
+        """Return the cart line-item count for ``session_id``."""
+        return self._carts.get(session_id, 0)
 
     def add_to_cart(self, session_id: str) -> None:
         """Increment the cart line-item counter for ``session_id`` (POST /cart/add)."""

@@ -74,3 +74,13 @@ def test_empty_state_renders_passes_on_empty_cart(tmp_path: Path, sandbox_url: s
         evidence_root=tmp_path / "evidence",
     )
     assert outcome.passed is True, outcome.notes
+
+
+def test_promo_code_input_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        cart.promo_code_input,
+        base_url=sandbox_url,
+        probe_id="cart.promo_code",
+        evidence_root=tmp_path / "evidence",
+    )
+    assert outcome.passed is True, outcome.notes

@@ -1,9 +1,19 @@
 """Axis A probes: deterministic Playwright assertions, one per rubric leaf.
 
-The leaf modules — :mod:`shop_probe.probes.site_shell`,
-:mod:`shop_probe.probes.collection`, :mod:`shop_probe.probes.product`, and
-:mod:`shop_probe.probes.cart` — implement the 20 ``core``-level probes that
-ship in ``rubric/v1.yaml`` for the M1 slice (spec §7 M1).
+The leaf modules implement the rubric in ``rubric/v1.yaml``:
+
+* :mod:`shop_probe.probes.site_shell` — header / nav / footer shell.
+* :mod:`shop_probe.probes.homepage` — homepage section types.
+* :mod:`shop_probe.probes.collection` — collection listing surface.
+* :mod:`shop_probe.probes.product` — product detail page surface.
+* :mod:`shop_probe.probes.search` — search trigger + results page.
+* :mod:`shop_probe.probes.cart` — cart page + line-item flow.
+* :mod:`shop_probe.probes.i18n` — locale / currency / market switchers.
+* :mod:`shop_probe.probes.floating` — cookie / newsletter / chat overlays.
+* :mod:`shop_probe.probes.dynamics` — toast region, URL-state-sync, AJAX
+  cart endpoints, debounced inputs, cart-count badge.
+* :mod:`shop_probe.probes.a11y` — skip-link, ARIA roles, alt-text coverage.
+* :mod:`shop_probe.probes.media` — lazy-load, srcset, lightbox, swatch-swap.
 
 Each probe is an ``async def fn(page, ctx) -> ProbeOutcome`` matching
 :data:`shop_probe.probes._runner.ProbeFn`. The runner orchestrates Playwright

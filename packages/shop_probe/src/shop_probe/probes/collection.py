@@ -160,3 +160,82 @@ async def has_pagination_or_infinite_scroll(page: Page, ctx: ProbeContext) -> Pr
         evidence=(shot, snap),
         notes=None if found else "no pagination/infinite-scroll/load-more control",
     )
+
+
+async def has_sidebar_filter_layout(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """Collection page renders filters inside an ``<aside>`` / sidebar layout.
+
+    Distinct from :func:`has_filters` — this asserts the *shape* of the
+    filter UI (sidebar) rather than only the presence of filter inputs.
+    """
+    if ctx.sample_collection_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_collection_url provided")
+    await page.goto(ctx.sample_collection_url, wait_until="domcontentloaded")
+    sidebar = page.locator(
+        'aside[class*="filter"], aside[aria-label*="filter" i], '
+        '[class*="sidebar-filters"], [class*="filters-sidebar"]'
+    ).first
+    found = await sidebar.count() > 0
+    snap = await ctx.snapshot("sidebar")
+    shot = await ctx.screenshot("sidebar")
+    return ProbeOutcome(
+        passed=found,
+        evidence=(shot, snap),
+        notes=None if found else "no sidebar/aside-shaped filter container",
+    )
+
+
+async def filters_sync_to_url_state(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """Collection filters expose URL-state-sync (link-based or form GET).
+
+    Spec §5.3 calls this out explicitly. Themes implement it via either
+    a) anchors that point to the same path with a query string, or
+    b) a ``<form method="get">`` whose action lands on the same path.
+    """
+    if ctx.sample_collection_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_collection_url provided")
+    await page.goto(ctx.sample_collection_url, wait_until="domcontentloaded")
+    # Anchor-based filter (e.g. <a href="?type=t-shirt">).
+    filter_anchors = page.locator('[class*="filter"] a[href*="?"], [class*="filter"] a[href*="&"]')
+    has_anchors = await filter_anchors.count() > 0
+    # Form-based filter using GET.
+    get_form = page.locator(
+        'form[method="get" i][class*="filter"], form[method="get" i] [name*="filter"], '
+        'form[method="get" i] [class*="filter"]'
+    ).first
+    has_get_form = await get_form.count() > 0
+    snap = await ctx.snapshot("url-state-sync")
+    shot = await ctx.screenshot("url-state-sync")
+    passed = has_anchors or has_get_form
+    return ProbeOutcome(
+        passed=passed,
+        evidence=(shot, snap),
+        notes=None
+        if passed
+        else "no URL-state-sync filter (anchor with ?query nor form[method=get])",
+    )
+
+
+async def has_active_filter_chips(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """Collection page exposes active-filter chips when filters are applied.
+
+    The fixture exposes them by default; on a real storefront this is
+    only visible after a filter is applied. We probe for the presence of
+    a chip-shaped container (``[class*="active-filter"]`` or an
+    ``aria-label`` match) — themes that lack them legitimately fail.
+    """
+    if ctx.sample_collection_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_collection_url provided")
+    await page.goto(ctx.sample_collection_url, wait_until="domcontentloaded")
+    chips = page.locator(
+        '[class*="active-filter"], [class*="filter-chip"], '
+        '[aria-label*="active filter" i], [data-active-filter]'
+    )
+    n = await chips.count()
+    snap = await ctx.snapshot("active-chips")
+    shot = await ctx.screenshot("active-chips")
+    return ProbeOutcome(
+        passed=n > 0,
+        evidence=(shot, snap),
+        notes=None if n > 0 else "no active-filter chip container found",
+    )

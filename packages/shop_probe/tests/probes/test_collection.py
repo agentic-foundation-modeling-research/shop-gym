@@ -76,3 +76,36 @@ def test_has_pagination_passes(tmp_path: Path, sandbox_url: str) -> None:
         sample_collection_url=sandbox_url + SAMPLE_COLLECTION_PATH,
     )
     assert outcome.passed is True, outcome.notes
+
+
+def test_has_sidebar_filter_layout_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        collection.has_sidebar_filter_layout,
+        base_url=sandbox_url,
+        probe_id="collection.filters.sidebar_layout",
+        evidence_root=tmp_path / "evidence",
+        sample_collection_url=sandbox_url + SAMPLE_COLLECTION_PATH,
+    )
+    assert outcome.passed is True, outcome.notes
+
+
+def test_filters_sync_to_url_state_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        collection.filters_sync_to_url_state,
+        base_url=sandbox_url,
+        probe_id="collection.filters.url_state_sync",
+        evidence_root=tmp_path / "evidence",
+        sample_collection_url=sandbox_url + SAMPLE_COLLECTION_PATH,
+    )
+    assert outcome.passed is True, outcome.notes
+
+
+def test_has_active_filter_chips_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        collection.has_active_filter_chips,
+        base_url=sandbox_url,
+        probe_id="collection.filters.active_chips",
+        evidence_root=tmp_path / "evidence",
+        sample_collection_url=sandbox_url + SAMPLE_COLLECTION_PATH,
+    )
+    assert outcome.passed is True, outcome.notes

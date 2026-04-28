@@ -1,6 +1,6 @@
-"""Axis A — ``site_shell`` probes (T1.7 — spec §5.3, §7 M1).
+"""Axis A — ``site_shell`` probes (T1.7 + T3.3 — spec §5.3, §7 M1+M3).
 
-Five M1 ``core`` probes asserted against the storefront home page:
+M1 ``core`` probes asserted against the storefront home page:
 
 * :func:`header_is_sticky` — header stays in the viewport after a 600px
   homepage scroll (rubric ``site_shell.header.sticky``).
@@ -12,6 +12,11 @@ Five M1 ``core`` probes asserted against the storefront home page:
   least one ``/collections/*`` link (``site_shell.nav.primary_collection_link``).
 * :func:`footer_has_link_group` — footer renders at least one labeled link
   group (``site_shell.footer.link_group``).
+
+M3 ``modern`` probes (T3.3):
+
+* :func:`nav_has_mega_menu` — primary nav exposes a grouped "mega menu"
+  panel (``site_shell.nav.mega_menu``).
 
 Every probe captures one viewport screenshot **and** one DOM snapshot
 into the report's evidence root before returning, per spec §5.3 evidence
@@ -137,4 +142,34 @@ async def footer_has_link_group(page: Page, ctx: ProbeContext) -> ProbeOutcome:
         passed=passed,
         evidence=(shot, snap),
         notes=None if passed else "no labeled link group in <footer>",
+    )
+
+
+async def nav_has_mega_menu(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """Primary nav exposes a grouped "mega menu" panel.
+
+    The mega-menu shape we recognize: a nav element marked with
+    ``data-mega-menu`` (or a ``[class*="mega-menu"]`` container) that
+    holds a panel with at least two grouped child links — i.e. more
+    structure than a flat link list.
+    """
+    await page.goto(ctx.base_url, wait_until="domcontentloaded")
+    container = page.locator(
+        "header nav [data-mega-menu], header nav [class*='mega-menu'], header [data-mega-menu]"
+    ).first
+    if await container.count() == 0:
+        snap = await ctx.snapshot("no-mega-menu")
+        shot = await ctx.screenshot("no-mega-menu")
+        return ProbeOutcome(
+            passed=False, evidence=(shot, snap), notes="no mega-menu container in header nav"
+        )
+    panel_links = container.locator("[class*='panel'] a, [class*='group'] a")
+    n_links = await panel_links.count()
+    snap = await ctx.snapshot("mega-menu", selector="[data-mega-menu]")
+    shot = await ctx.screenshot("mega-menu", selector="[data-mega-menu]")
+    passed = n_links >= 2  # noqa: PLR2004 — at least two grouped links
+    return ProbeOutcome(
+        passed=passed,
+        evidence=(shot, snap),
+        notes=None if passed else f"mega-menu has only {n_links} grouped links",
     )

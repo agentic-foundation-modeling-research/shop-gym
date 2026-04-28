@@ -25,19 +25,29 @@ from shop_probe.rubric import compute_content_hash, load_rubric
 
 V1_PATH: Path = Path(__file__).resolve().parent.parent / "src" / "shop_probe" / "rubric" / "v1.yaml"
 
-EXPECTED_V1_HASH: str = "de011adf284354ee27aa7f8eeaaf4c22baab346ce6783660fb9091ac80434af4"
+EXPECTED_V1_HASH: str = "dca7e6a776460ed0eec20d2b11b9b7b89e0d30ce48fc90b656c017c09de0347e"
 """SHA-256 of ``rubric/v1.yaml`` raw bytes. Pin per spec §5.8."""
 
 EXPECTED_V1_VERSION: str = "v1"
 
-EXPECTED_V1_PROBE_COUNT: int = 20
+EXPECTED_V1_PROBE_COUNT: int = 61
 
 EXPECTED_V1_CATEGORY_COUNTS: dict[str, int] = {
-    "site_shell": 5,
-    "collection": 5,
-    "product": 5,
-    "cart": 5,
+    "site_shell": 6,
+    "homepage": 5,
+    "collection": 8,
+    "product": 10,
+    "search": 5,
+    "cart": 6,
+    "i18n": 3,
+    "floating": 3,
+    "dynamics": 5,
+    "a11y": 6,
+    "media": 4,
 }
+
+EXPECTED_V1_LEVELS: set[str] = {"core", "modern"}
+"""v1 ships only ``core`` + ``modern`` probes; ``advanced`` is dropped per spec §5.3."""
 
 
 # --------------------------------------------------------------------------- #
@@ -62,20 +72,20 @@ def test_v1_loads_via_loader() -> None:
 
 
 def test_v1_has_expected_probe_count() -> None:
-    """Spec §7 M1: 20 core-level probes ship in the M1 slice."""
+    """Spec §7 M3: v1 ships 61 probes after the M3 expansion."""
     rubric = load_rubric(V1_PATH)
     assert len(rubric.entries) == EXPECTED_V1_PROBE_COUNT
 
 
-def test_v1_all_entries_are_core_level() -> None:
-    """M1 ships only ``core`` probes; modern + advanced come later."""
+def test_v1_drops_advanced_level() -> None:
+    """v1 ships ``core`` + ``modern`` only; ``advanced`` is dropped per spec §5.3."""
     rubric = load_rubric(V1_PATH)
     levels = {entry.level for entry in rubric.entries}
-    assert levels == {"core"}
+    assert levels == EXPECTED_V1_LEVELS
 
 
 def test_v1_category_distribution() -> None:
-    """Spec §7 M1: site_shell / collection / product / cart subset only."""
+    """Spec §5.3: v1 covers all 11 categories with the M3 distribution."""
     rubric = load_rubric(V1_PATH)
     counts = dict(Counter(entry.category for entry in rubric.entries))
     assert counts == EXPECTED_V1_CATEGORY_COUNTS

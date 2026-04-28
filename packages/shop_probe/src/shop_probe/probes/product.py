@@ -147,3 +147,115 @@ async def has_description(page: Page, ctx: ProbeContext) -> ProbeOutcome:
             notes=f"description block has trivial copy ({len(text.strip())} chars)",
         )
     return ProbeOutcome(passed=True, evidence=(shot, snap))
+
+
+async def gallery_has_thumbnails(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """PDP gallery exposes a thumbnail strip (spec §8.1 example).
+
+    A gallery counts as "having thumbnails" when at least two thumbnail
+    triggers exist — a one-image gallery has nothing to swap to.
+    """
+    if ctx.sample_product_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_product_url provided")
+    await page.goto(ctx.sample_product_url, wait_until="domcontentloaded")
+    thumbs = page.locator(
+        '[role="tablist"] [role="tab"], '
+        '[class*="product-gallery"] [class*="thumb"], '
+        '[class*="gallery__thumbnails"] button, '
+        '[class*="gallery__thumbnails"] li'
+    )
+    n = await thumbs.count()
+    snap = await ctx.snapshot("thumbnails")
+    shot = await ctx.screenshot("thumbnails")
+    passed = n >= 2  # noqa: PLR2004 — gallery needs at least two thumbs to swap
+    return ProbeOutcome(
+        passed=passed,
+        evidence=(shot, snap),
+        notes=None if passed else f"only {n} thumbnails (need at least 2)",
+    )
+
+
+async def has_variant_selector(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """PDP exposes a variant selector (radio swatches / select / dropdown)."""
+    if ctx.sample_product_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_product_url provided")
+    await page.goto(ctx.sample_product_url, wait_until="domcontentloaded")
+    # Accept the common shapes: radio group, swatch fieldset, variant <select>.
+    selector = page.locator(
+        'fieldset[class*="variant"], [data-variant-selector], '
+        'input[type="radio"][name*="variant" i], input[type="radio"][name*="option" i], '
+        'select[name*="variant" i], select[name*="option" i], '
+        '[class*="swatch"] input[type="radio"]'
+    )
+    found = await selector.count() > 0
+    snap = await ctx.snapshot("variant-selector")
+    shot = await ctx.screenshot("variant-selector")
+    return ProbeOutcome(
+        passed=found,
+        evidence=(shot, snap),
+        notes=None if found else "no variant selector (radio/select/swatch) on PDP",
+    )
+
+
+async def has_quantity_spinner(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """PDP exposes a numeric quantity spinner."""
+    if ctx.sample_product_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_product_url provided")
+    await page.goto(ctx.sample_product_url, wait_until="domcontentloaded")
+    qty = page.locator(
+        'input[type="number"][name*="quantity" i], input[type="number"][name*="qty" i], '
+        '[class*="quantity-selector"] input[type="number"], '
+        '[class*="qty"][role="spinbutton"]'
+    ).first
+    found = await qty.count() > 0
+    snap = await ctx.snapshot("qty-spinner")
+    shot = await ctx.screenshot("qty-spinner")
+    return ProbeOutcome(
+        passed=found,
+        evidence=(shot, snap),
+        notes=None if found else "no quantity spinner on PDP",
+    )
+
+
+async def has_breadcrumbs(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """PDP renders a breadcrumb trail."""
+    if ctx.sample_product_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_product_url provided")
+    await page.goto(ctx.sample_product_url, wait_until="domcontentloaded")
+    crumbs = page.locator(
+        'nav[aria-label*="breadcrumb" i], [class*="breadcrumb"], [itemtype$="BreadcrumbList"]'
+    ).first
+    found = await crumbs.count() > 0
+    snap = await ctx.snapshot("breadcrumbs")
+    shot = await ctx.screenshot("breadcrumbs")
+    return ProbeOutcome(
+        passed=found,
+        evidence=(shot, snap),
+        notes=None if found else "no breadcrumb nav on PDP",
+    )
+
+
+async def has_recommendations(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """PDP renders a "you may also like" / recommendations section."""
+    if ctx.sample_product_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_product_url provided")
+    await page.goto(ctx.sample_product_url, wait_until="domcontentloaded")
+    section = page.locator(
+        '[class*="recommend"], [class*="related-product"], '
+        'section[aria-label*="recommend" i], section[aria-label*="related" i]'
+    ).first
+    if await section.count() == 0:
+        snap = await ctx.snapshot("no-recommendations")
+        shot = await ctx.screenshot("no-recommendations")
+        return ProbeOutcome(
+            passed=False, evidence=(shot, snap), notes="no recommendations section on PDP"
+        )
+    n_cards = await section.locator('[class*="product-card"], a[href*="/products/"]').count()
+    snap = await ctx.snapshot("recommendations")
+    shot = await ctx.screenshot("recommendations")
+    passed = n_cards > 0
+    return ProbeOutcome(
+        passed=passed,
+        evidence=(shot, snap),
+        notes=None if passed else "recommendations section is empty",
+    )

@@ -1,15 +1,16 @@
-"""End-to-end test for ``shop-probe run --axes A`` (T1.8 — spec §7 M1 gate).
+"""End-to-end test for ``shop-probe run --axes A`` (T1.8 + T3.3 — spec §7 M1+M3 gates).
 
 Drives the CLI against the localhost SandboxShop fixture and asserts the
-emitted JSON validates as a closed :class:`ProbeReport`. M1 acceptance:
+emitted JSON validates as a closed :class:`ProbeReport`. Acceptance:
 
 * every rubric leaf in ``rubric/v1.yaml`` produces a ``ProbeResult`` row;
 * per-level + weighted coverage are computed per spec §5.3;
 * the rubric version + content hash, runner version, and the pinned
   Playwright/Chromium runtime metadata are embedded in the report
   header per spec §5.6 + §5.8;
-* the SandboxShop fixture is built to satisfy every M1 ``core`` probe,
-  so ``coverage_core`` lands at 1.0 (full pass) on a clean run.
+* the SandboxShop fixture is built to satisfy every probe in the M3
+  rubric (core + modern), so ``coverage_weighted`` lands at 1.0 on a
+  clean run.
 """
 
 from __future__ import annotations
@@ -82,19 +83,26 @@ def test_cli_run_emits_valid_probe_report(tmp_path: Path) -> None:
     assert report.runtime.chromium_version
     assert report.runtime.playwright_version
 
-    # The fixture is built to pass every M1 core probe.
+    # The fixture is built to pass every M3 core + modern probe.
     assert report.coverage_core == pytest.approx(1.0)
+    assert report.coverage_modern == pytest.approx(1.0)
     assert report.coverage_weighted == pytest.approx(1.0)
-    # No modern / advanced probes ship in M1 — those slots stay at 0.0.
-    assert report.coverage_modern == 0.0
+    # No advanced probes ship in v1 (spec §5.3) — that slot stays at 0.0.
     assert report.coverage_advanced == 0.0
 
-    # Per-category rollups cover the M1 slice.
+    # Per-category rollups cover the full v1 slice (11 categories).
     assert {c.category for c in report.categories} == {
         "site_shell",
+        "homepage",
         "collection",
         "product",
+        "search",
         "cart",
+        "i18n",
+        "floating",
+        "dynamics",
+        "a11y",
+        "media",
     }
     for cat in report.categories:
         assert cat.weight_total > 0

@@ -1,10 +1,9 @@
-# ShopProbe rubric v1 (M1 slice).
+# ShopProbe rubric v1 (M3 expansion).
 #
-# 20 core-level probes covering site_shell, collection, product, and cart —
-# the M1 capability-coverage subset per docs/specs/shop_arena/web_probe.md
-# §7 M1. Modern + remaining core probes (homepage, search, i18n, floating,
-# dynamics, a11y, media) ship in M3 (T3.3); advanced is dropped from v1
-# per spec §5.3.
+# 61 core + modern probes covering the 11 v1 categories per
+# docs/specs/shop_arena/web_probe.md §5.3. Advanced-tier probes are
+# dropped from v1 per spec §5.3 and §5.9 — they ship in v1.1 along
+# with the auth + transactional surfaces.
 #
 # This file is content-addressable: shop_probe.rubric.loader hashes the
 # raw bytes and embeds the digest in every ProbeReport (spec §5.8). Edits
@@ -14,7 +13,7 @@
 # resolved by the runner at execution time (T1.6 / T1.7).
 version: v1
 entries:
-  # --- site_shell (5) -------------------------------------------------------
+  # --- site_shell (6) -------------------------------------------------------
   - id: site_shell.header.sticky
     category: site_shell
     level: core
@@ -55,8 +54,58 @@ entries:
     description: Footer renders at least one labeled link group.
     authenticated: false
     transactional: false
+  - id: site_shell.nav.mega_menu
+    category: site_shell
+    level: modern
+    weight: 2
+    probe: probes.site_shell.nav_has_mega_menu
+    description: Primary nav exposes a grouped "mega menu" panel.
+    authenticated: false
+    transactional: false
 
-  # --- collection (5) -------------------------------------------------------
+  # --- homepage (5) ---------------------------------------------------------
+  - id: homepage.hero.present
+    category: homepage
+    level: core
+    weight: 2
+    probe: probes.homepage.has_hero_section
+    description: Homepage opens with a hero / banner section that includes a heading or image.
+    authenticated: false
+    transactional: false
+  - id: homepage.cta_to_collection
+    category: homepage
+    level: core
+    weight: 2
+    probe: probes.homepage.has_cta_to_collection
+    description: Homepage exposes a labeled call-to-action linking to a /collections/* destination.
+    authenticated: false
+    transactional: false
+  - id: homepage.feature_grid
+    category: homepage
+    level: modern
+    weight: 2
+    probe: probes.homepage.has_feature_grid
+    description: Homepage renders a feature / featured-product grid with at least two cards.
+    authenticated: false
+    transactional: false
+  - id: homepage.testimonials
+    category: homepage
+    level: modern
+    weight: 1
+    probe: probes.homepage.has_testimonial_section
+    description: Homepage renders a testimonials / reviews / quotes section.
+    authenticated: false
+    transactional: false
+  - id: homepage.multiple_section_types
+    category: homepage
+    level: modern
+    weight: 2
+    probe: probes.homepage.multiple_section_types
+    description: Homepage renders at least three distinct section types (hero, features, testimonials, ...).
+    authenticated: false
+    transactional: false
+
+  # --- collection (8) -------------------------------------------------------
   - id: collection.listing.product_cards
     category: collection
     level: core
@@ -97,8 +146,32 @@ entries:
     description: Collection page exposes pagination, infinite scroll, or load-more when results exceed the first page.
     authenticated: false
     transactional: false
+  - id: collection.filters.sidebar_layout
+    category: collection
+    level: core
+    weight: 2
+    probe: probes.collection.has_sidebar_filter_layout
+    description: Collection page renders filters inside a sidebar / aside layout.
+    authenticated: false
+    transactional: false
+  - id: collection.filters.url_state_sync
+    category: collection
+    level: modern
+    weight: 2
+    probe: probes.collection.filters_sync_to_url_state
+    description: Collection filters expose URL-state-sync (anchor-based or GET-form).
+    authenticated: false
+    transactional: false
+  - id: collection.filters.active_chips
+    category: collection
+    level: modern
+    weight: 1
+    probe: probes.collection.has_active_filter_chips
+    description: Collection page exposes a container for active-filter chips.
+    authenticated: false
+    transactional: false
 
-  # --- product (5) ----------------------------------------------------------
+  # --- product (10) ---------------------------------------------------------
   - id: product.gallery.image
     category: product
     level: core
@@ -139,8 +212,90 @@ entries:
     description: Product detail page renders a product description block.
     authenticated: false
     transactional: false
+  - id: product.gallery.thumbnails
+    category: product
+    level: modern
+    weight: 2
+    probe: probes.product.gallery_has_thumbnails
+    description: PDP gallery exposes a thumbnail strip with at least two thumbnails.
+    authenticated: false
+    transactional: false
+  - id: product.variant.selector
+    category: product
+    level: core
+    weight: 2
+    probe: probes.product.has_variant_selector
+    description: PDP exposes a variant selector (radio swatches, select, or dropdown).
+    authenticated: false
+    transactional: false
+  - id: product.qty.spinner
+    category: product
+    level: core
+    weight: 2
+    probe: probes.product.has_quantity_spinner
+    description: PDP exposes a numeric quantity spinner.
+    authenticated: false
+    transactional: false
+  - id: product.breadcrumbs
+    category: product
+    level: modern
+    weight: 1
+    probe: probes.product.has_breadcrumbs
+    description: PDP renders a breadcrumb trail.
+    authenticated: false
+    transactional: false
+  - id: product.recommendations
+    category: product
+    level: modern
+    weight: 1
+    probe: probes.product.has_recommendations
+    description: PDP renders a "you may also like" / recommendations section.
+    authenticated: false
+    transactional: false
 
-  # --- cart (5) -------------------------------------------------------------
+  # --- search (5) -----------------------------------------------------------
+  - id: search.header.trigger
+    category: search
+    level: core
+    weight: 3
+    probe: probes.search.header_has_search_trigger
+    description: Header exposes a search input or trigger button.
+    authenticated: false
+    transactional: false
+  - id: search.results_page.renders
+    category: search
+    level: core
+    weight: 3
+    probe: probes.search.results_page_renders
+    description: /search?q=... renders a 2xx HTML page with body content.
+    authenticated: false
+    transactional: false
+  - id: search.query_echo
+    category: search
+    level: core
+    weight: 2
+    probe: probes.search.results_page_echoes_query
+    description: Search results page surfaces the submitted query string in body copy.
+    authenticated: false
+    transactional: false
+  - id: search.no_results_state
+    category: search
+    level: modern
+    weight: 1
+    probe: probes.search.no_results_state
+    description: Search results page renders an explicit empty-state on unmatched queries.
+    authenticated: false
+    transactional: false
+  - id: search.predictive_listbox
+    category: search
+    level: modern
+    weight: 2
+    probe: probes.search.predictive_listbox_present
+    description: Header search exposes an ARIA combobox + listbox predictive-search UI.
+    authenticated: false
+    transactional: false
+
+  # --- cart (6) -------------------------------------------------------------
   - id: cart.page.renders
     category: cart
     level: core
@@ -179,5 +334,191 @@ entries:
     weight: 1
     probe: probes.cart.empty_state_renders
     description: An empty cart renders an empty-state message rather than a blank page.
+    authenticated: false
+    transactional: false
+  - id: cart.promo_code
+    category: cart
+    level: modern
+    weight: 1
+    probe: probes.cart.promo_code_input
+    description: Cart page exposes a promo / discount code input.
+    authenticated: false
+    transactional: false
+
+  # --- i18n (3) -------------------------------------------------------------
+  - id: i18n.locale_switcher
+    category: i18n
+    level: modern
+    weight: 2
+    probe: probes.i18n.has_locale_switcher
+    description: Storefront exposes a language / locale switcher.
+    authenticated: false
+    transactional: false
+  - id: i18n.currency_switcher
+    category: i18n
+    level: modern
+    weight: 2
+    probe: probes.i18n.has_currency_switcher
+    description: Storefront exposes a currency switcher.
+    authenticated: false
+    transactional: false
+  - id: i18n.country_list
+    category: i18n
+    level: modern
+    weight: 1
+    probe: probes.i18n.has_country_list
+    description: Storefront exposes a country / market selector.
+    authenticated: false
+    transactional: false
+
+  # --- floating (3) ---------------------------------------------------------
+  - id: floating.cookie_consent
+    category: floating
+    level: modern
+    weight: 2
+    probe: probes.floating.has_cookie_consent
+    description: Storefront renders a cookie / privacy consent affordance.
+    authenticated: false
+    transactional: false
+  - id: floating.newsletter_popup
+    category: floating
+    level: modern
+    weight: 1
+    probe: probes.floating.has_newsletter_popup
+    description: Storefront renders a newsletter signup popup or dialog.
+    authenticated: false
+    transactional: false
+  - id: floating.chat_widget
+    category: floating
+    level: modern
+    weight: 1
+    probe: probes.floating.has_chat_widget
+    description: Storefront renders a chat-widget launcher.
+    authenticated: false
+    transactional: false
+
+  # --- dynamics (5) ---------------------------------------------------------
+  - id: dynamics.toast_region
+    category: dynamics
+    level: modern
+    weight: 1
+    probe: probes.dynamics.has_toast_region
+    description: Page exposes a live region for toast / snackbar messages.
+    authenticated: false
+    transactional: false
+  - id: dynamics.url_state_sync
+    category: dynamics
+    level: modern
+    weight: 2
+    probe: probes.dynamics.url_state_sync_present
+    description: Collection filters carry their state in the URL via anchors or a GET form.
+    authenticated: false
+    transactional: false
+  - id: dynamics.debounced_input
+    category: dynamics
+    level: modern
+    weight: 1
+    probe: probes.dynamics.debounced_input_present
+    description: A search-shaped input declares an explicit data-debounce attribute.
+    authenticated: false
+    transactional: false
+  - id: dynamics.ajax_cart_endpoint
+    category: dynamics
+    level: core
+    weight: 2
+    probe: probes.dynamics.ajax_cart_endpoint_discoverable
+    description: /cart.js (or equivalent) returns a JSON cart payload.
+    authenticated: false
+    transactional: false
+  - id: dynamics.cart_count_badge
+    category: dynamics
+    level: modern
+    weight: 1
+    probe: probes.dynamics.cart_count_badge_present
+    description: Header carries an updatable cart-count badge.
+    authenticated: false
+    transactional: false
+
+  # --- a11y (6) -------------------------------------------------------------
+  - id: a11y.skip_to_content
+    category: a11y
+    level: core
+    weight: 2
+    probe: probes.a11y.skip_to_content_link
+    description: A "skip to main content" link is present near the top of the document.
+    authenticated: false
+    transactional: false
+  - id: a11y.combobox_role
+    category: a11y
+    level: modern
+    weight: 1
+    probe: probes.a11y.combobox_role_present
+    description: At least one element exposes role="combobox".
+    authenticated: false
+    transactional: false
+  - id: a11y.dialog_role
+    category: a11y
+    level: modern
+    weight: 1
+    probe: probes.a11y.dialog_role_present
+    description: At least one role="dialog" or <dialog> element exists on the page.
+    authenticated: false
+    transactional: false
+  - id: a11y.live_region
+    category: a11y
+    level: modern
+    weight: 1
+    probe: probes.a11y.live_region_present
+    description: At least one aria-live region exists on the page.
+    authenticated: false
+    transactional: false
+  - id: a11y.alt_text_coverage
+    category: a11y
+    level: core
+    weight: 2
+    probe: probes.a11y.alt_text_coverage
+    description: At least 80% of <img> elements declare an alt attribute.
+    authenticated: false
+    transactional: false
+  - id: a11y.focus_visible
+    category: a11y
+    level: modern
+    weight: 1
+    probe: probes.a11y.focus_visible_style
+    description: The page's stylesheet defines a :focus-visible rule.
+    authenticated: false
+    transactional: false
+
+  # --- media (4) ------------------------------------------------------------
+  - id: media.lazy_load_images
+    category: media
+    level: modern
+    weight: 2
+    probe: probes.media.lazy_loaded_images
+    description: At least one image declares loading="lazy".
+    authenticated: false
+    transactional: false
+  - id: media.responsive_srcset
+    category: media
+    level: modern
+    weight: 2
+    probe: probes.media.responsive_srcset
+    description: At least one image declares a srcset attribute.
+    authenticated: false
+    transactional: false
+  - id: media.lightbox_or_zoom
+    category: media
+    level: modern
+    weight: 1
+    probe: probes.media.lightbox_or_zoom
+    description: PDP exposes a lightbox / zoom affordance for the gallery.
+    authenticated: false
+    transactional: false
+  - id: media.swatch_image_swap
+    category: media
+    level: modern
+    weight: 1
+    probe: probes.media.swatch_image_swap
+    description: Variant swatches carry a data-* image hint that supports swapping the main gallery image.
     authenticated: false
     transactional: false

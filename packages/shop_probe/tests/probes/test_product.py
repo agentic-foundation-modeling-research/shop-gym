@@ -75,3 +75,58 @@ def test_has_description_passes(tmp_path: Path, sandbox_url: str) -> None:
         sample_product_url=sandbox_url + SAMPLE_PRODUCT_PATH,
     )
     assert outcome.passed is True, outcome.notes
+
+
+def test_gallery_has_thumbnails_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        product.gallery_has_thumbnails,
+        base_url=sandbox_url,
+        probe_id="product.gallery.thumbnails",
+        evidence_root=tmp_path / "evidence",
+        sample_product_url=sandbox_url + SAMPLE_PRODUCT_PATH,
+    )
+    assert outcome.passed is True, outcome.notes
+
+
+def test_has_variant_selector_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        product.has_variant_selector,
+        base_url=sandbox_url,
+        probe_id="product.variant.selector",
+        evidence_root=tmp_path / "evidence",
+        sample_product_url=sandbox_url + SAMPLE_PRODUCT_PATH,
+    )
+    assert outcome.passed is True, outcome.notes
+
+
+def test_has_quantity_spinner_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        product.has_quantity_spinner,
+        base_url=sandbox_url,
+        probe_id="product.qty.spinner",
+        evidence_root=tmp_path / "evidence",
+        sample_product_url=sandbox_url + SAMPLE_PRODUCT_PATH,
+    )
+    assert outcome.passed is True, outcome.notes
+
+
+def test_has_breadcrumbs_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        product.has_breadcrumbs,
+        base_url=sandbox_url,
+        probe_id="product.breadcrumbs",
+        evidence_root=tmp_path / "evidence",
+        sample_product_url=sandbox_url + SAMPLE_PRODUCT_PATH,
+    )
+    assert outcome.passed is True, outcome.notes
+
+
+def test_has_recommendations_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        product.has_recommendations,
+        base_url=sandbox_url,
+        probe_id="product.recommendations",
+        evidence_root=tmp_path / "evidence",
+        sample_product_url=sandbox_url + SAMPLE_PRODUCT_PATH,
+    )
+    assert outcome.passed is True, outcome.notes

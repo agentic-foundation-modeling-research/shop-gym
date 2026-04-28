@@ -61,3 +61,13 @@ def test_footer_has_link_group_passes(tmp_path: Path, sandbox_url: str) -> None:
         evidence_root=tmp_path / "evidence",
     )
     assert outcome.passed is True, outcome.notes
+
+
+def test_nav_has_mega_menu_passes(tmp_path: Path, sandbox_url: str) -> None:
+    outcome = run_probe(
+        site_shell.nav_has_mega_menu,
+        base_url=sandbox_url,
+        probe_id="site_shell.nav.mega_menu",
+        evidence_root=tmp_path / "evidence",
+    )
+    assert outcome.passed is True, outcome.notes

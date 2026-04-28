@@ -10,7 +10,7 @@ Fixture surface (see ``tests/_sandbox.py``):
 * 4 distinct templates: homepage, collection, product, cart.
 * 2 catalog collections (``/collections/all``, ``/collections/featured``).
 * 2 catalog products (``/products/sample``, ``/products/sample-two``).
-* 0 catalog variants — the PDP has no variant selector.
+* Each PDP exposes a 2-radio variant selector → ``catalog_variants`` ≥ 2.
 * 1 filter group (2 checkboxes) + a 3-option sort select on collection
   pages → ``filter x sort`` cartesian state space = ``2**2 * 3 = 12``.
 """
@@ -89,12 +89,12 @@ def test_catalog_products_counts_distinct_product_paths(
     assert crawled_metrics.catalog_products == 2  # noqa: PLR2004
 
 
-def test_catalog_variants_is_zero_when_pdp_has_no_variant_selector(
+def test_catalog_variants_counts_pdp_variant_selector_options(
     crawled_metrics: SurfaceMetrics,
 ) -> None:
-    # Fixture's PDP form has only a hidden product_id and a submit button —
-    # no variant selectors → the variant detector reports 0.
-    assert crawled_metrics.catalog_variants == 0
+    # Each fixture PDP exposes a 2-radio variant selector. Both PDPs
+    # share the same selector → at least 2 variants discovered.
+    assert crawled_metrics.catalog_variants >= 2  # noqa: PLR2004
 
 
 def test_filter_x_sort_state_space_is_cartesian_product(
