@@ -190,6 +190,32 @@ def test_shop_gen_config_rejects_seed_pointing_at_file(tmp_path: Path) -> None:
         ShopGenConfig(seeds=[f])
 
 
+def test_shop_gen_config_makes_relative_seed_absolute_against_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Relative seed paths are made absolute against cwd at construction time.
+
+    Storing them absolute is what keeps
+    :func:`shop_gen.steps.state._resolve_input_path` from later
+    re-rooting them under ``out_dir`` and crashing at fingerprint time.
+    """
+    seed_dir = tmp_path / "seed"
+    seed_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+    cfg = ShopGenConfig(seeds=[Path("seed")])
+    assert cfg.seeds[0].is_absolute()
+    assert cfg.seeds[0] == (tmp_path / "seed").absolute()
+
+
+def test_shop_gen_config_preserves_absolute_seed_paths(tmp_path: Path) -> None:
+    """Already-absolute seed paths are stored verbatim (no resolve symlinks)."""
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    cfg = ShopGenConfig(seeds=[seed])
+    assert cfg.seeds[0] == seed
+
+
 # --------------------------------------------------------------------------- #
 # ShopGenConfig — scalar validation
 # --------------------------------------------------------------------------- #

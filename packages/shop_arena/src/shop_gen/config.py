@@ -73,6 +73,21 @@ def default_model_for(runtime: RuntimeName) -> str:
     return DEFAULT_MODEL_BY_RUNTIME[runtime]
 
 
+def _to_absolute(path: Path) -> Path:
+    """Return ``path`` made absolute against the cwd; absolute paths pass through.
+
+    Uses :meth:`pathlib.Path.absolute` rather than
+    :meth:`pathlib.Path.resolve` because we only need the path to *be*
+    absolute (so :func:`shop_gen.steps.state._resolve_input_path` does
+    not re-root it under ``out_dir``). We do not want symlink
+    dereferencing or ``..`` normalisation here — that would rewrite
+    user-typed paths in surprising ways (e.g. macOS ``/tmp`` →
+    ``/private/tmp``) and require filesystem access at config-construction
+    time.
+    """
+    return path if path.is_absolute() else path.absolute()
+
+
 DEFAULT_MAX_ITERS: Final[int] = 30
 """Default executor budget for the build-loop (spec §4.1)."""
 
@@ -165,14 +180,24 @@ class ShopGenConfig(BaseModel):
         Tuples are required for hashability under ``frozen=True``;
         coerce lists/tuples/iterables of ``str``/``Path`` into a
         ``tuple[Path, ...]``. Pydantic enforces ``min_length=1``.
+
+        Relative paths are made absolute against the caller's cwd at
+        construction time (see :func:`_to_absolute`) so
+        :func:`shop_gen.steps.state._resolve_input_path` does not later
+        re-join them onto ``out_dir`` (which would yield
+        ``<out_dir>/<relative seed>`` and crash at fingerprint time).
         """
+
+        def _coerce_one(item: object) -> object:
+            return _to_absolute(Path(item)) if isinstance(item, (str, Path)) else item
+
         if value is None:
             return value
         if isinstance(value, (str, Path)):
-            return (Path(value),)
+            return (_coerce_one(value),)
         if isinstance(value, (list, tuple)):
             items: list[object] = list(value)  # type: ignore[arg-type]
-            return tuple(Path(item) if isinstance(item, str) else item for item in items)
+            return tuple(_coerce_one(item) for item in items)
         return value
 
     @field_validator("name")
