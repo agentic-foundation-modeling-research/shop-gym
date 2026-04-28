@@ -1,6 +1,6 @@
-"""Command-line entrypoint for ShopProbe (T1.8 — spec §4, §5.3, §5.6, §5.8).
+"""Command-line entrypoint for ShopProbe (T1.8 + T6.5 — spec §4, §5.3, §5.6, §5.8, §7 M6).
 
-The v1 ``shop-probe`` CLI exposes the ``run`` subcommand:
+The v1 ``shop-probe`` CLI exposes two subcommands:
 
 .. code-block:: bash
 
@@ -10,6 +10,11 @@ The v1 ``shop-probe`` CLI exposes the ``run`` subcommand:
         --axes A \\
         --kind sandbox --pair-id pair_hardware \\
         --out report.json
+
+    shop-probe report \\
+        --cohort cohort.yaml \\
+        --reports-dir outputs/web_probe/v1/ \\
+        --out figures/
 
 For ``--axes A`` the command:
 
@@ -31,6 +36,27 @@ When ``--axes`` includes ``B`` the command additionally drives a
 :class:`SurfaceMetrics` in ``report.surface``. Axis C is wired in M4;
 requesting it today returns a usage error.
 
+``shop-probe report`` (T6.5 — spec §7 M6) wires the four paper figures:
+
+1. Loads ``--cohort`` and reads one :class:`ProbeReport` per
+   :class:`Target` from ``--reports-dir`` (filename convention:
+   ``<safe(label)>.json`` with ``/`` rewritten to ``__``).
+2. Aggregates per-pair fidelity over the (sandbox, source) pairs and
+   the 6-real-shop reference population (sources + ``real_unpaired``)
+   into a closed :class:`CohortFidelity` (spec §5.7).
+3. Renders four artifacts under ``--out``:
+
+   * ``fidelity_table.md``  — per-pair fidelity table (T6.1).
+   * ``radar.svg``           — per-category coverage radar (T6.2).
+   * ``surface.svg``         — per-metric surface bar chart (T6.3).
+   * ``turing.svg``          — pairwise-judge Turing chart (T6.4),
+     emitted only when axis-C judge calls are present (sandbox
+     reports carry experimental calls; ``real_unpaired`` reports
+     carry control calls).
+
+All four outputs render from versioned reports without manual editing
+(spec §7 M6 gate).
+
 The module is import-safe: it performs no I/O at import time.
 """
 
@@ -39,6 +65,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib
+import json
 import platform
 import sys
 from datetime import UTC, datetime
@@ -52,6 +79,13 @@ from playwright.async_api import Page
 from pydantic import ValidationError
 
 from shop_probe import __version__
+from shop_probe.cohort import load_cohort
+from shop_probe.fidelity import (
+    CohortFidelity,
+    PairFidelity,
+    compute_cohort_fidelity,
+    compute_pair_fidelity,
+)
 from shop_probe.probes._runner import (
     PINNED_USER_AGENT,
     VIEWPORT_HEIGHT,
@@ -64,13 +98,21 @@ from shop_probe.probes._runner import (
 from shop_probe.report import (
     BrowserMeta,
     CategoryScore,
+    JudgeCall,
     ProbeReport,
     ProbeResult,
+)
+from shop_probe.report_writer import (
+    PairTuringData,
+    render_pair_fidelity_table,
+    render_radar_chart_svg,
+    render_surface_bar_chart_svg,
+    render_turing_chart_svg,
 )
 from shop_probe.rubric import Rubric, load_rubric
 from shop_probe.surface import SurfaceMetrics
 from shop_probe.surface.crawler import SurfaceCrawler
-from shop_probe.targets import Target
+from shop_probe.targets import Cohort, Target
 
 EXIT_OK: Final[int] = 0
 """Successful run."""
@@ -90,6 +132,14 @@ _PACKAGE_RUBRIC_DIR: Final[Path] = Path(__file__).resolve().parent / "rubric"
 _DISCOVERY_PROBE_ID: Final[str] = "_discover"
 """Internal probe-id used by sample-URL discovery; never lands in the report."""
 
+_LABEL_PATH_SEP: Final[str] = "__"
+"""Filename-safe replacement for ``/`` in :attr:`Target.label`."""
+
+_FIDELITY_TABLE_FILENAME: Final[str] = "fidelity_table.md"
+_RADAR_CHART_FILENAME: Final[str] = "radar.svg"
+_SURFACE_CHART_FILENAME: Final[str] = "surface.svg"
+_TURING_CHART_FILENAME: Final[str] = "turing.svg"
+
 
 def main(argv: list[str] | None = None) -> int:
     """Run the ShopProbe CLI.
@@ -105,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "run":
         return _cmd_run(args)
+    if args.command == "report":
+        return _cmd_report(args)
     parser.print_help()
     return EXIT_USAGE
 
@@ -167,6 +219,50 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="1-indexed run number within the N=3 rerun group (spec §5.8).",
+    )
+
+    report = sub.add_parser(
+        "report",
+        help="Aggregate cohort reports into the four paper figures (spec §7 M6).",
+    )
+    report.add_argument(
+        "--cohort",
+        required=True,
+        type=Path,
+        help="Path to a cohort YAML (spec §8.2).",
+    )
+    report.add_argument(
+        "--reports-dir",
+        required=True,
+        type=Path,
+        help=(
+            "Directory holding one ProbeReport JSON per Target. "
+            "Filenames follow '<safe(label)>.json' where '/' is rewritten to '__'."
+        ),
+    )
+    report.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        help="Output directory for fidelity_table.md, radar.svg, surface.svg, turing.svg.",
+    )
+    report.add_argument(
+        "--epsilon",
+        type=float,
+        default=0.1,
+        help="Half-width of the Turing chart's |experimental - control| band (spec §5.7).",
+    )
+    report.add_argument(
+        "--bootstrap-iters",
+        type=int,
+        default=1000,
+        help="Bootstrap resample count for Turing chart 95%% CIs (spec §8.4 row 4).",
+    )
+    report.add_argument(
+        "--bootstrap-seed",
+        type=int,
+        default=0,
+        help="Seed for the Turing chart bootstrap resampler.",
     )
     return parser
 
@@ -451,6 +547,174 @@ def _safe_pkg_version(name: str) -> str:
         return _pkg_version(name)
     except PackageNotFoundError:
         return "unknown"
+
+
+# --------------------------------------------------------------------------- #
+# ``shop-probe report`` (T6.5 — spec §7 M6).
+# --------------------------------------------------------------------------- #
+
+
+def _cmd_report(args: argparse.Namespace) -> int:
+    """Handler for ``shop-probe report``."""
+    cohort_path: Path = args.cohort
+    reports_dir: Path = args.reports_dir
+    out_dir: Path = args.out
+    epsilon: float = args.epsilon
+    bootstrap_iters: int = args.bootstrap_iters
+    bootstrap_seed: int = args.bootstrap_seed
+
+    try:
+        cohort = load_cohort(cohort_path)
+    except FileNotFoundError as err:
+        print(f"shop-probe: cohort not found: {err}", file=sys.stderr)
+        return EXIT_USAGE
+    except ValueError as err:
+        print(f"shop-probe: {err}", file=sys.stderr)
+        return EXIT_USAGE
+
+    try:
+        sandbox_reports, source_reports, real_unpaired_reports = _load_cohort_reports(
+            cohort, reports_dir
+        )
+    except (FileNotFoundError, ValidationError, ValueError) as err:
+        print(f"shop-probe: {err}", file=sys.stderr)
+        return EXIT_USAGE
+
+    real_reports = (*source_reports, *real_unpaired_reports)
+    real_population = tuple(r.surface for r in real_reports if r.surface is not None)
+
+    cohort_fidelity = _build_cohort_fidelity(
+        cohort=cohort,
+        sandbox_reports=sandbox_reports,
+        source_reports=source_reports,
+        real_population=real_population,
+    )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+
+    table_path = out_dir / _FIDELITY_TABLE_FILENAME
+    table_path.write_text(render_pair_fidelity_table(cohort_fidelity), encoding="utf-8")
+    written.append(table_path)
+
+    radar_path = out_dir / _RADAR_CHART_FILENAME
+    radar_path.write_text(
+        render_radar_chart_svg(
+            real_reports=real_reports,
+            sandbox_reports=sandbox_reports,
+        ),
+        encoding="utf-8",
+    )
+    written.append(radar_path)
+
+    if not real_population:
+        print(
+            "shop-probe: surface chart skipped (no real-shop surface metrics; "
+            "re-run cohort with --axes A,B).",
+            file=sys.stderr,
+        )
+    else:
+        surface_path = out_dir / _SURFACE_CHART_FILENAME
+        surface_path.write_text(
+            render_surface_bar_chart_svg(
+                real_reports=real_reports,
+                sandbox_reports=sandbox_reports,
+                source_reports=source_reports,
+            ),
+            encoding="utf-8",
+        )
+        written.append(surface_path)
+
+    pairs_with_calls = tuple(
+        PairTuringData(pair_id=r.target.pair_id or "", judge_calls=r.judge_calls)
+        for r in sandbox_reports
+        if r.judge_calls
+    )
+    control_calls: tuple[JudgeCall, ...] = tuple(
+        call for r in real_unpaired_reports for call in r.judge_calls
+    )
+    if pairs_with_calls and control_calls and len(pairs_with_calls) == len(sandbox_reports):
+        turing_path = out_dir / _TURING_CHART_FILENAME
+        turing_path.write_text(
+            render_turing_chart_svg(
+                pairs=pairs_with_calls,
+                control_calls=control_calls,
+                epsilon=epsilon,
+                bootstrap_iters=bootstrap_iters,
+                bootstrap_seed=bootstrap_seed,
+            ),
+            encoding="utf-8",
+        )
+        written.append(turing_path)
+    else:
+        print(
+            "shop-probe: turing chart skipped (axis-C judge calls not yet "
+            "present on every sandbox + real_unpaired report; spec §7 M4/M5).",
+            file=sys.stderr,
+        )
+
+    print("shop-probe: wrote " + ", ".join(str(p) for p in written))
+    return EXIT_OK
+
+
+def _label_to_filename(label: str) -> str:
+    """Map a :attr:`Target.label` to its on-disk JSON filename."""
+    return label.replace("/", _LABEL_PATH_SEP) + ".json"
+
+
+def _load_report(reports_dir: Path, target: Target) -> ProbeReport:
+    """Load and validate one :class:`ProbeReport` for ``target``."""
+    path = reports_dir / _label_to_filename(target.label)
+    if not path.is_file():
+        msg = (
+            f"missing report for target {target.label!r}: expected at {path} "
+            f"(filename convention: '<label>.json' with '/' rewritten to '{_LABEL_PATH_SEP}')"
+        )
+        raise FileNotFoundError(msg)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    report = ProbeReport.model_validate(payload)
+    if report.target.label != target.label:
+        msg = (
+            f"report at {path} has target.label={report.target.label!r}, expected {target.label!r}"
+        )
+        raise ValueError(msg)
+    return report
+
+
+def _load_cohort_reports(
+    cohort: Cohort, reports_dir: Path
+) -> tuple[tuple[ProbeReport, ...], tuple[ProbeReport, ...], tuple[ProbeReport, ...]]:
+    """Load every cohort target's :class:`ProbeReport` from disk."""
+    if not reports_dir.is_dir():
+        msg = f"reports directory does not exist: {reports_dir}"
+        raise FileNotFoundError(msg)
+    sandbox_reports = tuple(_load_report(reports_dir, p.sandbox) for p in cohort.pairs)
+    source_reports = tuple(_load_report(reports_dir, p.source) for p in cohort.pairs)
+    real_unpaired_reports = tuple(_load_report(reports_dir, t) for t in cohort.real_unpaired)
+    return sandbox_reports, source_reports, real_unpaired_reports
+
+
+def _build_cohort_fidelity(
+    *,
+    cohort: Cohort,
+    sandbox_reports: tuple[ProbeReport, ...],
+    source_reports: tuple[ProbeReport, ...],
+    real_population: tuple[SurfaceMetrics, ...],
+) -> CohortFidelity:
+    """Aggregate per-pair fidelity rows into a :class:`CohortFidelity`."""
+    pairs: list[PairFidelity] = []
+    for pair, sandbox_report, source_report in zip(
+        cohort.pairs, sandbox_reports, source_reports, strict=True
+    ):
+        pairs.append(
+            compute_pair_fidelity(
+                pair_id=pair.id,
+                sandbox_report=sandbox_report,
+                source_report=source_report,
+                real_population=real_population,
+            )
+        )
+    return compute_cohort_fidelity(pairs=pairs, real_population=real_population)
 
 
 if __name__ == "__main__":
