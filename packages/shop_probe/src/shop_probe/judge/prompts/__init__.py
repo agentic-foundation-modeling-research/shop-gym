@@ -9,17 +9,25 @@ template revision into every :class:`shop_probe.report.JudgeCall`.
 from shop_probe.judge.prompts.loader import (
     JudgePromptLoadError,
     compute_content_hash,
+    compute_likert_content_hash,
     load_judge_prompts,
+    load_likert_prompts,
 )
 from shop_probe.judge.prompts.schema import (
+    REQUIRED_LIKERT_PLACEHOLDERS,
     REQUIRED_PAIRWISE_PLACEHOLDERS,
     JudgePromptSet,
+    LikertPromptSet,
 )
 
 __all__ = [
+    "REQUIRED_LIKERT_PLACEHOLDERS",
     "REQUIRED_PAIRWISE_PLACEHOLDERS",
     "JudgePromptLoadError",
     "JudgePromptSet",
+    "LikertPromptSet",
     "compute_content_hash",
+    "compute_likert_content_hash",
     "load_judge_prompts",
+    "load_likert_prompts",
 ]

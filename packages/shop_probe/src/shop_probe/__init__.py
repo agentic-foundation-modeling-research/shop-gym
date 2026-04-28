@@ -15,6 +15,7 @@ from shop_probe.fidelity import (
     compute_pair_fidelity,
 )
 from shop_probe.report import (
+    LIKERT_DIMENSIONS,
     BrowserMeta,
     CategoryScore,
     EvidenceKind,
@@ -22,12 +23,17 @@ from shop_probe.report import (
     JudgeCall,
     JudgePick,
     JudgeTruth,
+    LikertCall,
+    LikertDimension,
+    LikertDistribution,
     ProbeReport,
     ProbeResult,
+    aggregate_likert_distributions,
 )
 from shop_probe.targets import Cohort, Pair, Target, TargetKind
 
 __all__ = [
+    "LIKERT_DIMENSIONS",
     "BrowserMeta",
     "CategoryScore",
     "Cohort",
@@ -38,6 +44,9 @@ __all__ = [
     "JudgeCall",
     "JudgePick",
     "JudgeTruth",
+    "LikertCall",
+    "LikertDimension",
+    "LikertDistribution",
     "Pair",
     "PairFidelity",
     "ProbeReport",
@@ -45,6 +54,7 @@ __all__ = [
     "Target",
     "TargetKind",
     "__version__",
+    "aggregate_likert_distributions",
     "compute_cohort_fidelity",
     "compute_pair_fidelity",
     "load_cohort",

@@ -25,11 +25,15 @@ import pytest
 from pydantic import ValidationError
 
 from shop_probe.judge.prompts import (
+    REQUIRED_LIKERT_PLACEHOLDERS,
     REQUIRED_PAIRWISE_PLACEHOLDERS,
     JudgePromptLoadError,
     JudgePromptSet,
+    LikertPromptSet,
     compute_content_hash,
+    compute_likert_content_hash,
     load_judge_prompts,
+    load_likert_prompts,
 )
 from shop_probe.report import JudgeCall
 
@@ -276,3 +280,121 @@ def test_compute_content_hash_swap_files_changes_digest() -> None:
     a = compute_content_hash("v1", b"alpha", b"beta")
     b = compute_content_hash("v1", b"beta", b"alpha")
     assert a != b
+
+
+# --------------------------------------------------------------------------- #
+# Likert prompts (T7.2 — spec §5.9, §5.8).
+# --------------------------------------------------------------------------- #
+
+EXPECTED_V1_LIKERT_HASH: str = "dba07d49d9115e3e487ea23e877e065dd00352ec76c0883cf9454c6d94bd5119"
+"""SHA-256 of ``judge/prompts/v1/likert*.md`` canonical byte form. Pin per spec §5.8."""
+
+
+def test_v1_likert_files_exist() -> None:
+    assert (V1_DIR / "likert_system.md").is_file(), f"missing prompt file under {V1_DIR}"
+    assert (V1_DIR / "likert.md").is_file(), f"missing prompt file under {V1_DIR}"
+
+
+def test_v1_likert_pinned_hash() -> None:
+    system_bytes = (V1_DIR / "likert_system.md").read_bytes()
+    likert_bytes = (V1_DIR / "likert.md").read_bytes()
+    actual = compute_likert_content_hash("v1", system_bytes, likert_bytes)
+    assert actual == EXPECTED_V1_LIKERT_HASH, (
+        "judge/prompts/v1 Likert hash drifted. Bump the version directory AND "
+        "update EXPECTED_V1_LIKERT_HASH."
+    )
+
+
+def test_v1_likert_loads_and_pins_metadata() -> None:
+    prompts = load_likert_prompts()
+    assert prompts.version == EXPECTED_V1_VERSION
+    assert prompts.content_hash == EXPECTED_V1_LIKERT_HASH
+    assert prompts.system_template.strip() != ""
+    assert prompts.likert_template.strip() != ""
+
+
+def test_v1_likert_template_has_required_placeholders() -> None:
+    prompts = load_likert_prompts()
+    for placeholder in REQUIRED_LIKERT_PLACEHOLDERS:
+        assert (
+            f"${placeholder}" in prompts.likert_template
+            or "${" + placeholder + "}" in prompts.likert_template
+        ), f"likert template missing placeholder ${placeholder}"
+
+
+def test_v1_likert_render_substitutes_placeholders() -> None:
+    prompts = load_likert_prompts()
+    rendered = prompts.render_likert(
+        task_description="TASK_DESC_MARKER",
+        anonymized_trajectory="TRAJ_MARKER",
+    )
+    assert "TASK_DESC_MARKER" in rendered
+    assert "TRAJ_MARKER" in rendered
+    # Spec §5.9 JSON braces must survive substitution.
+    assert '"ratings"' in rendered
+    assert '"visual_coherence"' in rendered
+    assert '"copy_realism"' in rendered
+    assert '"error_plausibility"' in rendered
+
+
+def test_v1_likert_hash_matches_pairwise_hash_distinct() -> None:
+    """The Likert + pairwise prompt hashes must be distinct revisions (spec §5.8)."""
+    assert load_judge_prompts().content_hash != load_likert_prompts().content_hash
+
+
+def test_load_missing_likert_version_directory_raises(tmp_path: Path) -> None:
+    with pytest.raises(JudgePromptLoadError, match="likert prompt directory not found"):
+        load_likert_prompts(version="v999", root=tmp_path)
+
+
+def test_load_missing_likert_system_file_raises(tmp_path: Path) -> None:
+    version_dir = tmp_path / "v1"
+    version_dir.mkdir()
+    (version_dir / "likert.md").write_text("$task_description $anonymized_trajectory\n")
+    with pytest.raises(JudgePromptLoadError, match=r"missing prompt file.*likert_system\.md"):
+        load_likert_prompts(version="v1", root=tmp_path)
+
+
+def test_load_missing_likert_user_file_raises(tmp_path: Path) -> None:
+    version_dir = tmp_path / "v1"
+    version_dir.mkdir()
+    (version_dir / "likert_system.md").write_text("system body\n")
+    with pytest.raises(JudgePromptLoadError, match=r"missing prompt file.*likert\.md"):
+        load_likert_prompts(version="v1", root=tmp_path)
+
+
+def test_load_likert_missing_placeholder_raises(tmp_path: Path) -> None:
+    version_dir = tmp_path / "v1"
+    version_dir.mkdir()
+    (version_dir / "likert_system.md").write_text("system body\n")
+    # Drop $anonymized_trajectory deliberately.
+    (version_dir / "likert.md").write_text("Task: $task_description\n")
+    with pytest.raises(JudgePromptLoadError, match="missing required placeholder"):
+        load_likert_prompts(version="v1", root=tmp_path)
+
+
+def test_likert_schema_rejects_unknown_field() -> None:
+    with pytest.raises(ValidationError):
+        LikertPromptSet(
+            version="v1",
+            content_hash="0" * 64,
+            system_template="system",
+            likert_template="$task_description $anonymized_trajectory",
+            note="not allowed",  # type: ignore[call-arg]
+        )
+
+
+def test_compute_likert_content_hash_is_deterministic() -> None:
+    a = compute_likert_content_hash("v1", b"system\n", b"likert\n")
+    b = compute_likert_content_hash("v1", b"system\n", b"likert\n")
+    assert a == b
+    assert compute_likert_content_hash("v2", b"system\n", b"likert\n") != a
+    assert compute_likert_content_hash("v1", b"system!\n", b"likert\n") != a
+    assert compute_likert_content_hash("v1", b"system\n", b"likert!\n") != a
+
+
+def test_likert_and_pairwise_hashes_use_distinct_namespaces() -> None:
+    """Hash framing must distinguish Likert files from pairwise files (spec §5.8)."""
+    assert compute_content_hash("v1", b"alpha", b"beta") != compute_likert_content_hash(
+        "v1", b"alpha", b"beta"
+    )

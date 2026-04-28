@@ -25,7 +25,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from shop_probe.judge.prompts.schema import JudgePromptSet
+from shop_probe.judge.prompts.schema import JudgePromptSet, LikertPromptSet
 
 _DEFAULT_ROOT: Path = Path(__file__).resolve().parent
 """Directory shipped alongside the source — contains ``v1/`` etc."""
@@ -121,4 +121,86 @@ def load_judge_prompts(
         )
     except ValidationError as err:
         msg = f"judge prompt {version!r} failed schema validation: {err}"
+        raise JudgePromptLoadError(msg) from err
+
+
+def compute_likert_content_hash(version: str, system: bytes, likert: bytes) -> str:
+    """Compute the canonical content hash for a Likert prompt template.
+
+    Mirrors :func:`compute_content_hash` for the v1.1 Likert template
+    (spec §5.9, T7.2). The framing header binds the version + file roles
+    so swapping ``likert_system.md`` and ``likert.md`` would produce a
+    different hash even if the byte content were identical.
+
+    Args:
+        version: Prompt template version string, e.g. ``"v1"``.
+        system: Raw UTF-8 bytes of ``likert_system.md``.
+        likert: Raw UTF-8 bytes of ``likert.md``.
+
+    Returns:
+        Lowercase hex SHA-256 digest (64 chars).
+    """
+    digest = hashlib.sha256()
+    digest.update(b"shop_probe.judge.prompts.likert/v=")
+    digest.update(version.encode("utf-8"))
+    digest.update(b"\n--- likert_system.md ---\n")
+    digest.update(system)
+    digest.update(b"\n--- likert.md ---\n")
+    digest.update(likert)
+    return digest.hexdigest()
+
+
+def load_likert_prompts(
+    version: str = "v1",
+    *,
+    root: Path | None = None,
+) -> LikertPromptSet:
+    """Load and validate the v1.1 Likert prompt template for a version.
+
+    Files are expected at ``<root>/<version>/likert_system.md`` and
+    ``<root>/<version>/likert.md`` (T7.2 — spec §5.9, §5.8).
+
+    Args:
+        version: Subdirectory name under ``root`` to load (default
+            ``"v1"``). Frozen per spec §5.8 — bump on any change.
+        root: Directory containing version subdirectories. Defaults to
+            the package-shipped ``judge/prompts/`` directory; tests
+            override this to load fixtures.
+
+    Returns:
+        A validated :class:`LikertPromptSet` with ``content_hash``
+        populated.
+
+    Raises:
+        JudgePromptLoadError: A required file is missing or fails
+            schema validation (e.g. a placeholder is missing from the
+            Likert template).
+    """
+    base = root if root is not None else _DEFAULT_ROOT
+    version_dir = base / version
+    if not version_dir.is_dir():
+        msg = f"likert prompt directory not found: {version_dir}"
+        raise JudgePromptLoadError(msg)
+    system_path = version_dir / "likert_system.md"
+    likert_path = version_dir / "likert.md"
+    if not system_path.is_file():
+        msg = f"missing prompt file: {system_path}"
+        raise JudgePromptLoadError(msg)
+    if not likert_path.is_file():
+        msg = f"missing prompt file: {likert_path}"
+        raise JudgePromptLoadError(msg)
+
+    system_bytes = system_path.read_bytes()
+    likert_bytes = likert_path.read_bytes()
+    content_hash = compute_likert_content_hash(version, system_bytes, likert_bytes)
+
+    try:
+        return LikertPromptSet(
+            version=version,
+            content_hash=content_hash,
+            system_template=system_bytes.decode("utf-8"),
+            likert_template=likert_bytes.decode("utf-8"),
+        )
+    except ValidationError as err:
+        msg = f"likert prompt {version!r} failed schema validation: {err}"
         raise JudgePromptLoadError(msg) from err

@@ -13,6 +13,11 @@ from shop_probe.judge.kappa import (
     CrossJudgeAgreement,
     compute_cross_judge_kappa,
 )
+from shop_probe.judge.likert import (
+    LikertJudge,
+    LikertOutcome,
+    compute_likert_distributions,
+)
 from shop_probe.judge.llm import (
     LLMClient,
     PinnedJudge,
@@ -27,10 +32,13 @@ from shop_probe.judge.pairwise import (
     real_shop_pool,
 )
 from shop_probe.judge.prompts import (
+    REQUIRED_LIKERT_PLACEHOLDERS,
     REQUIRED_PAIRWISE_PLACEHOLDERS,
     JudgePromptLoadError,
     JudgePromptSet,
+    LikertPromptSet,
     load_judge_prompts,
+    load_likert_prompts,
 )
 from shop_probe.judge.swap import (
     JudgeCallable,
@@ -63,6 +71,7 @@ __all__ = [
     "REDACTED_BRAND",
     "REDACTED_HOST",
     "REDACTED_THEME",
+    "REQUIRED_LIKERT_PLACEHOLDERS",
     "REQUIRED_PAIRWISE_PLACEHOLDERS",
     "AnonymizationPlan",
     "CrossJudgeAgreement",
@@ -75,6 +84,9 @@ __all__ = [
     "JudgeTaskSet",
     "JudgeTaskSurface",
     "LLMClient",
+    "LikertJudge",
+    "LikertOutcome",
+    "LikertPromptSet",
     "PairCondition",
     "PairwisePair",
     "PinnedJudge",
@@ -91,12 +103,14 @@ __all__ = [
     "build_experimental_pairs",
     "build_task_pairs",
     "compute_cross_judge_kappa",
+    "compute_likert_distributions",
     "evaluate_swap_consistency",
     "hash_token",
     "is_swap_consistent",
     "load_judge_prompts",
     "load_judge_tasks",
     "load_judge_tasks_bytes",
+    "load_likert_prompts",
     "presentations_for",
     "real_shop_pool",
     "run_judge_agent",

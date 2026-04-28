@@ -51,6 +51,19 @@ template version per spec §5.8 so every :class:`JudgeCall` continues
 to pin the exact template revision used at run time.
 """
 
+REQUIRED_LIKERT_PLACEHOLDERS: tuple[str, ...] = (
+    "task_description",
+    "anonymized_trajectory",
+)
+"""Placeholders the v1.1 Likert template must expose (spec §5.9, T7.2).
+
+The Likert judge runs per *single* anonymized trajectory rather than per
+pair (spec §5.9), so the template body has one trajectory placeholder
+instead of two. New required placeholders bump the template version per
+spec §5.8 so every :class:`shop_probe.report.LikertCall` continues to
+pin the exact template revision used at run time.
+"""
+
 
 class JudgePromptSet(BaseModel):
     """A loaded, validated, content-hashed pairwise judge prompt template.
@@ -128,6 +141,83 @@ class JudgePromptSet(BaseModel):
             task_description=task_description,
             anonymized_trajectory_a=anonymized_trajectory_a,
             anonymized_trajectory_b=anonymized_trajectory_b,
+        )
+
+
+class LikertPromptSet(BaseModel):
+    """A loaded, validated, content-hashed v1.1 Likert prompt template (T7.2).
+
+    The Likert judge (spec §5.9) ships as ``likert_system.md`` +
+    ``likert.md`` per version directory; the schema mirrors
+    :class:`JudgePromptSet` so the loader pattern stays uniform across the
+    pairwise (spec §5.5) and Likert (spec §5.9) judges. ``content_hash`` is
+    a SHA-256 hex digest over the canonical UTF-8 bytes of the source files
+    so every :class:`shop_probe.report.LikertCall` can pin a specific
+    template revision via :attr:`LikertCall.prompt_hash` (spec §5.8).
+
+    Attributes:
+        version: Prompt template version string, e.g. ``"v1"``. Frozen
+            per spec §5.8 — changes bump this.
+        content_hash: 64-char lowercase hex SHA-256 over the canonical
+            byte form of the source files. Reviewers reproducing the
+            report recompute this and compare.
+        system_template: Verbatim contents of ``likert_system.md``
+            (spec §5.9). Static; no placeholders.
+        likert_template: Verbatim contents of ``likert.md`` (spec §5.9).
+            Must expose every placeholder in
+            :data:`REQUIRED_LIKERT_PLACEHOLDERS`.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: str = Field(min_length=1)
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    system_template: str = Field(min_length=1)
+    likert_template: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _check_required_placeholders(self) -> LikertPromptSet:
+        """Reject Likert templates missing a required placeholder."""
+        identifiers = _extract_identifiers(self.likert_template)
+        missing = tuple(p for p in REQUIRED_LIKERT_PLACEHOLDERS if p not in identifiers)
+        if missing:
+            msg = (
+                f"likert prompt {self.version!r}: likert template missing "
+                f"required placeholder(s) {list(missing)}"
+            )
+            raise ValueError(msg)
+        return self
+
+    def render_likert(
+        self,
+        *,
+        task_description: str,
+        anonymized_trajectory: str,
+    ) -> str:
+        """Render the Likert template with the given trajectory.
+
+        Substitution uses :class:`string.Template`'s explicit-kwargs
+        :meth:`substitute` so unused placeholders raise and literal JSON
+        braces in the template body pass through verbatim.
+
+        Args:
+            task_description: Task prompt from
+                ``judge/tasks/v1.yaml`` (shared with the pairwise judge
+                per spec §5.5 step 1).
+            anonymized_trajectory: Anonymized single trajectory under
+                review (spec §5.5 step 3 + §5.9).
+
+        Returns:
+            The rendered user-prompt body, ready to send as the user turn
+            alongside :attr:`system_template`.
+
+        Raises:
+            KeyError: The template references a placeholder beyond the
+                two required identifiers (spec §5.9).
+        """
+        return Template(self.likert_template).substitute(
+            task_description=task_description,
+            anonymized_trajectory=anonymized_trajectory,
         )
 
 

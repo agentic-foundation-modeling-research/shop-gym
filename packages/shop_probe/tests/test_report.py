@@ -21,13 +21,17 @@ import pytest
 from pydantic import ValidationError
 
 from shop_probe.report import (
+    LIKERT_DIMENSIONS,
     BrowserMeta,
     CategoryScore,
     EvidenceRef,
     JudgeCall,
     JudgeModelPin,
+    LikertCall,
+    LikertDistribution,
     ProbeReport,
     ProbeResult,
+    aggregate_likert_distributions,
 )
 from shop_probe.targets import Target
 
@@ -388,3 +392,196 @@ def test_probe_report_pins_judge_model_in_header() -> None:
     payload = json.loads(report.model_dump_json())
     assert payload["judge_model"]["model"] == "gpt-5"
     assert payload["judge_model"]["temperature"] == 0.0
+
+
+# --------------------------------------------------------------------------- #
+# Likert quality dimensions (T7.2 — spec §5.9, §7 M7).
+# --------------------------------------------------------------------------- #
+
+
+def _likert_call(
+    *,
+    target_label: str = "sandbox/hardware_run123",
+    visual_coherence: int = 4,
+    copy_realism: int = 3,
+    error_plausibility: int = 5,
+) -> LikertCall:
+    return LikertCall(
+        task_id="t01_filter_open_pdp",
+        target_label=target_label,
+        visual_coherence=visual_coherence,
+        copy_realism=copy_realism,
+        error_plausibility=error_plausibility,
+        evidence_cited=True,
+        prompt_hash=_PROMPT_HASH,
+        response_text='{"ratings": {}}',
+    )
+
+
+def test_likert_call_json_round_trip() -> None:
+    call = _likert_call()
+    assert LikertCall.model_validate_json(call.model_dump_json()) == call
+
+
+def test_likert_call_score_returns_per_dimension_value() -> None:
+    call = _likert_call(visual_coherence=4, copy_realism=3, error_plausibility=5)
+    assert call.score("visual_coherence") == 4  # noqa: PLR2004
+    assert call.score("copy_realism") == 3  # noqa: PLR2004
+    assert call.score("error_plausibility") == 5  # noqa: PLR2004
+
+
+def test_likert_call_rejects_unknown_field() -> None:
+    payload = _likert_call().model_dump()
+    payload["comment"] = "oops"  # not in the schema
+    with pytest.raises(ValidationError, match="comment"):
+        LikertCall.model_validate(payload)
+
+
+@pytest.mark.parametrize("score", [0, 6, -1, 100])
+def test_likert_call_rejects_score_outside_range(score: int) -> None:
+    with pytest.raises(ValidationError):
+        LikertCall(
+            task_id="t",
+            target_label="sandbox/x",
+            visual_coherence=score,
+            copy_realism=3,
+            error_plausibility=3,
+            evidence_cited=True,
+            prompt_hash=_PROMPT_HASH,
+            response_text="",
+        )
+
+
+def test_likert_call_rejects_non_hex_prompt_hash() -> None:
+    with pytest.raises(ValidationError):
+        LikertCall(
+            task_id="t",
+            target_label="sandbox/x",
+            visual_coherence=3,
+            copy_realism=3,
+            error_plausibility=3,
+            evidence_cited=True,
+            prompt_hash="not-a-hash",
+            response_text="",
+        )
+
+
+def test_likert_distribution_empty_round_trip() -> None:
+    dist = LikertDistribution(dimension="visual_coherence", n_calls=0, counts={}, mean=None)
+    assert LikertDistribution.model_validate_json(dist.model_dump_json()) == dist
+
+
+def test_likert_distribution_rejects_non_zero_mean_when_empty() -> None:
+    with pytest.raises(ValidationError, match="n_calls == 0"):
+        LikertDistribution(dimension="visual_coherence", n_calls=0, counts={}, mean=3.0)
+
+
+def test_likert_distribution_rejects_missing_mean_when_non_empty() -> None:
+    with pytest.raises(ValidationError, match="n_calls > 0"):
+        LikertDistribution(dimension="visual_coherence", n_calls=2, counts={3: 2}, mean=None)
+
+
+def test_likert_distribution_rejects_counts_sum_mismatch() -> None:
+    with pytest.raises(ValidationError, match="counts sum"):
+        LikertDistribution(dimension="visual_coherence", n_calls=3, counts={3: 1, 4: 1}, mean=3.5)
+
+
+def test_likert_distribution_rejects_score_outside_one_to_five() -> None:
+    with pytest.raises(ValidationError, match="invalid score key"):
+        LikertDistribution(dimension="visual_coherence", n_calls=1, counts={6: 1}, mean=5.0)
+
+
+def test_aggregate_likert_distributions_returns_one_per_dimension() -> None:
+    calls = (
+        _likert_call(visual_coherence=5, copy_realism=4, error_plausibility=3),
+        _likert_call(visual_coherence=4, copy_realism=4, error_plausibility=2),
+    )
+    distributions = aggregate_likert_distributions(calls)
+    assert tuple(d.dimension for d in distributions) == LIKERT_DIMENSIONS
+    by_dim = {d.dimension: d for d in distributions}
+    assert by_dim["visual_coherence"].n_calls == 2  # noqa: PLR2004
+    assert by_dim["visual_coherence"].counts == {4: 1, 5: 1}
+    assert by_dim["visual_coherence"].mean == 4.5  # noqa: PLR2004
+    assert by_dim["copy_realism"].counts == {4: 2}
+    assert by_dim["copy_realism"].mean == 4.0  # noqa: PLR2004
+    assert by_dim["error_plausibility"].counts == {2: 1, 3: 1}
+    assert by_dim["error_plausibility"].mean == 2.5  # noqa: PLR2004
+
+
+def test_aggregate_likert_distributions_handles_empty_input() -> None:
+    distributions = aggregate_likert_distributions(())
+    assert tuple(d.dimension for d in distributions) == LIKERT_DIMENSIONS
+    for d in distributions:
+        assert d.n_calls == 0
+        assert d.counts == {}
+        assert d.mean is None
+
+
+def test_probe_report_with_likert_calls_round_trip() -> None:
+    call = _likert_call()
+    distributions = aggregate_likert_distributions((call,))
+    report = _probe_report(
+        likert_calls=(call,),
+        likert_distributions=distributions,
+    )
+    assert report.likert_calls == (call,)
+    assert tuple(d.dimension for d in report.likert_distributions) == LIKERT_DIMENSIONS
+    assert ProbeReport.model_validate_json(report.model_dump_json()) == report
+
+
+def test_probe_report_with_likert_calls_requires_judge_model_pin() -> None:
+    """Spec §5.5 guardrails extend to the v1.1 Likert judge."""
+    call = _likert_call()
+    distributions = aggregate_likert_distributions((call,))
+    with pytest.raises(ValidationError, match="judge_model"):
+        _probe_report(
+            judge_calls=(),
+            judge_model=None,
+            likert_calls=(call,),
+            likert_distributions=distributions,
+        )
+
+
+def test_probe_report_with_likert_calls_requires_distributions() -> None:
+    call = _likert_call()
+    with pytest.raises(ValidationError, match="likert_distributions"):
+        _probe_report(
+            likert_calls=(call,),
+            likert_distributions=(),
+        )
+
+
+def test_probe_report_likert_distributions_must_cover_all_dimensions() -> None:
+    call = _likert_call()
+    only_one = (
+        LikertDistribution(
+            dimension="visual_coherence",
+            n_calls=1,
+            counts={call.visual_coherence: 1},
+            mean=float(call.visual_coherence),
+        ),
+    )
+    with pytest.raises(ValidationError, match="missing dimension"):
+        _probe_report(
+            likert_calls=(call,),
+            likert_distributions=only_one,
+        )
+
+
+def test_probe_report_likert_distributions_n_calls_must_match() -> None:
+    call = _likert_call()
+    # Build distributions claiming 7 contributing calls when only 1 was passed.
+    bad = tuple(
+        LikertDistribution(
+            dimension=dim,
+            n_calls=7,
+            counts={call.score(dim): 7},
+            mean=float(call.score(dim)),
+        )
+        for dim in LIKERT_DIMENSIONS
+    )
+    with pytest.raises(ValidationError, match="disagrees with len\\(likert_calls\\)"):
+        _probe_report(
+            likert_calls=(call,),
+            likert_distributions=bad,
+        )
