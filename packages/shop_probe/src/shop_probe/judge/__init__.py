@@ -1,5 +1,6 @@
 """Axis C: blinded pairwise LLM judge over agent trajectories."""
 
+from shop_probe.judge.agent import DEFAULT_AGENTS_MD, run_judge_agent
 from shop_probe.judge.anonymize import (
     REDACTED_BRAND,
     REDACTED_HOST,
@@ -49,6 +50,7 @@ from shop_probe.judge.trajectory import (
 )
 
 __all__ = [
+    "DEFAULT_AGENTS_MD",
     "REDACTED_BRAND",
     "REDACTED_HOST",
     "REDACTED_THEME",
@@ -83,5 +85,6 @@ __all__ = [
     "load_judge_tasks_bytes",
     "presentations_for",
     "real_shop_pool",
+    "run_judge_agent",
     "swap_drop_rate",
 ]
