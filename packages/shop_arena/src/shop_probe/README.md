@@ -54,6 +54,21 @@ three subcommands:
 | `aggregate-reruns`| Consolidate an N=3 rerun group for one target into a canonical report with per-probe flake rate. |
 | `report`          | Aggregate a cohort of reports into the four paper figures (radar, surface, Turing, fidelity).    |
 
+### Run-root layout
+
+Every subcommand takes a single `--out` argument pointing at a *run-root
+directory* (default `outputs/shop_probe`). The run root has a fixed
+subdirectory layout:
+
+| Subdirectory          | Written by         | Contents                                                                    |
+| --------------------- | ------------------ | --------------------------------------------------------------------------- |
+| `<out>/reports/`      | `run`, `aggregate-reruns` | One `ProbeReport` JSON per (target, rerun). Raw runs are `<safe(label)>__rerun<N>.json`; consolidated runs are `<safe(label)>.json`. |
+| `<out>/evidence/`     | `run`              | Per-run evidence directory `<safe(label)>__rerun<N>/`.                      |
+| `<out>/figures/`      | `report`           | Paper figures (radar, surface, Turing, fidelity table, supplement table).   |
+
+`/` in `Target.label` is rewritten to `__` for filename safety
+(e.g. `source/1` → `source__1`).
+
 ### Run probes against one storefront
 
 ```bash
@@ -63,9 +78,10 @@ uv run shop-probe run https://source-1.example.invalid \
     --pair-id pair_1 \
     --rubric v1 \
     --axes A,B \
-    --out reports/source_1.json \
-    --evidence-dir reports/evidence/source_1 \
-    --rerun-index 1
+    --rerun-index 1 \
+    --out outputs/shop_probe
+# writes outputs/shop_probe/reports/source__1__rerun1.json
+# writes outputs/shop_probe/evidence/source__1__rerun1/...
 ```
 
 Notable flags:
@@ -76,7 +92,8 @@ Notable flags:
   membership for cohort aggregation (spec §5.2).
 - `--include-auth` — opt into the v1.1 authenticated/transactional slice
   (default: skipped).
-- `--record-har` — save a HAR per probe under the evidence dir.
+- `--record-har` — save a HAR per probe under
+  `<out>/evidence/<safe(label)>__rerun<N>/<probe_id>/network.har`.
 - `--rerun-index` — 1-indexed slot in an N=3 rerun group, consumed by
   `aggregate-reruns`.
 
@@ -84,9 +101,10 @@ Notable flags:
 
 ```bash
 uv run shop-probe aggregate-reruns \
-    --runs reports/run1.json reports/run2.json reports/run3.json \
-    --out reports/consolidated.json \
+    --runs outputs/shop_probe/reports/source__1__rerun{1,2,3}.json \
+    --out outputs/shop_probe \
     --gate 0.1
+# writes outputs/shop_probe/reports/source__1.json (consolidated)
 ```
 
 Exits non-zero when any probe's flake rate exceeds `--gate` (spec §5.8).
@@ -96,12 +114,13 @@ Exits non-zero when any probe's flake rate exceeds `--gate` (spec §5.8).
 ```bash
 uv run shop-probe report \
     --cohort packages/shop_arena/src/shop_probe/cohort.yaml \
-    --reports-dir reports/ \
-    --out figures/
+    --out outputs/shop_probe
+# reads outputs/shop_probe/reports/, writes outputs/shop_probe/figures/
 ```
 
-`--reports-dir` must contain one `<safe(label)>.json` per Target in the
-cohort (with `/` rewritten to `__`, e.g. `source__hardware.json`). Outputs:
+`<out>/reports/` must contain one report per cohort `Target`. The
+consolidated `<safe(label)>.json` is preferred; the highest-N raw
+`<safe(label)>__rerun<N>.json` is used as a fallback. Outputs:
 
 | File                     | Content                                                     |
 | ------------------------ | ----------------------------------------------------------- |

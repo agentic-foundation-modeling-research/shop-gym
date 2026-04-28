@@ -87,7 +87,7 @@ def test_aggregate_reruns_clean_group_writes_consolidated_report(
             ),
         )
         runs.append(path)
-    out_path = tmp_path / "aggregated.json"
+    out_path = tmp_path / "reports" / "sandbox__1.json"
 
     rc = main(
         [
@@ -95,7 +95,7 @@ def test_aggregate_reruns_clean_group_writes_consolidated_report(
             "--runs",
             *(str(p) for p in runs),
             "--out",
-            str(out_path),
+            str(tmp_path),
             "--gate",
             "0.01",
         ]
@@ -117,7 +117,7 @@ def test_aggregate_reruns_one_disagreement_surfaces_third_flake(
         path = tmp_path / f"run{i}.json"
         _write_report(path, rerun_index=i, results=(_result("a.b", passed=passed),))
         paths.append(path)
-    out_path = tmp_path / "aggregated.json"
+    out_path = tmp_path / "reports" / "sandbox__1.json"
 
     rc = main(
         [
@@ -125,7 +125,7 @@ def test_aggregate_reruns_one_disagreement_surfaces_third_flake(
             "--runs",
             *(str(p) for p in paths),
             "--out",
-            str(out_path),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_OK
@@ -143,7 +143,7 @@ def test_aggregate_reruns_gate_violation_returns_usage_error(
         path = tmp_path / f"run{i}.json"
         _write_report(path, rerun_index=i, results=(_result("a.b", passed=passed),))
         paths.append(path)
-    out_path = tmp_path / "aggregated.json"
+    out_path = tmp_path / "reports" / "sandbox__1.json"
 
     rc = main(
         [
@@ -151,7 +151,7 @@ def test_aggregate_reruns_gate_violation_returns_usage_error(
             "--runs",
             *(str(p) for p in paths),
             "--out",
-            str(out_path),
+            str(tmp_path),
             "--gate",
             "0.01",
         ]
@@ -176,7 +176,7 @@ def test_aggregate_reruns_requires_at_least_two_runs(
             "--runs",
             str(path),
             "--out",
-            str(tmp_path / "aggregated.json"),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_USAGE
@@ -197,7 +197,7 @@ def test_aggregate_reruns_missing_input_file_fails_loudly(
             str(valid),
             str(missing),
             "--out",
-            str(tmp_path / "aggregated.json"),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_USAGE
@@ -220,7 +220,7 @@ def test_aggregate_reruns_invalid_json_fails_loudly(
             str(valid),
             str(bogus),
             "--out",
-            str(tmp_path / "aggregated.json"),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_USAGE
@@ -265,7 +265,7 @@ def test_aggregate_reruns_mismatched_targets_fail_loudly(
             str(run1),
             str(other),
             "--out",
-            str(tmp_path / "aggregated.json"),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_USAGE

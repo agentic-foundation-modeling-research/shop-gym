@@ -284,10 +284,8 @@ def test_report_renders_axis_a_and_b_figures_without_manual_editing(tmp_path: Pa
             "report",
             "--cohort",
             str(cohort_path),
-            "--reports-dir",
-            str(reports_dir),
             "--out",
-            str(out_dir),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_OK
@@ -363,10 +361,8 @@ def test_report_renders_turing_chart_when_judge_calls_present(tmp_path: Path) ->
             "report",
             "--cohort",
             str(cohort_path),
-            "--reports-dir",
-            str(reports_dir),
             "--out",
-            str(out_dir),
+            str(tmp_path),
             "--bootstrap-iters",
             "100",
         ]
@@ -396,28 +392,28 @@ def test_report_output_is_deterministic_across_runs(tmp_path: Path) -> None:
     """The four artifacts are byte-stable across repeated runs (T6.1-T6.4)."""
     cohort_path = tmp_path / "cohort.yaml"
     _write_minimal_cohort(cohort_path)
-    reports_dir = tmp_path / "reports"
-    reports_dir.mkdir()
-    _seed_axis_a_b_cohort(reports_dir)
 
-    out_a = tmp_path / "figures_a"
-    out_b = tmp_path / "figures_b"
-    for out in (out_a, out_b):
+    root_a = tmp_path / "a"
+    root_b = tmp_path / "b"
+    for root in (root_a, root_b):
+        reports_dir = root / "reports"
+        reports_dir.mkdir(parents=True)
+        _seed_axis_a_b_cohort(reports_dir)
         rc = main(
             [
                 "report",
                 "--cohort",
                 str(cohort_path),
-                "--reports-dir",
-                str(reports_dir),
                 "--out",
-                str(out),
+                str(root),
             ]
         )
         assert rc == EXIT_OK
 
     for filename in ("fidelity_table.md", "radar.svg", "surface.svg"):
-        assert (out_a / filename).read_bytes() == (out_b / filename).read_bytes()
+        a_bytes = (root_a / "figures" / filename).read_bytes()
+        b_bytes = (root_b / "figures" / filename).read_bytes()
+        assert a_bytes == b_bytes
 
 
 # --------------------------------------------------------------------------- #
@@ -433,10 +429,8 @@ def test_report_rejects_missing_cohort_yaml(
             "report",
             "--cohort",
             str(tmp_path / "no_such.yaml"),
-            "--reports-dir",
-            str(tmp_path),
             "--out",
-            str(tmp_path / "figures"),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_USAGE
@@ -468,10 +462,8 @@ def test_report_rejects_missing_report_file(
             "report",
             "--cohort",
             str(cohort_path),
-            "--reports-dir",
-            str(reports_dir),
             "--out",
-            str(tmp_path / "figures"),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_USAGE
@@ -520,10 +512,8 @@ def test_report_emits_supplement_table_when_baselines_dir_provided(
             "report",
             "--cohort",
             str(cohort_path),
-            "--reports-dir",
-            str(reports_dir),
             "--out",
-            str(out_dir),
+            str(tmp_path),
             "--baselines-dir",
             str(baselines_dir),
         ]
@@ -554,10 +544,8 @@ def test_report_skips_supplement_when_baselines_dir_omitted(tmp_path: Path) -> N
             "report",
             "--cohort",
             str(cohort_path),
-            "--reports-dir",
-            str(reports_dir),
             "--out",
-            str(out_dir),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_OK
@@ -573,23 +561,23 @@ def test_supplement_does_not_alter_per_pair_claims(tmp_path: Path) -> None:
     """
     cohort_path = tmp_path / "cohort.yaml"
     _write_minimal_cohort(cohort_path)
-    reports_dir = tmp_path / "reports"
-    reports_dir.mkdir()
-    _seed_axis_a_b_cohort(reports_dir)
     baselines_dir = tmp_path / "baselines"
     _seed_baseline_dir(baselines_dir)
 
-    out_with = tmp_path / "figures_with"
-    out_without = tmp_path / "figures_without"
+    root_with = tmp_path / "with"
+    root_without = tmp_path / "without"
+    for root in (root_with, root_without):
+        reports_dir = root / "reports"
+        reports_dir.mkdir(parents=True)
+        _seed_axis_a_b_cohort(reports_dir)
+
     rc = main(
         [
             "report",
             "--cohort",
             str(cohort_path),
-            "--reports-dir",
-            str(reports_dir),
             "--out",
-            str(out_with),
+            str(root_with),
             "--baselines-dir",
             str(baselines_dir),
         ]
@@ -600,19 +588,19 @@ def test_supplement_does_not_alter_per_pair_claims(tmp_path: Path) -> None:
             "report",
             "--cohort",
             str(cohort_path),
-            "--reports-dir",
-            str(reports_dir),
             "--out",
-            str(out_without),
+            str(root_without),
         ]
     )
     assert rc == EXIT_OK
 
+    figures_with = root_with / "figures"
+    figures_without = root_without / "figures"
     for filename in ("fidelity_table.md", "radar.svg", "surface.svg"):
-        assert (out_with / filename).read_bytes() == (out_without / filename).read_bytes()
+        assert (figures_with / filename).read_bytes() == (figures_without / filename).read_bytes()
     # Supplement appears only on the run that requested it.
-    assert (out_with / "supplement_table.md").exists()
-    assert not (out_without / "supplement_table.md").exists()
+    assert (figures_with / "supplement_table.md").exists()
+    assert not (figures_without / "supplement_table.md").exists()
 
 
 def test_report_rejects_missing_baselines_dir(
@@ -630,10 +618,8 @@ def test_report_rejects_missing_baselines_dir(
             "report",
             "--cohort",
             str(cohort_path),
-            "--reports-dir",
-            str(reports_dir),
             "--out",
-            str(tmp_path / "figures"),
+            str(tmp_path),
             "--baselines-dir",
             str(tmp_path / "no_such_baselines"),
         ]

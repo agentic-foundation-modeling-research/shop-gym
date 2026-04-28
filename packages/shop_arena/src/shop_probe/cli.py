@@ -2,7 +2,20 @@
 
 T1.8 + T6.5 + T7.4 — spec §4, §5.3, §5.6, §5.8, §5.9, §7 M6+M7.
 
-The v1 ``shop-probe`` CLI exposes two subcommands:
+Every subcommand takes a single ``--out`` argument pointing at a *run
+root directory* (default ``outputs/shop_probe``). The run root has a
+fixed subdirectory layout:
+
+* ``<out>/reports/``  — one :class:`ProbeReport` JSON per (target, rerun).
+  Raw reruns are named ``<safe(label)>__rerun<N>.json``;
+  :func:`aggregate-reruns` writes the consolidated form as
+  ``<safe(label)>.json`` (no rerun suffix). ``/`` in labels is rewritten
+  to ``__`` for filename safety.
+* ``<out>/evidence/`` — per-run evidence subdirectory
+  ``<safe(label)>__rerun<N>/`` populated by :class:`ProbeRunner`.
+* ``<out>/figures/``  — :func:`shop-probe report` artifacts.
+
+The v1 ``shop-probe`` CLI exposes three subcommands:
 
 .. code-block:: bash
 
@@ -11,14 +24,20 @@ The v1 ``shop-probe`` CLI exposes two subcommands:
         --rubric v1 \\
         --axes A \\
         --kind sandbox --pair-id pair_1 \\
-        --out report.json
+        --rerun-index 1
+        # writes <out>/reports/sandbox__run123__rerun1.json
+        # writes <out>/evidence/sandbox__run123__rerun1/...
 
-    shop-probe report \\
-        --cohort cohort.yaml \\
-        --reports-dir outputs/web_probe/v1/ \\
-        --out figures/
+    shop-probe aggregate-reruns \\
+        --runs <out>/reports/sandbox__run123__rerun{1,2,3}.json
+        # writes <out>/reports/sandbox__run123.json (consolidated)
 
-For ``--axes A`` the command:
+    shop-probe report --cohort cohort.yaml
+        # reads <out>/reports/, prefers the consolidated <label>.json
+        # per target, falling back to the max-N raw rerun
+        # writes <out>/figures/{fidelity_table.md,radar.svg,...}
+
+For ``--axes A`` the ``run`` command:
 
 1. Loads the requested rubric (``v1`` resolves to the YAML packaged inside
    ``shop_probe.rubric``; an arbitrary path is also accepted).
@@ -26,13 +45,15 @@ For ``--axes A`` the command:
    homepage so the ``collection.*`` / ``product.*`` / ``cart.line_item.*``
    probes have something to navigate to.
 3. Drives every rubric leaf through :class:`ProbeRunner` in dotted-name
-   order, capturing structured evidence under ``--evidence-dir``.
+   order, capturing structured evidence under
+   ``<out>/evidence/<safe(label)>__rerun<N>/``.
 4. Aggregates ``ProbeResult`` rows into per-category coverage plus the
    four headline ``coverage_core/modern/advanced/weighted`` numbers
    (spec §5.3).
 5. Embeds the rubric version + content hash, runner version, and the
    pinned Playwright/Chromium runtime metadata into a closed
-   :class:`ProbeReport` (spec §5.6 + §5.8) and writes it to ``--out``.
+   :class:`ProbeReport` (spec §5.6 + §5.8) and writes it under
+   ``<out>/reports/``.
 
 ``--include-auth`` (T7.4 — spec §5.9 / M7) toggles the v1.1 auth + checkout
 slice. By default rubric entries flagged ``authenticated=true`` or
@@ -46,12 +67,14 @@ requesting it today returns a usage error.
 ``shop-probe report`` (T6.5 — spec §7 M6) wires the four paper figures:
 
 1. Loads ``--cohort`` and reads one :class:`ProbeReport` per
-   :class:`Target` from ``--reports-dir`` (filename convention:
-   ``<safe(label)>.json`` with ``/`` rewritten to ``__``).
+   :class:`Target` from ``<out>/reports/``. Prefers the consolidated
+   ``<safe(label)>.json`` written by :func:`aggregate-reruns`; falls
+   back to the max-N raw ``<safe(label)>__rerun<N>.json`` if no
+   consolidated report is present.
 2. Aggregates per-pair fidelity over the (sandbox, source) pairs and
    the 6-real-shop reference population (sources + ``real_unpaired``)
    into a closed :class:`CohortFidelity` (spec §5.7).
-3. Renders four artifacts under ``--out``:
+3. Renders four artifacts under ``<out>/figures/``:
 
    * ``fidelity_table.md``  — per-pair fidelity table (T6.1).
    * ``radar.svg``           — per-category coverage radar (T6.2).
@@ -155,6 +178,17 @@ _DISCOVERY_PROBE_ID: Final[str] = "_discover"
 _LABEL_PATH_SEP: Final[str] = "__"
 """Filename-safe replacement for ``/`` in :attr:`Target.label`."""
 
+_RERUN_SUFFIX_PREFIX: Final[str] = "__rerun"
+"""Suffix prefix for raw rerun JSON files: ``<safe(label)>__rerun<N>.json``."""
+
+_DEFAULT_OUT_ROOT: Final[Path] = Path("outputs/shop_probe")
+"""Default ``--out`` run-root directory."""
+
+_REPORTS_SUBDIR: Final[str] = "reports"
+_EVIDENCE_SUBDIR: Final[str] = "evidence"
+_FIGURES_SUBDIR: Final[str] = "figures"
+"""Fixed subdirectory layout under the run-root ``--out`` directory."""
+
 _FIDELITY_TABLE_FILENAME: Final[str] = "fidelity_table.md"
 _RADAR_CHART_FILENAME: Final[str] = "radar.svg"
 _SURFACE_CHART_FILENAME: Final[str] = "surface.svg"
@@ -198,13 +232,18 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--label",
         required=True,
-        help="Human-readable target label (e.g. 'sandbox/hardware_run123').",
+        help="Human-readable target label (e.g. 'sandbox/1_run123').",
     )
     run.add_argument(
         "--out",
-        required=True,
         type=Path,
-        help="Path to write the ProbeReport JSON document.",
+        default=_DEFAULT_OUT_ROOT,
+        help=(
+            "Run-root directory. The ProbeReport JSON is written under "
+            "'<out>/reports/<safe(label)>__rerun<N>.json' and probe evidence "
+            "under '<out>/evidence/<safe(label)>__rerun<N>/'. "
+            f"Defaults to '{_DEFAULT_OUT_ROOT}'."
+        ),
     )
     run.add_argument(
         "--rubric",
@@ -233,12 +272,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional free-form operator notes recorded on the Target.",
     )
     run.add_argument(
-        "--evidence-dir",
-        type=Path,
-        default=None,
-        help="Directory for probe evidence. Defaults to '<out_dir>/evidence'.",
-    )
-    run.add_argument(
         "--rerun-index",
         type=int,
         default=1,
@@ -258,7 +291,8 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help=(
-            "Record a HAR capture per probe context under '<evidence-dir>/<probe_id>/network.har' "
+            "Record a HAR capture per probe context under "
+            "'<out>/evidence/<safe(label)>__rerun<N>/<probe_id>/network.har' "
             '(spec §5.8 — "Save HAR captures of every crawl"; T5.2 cohort run). Default: off.'
         ),
     )
@@ -274,19 +308,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to a cohort YAML (spec §8.2).",
     )
     report.add_argument(
-        "--reports-dir",
-        required=True,
-        type=Path,
-        help=(
-            "Directory holding one ProbeReport JSON per Target. "
-            "Filenames follow '<safe(label)>.json' where '/' is rewritten to '__'."
-        ),
-    )
-    report.add_argument(
         "--out",
-        required=True,
         type=Path,
-        help="Output directory for fidelity_table.md, radar.svg, surface.svg, turing.svg.",
+        default=_DEFAULT_OUT_ROOT,
+        help=(
+            "Run-root directory. ProbeReports are read from "
+            "'<out>/reports/' (the consolidated '<safe(label)>.json' is "
+            "preferred; the max-N raw '<safe(label)>__rerun<N>.json' is "
+            "used as a fallback). Figures are written under "
+            f"'<out>/figures/'. Defaults to '{_DEFAULT_OUT_ROOT}'."
+        ),
     )
     report.add_argument(
         "--epsilon",
@@ -333,9 +364,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     aggregate.add_argument(
         "--out",
-        required=True,
         type=Path,
-        help="Path to write the consolidated ProbeReport JSON document.",
+        default=_DEFAULT_OUT_ROOT,
+        help=(
+            "Run-root directory. The consolidated ProbeReport is written "
+            "to '<out>/reports/<safe(label)>.json' (no rerun suffix). "
+            f"Defaults to '{_DEFAULT_OUT_ROOT}'."
+        ),
     )
     aggregate.add_argument(
         "--gate",
@@ -381,10 +416,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(f"shop-probe: invalid target: {err}", file=sys.stderr)
         return EXIT_USAGE
 
-    out_path: Path = args.out
-    evidence_root: Path = (
-        args.evidence_dir if args.evidence_dir is not None else (out_path.parent / "evidence")
-    )
+    out_root: Path = args.out
+    rerun_stem = f"{_safe_label_stem(target.label)}{_RERUN_SUFFIX_PREFIX}{args.rerun_index}"
+    out_path: Path = out_root / _REPORTS_SUBDIR / f"{rerun_stem}.json"
+    evidence_root: Path = out_root / _EVIDENCE_SUBDIR / rerun_stem
 
     report = asyncio.run(
         _run(
@@ -660,8 +695,9 @@ def _safe_pkg_version(name: str) -> str:
 def _cmd_report(args: argparse.Namespace) -> int:
     """Handler for ``shop-probe report``."""
     cohort_path: Path = args.cohort
-    reports_dir: Path = args.reports_dir
-    out_dir: Path = args.out
+    out_root: Path = args.out
+    reports_dir: Path = out_root / _REPORTS_SUBDIR
+    out_dir: Path = out_root / _FIGURES_SUBDIR
     epsilon: float = args.epsilon
     bootstrap_iters: int = args.bootstrap_iters
     bootstrap_seed: int = args.bootstrap_seed
@@ -789,20 +825,54 @@ def _write_supplement_table(out_dir: Path, baselines_dir: Path) -> Path | int:
     return supplement_path
 
 
-def _label_to_filename(label: str) -> str:
-    """Map a :attr:`Target.label` to its on-disk JSON filename."""
-    return label.replace("/", _LABEL_PATH_SEP) + ".json"
+def _safe_label_stem(label: str) -> str:
+    """Map a :attr:`Target.label` to its filename-safe stem (no extension)."""
+    return label.replace("/", _LABEL_PATH_SEP)
+
+
+def _resolve_report_path(reports_dir: Path, label: str) -> Path:
+    """Pick the on-disk :class:`ProbeReport` JSON for ``label``.
+
+    Precedence (spec §5.8 + T5.2):
+
+    1. The consolidated ``<safe(label)>.json`` written by
+       ``shop-probe aggregate-reruns``.
+    2. The raw ``<safe(label)>__rerun<N>.json`` with the largest ``N``.
+
+    Args:
+        reports_dir: Directory to search.
+        label: Target label (``/`` will be rewritten to ``__``).
+
+    Returns:
+        Path to the chosen JSON file.
+
+    Raises:
+        FileNotFoundError: No matching report exists in ``reports_dir``.
+    """
+    stem = _safe_label_stem(label)
+    consolidated = reports_dir / f"{stem}.json"
+    if consolidated.is_file():
+        return consolidated
+    candidates: list[tuple[int, Path]] = []
+    for path in reports_dir.glob(f"{stem}{_RERUN_SUFFIX_PREFIX}*.json"):
+        suffix = path.stem.removeprefix(f"{stem}{_RERUN_SUFFIX_PREFIX}")
+        try:
+            candidates.append((int(suffix), path))
+        except ValueError:
+            continue
+    if not candidates:
+        msg = (
+            f"missing report for target {label!r}: expected "
+            f"'{stem}.json' or '{stem}{_RERUN_SUFFIX_PREFIX}<N>.json' in {reports_dir}"
+        )
+        raise FileNotFoundError(msg)
+    candidates.sort()
+    return candidates[-1][1]
 
 
 def _load_report(reports_dir: Path, target: Target) -> ProbeReport:
     """Load and validate one :class:`ProbeReport` for ``target``."""
-    path = reports_dir / _label_to_filename(target.label)
-    if not path.is_file():
-        msg = (
-            f"missing report for target {target.label!r}: expected at {path} "
-            f"(filename convention: '<label>.json' with '/' rewritten to '{_LABEL_PATH_SEP}')"
-        )
-        raise FileNotFoundError(msg)
+    path = _resolve_report_path(reports_dir, target.label)
     payload = json.loads(path.read_text(encoding="utf-8"))
     report = ProbeReport.model_validate(payload)
     if report.target.label != target.label:
@@ -903,7 +973,7 @@ def _build_cohort_fidelity(
 def _cmd_aggregate_reruns(args: argparse.Namespace) -> int:
     """Handler for ``shop-probe aggregate-reruns``."""
     run_paths: list[Path] = list(args.runs)
-    out_path: Path = args.out
+    out_root: Path = args.out
     gate: float | None = args.gate
 
     if len(run_paths) < 2:  # noqa: PLR2004 — spec §5.8 mandates N ≥ 2 reruns
@@ -932,6 +1002,7 @@ def _cmd_aggregate_reruns(args: argparse.Namespace) -> int:
         print(f"shop-probe: {err}", file=sys.stderr)
         return EXIT_USAGE
 
+    out_path = out_root / _REPORTS_SUBDIR / f"{_safe_label_stem(consolidated.target.label)}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(consolidated.model_dump_json(indent=2), encoding="utf-8")
 

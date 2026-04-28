@@ -33,19 +33,15 @@ if str(_TESTS_ROOT) not in sys.path:
 from _sandbox import SandboxShop  # noqa: E402 — sys.path adjustment above
 
 _RUBRIC_V1_PATH: Path = (
-    Path(__file__).resolve().parent.parent.parent
-    / "src"
-    / "shop_probe"
-    / "rubric"
-    / "v1.yaml"
+    Path(__file__).resolve().parent.parent.parent / "src" / "shop_probe" / "rubric" / "v1.yaml"
 )
 
 
 def test_cli_run_emits_valid_probe_report(tmp_path: Path) -> None:
     """Spec §7 M1 gate: ``shop-probe run --axes A`` against a localhost
     SandboxShop produces a valid :class:`ProbeReport`."""
-    out_path = tmp_path / "report.json"
-    evidence_dir = tmp_path / "evidence"
+    out_path = tmp_path / "reports" / "sandbox__fixture__rerun1.json"
+    evidence_dir = tmp_path / "evidence" / "sandbox__fixture__rerun1"
     with SandboxShop() as base_url:
         rc = main(
             [
@@ -62,9 +58,7 @@ def test_cli_run_emits_valid_probe_report(tmp_path: Path) -> None:
                 "--pair-id",
                 "pair_fixture",
                 "--out",
-                str(out_path),
-                "--evidence-dir",
-                str(evidence_dir),
+                str(tmp_path),
             ]
         )
     assert rc == EXIT_OK
@@ -125,8 +119,7 @@ def test_cli_run_emits_valid_probe_report(tmp_path: Path) -> None:
 
 def test_cli_run_axes_a_b_populates_report_surface(tmp_path: Path) -> None:
     """Spec §7 M2 gate: ``shop-probe run --axes A,B`` populates ``report.surface``."""
-    out_path = tmp_path / "report.json"
-    evidence_dir = tmp_path / "evidence"
+    out_path = tmp_path / "reports" / "sandbox__fixture__rerun1.json"
     with SandboxShop() as base_url:
         rc = main(
             [
@@ -143,9 +136,7 @@ def test_cli_run_axes_a_b_populates_report_surface(tmp_path: Path) -> None:
                 "--pair-id",
                 "pair_fixture",
                 "--out",
-                str(out_path),
-                "--evidence-dir",
-                str(evidence_dir),
+                str(tmp_path),
             ]
         )
     assert rc == EXIT_OK
@@ -178,7 +169,7 @@ def test_cli_run_rejects_unsupported_axes(
             "--pair-id",
             "pair_fixture",
             "--out",
-            str(tmp_path / "report.json"),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_USAGE
@@ -199,7 +190,7 @@ def test_cli_run_rejects_inconsistent_kind_and_pair_id(
             "--kind",
             "sandbox",
             "--out",
-            str(tmp_path / "report.json"),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_USAGE
@@ -222,7 +213,7 @@ def test_cli_run_rejects_missing_rubric(tmp_path: Path, capsys: pytest.CaptureFi
             "--pair-id",
             "pair_fixture",
             "--out",
-            str(tmp_path / "report.json"),
+            str(tmp_path),
         ]
     )
     assert rc == EXIT_USAGE
@@ -231,18 +222,13 @@ def test_cli_run_rejects_missing_rubric(tmp_path: Path, capsys: pytest.CaptureFi
 
 
 _RUBRIC_V1_1_PATH: Path = (
-    Path(__file__).resolve().parent.parent.parent
-    / "src"
-    / "shop_probe"
-    / "rubric"
-    / "v1.1.yaml"
+    Path(__file__).resolve().parent.parent.parent / "src" / "shop_probe" / "rubric" / "v1.1.yaml"
 )
 
 
 def test_cli_run_v1_1_default_skips_auth_and_transactional(tmp_path: Path) -> None:
     """T7.4: by default the v1.1 auth + transactional slice is filtered out."""
-    out_path = tmp_path / "report.json"
-    evidence_dir = tmp_path / "evidence"
+    out_path = tmp_path / "reports" / "sandbox__fixture__rerun1.json"
     with SandboxShop() as base_url:
         rc = main(
             [
@@ -259,9 +245,7 @@ def test_cli_run_v1_1_default_skips_auth_and_transactional(tmp_path: Path) -> No
                 "--pair-id",
                 "pair_fixture",
                 "--out",
-                str(out_path),
-                "--evidence-dir",
-                str(evidence_dir),
+                str(tmp_path),
             ]
         )
     assert rc == EXIT_OK
@@ -290,8 +274,7 @@ def test_cli_run_v1_1_default_skips_auth_and_transactional(tmp_path: Path) -> No
 
 def test_cli_run_v1_1_with_include_auth_runs_full_rubric(tmp_path: Path) -> None:
     """T7.4: ``--include-auth`` opts the v1.1 auth + transactional slice in."""
-    out_path = tmp_path / "report.json"
-    evidence_dir = tmp_path / "evidence"
+    out_path = tmp_path / "reports" / "sandbox__fixture__rerun1.json"
     with SandboxShop() as base_url:
         rc = main(
             [
@@ -308,9 +291,7 @@ def test_cli_run_v1_1_with_include_auth_runs_full_rubric(tmp_path: Path) -> None
                 "--pair-id",
                 "pair_fixture",
                 "--out",
-                str(out_path),
-                "--evidence-dir",
-                str(evidence_dir),
+                str(tmp_path),
                 "--include-auth",
             ]
         )
