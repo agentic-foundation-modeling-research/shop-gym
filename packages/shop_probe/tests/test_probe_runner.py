@@ -337,3 +337,69 @@ def test_each_run_uses_fresh_context(tmp_path: Path, fixture_url: str) -> None:
     assert second.notes == "marker=None", (
         "second probe must not see state from the first probe's isolated context"
     )
+
+
+# --------------------------------------------------------------------------- #
+# HAR capture (T5.2 — spec §5.8)
+# --------------------------------------------------------------------------- #
+
+
+def test_record_har_emits_evidence_ref_and_writes_file(
+    tmp_path: Path,
+    fixture_url: str,
+) -> None:
+    """Spec §5.8: ``record_har=True`` writes a HAR per probe context.
+
+    The runner is responsible for closing the context (which finalizes
+    the HAR file on disk) and for appending an :class:`EvidenceRef` of
+    kind ``"har"`` to the outcome's evidence so reviewers can re-score
+    offline against the captured network responses.
+    """
+    evidence_root = tmp_path / "evidence"
+
+    async def probe(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+        await page.goto(ctx.base_url)
+        return ProbeOutcome(passed=True)
+
+    async def _go() -> ProbeOutcome:
+        async with ProbeRunner(evidence_root=evidence_root, record_har=True) as runner:
+            return await runner.run(
+                probe,
+                base_url=fixture_url,
+                probe_id="site_shell.header.sticky",
+            )
+
+    outcome = asyncio.run(_go())
+    assert outcome.passed is True
+    har_refs = tuple(ev for ev in outcome.evidence if ev.kind == "har")
+    assert len(har_refs) == 1, "runner must append exactly one HAR EvidenceRef"
+    (har_ref,) = har_refs
+    assert har_ref.path == "site_shell.header.sticky/network.har"
+    har_file = evidence_root / har_ref.path
+    assert har_file.is_file()
+    assert har_file.stat().st_size > 0, "HAR file must contain captured traffic"
+
+
+def test_record_har_default_off_emits_no_har_evidence(
+    tmp_path: Path,
+    fixture_url: str,
+) -> None:
+    """By default the runner does not record HAR (axis-A unit tests stay fast)."""
+    evidence_root = tmp_path / "evidence"
+
+    async def probe(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+        await page.goto(ctx.base_url)
+        return ProbeOutcome(passed=True)
+
+    async def _go() -> ProbeOutcome:
+        async with ProbeRunner(evidence_root=evidence_root) as runner:
+            return await runner.run(
+                probe,
+                base_url=fixture_url,
+                probe_id="site_shell.header.sticky",
+            )
+
+    outcome = asyncio.run(_go())
+    assert outcome.passed is True
+    assert all(ev.kind != "har" for ev in outcome.evidence)
+    assert not (evidence_root / "site_shell.header.sticky" / "network.har").exists()

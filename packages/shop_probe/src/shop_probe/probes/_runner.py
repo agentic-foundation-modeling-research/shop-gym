@@ -206,6 +206,7 @@ class ProbeRunner:
         user_agent: str = PINNED_USER_AGENT,
         viewport: tuple[int, int] = (VIEWPORT_WIDTH, VIEWPORT_HEIGHT),
         headless: bool = True,
+        record_har: bool = False,
     ) -> None:
         """Initialize the runner.
 
@@ -220,12 +221,20 @@ class ProbeRunner:
                 (defaults to ``(1280, 800)``; spec §5.3).
             headless: Whether to launch Chromium headless (defaults to
                 ``True``; spec §5.3).
+            record_har: When ``True`` every probe context records its
+                network traffic to ``{evidence_root}/{probe_id}/network.har``
+                and the runner appends an :class:`EvidenceRef` of kind
+                ``"har"`` to the probe's outcome (spec §5.8 — "Save HAR
+                captures of every crawl"). Defaults to ``False`` so
+                axis-A unit tests stay fast; the cohort run
+                (T5.2 / spec §7 M5) flips it on via the CLI.
         """
         self.evidence_root = evidence_root
         self.timeout_s = timeout_s
         self.user_agent = user_agent
         self.viewport = viewport
         self.headless = headless
+        self.record_har = record_har
         self._stack: contextlib.AsyncExitStack | None = None
         self._browser: Browser | None = None
 
@@ -314,10 +323,17 @@ class ProbeRunner:
             raise RuntimeError(msg)
         budget = timeout_s if timeout_s is not None else self.timeout_s
         start = time.perf_counter()
-        context = await self._browser.new_context(
-            user_agent=self.user_agent,
-            viewport={"width": self.viewport[0], "height": self.viewport[1]},
-        )
+        har_rel_path: Path | None = None
+        context_kwargs: dict[str, object] = {
+            "user_agent": self.user_agent,
+            "viewport": {"width": self.viewport[0], "height": self.viewport[1]},
+        }
+        if self.record_har:
+            har_rel_path = Path(probe_id) / "network.har"
+            har_absolute = self.evidence_root / har_rel_path
+            har_absolute.parent.mkdir(parents=True, exist_ok=True)
+            context_kwargs["record_har_path"] = str(har_absolute)
+        context = await self._browser.new_context(**context_kwargs)  # type: ignore[arg-type]
         try:
             page = await context.new_page()
             page.set_default_timeout(budget * 1000.0)
@@ -332,25 +348,28 @@ class ProbeRunner:
             try:
                 outcome = await asyncio.wait_for(probe(page, ctx), timeout=budget)
             except TimeoutError:
-                duration_ms = int((time.perf_counter() - start) * 1000)
-                return ProbeOutcome(
+                outcome = ProbeOutcome(
                     passed=False,
                     notes=f"timeout after {budget:g}s",
-                    duration_ms=duration_ms,
                 )
             except Exception as err:
-                duration_ms = int((time.perf_counter() - start) * 1000)
-                return ProbeOutcome(
+                outcome = ProbeOutcome(
                     passed=False,
                     notes=f"{type(err).__name__}: {err}",
-                    duration_ms=duration_ms,
                 )
         finally:
+            # context.close() finalizes the HAR file when record_har is on.
             await context.close()
+        evidence = outcome.evidence
+        if har_rel_path is not None:
+            evidence = (
+                *evidence,
+                EvidenceRef(kind="har", path=har_rel_path.as_posix()),
+            )
         duration_ms = int((time.perf_counter() - start) * 1000)
         return ProbeOutcome(
             passed=outcome.passed,
-            evidence=outcome.evidence,
+            evidence=evidence,
             notes=outcome.notes,
             duration_ms=duration_ms,
         )

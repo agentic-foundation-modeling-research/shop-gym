@@ -30,9 +30,17 @@ from shop_probe.report import (
     ProbeResult,
     aggregate_likert_distributions,
 )
+from shop_probe.stability import (
+    FLAKE_RATE_GATE,
+    RerunGroupError,
+    aggregate_flake_rates,
+    consolidate_rerun_group,
+    exceeds_flake_gate,
+)
 from shop_probe.targets import Cohort, Pair, Target, TargetKind
 
 __all__ = [
+    "FLAKE_RATE_GATE",
     "LIKERT_DIMENSIONS",
     "BrowserMeta",
     "CategoryScore",
@@ -51,12 +59,16 @@ __all__ = [
     "PairFidelity",
     "ProbeReport",
     "ProbeResult",
+    "RerunGroupError",
     "Target",
     "TargetKind",
     "__version__",
+    "aggregate_flake_rates",
     "aggregate_likert_distributions",
     "compute_cohort_fidelity",
     "compute_pair_fidelity",
+    "consolidate_rerun_group",
+    "exceeds_flake_gate",
     "load_cohort",
     "load_cohort_bytes",
 ]

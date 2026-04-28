@@ -124,6 +124,12 @@ from shop_probe.report_writer import (
     render_turing_chart_svg,
 )
 from shop_probe.rubric import Rubric, RubricEntry, load_rubric
+from shop_probe.stability import (
+    FLAKE_RATE_GATE,
+    RerunGroupError,
+    consolidate_rerun_group,
+    exceeds_flake_gate,
+)
 from shop_probe.surface import SurfaceMetrics
 from shop_probe.surface.crawler import SurfaceCrawler
 from shop_probe.targets import Cohort, Target
@@ -173,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run(args)
     if args.command == "report":
         return _cmd_report(args)
+    if args.command == "aggregate-reruns":
+        return _cmd_aggregate_reruns(args)
     parser.print_help()
     return EXIT_USAGE
 
@@ -245,6 +253,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "(v1.1 auth + checkout slice; spec §5.9 / T7.4). Default: skip them."
         ),
     )
+    run.add_argument(
+        "--record-har",
+        action="store_true",
+        default=False,
+        help=(
+            "Record a HAR capture per probe context under '<evidence-dir>/<probe_id>/network.har' "
+            '(spec §5.8 — "Save HAR captures of every crawl"; T5.2 cohort run). Default: off.'
+        ),
+    )
 
     report = sub.add_parser(
         "report",
@@ -299,6 +316,37 @@ def _build_parser() -> argparse.ArgumentParser:
             "the primary outputs without altering per-pair claims (T7.5 \u2014 spec \u00a75.9)."
         ),
     )
+
+    aggregate = sub.add_parser(
+        "aggregate-reruns",
+        help=(
+            "Aggregate N=3 rerun reports for one target into a canonical "
+            "ProbeReport with flake_rate_per_probe populated (spec §5.8; T5.2)."
+        ),
+    )
+    aggregate.add_argument(
+        "--runs",
+        required=True,
+        nargs="+",
+        type=Path,
+        help="Two or more ProbeReport JSON files for the same target.",
+    )
+    aggregate.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        help="Path to write the consolidated ProbeReport JSON document.",
+    )
+    aggregate.add_argument(
+        "--gate",
+        type=float,
+        default=None,
+        help=(
+            "Per-probe flake-rate gate. When set, the command exits with "
+            f"code {EXIT_USAGE} if any probe's flake rate is >= the gate "
+            "(spec §5.8 paper-claim threshold defaults to 1%%)."
+        ),
+    )
     return parser
 
 
@@ -347,6 +395,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             run_axis_a="A" in axes,
             run_axis_b="B" in axes,
             include_auth=args.include_auth,
+            record_har=args.record_har,
         )
     )
 
@@ -456,6 +505,7 @@ async def _run(
     run_axis_a: bool,
     run_axis_b: bool,
     include_auth: bool = False,
+    record_har: bool = False,
 ) -> ProbeReport:
     """Run the requested axes and assemble the closed :class:`ProbeReport`."""
     started = datetime.now(UTC)
@@ -466,7 +516,7 @@ async def _run(
     selected_entries = _select_rubric_entries(rubric, include_auth=include_auth)
 
     if run_axis_a:
-        async with ProbeRunner(evidence_root=evidence_root) as runner:
+        async with ProbeRunner(evidence_root=evidence_root, record_har=record_har) as runner:
             chromium_version = runner.chromium_version
             sample_collection_url, sample_product_url = await _discover_sample_urls(
                 runner, target.base_url
@@ -823,6 +873,71 @@ def _build_cohort_fidelity(
             )
         )
     return compute_cohort_fidelity(pairs=pairs, real_population=real_population)
+
+
+# --------------------------------------------------------------------------- #
+# ``shop-probe aggregate-reruns`` (T5.2 — spec §5.8).
+# --------------------------------------------------------------------------- #
+
+
+def _cmd_aggregate_reruns(args: argparse.Namespace) -> int:
+    """Handler for ``shop-probe aggregate-reruns``."""
+    run_paths: list[Path] = list(args.runs)
+    out_path: Path = args.out
+    gate: float | None = args.gate
+
+    if len(run_paths) < 2:  # noqa: PLR2004 — spec §5.8 mandates N ≥ 2 reruns
+        print(
+            "shop-probe: --runs requires at least two ProbeReport JSON files "
+            "(spec §5.8 N=3 reruns; minimum N=2 to compute a flake rate).",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    reports: list[ProbeReport] = []
+    for path in run_paths:
+        if not path.is_file():
+            print(f"shop-probe: rerun report not found: {path}", file=sys.stderr)
+            return EXIT_USAGE
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            reports.append(ProbeReport.model_validate(payload))
+        except (ValidationError, ValueError) as err:
+            print(f"shop-probe: invalid rerun report {path}: {err}", file=sys.stderr)
+            return EXIT_USAGE
+
+    try:
+        consolidated = consolidate_rerun_group(reports)
+    except RerunGroupError as err:
+        print(f"shop-probe: {err}", file=sys.stderr)
+        return EXIT_USAGE
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(consolidated.model_dump_json(indent=2), encoding="utf-8")
+
+    flake = consolidated.flake_rate_per_probe
+    flaked = tuple(probe_id for probe_id, rate in flake.items() if rate > 0.0)
+    summary = (
+        f"shop-probe: wrote {out_path} "
+        f"(target={consolidated.target.label!r}, n_runs={len(reports)}, "
+        f"flaked_probes={len(flaked)}/{len(flake)})"
+    )
+    print(summary)
+
+    if gate is not None:
+        violations = exceeds_flake_gate(flake, gate=gate)
+        if violations:
+            print(
+                f"shop-probe: {len(violations)} probe(s) exceeded flake gate "
+                f"({gate:.0%}): {', '.join(violations)}",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        print(
+            f"shop-probe: flake gate passed ({gate:.0%}; spec §5.8 default "
+            f"is {FLAKE_RATE_GATE:.0%})."
+        )
+    return EXIT_OK
 
 
 if __name__ == "__main__":
