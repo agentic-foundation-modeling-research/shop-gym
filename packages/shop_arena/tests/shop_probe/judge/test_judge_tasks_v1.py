@@ -24,7 +24,7 @@ from shop_probe.judge.tasks import compute_content_hash, load_judge_tasks
 # --------------------------------------------------------------------------- #
 
 V1_PATH: Path = (
-    Path(__file__).resolve().parent.parent.parent
+    Path(__file__).resolve().parent.parent.parent.parent
     / "src"
     / "shop_probe"
     / "judge"

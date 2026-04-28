@@ -3,7 +3,7 @@
 Imported by ``tests/probes/test_*.py`` and the corresponding
 ``tests/probes/conftest.py``. Lives at ``tests/_probe_helpers.py`` so it
 sits next to ``_sandbox.py`` and is reachable via the rootdir-based
-sys.path pytest sets up for ``packages/shop_probe/tests/``.
+sys.path pytest sets up for ``packages/shop_arena/tests/shop_probe/``.
 """
 
 from __future__ import annotations

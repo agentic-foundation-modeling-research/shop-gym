@@ -2,7 +2,7 @@
 
 Status: **Plan (proposed)** · Version: **0.1**
 Spec: [`docs/specs/shop_arena/web_probe.md`](../specs/shop_arena/web_probe.md)
-Target package: `packages/shop_probe`
+Target module: `packages/shop_arena/src/shop_probe`
 
 > Pure task list. Each task references the spec section that defines its
 > behavior. Order matches the spec milestones (§7). Gates per milestone are
@@ -23,7 +23,7 @@ Uses the spec's vocabulary verbatim (§2). No new terms.
 
 ## 3. Current Status
 
-`packages/shop_probe` does not exist. ShopGym today has `shop_explore`
+`packages/shop_arena/src/shop_probe` does not exist. ShopGym today has `shop_explore`
 manuals + a 108-task ShopGuru benchmark (behavioral fidelity); no
 structural-fidelity instrument (spec §3).
 
@@ -39,7 +39,7 @@ versioned reports without manual editing (spec §4, §7 M6).
 
 ### M1 · Package skeleton + axis A core (spec §7 M1)
 
-- [x] **T1.1** — Add `packages/shop_probe/` to the `uv` workspace; `pyproject.toml` pins Python ≥ 3.11, `playwright`, `pydantic>=2`, `pyyaml`, `httpx`; declares `shop-probe` console script. Layout per spec §5.1. **Check:** `uv sync` resolves; `pyright --strict packages/shop_probe/src` clean on the empty package.
+- [x] **T1.1** — Add `packages/shop_arena/src/shop_probe/` as a sibling module of `shop_gen`/`shop_explore`; `packages/shop_arena/pyproject.toml` pins Python ≥ 3.11, `playwright`, `pydantic>=2`, `pyyaml`, `httpx`; declares `shop-probe` console script. Layout per spec §5.1. **Check:** `uv sync` resolves; `pyright --strict packages/shop_arena/src` clean on the empty module.
 - [x] **T1.2** — `targets.py`: `Target`, `Cohort` pydantic v2 models per spec §5.2 (`label`, `base_url`, `kind ∈ {sandbox, source, real_unpaired}`, `pair_id`, `notes`); `extra="forbid"`. **Check:** unit tests cover round-trip, unknown-field rejection, `pair_id` only set on `sandbox`/`source`.
 - [x] **T1.3** — `rubric/schema.py`: `RubricEntry` pydantic model per spec §5.3 (`id`, `category`, `level ∈ {core, modern, advanced}`, `weight ∈ 1..3`, `probe`, `description`, `authenticated`, `transactional`). `rubric/loader.py`: load + validate + content-hash YAML. **Check:** unit test loads a fixture YAML, asserts deterministic hash, rejects unknown fields and out-of-range weights.
 - [x] **T1.4** — `rubric/v1.yaml`: 20 `core`-level probes covering `site_shell`, `collection`, `product`, `cart` subsets per spec §7 M1. Frozen + hashed. **Check:** rubric loader validates; hash committed in test fixture.

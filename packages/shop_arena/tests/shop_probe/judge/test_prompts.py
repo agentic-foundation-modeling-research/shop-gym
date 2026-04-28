@@ -42,7 +42,7 @@ from shop_probe.report import JudgeCall
 # --------------------------------------------------------------------------- #
 
 V1_DIR: Path = (
-    Path(__file__).resolve().parent.parent.parent
+    Path(__file__).resolve().parent.parent.parent.parent
     / "src"
     / "shop_probe"
     / "judge"

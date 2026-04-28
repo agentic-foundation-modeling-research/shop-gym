@@ -2,7 +2,7 @@
 
 **ShopGym** is a mono-repo for building and evaluating shopping LLM agents. It contains three packages:
 
-- `packages/shop_arena` (Python) — **ShopArena**: Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from live storefronts. Ships two top-level modules: `shop_gen` (generation pipeline) and `shop_explore` (storefront exploration).
+- `packages/shop_arena` (Python) — **ShopArena**: Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from live storefronts. Ships three top-level modules: `shop_gen` (generation pipeline), `shop_explore` (storefront exploration), and `shop_probe` (structural-fidelity measurement instrument).
 - `packages/shop_guru` (Python) — **ShopGuru**: automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation, and policies to synthesize grounded evaluation tasks across 7 skill categories.
 - `packages/shop_backend` (TypeScript) — **ShopBackend**: local GraphQL API server that mirrors Shopify's Storefront/Admin API against SandboxShop data; used for benchmarking and as an RL environment.
 

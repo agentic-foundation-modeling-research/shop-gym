@@ -33,7 +33,11 @@ if str(_TESTS_ROOT) not in sys.path:
 from _sandbox import SandboxShop  # noqa: E402 — sys.path adjustment above
 
 _RUBRIC_V1_PATH: Path = (
-    Path(__file__).resolve().parent.parent / "src" / "shop_probe" / "rubric" / "v1.yaml"
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "shop_probe"
+    / "rubric"
+    / "v1.yaml"
 )
 
 
@@ -227,7 +231,11 @@ def test_cli_run_rejects_missing_rubric(tmp_path: Path, capsys: pytest.CaptureFi
 
 
 _RUBRIC_V1_1_PATH: Path = (
-    Path(__file__).resolve().parent.parent / "src" / "shop_probe" / "rubric" / "v1.1.yaml"
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "shop_probe"
+    / "rubric"
+    / "v1.1.yaml"
 )
 
 

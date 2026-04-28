@@ -23,7 +23,9 @@ from shop_probe.rubric import compute_content_hash, load_rubric
 # Pinned fixture — bump together with rubric/v1.yaml.
 # --------------------------------------------------------------------------- #
 
-V1_PATH: Path = Path(__file__).resolve().parent.parent / "src" / "shop_probe" / "rubric" / "v1.yaml"
+V1_PATH: Path = (
+    Path(__file__).resolve().parent.parent.parent / "src" / "shop_probe" / "rubric" / "v1.yaml"
+)
 
 EXPECTED_V1_HASH: str = "dca7e6a776460ed0eec20d2b11b9b7b89e0d30ce48fc90b656c017c09de0347e"
 """SHA-256 of ``rubric/v1.yaml`` raw bytes. Pin per spec §5.8."""

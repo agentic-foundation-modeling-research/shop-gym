@@ -1,8 +1,8 @@
 # ShopProbe v0.1 cohort decisions — T5.1
 
 Status: **Decided** · Cohort version: **0.1**
-Spec: [`docs/specs/shop_arena/web_probe.md`](../../../docs/specs/shop_arena/web_probe.md) §8.5
-Plan: [`docs/impl/web_probe_implementation.md`](../../../docs/impl/web_probe_implementation.md) **T5.1**
+Spec: [`docs/specs/shop_arena/web_probe.md`](../../../../docs/specs/shop_arena/web_probe.md) §8.5
+Plan: [`docs/impl/web_probe_implementation.md`](../../../../docs/impl/web_probe_implementation.md) **T5.1**
 
 This file is the v0.1 README the T5.1 acceptance check requires. It
 records the four decisions that close spec §8.5 open questions before
@@ -123,12 +123,12 @@ flips on swaps for >5% of pairs, the v1.1 vectors are escalated.
 The full ablation report — methodology, leakage counts, reproducible
 script — lives at:
 
-[`outputs/web_probe/anonymization_ablation/report.md`](../../../outputs/web_probe/anonymization_ablation/report.md)
+[`outputs/web_probe/anonymization_ablation/report.md`](../../../../outputs/web_probe/anonymization_ablation/report.md)
 
 with the structured leakage audit at
-[`leakage_audit.json`](../../../outputs/web_probe/anonymization_ablation/leakage_audit.json)
+[`leakage_audit.json`](../../../../outputs/web_probe/anonymization_ablation/leakage_audit.json)
 and the reproducible script at
-[`scripts/anonymization_ablation.py`](../scripts/anonymization_ablation.py).
+[`scripts/anonymization_ablation.py`](../../scripts/anonymization_ablation.py).
 
 The report's headline finding (excerpted):
 

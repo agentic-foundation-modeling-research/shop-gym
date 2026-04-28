@@ -8,7 +8,7 @@ two artifacts under ``outputs/web_probe/anonymization_ablation/``:
   pre / post anonymization plus the structural-feature preservation
   audit.
 * ``report.md`` — human-readable methodology + headline numbers,
-  cross-linked from ``packages/shop_probe/docs/cohort_v0.1.md`` §4.
+  cross-linked from ``packages/shop_arena/docs/shop_probe/cohort_v0.1.md`` §4.
 
 The script is **import-safe** — module load does no I/O; the audit
 runs from ``main()``. Re-run after any change to
@@ -16,7 +16,7 @@ runs from ``main()``. Re-run after any change to
 
 Usage:
 
-    cd packages/shop_probe
+    cd packages/shop_arena
     uv run python -m scripts.anonymization_ablation
 """
 
@@ -417,7 +417,7 @@ def _render_markdown_report(audit: AblationAudit) -> str:
     return (
         "# Anonymization-sufficiency ablation — axis C v1\n"
         "\n"
-        "Status: **Run** · Source: `packages/shop_probe/scripts/anonymization_ablation.py`\n"
+        "Status: **Run** · Source: `packages/shop_arena/scripts/anonymization_ablation.py`\n"
         f"Plan: [`docs/impl/web_probe_implementation.md`]"
         f"(../../../docs/impl/web_probe_implementation.md) **{audit.plan_task}**\n"
         "Spec: [`docs/specs/shop_arena/web_probe.md`]"
@@ -522,7 +522,7 @@ def _render_markdown_report(audit: AblationAudit) -> str:
         "## Reproduce\n"
         "\n"
         "```bash\n"
-        "cd packages/shop_probe\n"
+        "cd packages/shop_arena\n"
         "uv run python -m scripts.anonymization_ablation\n"
         "```\n"
         "\n"

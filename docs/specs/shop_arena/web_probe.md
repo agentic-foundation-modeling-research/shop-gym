@@ -1,4 +1,4 @@
-# ShopProbe / `web_probe` (`packages/shop_probe`)
+# ShopProbe / `web_probe` (`packages/shop_arena/src/shop_probe`)
 
 Status: **Spec (proposed)** · Version: **0.1**
 Owners: ShopGym
@@ -103,7 +103,9 @@ comparable numbers.
 
 ## 4. Desired Status
 
-A small Python package — `packages/shop_probe` — exposing one CLI:
+A small Python module — `packages/shop_arena/src/shop_probe` (sibling to
+`shop_gen` and `shop_explore` inside the `shop-arena` distribution) —
+exposing one CLI:
 
 ```bash
 shop-probe run <base_url> \
@@ -149,8 +151,8 @@ whether the target is a real Shopify shop, a SandboxShop served by
 ### 5.1 Package layout
 
 ```
-packages/shop_probe/
-  pyproject.toml
+packages/shop_arena/
+  pyproject.toml                # shared with shop_gen / shop_explore
   src/shop_probe/
     __init__.py
     cli.py
@@ -192,12 +194,12 @@ packages/shop_probe/
   tests/
 ```
 
-`web_probe` is a **sibling package** to `shop_arena`, `shop_guru`, and
-`shop_backend`. Justification (per `CLAUDE.md` module hygiene): it has
-distinct dependencies (Playwright, LLM judge clients), a distinct
-lifecycle (paper-time eval, not generation), and distinct consumers
-(reviewers, external researchers). Putting it in `shop_arena` would
-couple the generation pipeline to its evaluator.
+`web_probe` ships as a **sibling module of `shop_gen` and `shop_explore`**
+inside the `shop-arena` distribution (it shares `pyproject.toml` with them
+and exposes the `shop-probe` console script). Earlier drafts placed it as
+a standalone `packages/shop_probe` package; the consolidation keeps the
+`shop_arena` group of measurement / generation tools in one wheel without
+changing the module-level boundary (`shop_probe.*` imports are unchanged).
 
 ### 5.2 Target & cohort
 
@@ -496,7 +498,7 @@ from versioned reports.
 ### 8.1 Example probe (Python)
 
 ```python
-# packages/shop_probe/src/shop_probe/probes/product.py
+# packages/shop_arena/src/shop_probe/probes/product.py
 from __future__ import annotations
 from playwright.async_api import Page
 from shop_probe.probes._runner import ProbeContext, ProbeOutcome

@@ -2,7 +2,7 @@
 
 Covers:
 
-* The shipped ``packages/shop_probe/cohort.yaml`` loads successfully via
+* The shipped ``packages/shop_arena/src/shop_probe/cohort.yaml`` loads successfully via
   :func:`shop_probe.cohort.load_cohort`.
 * The cohort matches the v1 shape required by spec §8.2: 3 sandbox/source
   pairs (hardware, hexclad, aloyoga) + 3 ``real_unpaired`` slots.
@@ -27,7 +27,9 @@ from shop_probe.targets import Cohort
 # Pinned fixture path — bumps together with cohort.yaml.
 # --------------------------------------------------------------------------- #
 
-COHORT_PATH: Path = Path(__file__).resolve().parent.parent / "cohort.yaml"
+COHORT_PATH: Path = (
+    Path(__file__).resolve().parent.parent.parent / "src" / "shop_probe" / "cohort.yaml"
+)
 
 
 _EXPECTED_PAIR_IDS: tuple[str, ...] = ("pair_hardware", "pair_hexclad", "pair_aloyoga")
