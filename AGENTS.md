@@ -1,14 +1,41 @@
-# AGENT.md
+# AGENTS.md
 
-**ShopGym** is a mono-repo for building and evaluating shopping LLM agents. It contains three packages:
+**ShopGym** is a mono-repo for building and evaluating shopping LLM agents. It contains four packages:
 
-- `packages/shop_arena` (Python) — **ShopArena**: Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from live storefronts. Ships two top-level modules: `shop_gen` (generation pipeline) and `shop_explore` (storefront exploration).
+- `packages/shop_arena` (Python) — **ShopArena**: Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from live storefronts. Ships three top-level modules: `shop_arena.gen` (generation pipeline), `shop_arena.explore` (storefront exploration), and `shop_arena.env_eval` (per-shop environment-quality measurement; CLI: `shop-env-eval`).
 - `packages/shop_guru` (Python) — **ShopGuru**: automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation, and policies to synthesize grounded evaluation tasks across 7 skill categories.
-- `packages/shop_backend` (TypeScript) — **ShopBackend**: local GraphQL API server that mirrors Shopify's Storefront/Admin API against SandboxShop data; used for benchmarking and as an RL environment.
+- `packages/shop_backend` (TypeScript) — **ShopBackend**: local GraphQL API server hosting SandboxShop data; used for benchmarking and as an RL environment.
+- `packages/harness` (Python) — **Harness**: runtime-agnostic plan-then-loop engine that orchestrates LLM agents. Owns process lifecycle, workspace state, and telemetry; prompts and tools come from the chosen `AgentRuntime` adapter (e.g. Claude Code, `pi`).
 
 IMPORTANT: Always refer to `README.md` for project context, setup and common commands. Always keep `README.md` up-to-date.
 
 Python packages are managed with `uv` (workspace at repo root). TypeScript packages are managed with `pnpm` workspaces.
+
+## Repository Structure
+
+```
+shop-gym/
+├── AGENTS.md                   # this file — agent behavior + coding guidelines
+├── CLAUDE.md -> AGENTS.md      # alias for Claude Code
+├── README.md                   # project overview, setup, quickstart
+├── packages/
+│   ├── shop_arena/             # Python — SandboxShop factory (gen / explore / env_eval)
+│   ├── shop_guru/              # Python — dataset generation + eval pipeline
+│   ├── shop_backend/           # TypeScript — GraphQL API server for SandboxShops
+│   └── harness/                # Python — runtime-agnostic plan-then-loop agent engine
+├── docs/
+│   ├── specs/                  # design specifications (intent — see `docs/specs/README.md`)
+│   └── internal/impl/          # implementation plans paired with specs
+├── scripts/                    # repo-wide helpers (e.g. `run-shop.sh`)
+├── notebooks/                  # exploratory analysis
+├── outputs/                    # generated artifacts: shop_manuals, shops, shop_guru, shop_env_evals
+├── pyproject.toml              # uv workspace root
+├── pnpm-workspace.yaml         # pnpm workspace root
+├── tsconfig.base.json          # shared TS compiler config
+└── biome.json                  # TS lint/format config
+```
+
+Typical data flow: `shop_arena.explore` → `shop_arena.gen` → SandboxShop served by `shop_backend` → `shop_guru` synthesizes tasks and evaluates agents. The `harness` package provides the runtime-agnostic engine used by the build and eval loops.
 
 ## Behavior Guideline
 
@@ -20,7 +47,8 @@ IMPORTANT: Before implementing any feature, consult the specifications in `docs/
 - Check the codebase first. Before concluding something is or isn't implemented, search the actual code. Specs describe intent; code describes reality.
 - Use specs as guidance. When implementing a feature, follow the design patterns, types, and architecture defined in the relevant spec.
 - Spec index: `docs/specs/README.md` lists all specifications organized by category (core, LLM, security, etc.).
-- For designing new features, create the pure specifications in `docs/specs/<feature>.md`, and split it up with implementation plan `docs/impl/<feature>_implementation.md`
+- For designing new features, create the pure specifications in `docs/specs/<feature>.md`, and split it up with implementation plan `docs/internal/impl/<feature>_impl.md`
+- During implementation, make docstrings self-contained and DO NOT refer to the specs.
 
 Each specification / design doc need to follow the structure:
 
@@ -31,7 +59,7 @@ Each specification / design doc need to follow the structure:
  Desired Status
  Proposal
  Alternative (optional, if any)
- Milestones
+ Execution Table
  Appendix
 ```
 
@@ -57,6 +85,13 @@ Before implementing:
 - If you write 200 lines and it could be 50, rewrite it.
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### Hierarchy Matters
+
+When create new files:
+
+- Think about the big picture and maintain a good codebase structure.
+- Don't put every files under the same folder. Instead, build modules with high cohesion, low coupling.
 
 ### Surgical Changes
 
@@ -84,7 +119,7 @@ NO PATCHING OR HACKING FOR SHORT TERM SUCCESS.
 ### Python Coding Style
 
 - **Style guide**: Google Python Style Guide. `ruff` is the source of truth for lint + format (config in root `pyproject.toml`).
-- **Version**: Python ≥ 3.11. Use modern syntax (`list[int]`, `str | None`, `match`).
+- **Version**: Python ≥ 3.12. Use modern syntax (`list[int]`, `str | None`, `match`).
 - **Typing**: fully typed. `from __future__ import annotations` in every module. `pyright` in `strict` mode must pass. No `Any` unless justified in a comment.
 - **Layout**: `src/<package>/` layout. Each package exposes `py.typed`.
 - **Docstrings**: Google style (`Args:`, `Returns:`, `Raises:`). Every public module, class, and function has one. Skip trivial one-liners only when the name fully describes behavior.
@@ -94,6 +129,7 @@ NO PATCHING OR HACKING FOR SHORT TERM SUCCESS.
 - **Side effects**: keep modules import-safe — no I/O, network, or env reads at import time.
 - **Tests**: `pytest` under `packages/<pkg>/tests/`. One behavior per test. Name tests `test_<unit>_<behavior>`. No `unittest.TestCase`.
 - **CLI**: expose as `project.scripts` entrypoint; keep `cli.py` thin — argument parsing + dispatch only.
+- **Function Scope**: avoid making giant functions or wrapping one-liner code as functions. Prefer pure functions with clear boundary.
 
 ### TypeScript Coding Style
 
@@ -107,3 +143,10 @@ NO PATCHING OR HACKING FOR SHORT TERM SUCCESS.
 - **Errors**: throw `Error` subclasses with meaningful messages. Never `throw` non-Error values. No `try/catch` without handling.
 - **Immutability**: `const` by default, `readonly` for fields, `ReadonlyArray<T>` for parameters when the callee should not mutate.
 - **Tests**: `vitest`, co-located as `*.test.ts` next to the unit under test.
+
+## Playwright Browser Skill Guidelines
+
+When using the `playwright-browser` skill, always follow these rules to avoid wrapper restrictions:
+
+1. **Always save files locally**: Do not use the temporary `ARTIFACT_DIR` or `/var/folders/` paths for screenshots, PDFs, or snapshots, as the wrapper's security policy will throw a `File access denied` error. Always write output to the current working directory using relative paths (e.g., `--filename "./screenshot.png"` or `--filename "./snapshot.md"`).
+2. **Use built-in commands**: Do not attempt to use `run-code` to access internal Playwright objects like `page.accessibility.snapshot()`. The wrapper does not expose the full Playwright API in this way and will throw a `TypeError`. Use the native built-in commands provided by the wrapper instead (e.g., `node "$SKILL_DIR/scripts/pw.js" snapshot --filename "./snapshot.md"`).

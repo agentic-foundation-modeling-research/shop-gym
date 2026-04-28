@@ -9,6 +9,10 @@ __pycache__/
 htmlcov/
 dist/
 build/
+# Re-include shop_gen Phase 4 build steps (legitimate package code; the
+# blanket ``build/`` rule above targets Python build artifacts).
+!packages/shop_arena/src/shop_gen/build/
+!packages/shop_arena/tests/shop_gen/build/
 
 # Node / TS
 node_modules/
@@ -26,6 +30,11 @@ dist/
 
 # Generated Outputs
 outputs/
+
+# Internal
+docs/internal/
+notebooks/
+.run/
 
 # uv
 uv.lock
