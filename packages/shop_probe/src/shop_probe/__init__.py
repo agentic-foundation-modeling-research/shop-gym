@@ -8,6 +8,12 @@
 __version__ = "0.0.0"
 
 from shop_probe.cohort import CohortLoadError, load_cohort, load_cohort_bytes
+from shop_probe.fidelity import (
+    CohortFidelity,
+    PairFidelity,
+    compute_cohort_fidelity,
+    compute_pair_fidelity,
+)
 from shop_probe.report import (
     BrowserMeta,
     CategoryScore,
@@ -25,6 +31,7 @@ __all__ = [
     "BrowserMeta",
     "CategoryScore",
     "Cohort",
+    "CohortFidelity",
     "CohortLoadError",
     "EvidenceKind",
     "EvidenceRef",
@@ -32,11 +39,14 @@ __all__ = [
     "JudgePick",
     "JudgeTruth",
     "Pair",
+    "PairFidelity",
     "ProbeReport",
     "ProbeResult",
     "Target",
     "TargetKind",
     "__version__",
+    "compute_cohort_fidelity",
+    "compute_pair_fidelity",
     "load_cohort",
     "load_cohort_bytes",
 ]
