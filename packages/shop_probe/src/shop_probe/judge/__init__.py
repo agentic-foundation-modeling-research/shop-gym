@@ -16,6 +16,15 @@ from shop_probe.judge.pairwise import (
     build_task_pairs,
     real_shop_pool,
 )
+from shop_probe.judge.tasks import (
+    JudgeTask,
+    JudgeTaskInteraction,
+    JudgeTaskLoadError,
+    JudgeTaskSet,
+    JudgeTaskSurface,
+    load_judge_tasks,
+    load_judge_tasks_bytes,
+)
 from shop_probe.judge.trajectory import (
     Trajectory,
     TrajectoryAction,
@@ -29,6 +38,12 @@ __all__ = [
     "REDACTED_HOST",
     "REDACTED_THEME",
     "AnonymizationPlan",
+    "JudgeTask",
+    "JudgeTaskInteraction",
+    "JudgeTaskLoadError",
+    "JudgeTaskSet",
+    "JudgeTaskSurface",
+    "PairCondition",
     "PairCondition",
     "PairwisePair",
     "Trajectory",
@@ -41,5 +56,7 @@ __all__ = [
     "build_experimental_pairs",
     "build_task_pairs",
     "hash_token",
+    "load_judge_tasks",
+    "load_judge_tasks_bytes",
     "real_shop_pool",
 ]
