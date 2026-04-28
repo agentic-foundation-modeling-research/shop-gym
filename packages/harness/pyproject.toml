@@ -14,5 +14,8 @@ dependencies = [
   "pydantic>=2.8",
 ]
 
+[project.scripts]
+inspect = "harness.tools.inspect_native_log:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/harness"]

@@ -116,3 +116,43 @@ The script delegates each iteration to `ReplayRuntime`'s `fallback`
 runtime under `HARNESS_RECORD=1` and writes a fresh cassette directory
 matching the layout in spec §5.6. Re-record whenever prompts,
 `AGENTS.md`, or a runtime's native log contract changes.
+
+## Inspecting a `native.log`
+
+Each iteration writes a JSON-event stream to `iters/<iter>/native.log`.
+Most of the bytes are streaming deltas; the actual signal lives in
+`message_end` events. The `harness` package registers an `inspect`
+console script — runnable from anywhere in the workspace — that
+pretty-prints one log.
+
+The default view is a compact one-line-per-event summary aimed at
+"what did the agent do?" skimming. Each bullet is anchored by a
+zero-padded `s<NN>` step marker (one step = one inference round-trip
+in the agent loop) and sits at column zero:
+
+```bash
+uv run inspect <path/to/native.log>           # compact summary (default)
+uv run inspect <path> --no-tools              # only user/assistant messages
+uv run inspect <path> --show-thinking         # include thinking blocks
+uv run inspect <path> --step 3                # restrict to a step or range
+uv run inspect <path> --expand                # full bodies under each bullet
+```
+
+`--expand` keeps the same one-bullet-per-event layout but renders
+each message body on indented follow-up lines (no inline truncation),
+and surfaces tool-result outputs alongside the calls that produced
+them. ANSI color is on automatically when stdout is a TTY and off
+otherwise.
+
+For the full per-section trajectory (section headers, full block
+bodies, tool-result status, usage stats), pass `--detail`:
+
+```bash
+uv run inspect <path> --detail                # verbose layout
+uv run inspect <path> --detail --tool read --full --show-prompt
+```
+
+The runtime is auto-detected from the first events; only the `pi`
+renderer is implemented today — `claude_code` falls through to a
+placeholder. The implementation lives at
+`src/harness/tools/inspect_native_log.py`.
