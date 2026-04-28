@@ -31,6 +31,7 @@ from unittest.mock import patch
 
 import pytest
 
+from harness.runtimes import LLMCompleter
 from shop_gen import pipeline
 from shop_gen.config import ShopGenConfig
 from shop_gen.pipeline import (
@@ -92,6 +93,22 @@ class _NoOpStep:
     def run(self, ctx: StepContext) -> None:
         del ctx
         self.calls += 1
+
+
+class _ProbeStep:
+    """:class:`Step` that stashes the :class:`StepContext` it sees in a sink dict."""
+
+    def __init__(self, sink: dict[str, object], step_id: str = "probe") -> None:
+        self.id = step_id
+        self.phase = "data_synth"
+        self.inputs: list[object] = []
+        self.outputs: list[Path] = []
+        self.depends_on: list[str] = []
+        self.version = 1
+        self._sink = sink
+
+    def run(self, ctx: StepContext) -> None:
+        self._sink["runtime"] = ctx.runtime
 
 
 # --------------------------------------------------------------------------- #
@@ -504,6 +521,113 @@ def test_run_stop_at_rejects_force_id_outside_cone(tmp_path: Path) -> None:
         pytest.raises(ValueError, match="upstream cone"),
     ):
         run(config, force_ids=frozenset({"gamma"}), stop_at="alpha")
+
+
+# --------------------------------------------------------------------------- #
+# runtime wiring
+# --------------------------------------------------------------------------- #
+
+
+class _StubCompleter:
+    """Minimal :class:`LLMCompleter` stub recording the contexts it lands in."""
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+
+    def complete(self, prompt: str, *, timeout: float) -> str:
+        del prompt, timeout
+        return self.label
+
+
+def test_run_resolves_runtime_from_config_when_omitted(tmp_path: Path) -> None:
+    """Default invocation builds a runtime from ``config.runtime`` + ``config.model``."""
+    [seed] = _make_seeds(tmp_path, 1)
+    out_dir = tmp_path / "shop"
+    config = ShopGenConfig(
+        seeds=[seed],
+        out_dir=out_dir,
+        runtime="pi",
+        model="anthropic/claude-opus-4-7",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_get_runtime(name: str, **kwargs: object) -> _StubCompleter:
+        captured["name"] = name
+        captured["kwargs"] = kwargs
+        return _StubCompleter("resolved")
+
+    sink: dict[str, object] = {}
+
+    def _register(reg: Registry, **_: object) -> None:
+        reg.register(cast(Step, _ProbeStep(sink)))
+
+    with (
+        patch.object(pipeline, "get_runtime", fake_get_runtime),
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_synth", _register),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+    ):
+        run(config)
+
+    assert captured == {"name": "pi", "kwargs": {"model": "anthropic/claude-opus-4-7"}}
+    assert isinstance(sink["runtime"], _StubCompleter)
+    assert sink["runtime"].label == "resolved"
+
+
+def test_run_drops_model_kwarg_when_config_model_is_none(tmp_path: Path) -> None:
+    """``--model \"\"`` (config.model = None) opts out of pinning a model."""
+    [seed] = _make_seeds(tmp_path, 1)
+    out_dir = tmp_path / "shop"
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir, model=None)
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_get_runtime(name: str, **kwargs: object) -> _StubCompleter:
+        del name
+        captured_kwargs.update(kwargs)
+        return _StubCompleter("no-model")
+
+    with (
+        patch.object(pipeline, "get_runtime", fake_get_runtime),
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+    ):
+        run(config)
+
+    assert captured_kwargs == {}
+
+
+def test_run_accepts_explicit_runtime_override(tmp_path: Path) -> None:
+    """Library callers can inject a completer instead of resolving via ``get_runtime``."""
+    [seed] = _make_seeds(tmp_path, 1)
+    out_dir = tmp_path / "shop"
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    explicit = _StubCompleter("explicit")
+
+    def boom_get_runtime(*_a: object, **_kw: object) -> object:
+        raise AssertionError("get_runtime must not be called when override supplied")
+
+    sink: dict[str, object] = {}
+
+    def _register(reg: Registry, **_: object) -> None:
+        reg.register(cast(Step, _ProbeStep(sink)))
+
+    with (
+        patch.object(pipeline, "get_runtime", boom_get_runtime),
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_synth", _register),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+    ):
+        run(config, runtime=cast("LLMCompleter", explicit))
+
+    assert sink["runtime"] is explicit
+
 
 # --------------------------------------------------------------------------- #
 # status

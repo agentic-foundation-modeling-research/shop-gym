@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from harness.runtimes import LLMCompleter, get_runtime
 from shop_gen.build import (
     CloneTemplateStep,
     RunBuildHarnessLoopStep,
@@ -140,6 +141,7 @@ def run(
     *,
     force_ids: frozenset[str] = frozenset(),
     stop_at: str | None = None,
+    runtime: LLMCompleter | None = None,
 ) -> ShopGenResult:
     """Execute the ``shop_gen`` pipeline for ``config``.
 
@@ -162,6 +164,13 @@ def run(
             ancestor via :func:`shop_gen.steps.runner.select_ancestors_inclusive`
             — every step strictly downstream is dropped before
             execution. Plumbing for the CLI's ``--to`` flag.
+        runtime: Optional :class:`LLMCompleter` to wire into
+            :class:`StepContext.runtime`. When ``None`` (the CLI default)
+            a runtime is resolved from ``config`` via
+            :func:`harness.runtimes.get_runtime` so Phase 2 synth steps
+            and the Phase 5 judge can issue their one-shot completions.
+            Library callers pass an explicit completer to bypass the
+            real runtime (tests, custom providers).
 
     Returns:
         A :class:`~shop_gen.config.ShopGenResult` anchored at the
@@ -172,6 +181,9 @@ def run(
             be derived (multi-seed without an explicit ``name``); or
             ``stop_at`` is not a registered step id; or a member of
             ``force_ids`` is not in the upstream cone of ``stop_at``.
+        TypeError: The runtime resolved from ``config.runtime`` does
+            not implement :class:`LLMCompleter` (registered runtimes
+            ``pi`` and ``claude_code`` both do).
         shop_gen.steps.runner.CycleError: ``depends_on`` contains a
             cycle.
         shop_gen.steps.runner.MissingDependencyError: A registered
@@ -195,10 +207,48 @@ def run(
             raise ValueError(
                 f"force_ids {outside!r} are not in the upstream cone of --to {stop_at!r}",
             )
-    ctx = StepContext(config=config, out_dir=out_dir)
+    if runtime is None:
+        runtime = _resolve_runtime(config)
+    ctx = StepContext(config=config, out_dir=out_dir, runtime=runtime)
     _: RunResult = run_pipeline(steps, ctx, force_ids=force_ids)
 
     return _result_for(out_dir)
+
+
+def _resolve_runtime(config: ShopGenConfig) -> LLMCompleter:
+    """Resolve a runtime instance for the run via :func:`harness.runtimes.get_runtime`.
+
+    Mirrors the build-loop's runtime factory: ``model=None`` is dropped
+    from the kwargs so the runtime adapter sees no ``model`` keyword on
+    opt-out (spec §5.8 ``--model ""`` semantics). The runtime is
+    narrowed to :class:`LLMCompleter` because Phase 2 synth steps and
+    the Phase 5 judge invoke ``ctx.runtime.complete``; both registered
+    runtimes (``pi`` and ``claude_code``) implement the sub-protocol.
+
+    Args:
+        config: Run configuration. ``config.runtime`` keys the registry
+            lookup; ``config.model`` (when not ``None``) is forwarded as
+            ``--model``.
+
+    Returns:
+        A runtime instance narrowed to :class:`LLMCompleter`.
+
+    Raises:
+        TypeError: The resolved runtime does not implement
+            :class:`LLMCompleter`. Cannot occur with the v0.1
+            registry; defensive check for future runtime additions.
+    """
+    kwargs: dict[str, str] = {}
+    if config.model is not None:
+        kwargs["model"] = config.model
+    runtime = get_runtime(config.runtime, **kwargs)
+    if not isinstance(runtime, LLMCompleter):
+        raise TypeError(
+            f"runtime {config.runtime!r} does not implement LLMCompleter; "
+            "Phase 2 data-synth steps require completer support",
+        )
+    return runtime
+
 
 def status(out_dir: Path) -> StatusReport:
     """Read ``state.json`` from ``out_dir`` and project a status table.
