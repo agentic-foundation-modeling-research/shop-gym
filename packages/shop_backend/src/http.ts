@@ -33,6 +33,7 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
 };
 
 const IMAGE_PREFIX = '/images/';

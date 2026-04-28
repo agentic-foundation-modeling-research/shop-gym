@@ -472,13 +472,17 @@ def _check_products(client: httpx.Client, *, target: int) -> dict[str, Any]:
     except _GqlError as exc:
         return _failure(name, str(exc))
     nodes = _nodes(data, "products")
-    threshold = max(1, int(_TARGET_PRODUCT_RATIO * target))
+    # The first-page response is capped at ``_PAGE_SIZE``; catalog
+    # completeness is enforced upstream by ``validate_schema``. This
+    # check only verifies the products surface is wired up.
+    expected = min(target, _PAGE_SIZE)
+    threshold = max(1, int(_TARGET_PRODUCT_RATIO * expected))
     if len(nodes) < threshold:
         return _failure(
             name,
             (
                 f"products(first: {_PAGE_SIZE}) returned {len(nodes)}; "
-                f"expected >= {threshold} (0.8 * {target})"
+                f"expected >= {threshold} (0.8 * {expected}) of {target} on disk"
             ),
         )
     return _success(name, f"returned {len(nodes)} of {target}")
@@ -855,7 +859,9 @@ def _pick_image_src(products: list[dict[str, Any]]) -> str | None:
             continue
         for image in images:
             src = image.get("src")
-            if isinstance(src, str) and src.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            if isinstance(src, str) and src.lower().endswith(
+                (".png", ".jpg", ".jpeg", ".webp", ".svg")
+            ):
                 return src
     return None
 
