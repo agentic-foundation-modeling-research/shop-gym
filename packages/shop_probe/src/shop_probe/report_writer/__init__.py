@@ -1,1 +1,11 @@
 """Aggregation + paper-figure rendering from versioned ProbeReports."""
+
+from shop_probe.report_writer.tables import (
+    CONTROL_ROW_LABEL,
+    render_pair_fidelity_table,
+)
+
+__all__ = [
+    "CONTROL_ROW_LABEL",
+    "render_pair_fidelity_table",
+]
