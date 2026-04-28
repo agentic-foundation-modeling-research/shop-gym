@@ -710,6 +710,33 @@ def test_step_run_outputs_round_trip_through_schema(tmp_path: Path) -> None:
     Navigation.model_validate(nav_raw)
 
 
+def test_step_run_omits_null_dataset_version(tmp_path: Path) -> None:
+    """``Store.dataset_version=None`` must not appear as ``null`` on disk.
+
+    The ``shop_backend`` loader treats ``dataset_version`` as
+    ``string | undefined`` and rejects ``null`` (see
+    ``packages/shop_backend/src/data/loader.ts``). The Phase-2 pipeline
+    leaves the field unset in v0.1 datasets, so the on-disk JSON must
+    omit the key rather than serialise pydantic's default ``None`` as
+    JSON ``null``.
+    """
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    _materialise_workspace(out_dir)
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    ctx = StepContext(config=config, out_dir=out_dir, runtime=None)
+
+    AssembleDataStep().run(ctx)
+
+    raw: dict[str, Any] = json.loads(
+        (out_dir / "data" / "store.json").read_text(encoding="utf-8"),
+    )
+    assert "dataset_version" not in raw, (
+        f"expected dataset_version to be omitted when unset, got {raw.get('dataset_version')!r}"
+    )
+    # Round-trip is still valid: the schema treats the field as optional.
+    assert Store.model_validate(raw).dataset_version is None
+
 def test_step_run_is_byte_deterministic(tmp_path: Path) -> None:
     seed = _make_seed(tmp_path)
     out_dir = tmp_path / "out"

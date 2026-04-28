@@ -257,7 +257,10 @@ function validateStore(file: string, raw: unknown): Store {
     payment_settings: validatePaymentSettings(file, '$.payment_settings', obj.payment_settings),
     brand: validateBrand(file, '$.brand', obj.brand),
   };
-  if (obj.dataset_version === undefined) {
+  // Treat both ``undefined`` (key absent) and ``null`` (key present, no
+  // value) as "not provided". Some producers — notably the shop_arena
+  // pydantic dump — serialise unset optional fields as JSON ``null``.
+  if (obj.dataset_version === undefined || obj.dataset_version === null) {
     return base;
   }
   return {

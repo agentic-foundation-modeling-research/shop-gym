@@ -745,7 +745,15 @@ def _write_outputs(out_dir: Path, data: AssembledData) -> None:
     """Serialise the assembled records to ``<out_dir>/data/*.json``."""
     data_dir = out_dir / _DATA_DIR
     data_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(out_dir / _OUT_STORE, data.store.model_dump(mode="json"))
+    store_payload = data.store.model_dump(mode="json")
+    # ``Store.dataset_version`` is documented as absent in v0.1 datasets
+    # (schema.py); pydantic serialises ``None`` as ``null`` which the
+    # ``shop_backend`` loader rejects (it treats the field as
+    # ``string | undefined``, not nullable). Drop the key when unset so
+    # the on-disk JSON matches the cross-package contract.
+    if store_payload.get("dataset_version") is None:
+        store_payload.pop("dataset_version", None)
+    _write_json(out_dir / _OUT_STORE, store_payload)
     _write_json(
         out_dir / _OUT_PRODUCTS,
         [p.model_dump(mode="json") for p in data.products],

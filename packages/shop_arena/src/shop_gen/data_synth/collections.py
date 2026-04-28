@@ -71,7 +71,7 @@ _IN_IDENTITY: Final[Path] = Path("identity.json")
 _IN_CAPABILITIES: Final[Path] = Path("manual") / "capabilities.json"
 _IN_STATS: Final[Path] = Path("manual") / "stats.json"
 
-_LLM_TIMEOUT_S: Final[float] = 60.0
+_LLM_TIMEOUT_S: Final[float] = 300.0
 
 _TARGET_COUNT_DEFAULT: Final[int] = 10
 """Default collection count when the merged stats do not constrain it (spec §5.3)."""

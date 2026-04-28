@@ -26,11 +26,12 @@ Step contract (spec §5.7.1):
 
 * ``id``: ``start_sidecar``.
 * ``phase``: ``build``.
-* ``inputs``: a :class:`StepInput` for the upstream ``write_env_file``
-  step (port source) plus a :class:`FileInput` per ``data/*.json``
-  file (the dataset shop-backend loads on boot).
+* ``inputs``: two :class:`StepInput` references — ``write_env_file``
+  source) and ``assemble_data`` (the six ``data/*.json`` files
+  shop-backend loads on boot are that step's declared outputs, so a
+  ``StepInput`` reference is the canonical freshness signal).
 * ``outputs``: ``[runs/build/sidecar.json]``.
-* ``depends_on``: ``[write_env_file]``.
+* ``depends_on``: ``[write_env_file, assemble_data]``.
 
 Module is import-safe: no I/O, no env reads, no side effects at import
 time.
@@ -53,13 +54,14 @@ from typing import Any, Final, cast
 import httpx
 
 from shop_gen.data_validation.hosting_check import find_shop_backend_cli
-from shop_gen.steps.base import FileInput, InputRef, StepContext, StepInput
+from shop_gen.steps.base import InputRef, StepContext, StepInput
 
 _PHASE: Final[str] = "build"
 _STEP_ID: Final[str] = "start_sidecar"
 _STEP_VERSION: Final[int] = 1
 
 _UPSTREAM_WRITE_ENV: Final[str] = "write_env_file"
+_UPSTREAM_ASSEMBLE_DATA: Final[str] = "assemble_data"
 
 _DATA_DIR: Final[Path] = Path("data")
 """Run-relative location of the published SandboxShop dataset."""
@@ -78,7 +80,12 @@ _DATA_FILES: Final[tuple[str, ...]] = (
     "policies.json",
     "navigation.json",
 )
-"""Closed list of dataset files shop-backend reads on boot (spec §5.4)."""
+"""Closed list of dataset files shop-backend reads on boot (spec §5.4).
+
+Tracked transitively via the ``assemble_data`` :class:`StepInput` rather
+than per-file :class:`FileInput`s: ``assemble_data`` declares these as
+its outputs, so its fingerprint is the canonical freshness signal.
+"""
 
 _HEALTH_TIMEOUT_S: Final[float] = 15.0
 """Maximum wall-clock time spent polling ``/health`` after spawn."""
@@ -220,11 +227,11 @@ class StartSidecarStep:
     Attributes:
         id: Step id (``start_sidecar``).
         phase: ``build``.
-        inputs: One :class:`StepInput` referencing ``write_env_file``
-            (port source) plus a :class:`FileInput` per ``data/*.json``
-            file (dataset shop-backend loads on boot).
+        inputs: Two :class:`StepInput` references — ``write_env_file``
+            source) and ``assemble_data`` (the dataset shop-backend
+            loads on boot, declared as that step's outputs).
         outputs: ``[runs/build/sidecar.json]``.
-        depends_on: ``[write_env_file]``.
+        depends_on: ``[write_env_file, assemble_data]``.
         version: Bumped when the sidecar lifecycle contract changes.
     """
 
@@ -234,10 +241,10 @@ class StartSidecarStep:
         self.phase: str = _PHASE
         self.inputs: list[InputRef] = [
             StepInput(step_id=_UPSTREAM_WRITE_ENV),
-            *(FileInput(path=_DATA_DIR / name) for name in _DATA_FILES),
+            StepInput(step_id=_UPSTREAM_ASSEMBLE_DATA),
         ]
         self.outputs: list[Path] = [_SIDECAR_REPORT]
-        self.depends_on: list[str] = [_UPSTREAM_WRITE_ENV]
+        self.depends_on: list[str] = [_UPSTREAM_WRITE_ENV, _UPSTREAM_ASSEMBLE_DATA]
         self.version: int = _STEP_VERSION
 
     def run(self, ctx: StepContext) -> None:

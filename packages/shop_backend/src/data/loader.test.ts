@@ -131,6 +131,17 @@ describe('loadShopData', () => {
     }
   });
 
+  it('treats dataset_version: null the same as an absent key', () => {
+    tmpDir = copyFixture();
+    const storePath = path.join(tmpDir, 'store.json');
+    const original = JSON.parse(fs.readFileSync(storePath, 'utf8')) as Record<string, unknown>;
+    original.dataset_version = null;
+    fs.writeFileSync(storePath, JSON.stringify(original));
+
+    const data = loadShopData(tmpDir);
+    expect(data.store.dataset_version).toBeUndefined();
+  });
+
   it('defaults blogs and metafields when optional files are absent', () => {
     tmpDir = copyFixture();
     fs.rmSync(path.join(tmpDir, 'blogs.json'));

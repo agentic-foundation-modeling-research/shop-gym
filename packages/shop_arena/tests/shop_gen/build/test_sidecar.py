@@ -54,7 +54,7 @@ from shop_gen.build.sidecar import (
 from shop_gen.config import ShopGenConfig
 from shop_gen.data_validation.hosting_check import HostingValidationError, find_shop_backend_cli
 from shop_gen.pipeline import list_steps
-from shop_gen.steps.base import FileInput, Step, StepContext, StepInput
+from shop_gen.steps.base import Step, StepContext, StepInput
 
 # --------------------------------------------------------------------------- #
 # Stub backend
@@ -144,24 +144,18 @@ def test_start_sidecar_step_satisfies_step_protocol() -> None:
     assert step.id == "start_sidecar"
     assert step.phase == "build"
     assert step.outputs == [Path("runs") / "build" / "sidecar.json"]
-    assert step.depends_on == ["write_env_file"]
+    assert step.depends_on == ["write_env_file", "assemble_data"]
     assert step.version == 1
 
 
-def test_start_sidecar_inputs_cover_env_dep_plus_six_data_files() -> None:
-    """``inputs`` declares the upstream env-write step + every data file."""
+def test_start_sidecar_inputs_cover_env_dep_and_assemble_data() -> None:
+    """``inputs`` declares ``write_env_file`` (port) + ``assemble_data`` (data tree)."""
     step = StartSidecarStep()
 
     step_inputs = [ref for ref in step.inputs if isinstance(ref, StepInput)]
-    file_inputs = [ref for ref in step.inputs if isinstance(ref, FileInput)]
-    assert [ref.step_id for ref in step_inputs] == ["write_env_file"]
-    assert sorted(ref.path.name for ref in file_inputs) == [
-        "collections.json",
-        "navigation.json",
-        "pages.json",
-        "policies.json",
-        "products.json",
-        "store.json",
+    assert sorted(ref.step_id for ref in step_inputs) == [
+        "assemble_data",
+        "write_env_file",
     ]
 
 
