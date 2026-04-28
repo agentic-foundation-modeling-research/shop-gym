@@ -18,6 +18,7 @@ Covers the runner requirements from
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -518,3 +519,59 @@ def test_run_pipeline_rejects_missing_dependency(tmp_path: Path) -> None:
     a = _RecordingStep(id="a", depends_on=["ghost"])
     with pytest.raises(MissingDependencyError):
         run_pipeline([_as_step(a)], _ctx(out_dir, seed))
+
+
+# --------------------------------------------------------------------------- #
+# progress logging
+# --------------------------------------------------------------------------- #
+
+
+def test_run_pipeline_logs_run_done_per_stale_step(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Each stale step emits a ``run`` then a ``done`` log line at INFO."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    a = _RecordingStep(id="a", outputs=[Path("data/a.json")])
+    with caplog.at_level(logging.INFO, logger="shop_gen.steps.runner"):
+        run_pipeline([_as_step(a)], _ctx(out_dir, seed))
+    messages = [r.message for r in caplog.records]
+    assert any(m.startswith("run  a (data_synth) \u2014 starting") for m in messages)
+    assert any(m.startswith("done a (data_synth) \u2014 ok in ") for m in messages)
+
+
+def test_run_pipeline_logs_skip_for_fresh_step(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """On a clean re-run every fresh step emits one ``skip`` log line at INFO."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    a = _RecordingStep(id="a", outputs=[Path("data/a.json")])
+    run_pipeline([_as_step(a)], _ctx(out_dir, seed))  # first run — not under caplog
+    with caplog.at_level(logging.INFO, logger="shop_gen.steps.runner"):
+        run_pipeline([_as_step(a)], _ctx(out_dir, seed))
+    messages = [r.message for r in caplog.records]
+    assert any(m.startswith("skip a (data_synth) \u2014 fresh") for m in messages)
+    assert not any(m.startswith("run ") for m in messages)
+
+
+def test_run_pipeline_logs_failure_at_error_level(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failing step emits a ``fail`` log line at ERROR before re-raising."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    a = _RecordingStep(id="a", raises=RuntimeError("boom"), outputs=[Path("data/a.json")])
+    with (
+        caplog.at_level(logging.ERROR, logger="shop_gen.steps.runner"),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        run_pipeline([_as_step(a)], _ctx(out_dir, seed))
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert error_records, "expected an ERROR-level log for the failing step"
+    assert error_records[0].message.startswith("fail a (data_synth) after ")
+    assert "RuntimeError" in error_records[0].message
+    assert "boom" in error_records[0].message

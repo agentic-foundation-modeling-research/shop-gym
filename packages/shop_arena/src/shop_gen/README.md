@@ -123,6 +123,27 @@ directory produced by `shop-explore`. Pass two or more seeds to
 trigger Phase 1 (manual merge); a single seed takes the byte-for-byte
 copy fast path.
 
+#### Progress logging
+
+Every CLI invocation emits timestamped progress logs to stderr at INFO
+level. Each run is bracketed by a ``start run`` and ``end run`` line;
+every step emits ``run`` (starting), ``done`` (ok with elapsed
+wall-clock), or ``skip`` (already fresh). Failures log ``fail`` at
+ERROR before re-raising.
+
+```
+23:32:21 shop-gen INFO: start run — out_dir=outputs/shops/my-shop seeds=1 runtime=pi model=anthropic/claude-opus-4-7
+23:32:21 shop-gen INFO: run  copy_seed_manual (manual_merge) — starting
+23:32:21 shop-gen INFO: done copy_seed_manual (manual_merge) — ok in 0.42s
+23:32:21 shop-gen INFO: skip synth_identity (data_synth) — fresh
+23:32:21 shop-gen INFO: end run   — ran=1 skipped=1 total=0.42s
+```
+
+Library callers configure their own logging; the package logger is
+``shop_gen`` (sub-loggers ``shop_gen.pipeline`` and
+``shop_gen.steps.runner``) so they can be filtered or routed
+independently.
+
 ### Library
 
 ```python

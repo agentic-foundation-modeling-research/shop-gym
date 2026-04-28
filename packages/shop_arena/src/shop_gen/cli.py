@@ -84,7 +84,8 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.basicConfig(
         level=logging.INFO,
-        format="shop-gen: %(message)s",
+        format="%(asctime)s shop-gen %(levelname)s: %(message)s",
+        datefmt="%H:%M:%S",
         stream=sys.stderr,
     )
 

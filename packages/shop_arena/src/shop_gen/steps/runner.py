@@ -20,10 +20,13 @@ Module is import-safe: no I/O, no env reads, no side effects at import.
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
 from shop_gen.steps.base import Step, StepContext, StepInput, StepStatus
 from shop_gen.steps.state import (
@@ -325,6 +328,9 @@ class RunResult:
     skipped: tuple[str, ...]
 
 
+_LOGGER: Final[logging.Logger] = logging.getLogger(__name__)
+
+
 def _now_iso() -> str:
     """Return the current UTC time as an ISO-8601 ``YYYY-MM-DDTHH:MM:SSZ`` string."""
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -375,6 +381,7 @@ def run_pipeline(
 
     for step in ordered:
         if not stale[step.id]:
+            _LOGGER.info("skip %s (%s) — fresh", step.id, step.phase)
             skipped.append(step.id)
             continue
 
@@ -391,10 +398,21 @@ def run_pipeline(
             ),
         )
         write_state(ctx.out_dir, state)
+        _LOGGER.info("run  %s (%s) — starting", step.id, step.phase)
+        start = time.monotonic()
 
         try:
             step.run(ctx)
-        except Exception:
+        except Exception as exc:
+            elapsed = time.monotonic() - start
+            _LOGGER.error(
+                "fail %s (%s) after %.2fs: %s: %s",
+                step.id,
+                step.phase,
+                elapsed,
+                type(exc).__name__,
+                exc,
+            )
             state = upsert_step_state(
                 state,
                 StepStateRecord(
@@ -408,6 +426,7 @@ def run_pipeline(
             write_state(ctx.out_dir, state)
             raise
 
+        elapsed = time.monotonic() - start
         new_fp = compute_fingerprint(step, state, run_root=ctx.out_dir)
         state = upsert_step_state(
             state,
@@ -420,6 +439,7 @@ def run_pipeline(
             ),
         )
         write_state(ctx.out_dir, state)
+        _LOGGER.info("done %s (%s) — ok in %.2fs", step.id, step.phase, elapsed)
         ran.append(step.id)
 
     return RunResult(ran=tuple(ran), skipped=tuple(skipped))

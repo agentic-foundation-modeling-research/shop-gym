@@ -22,6 +22,7 @@ Covers the T1.6 requirements from
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -627,6 +628,73 @@ def test_run_accepts_explicit_runtime_override(tmp_path: Path) -> None:
         run(config, runtime=cast("LLMCompleter", explicit))
 
     assert sink["runtime"] is explicit
+
+
+# --------------------------------------------------------------------------- #
+# progress logging
+# --------------------------------------------------------------------------- #
+
+
+def test_run_logs_start_and_end_summary(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """:func:`pipeline.run` brackets the runner with INFO ``start``/``end`` lines."""
+    [seed] = _make_seeds(tmp_path, 1)
+    out_dir = tmp_path / "shop"
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir, runtime="pi", model="opus")
+
+    sink: dict[str, object] = {}
+
+    def _register(reg: Registry, **_: object) -> None:
+        reg.register(cast(Step, _ProbeStep(sink)))
+
+    with (
+        caplog.at_level(logging.INFO, logger="shop_gen.pipeline"),
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_synth", _register),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+    ):
+        run(config, runtime=cast("LLMCompleter", _StubCompleter("x")))
+
+    messages = [r.message for r in caplog.records if r.name == "shop_gen.pipeline"]
+    assert any(m.startswith("start run \u2014 out_dir=") for m in messages)
+    assert any("runtime=pi" in m and "model=opus" in m for m in messages)
+    end_lines = [m for m in messages if m.startswith("end run")]
+    assert end_lines and "ran=1" in end_lines[0] and "skipped=0" in end_lines[0]
+
+
+def test_run_includes_stop_at_in_start_log(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``--to STEP`` surfaces in the start log so users see the slice in effect."""
+    [seed] = _make_seeds(tmp_path, 1)
+    out_dir = tmp_path / "shop"
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    sink: dict[str, object] = {}
+
+    def _register(reg: Registry, **_: object) -> None:
+        reg.register(cast(Step, _ProbeStep(sink, step_id="probe")))
+
+    with (
+        caplog.at_level(logging.INFO, logger="shop_gen.pipeline"),
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_synth", _register),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+    ):
+        run(
+            config,
+            stop_at="probe",
+            runtime=cast("LLMCompleter", _StubCompleter("x")),
+        )
+
+    start_lines = [r.message for r in caplog.records if r.message.startswith("start run")]
+    assert start_lines and "stop_at=probe" in start_lines[0]
 
 
 # --------------------------------------------------------------------------- #

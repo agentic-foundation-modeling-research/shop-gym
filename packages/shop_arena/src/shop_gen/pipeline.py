@@ -31,6 +31,8 @@ import.
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -92,6 +94,8 @@ concrete step has been registered for it yet, so the CLI's
 
 _DEFAULT_OUT_ROOT: Final[Path] = Path("outputs") / "shops"
 """Parent of ``<name>/`` when ``ShopGenConfig.out_dir`` is omitted (spec §4.1)."""
+
+_LOGGER: Final[logging.Logger] = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,9 +214,47 @@ def run(
     if runtime is None:
         runtime = _resolve_runtime(config)
     ctx = StepContext(config=config, out_dir=out_dir, runtime=runtime)
-    _: RunResult = run_pipeline(steps, ctx, force_ids=force_ids)
+
+    _LOGGER.info(
+        "start run — out_dir=%s seeds=%d runtime=%s model=%s%s%s",
+        out_dir,
+        len(config.seeds),
+        config.runtime,
+        config.model or "<runtime default>",
+        f" stop_at={stop_at}" if stop_at is not None else "",
+        f" force_ids={sorted(force_ids)}" if force_ids else "",
+    )
+    start = time.monotonic()
+    result: RunResult = run_pipeline(steps, ctx, force_ids=force_ids)
+    elapsed = time.monotonic() - start
+    _LOGGER.info(
+        "end run   — ran=%d skipped=%d total=%s",
+        len(result.ran),
+        len(result.skipped),
+        _format_elapsed(elapsed),
+    )
 
     return _result_for(out_dir)
+
+
+_SECONDS_PER_MINUTE: Final[int] = 60
+_MINUTES_PER_HOUR: Final[int] = 60
+
+
+def _format_elapsed(seconds: float) -> str:
+    """Format a wall-clock duration as ``MmSS.SSs`` or ``Ss.SSs``.
+
+    Picks a human-friendly granularity for run summaries: bare seconds
+    when the run is sub-minute, ``MmSSs`` for minute-scale runs,
+    ``HhMMm`` for the rare hour-scale run.
+    """
+    if seconds < _SECONDS_PER_MINUTE:
+        return f"{seconds:.2f}s"
+    minutes, secs = divmod(seconds, _SECONDS_PER_MINUTE)
+    if minutes < _MINUTES_PER_HOUR:
+        return f"{int(minutes)}m{secs:04.1f}s"
+    hours, minutes = divmod(int(minutes), _MINUTES_PER_HOUR)
+    return f"{hours}h{minutes:02d}m"
 
 
 def _resolve_runtime(config: ShopGenConfig) -> LLMCompleter:
