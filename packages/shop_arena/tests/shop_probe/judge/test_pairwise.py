@@ -39,12 +39,12 @@ from shop_probe.targets import Cohort, Pair, Target, TargetKind
 
 # --------------------------------------------------------------------------- #
 # Fixture builders. The shipped ``cohort.yaml`` is a v0.1 stub with TBD URLs
-# for hexclad / aloyoga sandboxes and the unpaired reals; we build a
+# for the pair_2 / pair_3 sandboxes and the unpaired reals; we build a
 # fully-populated cohort here so tests assert the 6-real-shop invariant
 # without depending on those open questions.
 # --------------------------------------------------------------------------- #
 
-_PAIR_IDS: tuple[str, str, str] = ("pair_hardware", "pair_hexclad", "pair_aloyoga")
+_PAIR_IDS: tuple[str, str, str] = ("pair_1", "pair_2", "pair_3")
 
 
 def _target(label: str, kind: TargetKind, pair_id: str | None = None) -> Target:

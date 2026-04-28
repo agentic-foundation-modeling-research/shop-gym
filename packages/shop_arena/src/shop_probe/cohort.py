@@ -10,9 +10,9 @@ Expected YAML shape::
 
     version: "0.1"
     pairs:
-      - id: pair_hardware
-        source:  { label: ..., base_url: ..., kind: source,  pair_id: pair_hardware }
-        sandbox: { label: ..., base_url: ..., kind: sandbox, pair_id: pair_hardware }
+      - id: pair_1
+        source:  { label: ..., base_url: ..., kind: source,  pair_id: pair_1 }
+        sandbox: { label: ..., base_url: ..., kind: sandbox, pair_id: pair_1 }
       - ...
     real_unpaired:
       - { label: ..., base_url: ..., kind: real_unpaired }

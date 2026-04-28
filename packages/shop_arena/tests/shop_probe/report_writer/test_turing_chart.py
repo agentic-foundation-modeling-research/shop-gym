@@ -87,7 +87,7 @@ def _bal_correct(n_correct: int, n_incorrect: int) -> tuple[JudgeCall, ...]:
 
 def test_output_is_self_contained_svg_document() -> None:
     out = render_turing_chart_svg(
-        pairs=(PairTuringData(pair_id="pair_hardware", judge_calls=_bal_correct(5, 5)),),
+        pairs=(PairTuringData(pair_id="pair_1", judge_calls=_bal_correct(5, 5)),),
         control_calls=_bal_correct(5, 5),
         bootstrap_iters=50,
     )
@@ -97,7 +97,7 @@ def test_output_is_self_contained_svg_document() -> None:
 
 
 def test_output_is_deterministic_across_calls() -> None:
-    pairs = (PairTuringData(pair_id="pair_hardware", judge_calls=_bal_correct(7, 3)),)
+    pairs = (PairTuringData(pair_id="pair_1", judge_calls=_bal_correct(7, 3)),)
     control = _bal_correct(5, 5)
     first = render_turing_chart_svg(
         pairs=pairs, control_calls=control, bootstrap_iters=64, bootstrap_seed=7
@@ -109,7 +109,7 @@ def test_output_is_deterministic_across_calls() -> None:
 
 
 def test_different_seeds_produce_different_ci_widths() -> None:
-    pairs = (PairTuringData(pair_id="pair_hardware", judge_calls=_bal_correct(7, 3)),)
+    pairs = (PairTuringData(pair_id="pair_1", judge_calls=_bal_correct(7, 3)),)
     control = _bal_correct(5, 5)
     a = render_turing_chart_svg(
         pairs=pairs, control_calls=control, bootstrap_iters=64, bootstrap_seed=1
@@ -127,18 +127,18 @@ def test_different_seeds_produce_different_ci_widths() -> None:
 
 def test_one_row_per_pair_in_input_order_plus_control_last() -> None:
     pairs = (
-        PairTuringData(pair_id="pair_hardware", judge_calls=_bal_correct(5, 5)),
-        PairTuringData(pair_id="pair_hexclad", judge_calls=_bal_correct(6, 4)),
-        PairTuringData(pair_id="pair_aloyoga", judge_calls=_bal_correct(4, 6)),
+        PairTuringData(pair_id="pair_1", judge_calls=_bal_correct(5, 5)),
+        PairTuringData(pair_id="pair_2", judge_calls=_bal_correct(6, 4)),
+        PairTuringData(pair_id="pair_3", judge_calls=_bal_correct(4, 6)),
     )
     out = render_turing_chart_svg(pairs=pairs, control_calls=_bal_correct(5, 5), bootstrap_iters=50)
     labels = re.findall(r'<g class="row" data-label="([^"]+)"', out)
-    assert labels == ["pair_hardware", "pair_hexclad", "pair_aloyoga", "intra-real control"]
+    assert labels == ["pair_1", "pair_2", "pair_3", "intra-real control"]
 
 
 def test_control_row_is_flagged_via_data_attribute() -> None:
     out = render_turing_chart_svg(
-        pairs=(PairTuringData(pair_id="pair_hardware", judge_calls=_bal_correct(5, 5)),),
+        pairs=(PairTuringData(pair_id="pair_1", judge_calls=_bal_correct(5, 5)),),
         control_calls=_bal_correct(5, 5),
         bootstrap_iters=50,
     )
@@ -147,7 +147,7 @@ def test_control_row_is_flagged_via_data_attribute() -> None:
         out,
     )
     assert rows == [
-        ("pair_hardware", "false"),
+        ("pair_1", "false"),
         ("intra-real control", "true"),
     ]
 

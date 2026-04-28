@@ -55,8 +55,7 @@ comparable numbers.
 ## 2. Terminology
 
 - **Target** — a deployed storefront under test. Identified by a base
-  URL and a label (`sandbox/run123`, `source/hardware.shopify.com`,
-  `mock_shop`, etc.).
+  URL and a label (`sandbox/run123`, `source/1`, `mock_shop`, etc.).
 - **Probe** — a single deterministic Playwright function that returns
   `{passed, evidence, details}` for one rubric leaf.
 - **Rubric** — a versioned YAML file enumerating all probes, their
@@ -525,20 +524,22 @@ async def gallery_has_thumbnails(page: Page, ctx: ProbeContext) -> ProbeOutcome:
 
 ```yaml
 version: 0.1
+# Public-repo cohort uses *.example.invalid placeholders; the operator
+# deployment substitutes the real merchant URLs at run time.
 pairs:
-  - id: pair_hardware
-    source:  { label: source/hardware,  base_url: https://hardware.shopify.com }
-    sandbox: { label: sandbox/hardware, base_url: https://shop-arena-51aad95a-126018801413.us-central1.run.app }
-  - id: pair_hexclad
-    source:  { label: source/hexclad,  base_url: https://hexclad.com }
-    sandbox: { label: sandbox/hexclad, base_url: TBD }
-  - id: pair_aloyoga
-    source:  { label: source/aloyoga,  base_url: https://aloyoga.com }
-    sandbox: { label: sandbox/aloyoga, base_url: TBD }
+  - id: pair_1
+    source:  { label: source/1,  base_url: https://source-1.example.invalid }
+    sandbox: { label: sandbox/1, base_url: https://shop-arena-<hash>-126018801413.us-central1.run.app }
+  - id: pair_2
+    source:  { label: source/2,  base_url: https://source-2.example.invalid }
+    sandbox: { label: sandbox/2, base_url: TBD }
+  - id: pair_3
+    source:  { label: source/3,  base_url: https://source-3.example.invalid }
+    sandbox: { label: sandbox/3, base_url: TBD }
 real_unpaired:  # for population baseline (axes A, B) and intra-real control pairs (axis C)
-  - { label: real/TBD_1, base_url: TBD }
-  - { label: real/TBD_2, base_url: TBD }
-  - { label: real/TBD_3, base_url: TBD }
+  - { label: real/1, base_url: https://real-1.example.invalid }
+  - { label: real/2, base_url: https://real-2.example.invalid }
+  - { label: real/3, base_url: https://real-3.example.invalid }
 ```
 
 ### 8.3 Pairwise judge prompt (sketch)
@@ -585,7 +586,7 @@ Respond as JSON:
 
 Resolved:
 
-- ~~Which 3 source storefronts are the v1 cohort?~~ → **hardware.shopify.com, hexclad.com, aloyoga.com.**
+- ~~Which 3 source storefronts are the v1 cohort?~~ → **decided; concrete URLs are kept out of the public repo and substituted at deploy time. Selection rationale: one Shopify-operated reference storefront, two heavily-customised merchant sites spanning theme/catalog/i18n axes.**
 - ~~Where do prior-env baselines run?~~ → **Prior envs are out of v1**; supplement-only.
 - ~~Is the judge agent the same as the 108-task benchmark agent?~~ → **Independent task list, shared harness implementation** (§5.5.1).
 - ~~Cross-lab judge in v1.1 vs paper supplement?~~ → **GPT-5 is the v1 judge; cross-lab is satisfied by construction.** Second judge family is v1.1 (M7).
@@ -593,6 +594,6 @@ Resolved:
 Still open:
 
 1. **The 3 unpaired real shops.** Selection criteria: Shopify-powered, publicly browseable, span the theme/catalog/i18n space (one Dawn-based, one heavily customized, one with multi-market). Candidates need confirmation before M5.
-2. **Bot detection on real merchant storefronts** (hexclad.com, aloyoga.com). hardware.shopify.com is Shopify-operated and unlikely to gate; merchant sites may serve different DOM to Playwright. Mitigation needs decision: (a) cooperating-merchant access, (b) residential proxy + slow probes + cached HAR, or (c) skip the merchant and pick alternates. Affects axes A and B for those targets.
-3. **Sandbox URLs for `pair_hexclad` and `pair_aloyoga`.** Only the hardware sandbox is currently deployed (`shop-arena-51aad95a-…`). Need deployments for the other two before the cohort is complete.
+2. **Bot detection on real merchant storefronts** (the two non-Shopify-operated paired sources, `source-2` / `source-3`). The Shopify-operated reference source (`source-1`) is unlikely to gate; merchant sites may serve different DOM to Playwright. Mitigation needs decision: (a) cooperating-merchant access, (b) residential proxy + slow probes + cached HAR, or (c) skip the merchant and pick alternates. Affects axes A and B for those targets.
+3. **Sandbox URLs for `pair_2` and `pair_3`.** Only the `pair_1` sandbox is currently deployed. Need deployments for the other two before the cohort is complete.
 4. **Anonymization sufficiency for axis C.** Whether structural-only anonymization is enough to defeat brand-recognition by a frontier judge model. If a small ablation shows the judge is using brand cues, anonymization rules need to be tightened before M5.

@@ -41,10 +41,10 @@ from shop_probe.targets import Target
 # --------------------------------------------------------------------------- #
 
 _SANDBOX_TARGET: Target = Target(
-    label="sandbox/hardware_run123",
+    label="sandbox/1_run123",
     base_url="http://localhost:4000",
     kind="sandbox",
-    pair_id="pair_hardware",
+    pair_id="pair_1",
 )
 
 _RUBRIC_HASH: str = "a" * 64

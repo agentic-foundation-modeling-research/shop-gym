@@ -6,7 +6,7 @@ The acceptance check from the implementation plan reads:
     leakage post-anonymization.
 
 These tests build a realistic ``Trajectory`` rooted in the pilot pair
-(``source/hardware`` against the calibrated ``sandbox/hardware``), run it
+(``source/1`` against the calibrated ``sandbox/1``), run it
 through :func:`anonymize_trajectory`, and assert that:
 
 * the rewritten trajectory carries ``anonymized=True``;
@@ -46,11 +46,11 @@ from shop_probe.report import BrowserMeta, EvidenceRef
 from shop_probe.targets import Target
 
 # --------------------------------------------------------------------------- #
-# Fixture builders — modelled on `pair_hardware` so the tests double as a
+# Fixture builders — modelled on `pair_1` so the tests double as a
 # regression for the actual brand strings the judge would otherwise see.
 # --------------------------------------------------------------------------- #
 
-_SOURCE_DOMAIN = "hardware.shopify.com"
+_SOURCE_DOMAIN = "source-1.example.invalid"
 _BRAND_TERMS: tuple[str, ...] = ("Hardware", "Shopify Hardware")
 _THEME_IDS: tuple[str, ...] = ("Dawn", "atelier")
 _PRODUCT_TITLES: tuple[str, ...] = (
@@ -87,10 +87,10 @@ def _evidence(idx: int, kind: str = "screenshot") -> EvidenceRef:
 
 def _source_target() -> Target:
     return Target(
-        label="source/hardware",
+        label="source/1",
         base_url=f"https://{_SOURCE_DOMAIN}/",
         kind="source",
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         notes="Production Hardware storefront calibrated against Dawn theme.",
     )
 
@@ -120,7 +120,7 @@ def _hardware_trajectory() -> Trajectory:
                 kind="navigate",
                 value=f"https://{_SOURCE_DOMAIN}/collections/snowboards",
                 description=(
-                    "Navigate to the Hardware snowboard collection on hardware.shopify.com."
+                    "Navigate to the Hardware snowboard collection on source-1.example.invalid."
                 ),
             ),
             observation=TrajectoryObservation(
@@ -129,7 +129,7 @@ def _hardware_trajectory() -> Trajectory:
                 screenshot=_evidence(0),
                 a11y_snapshot=_evidence(0, kind="a11y_snapshot"),
             ),
-            reasoning="The collection page on hardware.shopify.com lists snowboards.",
+            reasoning="The collection page on source-1.example.invalid lists snowboards.",
         ),
         _step(
             1,
@@ -175,7 +175,7 @@ def _hardware_trajectory() -> Trajectory:
         har=EvidenceRef(kind="har", path="trajectories/t01/run.har"),
         final_status="completed",
         anonymized=False,
-        notes="Run 1 against hardware.shopify.com on Dawn.",
+        notes="Run 1 against source-1.example.invalid on Dawn.",
     )
 
 
@@ -345,7 +345,6 @@ def test_anonymize_trajectory_handles_are_stable_across_runs() -> None:
 def test_anonymize_trajectory_rewrites_target_label_and_base_url() -> None:
     out = anonymize_trajectory(_hardware_trajectory(), _plan())
     assert out.target.label.startswith("target_")
-    assert "hardware" not in out.target.label.lower()
     assert REDACTED_HOST in out.target.base_url
     assert _SOURCE_DOMAIN not in out.target.base_url
 
@@ -414,7 +413,7 @@ def test_anonymize_trajectory_handles_longer_brand_before_shorter() -> None:
 def test_anonymize_trajectory_preserves_target_kind_and_pair_id() -> None:
     out = anonymize_trajectory(_hardware_trajectory(), _plan())
     assert out.target.kind == "source"
-    assert out.target.pair_id == "pair_hardware"
+    assert out.target.pair_id == "pair_1"
 
 
 def test_anonymize_trajectory_relative_url_stays_relative() -> None:

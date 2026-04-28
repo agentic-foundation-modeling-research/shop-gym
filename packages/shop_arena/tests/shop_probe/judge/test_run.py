@@ -31,7 +31,7 @@ Coverage:
   swap-inconsistency rate across the experimental + control pair
   population built from a fully-populated cohort, satisfying the spec
   §7 M4 acceptance criteria for the orchestration layer (the
-  empirical pair_hardware live run sits on top of the same wiring with
+  empirical pair_1 live run sits on top of the same wiring with
   a real OpenAI client + a real Playwright runtime).
 """
 
@@ -83,9 +83,9 @@ from shop_probe.targets import Cohort, Pair, Target, TargetKind
 # --------------------------------------------------------------------------- #
 
 _PAIR_IDS: Final[tuple[str, str, str]] = (
-    "pair_hardware",
-    "pair_hexclad",
-    "pair_aloyoga",
+    "pair_1",
+    "pair_2",
+    "pair_3",
 )
 
 
@@ -313,7 +313,7 @@ def _build_judge(
 
 
 def test_render_trajectory_includes_target_marker_and_step_refs() -> None:
-    target = _target("source/pair_hardware", "source", "pair_hardware")
+    target = _target("source/pair_1", "source", "pair_1")
     plan = _shared_anon_plan(target.label)
     anon = anonymize_trajectory(_raw_trajectory_for(target), plan)
     rendered = render_trajectory_for_judge(anon)
@@ -332,7 +332,7 @@ def test_render_trajectory_includes_target_marker_and_step_refs() -> None:
 
 
 def test_render_trajectory_refuses_un_anonymized_input() -> None:
-    target = _target("source/pair_hardware", "source", "pair_hardware")
+    target = _target("source/pair_1", "source", "pair_1")
     raw = _raw_trajectory_for(target)
     assert raw.anonymized is False
     with pytest.raises(ValueError, match="anonymized"):
@@ -625,7 +625,7 @@ def test_t4_9_m4_gate_satisfied_over_experimental_and_control_population() -> No
     drop rate = 0% ≤ 5%.
 
     The same wiring with a real OpenAI client + a real Playwright runtime
-    is the production T4.9 invocation against ``pair_hardware``; the
+    is the production T4.9 invocation against ``pair_1``; the
     gate threshold is the same.
     """
     cohort = _full_cohort()

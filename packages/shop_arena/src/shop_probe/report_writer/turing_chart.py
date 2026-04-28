@@ -54,7 +54,7 @@ class PairTuringData:
 
     Attributes:
         pair_id: Pair identifier shown on the row label
-            (e.g. ``"pair_hardware"``).
+            (e.g. ``"pair_1"``).
         judge_calls: Every judge call recorded for the pair, including
             swap-inconsistent and no-evidence calls. The renderer
             applies the spec §5.5 guardrails internally so the same

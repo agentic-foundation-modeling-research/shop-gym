@@ -163,7 +163,7 @@ def _write_report(reports_dir: Path, report: ProbeReport) -> Path:
 def _write_minimal_cohort(
     cohort_path: Path,
     *,
-    pair_ids: tuple[str, ...] = ("pair_hardware", "pair_hexclad"),
+    pair_ids: tuple[str, ...] = ("pair_1", "pair_2"),
     real_labels: tuple[str, ...] = ("real/r1", "real/r2"),
 ) -> None:
     """Write a small but spec-shaped cohort YAML the CLI can load."""
@@ -206,9 +206,9 @@ def _seed_axis_a_b_cohort(reports_dir: Path) -> None:
     _write_report(
         reports_dir,
         _report(
-            label="source/pair_hardware",
+            label="source/pair_1",
             kind="source",
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             coverages=coverages_high,
             surface=_surface(distinct_templates=8, catalog_products=200),
         ),
@@ -216,9 +216,9 @@ def _seed_axis_a_b_cohort(reports_dir: Path) -> None:
     _write_report(
         reports_dir,
         _report(
-            label="sandbox/pair_hardware",
+            label="sandbox/pair_1",
             kind="sandbox",
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             coverages=coverages_low,
             surface=_surface(distinct_templates=4, catalog_products=80),
         ),
@@ -226,9 +226,9 @@ def _seed_axis_a_b_cohort(reports_dir: Path) -> None:
     _write_report(
         reports_dir,
         _report(
-            label="source/pair_hexclad",
+            label="source/pair_2",
             kind="source",
-            pair_id="pair_hexclad",
+            pair_id="pair_2",
             coverages=coverages_high,
             surface=_surface(distinct_templates=7, catalog_products=180),
         ),
@@ -236,9 +236,9 @@ def _seed_axis_a_b_cohort(reports_dir: Path) -> None:
     _write_report(
         reports_dir,
         _report(
-            label="sandbox/pair_hexclad",
+            label="sandbox/pair_2",
             kind="sandbox",
-            pair_id="pair_hexclad",
+            pair_id="pair_2",
             coverages=coverages_low,
             surface=_surface(distinct_templates=5, catalog_products=90),
         ),
@@ -295,8 +295,8 @@ def test_report_renders_axis_a_and_b_figures_without_manual_editing(tmp_path: Pa
     # T6.1 — fidelity table.
     table = (out_dir / "fidelity_table.md").read_text(encoding="utf-8")
     assert "| Pair |" in table
-    assert "pair_hardware" in table
-    assert "pair_hexclad" in table
+    assert "pair_1" in table
+    assert "pair_2" in table
     assert "intra-real control" in table
 
     # T6.2 — radar SVG.
@@ -330,8 +330,8 @@ def test_report_renders_turing_chart_when_judge_calls_present(tmp_path: Path) ->
     sandbox_calls = _judge_calls(n_correct=8, n_wrong=2)
     control_calls = _judge_calls(n_correct=5, n_wrong=5)
     for label in (
-        "sandbox/pair_hardware",
-        "sandbox/pair_hexclad",
+        "sandbox/pair_1",
+        "sandbox/pair_2",
     ):
         path = _label_to_path(reports_dir, label)
         report = ProbeReport.model_validate_json(path.read_text(encoding="utf-8"))
@@ -455,9 +455,9 @@ def test_report_rejects_missing_report_file(
     _write_report(
         reports_dir,
         _report(
-            label="source/pair_hardware",
+            label="source/pair_1",
             kind="source",
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             coverages={"cart": 0.9, "product": 0.85, "site_shell": 0.95},
             surface=_surface(),
         ),

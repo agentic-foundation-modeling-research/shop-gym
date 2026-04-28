@@ -197,8 +197,8 @@ class _Rewriter:
         self._plan = plan
         self._domains_lower: tuple[str, ...] = tuple(d.lower() for d in plan.source_domains)
         # Domains as substring patterns (with optional scheme), longest-first
-        # to avoid partial-match shadowing (e.g. "shopify.com" before
-        # "hardware.shopify.com" would leak the parent domain).
+        # to avoid partial-match shadowing (e.g. "example.com" before
+        # "shop.example.com" would leak the parent domain).
         domain_alternatives = sorted(
             {d.strip() for d in plan.source_domains if d.strip()},
             key=len,

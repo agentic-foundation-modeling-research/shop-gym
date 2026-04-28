@@ -55,7 +55,7 @@ class PairFidelity(BaseModel):
     into a single scalar; reviewers read the breakdown.
 
     Attributes:
-        pair_id: Pair identifier, e.g. ``"pair_hardware"``. Matches the
+        pair_id: Pair identifier, e.g. ``"pair_1"``. Matches the
             ``pair_id`` on both members of the underlying
             :class:`~shop_probe.targets.Pair`.
         coverage_gap: Per-category coverage gap, ``source - sandbox``.

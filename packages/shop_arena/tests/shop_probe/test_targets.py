@@ -25,10 +25,10 @@ from shop_probe.targets import Cohort, Pair, Target
 
 def test_target_round_trip_sandbox() -> None:
     raw = {
-        "label": "sandbox/hardware_run123",
+        "label": "sandbox/1_run123",
         "base_url": "http://localhost:4000",
         "kind": "sandbox",
-        "pair_id": "pair_hardware",
+        "pair_id": "pair_1",
         "notes": "calibrated 2026-01-15",
     }
     target = Target.model_validate(raw)
@@ -39,8 +39,8 @@ def test_target_round_trip_sandbox() -> None:
 
 def test_target_round_trip_real_unpaired_optional_notes() -> None:
     raw = {
-        "label": "real/aloyoga",
-        "base_url": "https://aloyoga.com",
+        "label": "real/3",
+        "base_url": "https://real-3.example.invalid",
         "kind": "real_unpaired",
     }
     target = Target.model_validate(raw)
@@ -50,10 +50,10 @@ def test_target_round_trip_real_unpaired_optional_notes() -> None:
 
 def test_target_rejects_unknown_field() -> None:
     raw = {
-        "label": "source/hardware",
-        "base_url": "https://hardware.shopify.com",
+        "label": "source/1",
+        "base_url": "https://source-1.example.invalid",
         "kind": "source",
-        "pair_id": "pair_hardware",
+        "pair_id": "pair_1",
         "extra_field": "nope",
     }
     with pytest.raises(ValidationError, match="extra_field"):
@@ -81,7 +81,7 @@ def test_target_requires_pair_id_when_kind_is_paired(kind: str) -> None:
     with pytest.raises(ValidationError, match="pair_id is required"):
         Target.model_validate(
             {
-                "label": f"{kind}/hardware",
+                "label": f"{kind}/1",
                 "base_url": "http://localhost",
                 "kind": kind,
                 "pair_id": None,
@@ -94,7 +94,7 @@ def test_target_rejects_empty_pair_id_when_kind_is_paired(kind: str) -> None:
     with pytest.raises(ValidationError):
         Target.model_validate(
             {
-                "label": f"{kind}/hardware",
+                "label": f"{kind}/1",
                 "base_url": "http://localhost",
                 "kind": kind,
                 "pair_id": "",
@@ -106,10 +106,10 @@ def test_target_rejects_pair_id_when_kind_is_real_unpaired() -> None:
     with pytest.raises(ValidationError, match="pair_id must be None"):
         Target.model_validate(
             {
-                "label": "real/aloyoga",
-                "base_url": "https://aloyoga.com",
+                "label": "real/3",
+                "base_url": "https://real-3.example.invalid",
                 "kind": "real_unpaired",
-                "pair_id": "pair_aloyoga",
+                "pair_id": "pair_3",
             }
         )
 
@@ -119,18 +119,18 @@ def test_target_rejects_pair_id_when_kind_is_real_unpaired() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _source(pair_id: str = "pair_hardware") -> Target:
+def _source(pair_id: str = "pair_1") -> Target:
     return Target(
-        label="source/hardware",
-        base_url="https://hardware.shopify.com",
+        label="source/1",
+        base_url="https://source-1.example.invalid",
         kind="source",
         pair_id=pair_id,
     )
 
 
-def _sandbox(pair_id: str = "pair_hardware") -> Target:
+def _sandbox(pair_id: str = "pair_1") -> Target:
     return Target(
-        label="sandbox/hardware",
+        label="sandbox/1",
         base_url="http://localhost:4000",
         kind="sandbox",
         pair_id=pair_id,
@@ -138,7 +138,7 @@ def _sandbox(pair_id: str = "pair_hardware") -> Target:
 
 
 def test_pair_accepts_matched_members() -> None:
-    pair = Pair(id="pair_hardware", source=_source(), sandbox=_sandbox())
+    pair = Pair(id="pair_1", source=_source(), sandbox=_sandbox())
     # Round-trip via dump / validate keeps us honest about defaults.
     assert Pair.model_validate(pair.model_dump()) == pair
 
@@ -146,7 +146,7 @@ def test_pair_accepts_matched_members() -> None:
 def test_pair_rejects_mismatched_source_kind() -> None:
     with pytest.raises(ValidationError, match=r"source\.kind must be 'source'"):
         Pair(
-            id="pair_hardware",
+            id="pair_1",
             source=_sandbox(),  # wrong kind
             sandbox=_sandbox(),
         )
@@ -155,7 +155,7 @@ def test_pair_rejects_mismatched_source_kind() -> None:
 def test_pair_rejects_mismatched_sandbox_kind() -> None:
     with pytest.raises(ValidationError, match=r"sandbox\.kind must be 'sandbox'"):
         Pair(
-            id="pair_hardware",
+            id="pair_1",
             source=_source(),
             sandbox=_source(),  # wrong kind
         )
@@ -164,7 +164,7 @@ def test_pair_rejects_mismatched_sandbox_kind() -> None:
 def test_pair_rejects_pair_id_disagreement_on_source() -> None:
     with pytest.raises(ValidationError, match=r"source\.pair_id must equal id"):
         Pair(
-            id="pair_hardware",
+            id="pair_1",
             source=_source(pair_id="pair_other"),
             sandbox=_sandbox(),
         )
@@ -173,7 +173,7 @@ def test_pair_rejects_pair_id_disagreement_on_source() -> None:
 def test_pair_rejects_pair_id_disagreement_on_sandbox() -> None:
     with pytest.raises(ValidationError, match=r"sandbox\.pair_id must equal id"):
         Pair(
-            id="pair_hardware",
+            id="pair_1",
             source=_source(),
             sandbox=_sandbox(pair_id="pair_other"),
         )
@@ -189,19 +189,19 @@ def test_cohort_round_trip_matches_spec_section_8_2() -> None:
         "version": "0.1",
         "pairs": [
             {
-                "id": "pair_hardware",
+                "id": "pair_1",
                 "source": {
-                    "label": "source/hardware",
-                    "base_url": "https://hardware.shopify.com",
+                    "label": "source/1",
+                    "base_url": "https://source-1.example.invalid",
                     "kind": "source",
-                    "pair_id": "pair_hardware",
+                    "pair_id": "pair_1",
                     "notes": None,
                 },
                 "sandbox": {
-                    "label": "sandbox/hardware",
+                    "label": "sandbox/1",
                     "base_url": "http://localhost:4000",
                     "kind": "sandbox",
-                    "pair_id": "pair_hardware",
+                    "pair_id": "pair_1",
                     "notes": None,
                 },
             }
@@ -229,8 +229,8 @@ def test_cohort_rejects_unknown_field() -> None:
 
 
 def test_cohort_rejects_duplicate_pair_id() -> None:
-    pair_a = Pair(id="pair_hardware", source=_source(), sandbox=_sandbox())
-    pair_b = Pair(id="pair_hardware", source=_source(), sandbox=_sandbox())
+    pair_a = Pair(id="pair_1", source=_source(), sandbox=_sandbox())
+    pair_b = Pair(id="pair_1", source=_source(), sandbox=_sandbox())
     with pytest.raises(ValidationError, match="duplicate pair id"):
         Cohort(version="0.1", pairs=(pair_a, pair_b))
 

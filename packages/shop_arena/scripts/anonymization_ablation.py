@@ -55,7 +55,7 @@ from shop_probe.targets import Target
 # ablation tests the same surface the spec §5.5 step 3 anonymizer sees.
 # --------------------------------------------------------------------------- #
 
-_SOURCE_DOMAIN = "hardware.shopify.com"
+_SOURCE_DOMAIN = "source-1.example.invalid"
 _BRAND_TERMS: tuple[str, ...] = ("Hardware", "Shopify Hardware")
 _THEME_IDS: tuple[str, ...] = ("Dawn", "atelier")
 _PRODUCT_TITLES: tuple[str, ...] = (
@@ -91,10 +91,10 @@ def _evidence(idx: int, kind: str = "screenshot") -> EvidenceRef:
 
 def _source_target() -> Target:
     return Target(
-        label="source/hardware",
+        label="source/1",
         base_url=f"https://{_SOURCE_DOMAIN}/",
         kind="source",
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         notes="Production Hardware storefront calibrated against Dawn theme.",
     )
 
@@ -108,7 +108,7 @@ def _hardware_trajectory() -> Trajectory:
                 kind="navigate",
                 value=f"https://{_SOURCE_DOMAIN}/collections/snowboards",
                 description=(
-                    "Navigate to the Hardware snowboard collection on hardware.shopify.com."
+                    "Navigate to the Hardware snowboard collection on source-1.example.invalid."
                 ),
             ),
             observation=TrajectoryObservation(
@@ -117,7 +117,7 @@ def _hardware_trajectory() -> Trajectory:
                 screenshot=_evidence(0),
                 a11y_snapshot=_evidence(0, kind="a11y_snapshot"),
             ),
-            reasoning="The collection page on hardware.shopify.com lists snowboards.",
+            reasoning="The collection page on source-1.example.invalid lists snowboards.",
             duration_ms=350,
         ),
         TrajectoryStep(
@@ -166,7 +166,7 @@ def _hardware_trajectory() -> Trajectory:
         har=EvidenceRef(kind="har", path="trajectories/t01/run.har"),
         final_status="completed",
         anonymized=False,
-        notes="Run 1 against hardware.shopify.com on Dawn.",
+        notes="Run 1 against source-1.example.invalid on Dawn.",
     )
 
 

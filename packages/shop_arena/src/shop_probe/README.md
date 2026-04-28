@@ -57,14 +57,14 @@ three subcommands:
 ### Run probes against one storefront
 
 ```bash
-uv run shop-probe run https://hardware.shopify.com \
-    --label source/hardware \
+uv run shop-probe run https://source-1.example.invalid \
+    --label source/1 \
     --kind source \
-    --pair-id pair_hardware \
+    --pair-id pair_1 \
     --rubric v1 \
     --axes A,B \
-    --out reports/source_hardware.json \
-    --evidence-dir reports/evidence/source_hardware \
+    --out reports/source_1.json \
+    --evidence-dir reports/evidence/source_1 \
     --rerun-index 1
 ```
 

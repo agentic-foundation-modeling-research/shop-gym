@@ -61,9 +61,9 @@ from shop_probe.targets import Cohort, Pair, Target, TargetKind
 
 
 _PAIR_IDS: Final[tuple[str, str, str]] = (
-    "pair_hardware",
-    "pair_hexclad",
-    "pair_aloyoga",
+    "pair_1",
+    "pair_2",
+    "pair_3",
 )
 
 

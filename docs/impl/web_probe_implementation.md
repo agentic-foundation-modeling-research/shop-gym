@@ -62,7 +62,7 @@ versioned reports without manual editing (spec §4, §7 M6).
 ### M3 · Pilot pair + per-pair fidelity (spec §7 M3)
 
 - [x] **T3.1** — `fidelity.py`: `PairFidelity`, `CohortFidelity` pydantic models per spec §5.7. Compute `coverage_gap` (per-category + weighted), `surface_ratio` (per-metric + geomean), `sandbox_in_real_envelope` per metric. Judge fields default to `None` until M4. **Check:** unit tests on synthetic A+B reports.
-- [x] **T3.2** — Pilot run: full axis A + B against `pair_hardware` (`source/hardware` + `sandbox/hardware`). Commit reports under `outputs/web_probe/pair_1/`. **Check:** spec §7 M3 gate — one full pair report committed; rubric gaps logged as v1.1 candidates.
+- [x] **T3.2** — Pilot run: full axis A + B against `pair_1` (`source/1` + `sandbox/1`). Commit reports under `outputs/web_probe/pair_1/`. **Check:** spec §7 M3 gate — one full pair report committed; rubric gaps logged as v1.1 candidates.
 - [x] **T3.3** — Bump `rubric/v1.yaml` toward 60 probes by adding remaining `core` + `modern` probes across `homepage`, `search`, `i18n`, `floating`, `dynamics`, `a11y`, `media` per spec §5.3 category targets (drop `level: advanced` per §5.3). **Check:** rubric hash bumped; pilot report regenerated; flake spot-check.
 
 **M3 acceptance:** spec §7 M3 gate — pair-1 report committed; gaps logged.
@@ -77,13 +77,13 @@ versioned reports without manual editing (spec §4, §7 M6).
 - [x] **T4.6** — Pinned single-judge wiring per spec §5.5 step 5 + §5.5 guardrails: one OpenAI flagship model (e.g. `gpt-5`); temperature 0; pin model + version in `BrowserMeta`/report metadata; save full prompt + full response per call; force evidence citation; discard calls without evidence. **Check:** golden-prompt unit test using a stub LLM; pin assertions in report header.
 - [x] **T4.7** — `judge/prompts/v1/system.md` + `judge/prompts/v1/pairwise.md` per spec §8.3. Identical prompt for experimental and control pairs; judge unaware of condition (spec §5.5 step 5). **Check:** lint-only; prompt content hash embedded in `JudgeCall.prompt_hash`.
 - [x] **T4.8** — Position-bias check per spec §5.5 step 6: re-run with A/B swapped; drop pairs where the judge flips on swap; report drop rate. **Check:** swap-consistency unit test on a stub-judge fixture.
-- [x] **T4.9** — Run pairwise judge on `pair_hardware` per spec §7 M4 gate. **Check:** spec §7 M4 gate — swap-inconsistency rate ≤ 5%; HAR captures + screenshots saved; control-pair construction validated against the 6-real-shop list.
+- [x] **T4.9** — Run pairwise judge on `pair_1` per spec §7 M4 gate. **Check:** spec §7 M4 gate — swap-inconsistency rate ≤ 5%; HAR captures + screenshots saved; control-pair construction validated against the 6-real-shop list.
 
 **M4 acceptance:** spec §7 M4 gate.
 
 ### M5 · Full cohort run (spec §7 M5)
 
-- [x] **T5.1** — Resolve spec §8.5 open questions before the cohort run: (a) the 3 unpaired real shops (selection per §8.5 Q1); (b) bot-detection mitigation for hexclad / aloyoga (§8.5 Q2); (c) sandbox URLs for `pair_hexclad` and `pair_aloyoga` (§8.5 Q3); (d) anonymization-sufficiency ablation for axis C (§8.5 Q4). **Check:** decisions documented in `cohort.yaml` + a v0.1 README; ablation report committed.
+- [x] **T5.1** — Resolve spec §8.5 open questions before the cohort run: (a) the 3 unpaired real shops (selection per §8.5 Q1); (b) bot-detection mitigation for the two non-Shopify-operated paired sources (§8.5 Q2); (c) sandbox URLs for `pair_2` and `pair_3` (§8.5 Q3); (d) anonymization-sufficiency ablation for axis C (§8.5 Q4). **Check:** decisions documented in `cohort.yaml` + a v0.1 README; ablation report committed.
 - [x] **T5.2** — N=3 reruns of axes A and B over all 9 targets per spec §5.8. Compute `flake_rate_per_probe` per `ProbeReport` field. Save HAR captures + all screenshots + a11y snapshots per spec §5.8. **Check:** every report has `flake_rate < 1%`; HAR + evidence trail present.
 - [x] **T5.3** — Full pairwise judge across experimental + control pairs (spec §7 M5 gate). **Check:** `judge_accuracy_experimental` per pair + `judge_accuracy_control` cohort-level reported.
 

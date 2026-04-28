@@ -5,7 +5,7 @@ Covers:
 * The shipped ``packages/shop_arena/src/shop_probe/cohort.yaml`` loads successfully via
   :func:`shop_probe.cohort.load_cohort`.
 * The cohort matches the v1 shape required by spec §8.2: 3 sandbox/source
-  pairs (hardware, hexclad, aloyoga) + 3 ``real_unpaired`` slots.
+  pairs (pair_1, pair_2, pair_3) + 3 ``real_unpaired`` slots.
 * Each ``pair_id`` ties exactly one ``sandbox`` and exactly one ``source``
   (the T2.4 gate check verbatim).
 * ``load_cohort_bytes`` accepts in-memory YAML, rejects malformed YAML,
@@ -32,7 +32,7 @@ COHORT_PATH: Path = (
 )
 
 
-_EXPECTED_PAIR_IDS: tuple[str, ...] = ("pair_hardware", "pair_hexclad", "pair_aloyoga")
+_EXPECTED_PAIR_IDS: tuple[str, ...] = ("pair_1", "pair_2", "pair_3")
 
 
 # --------------------------------------------------------------------------- #
@@ -72,11 +72,11 @@ def test_shipped_cohort_pair_id_ties_exactly_one_sandbox_and_one_source() -> Non
         assert by_pair_id_kind[(pair_id, "sandbox")] == 1
 
 
-def test_shipped_cohort_hardware_sandbox_url_matches_spec() -> None:
-    """Spec §8.2 pins the hardware sandbox URL; protect against silent edits."""
+def test_shipped_cohort_pair_1_sandbox_url_matches_spec() -> None:
+    """Spec §8.2 pins the pair_1 sandbox URL; protect against silent edits."""
     cohort = load_cohort(COHORT_PATH)
-    pair = next(p for p in cohort.pairs if p.id == "pair_hardware")
-    assert pair.source.base_url == "https://hardware.shopify.com"
+    pair = next(p for p in cohort.pairs if p.id == "pair_1")
+    assert pair.source.base_url == "https://source-1.example.invalid"
     assert pair.sandbox.base_url == ("https://shop-arena-51aad95a-126018801413.us-central1.run.app")
 
 
@@ -118,17 +118,17 @@ def test_load_cohort_bytes_rejects_pair_without_matching_pair_id() -> None:
     payload = b"""\
 version: "0.1"
 pairs:
-  - id: pair_hardware
+  - id: pair_1
     source:
-      label: source/hardware
-      base_url: https://hardware.shopify.com
+      label: source/1
+      base_url: https://source-1.example.invalid
       kind: source
       pair_id: pair_other
     sandbox:
-      label: sandbox/hardware
+      label: sandbox/1
       base_url: http://localhost:4000
       kind: sandbox
-      pair_id: pair_hardware
+      pair_id: pair_1
 real_unpaired: []
 """
     with pytest.raises(CohortLoadError, match=r"source\.pair_id must equal id"):

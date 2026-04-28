@@ -39,7 +39,7 @@ _COVERAGE_GAP_FIXTURE: dict[str, float] = {"site_shell": 0.2, "cart": 0.3}
 
 def _pair_fidelity(
     *,
-    pair_id: str = "pair_hardware",
+    pair_id: str = "pair_1",
     coverage_gap_weighted: float = 0.25,
     surface_ratio_geomean: float = 0.5,
     judge_accuracy_experimental: float | None = None,
@@ -102,16 +102,16 @@ def test_table_ends_with_trailing_newline() -> None:
 
 def test_one_row_per_pair_in_input_order() -> None:
     pairs = (
-        _pair_fidelity(pair_id="pair_hardware"),
-        _pair_fidelity(pair_id="pair_hexclad"),
-        _pair_fidelity(pair_id="pair_aloyoga"),
+        _pair_fidelity(pair_id="pair_1"),
+        _pair_fidelity(pair_id="pair_2"),
+        _pair_fidelity(pair_id="pair_3"),
     )
     out = render_pair_fidelity_table(_cohort(pairs=pairs))
     body = out.splitlines()[2:-1]  # drop header, separator, control row.
     assert len(body) == len(pairs)
-    assert "| pair_hardware " in body[0]
-    assert "| pair_hexclad " in body[1]
-    assert "| pair_aloyoga " in body[2]
+    assert "| pair_1 " in body[0]
+    assert "| pair_2 " in body[1]
+    assert "| pair_3 " in body[2]
 
 
 def test_pair_row_carries_three_numeric_cells() -> None:
@@ -131,7 +131,7 @@ def test_pair_row_carries_three_numeric_cells() -> None:
     row = out.splitlines()[2]
     # Pipe-separated fields (drop leading + trailing empty splits).
     cells = [c.strip() for c in row.strip("|").split("|")]
-    assert cells == ["pair_hardware", "+0.250", "0.500", "0.510"]
+    assert cells == ["pair_1", "+0.250", "0.500", "0.510"]
 
 
 def test_coverage_gap_carries_explicit_sign_in_both_directions() -> None:
@@ -171,7 +171,7 @@ def test_missing_judge_accuracy_renders_as_em_dash() -> None:
 def test_control_row_is_appended_last() -> None:
     out = render_pair_fidelity_table(
         _cohort(
-            pairs=(_pair_fidelity(pair_id="pair_hardware"),),
+            pairs=(_pair_fidelity(pair_id="pair_1"),),
             judge_accuracy_control=0.5,
         ),
     )

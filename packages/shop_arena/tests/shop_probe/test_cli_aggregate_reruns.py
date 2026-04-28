@@ -25,10 +25,10 @@ from shop_probe.report import BrowserMeta, ProbeReport, ProbeResult
 from shop_probe.targets import Target
 
 _TARGET: Target = Target(
-    label="sandbox/hardware",
+    label="sandbox/1",
     base_url="http://localhost:4000",
     kind="sandbox",
-    pair_id="pair_hardware",
+    pair_id="pair_1",
 )
 _RUBRIC_HASH: str = "a" * 64
 
@@ -237,10 +237,10 @@ def test_aggregate_reruns_mismatched_targets_fail_loudly(
 
     other = tmp_path / "run2.json"
     other_target = Target(
-        label="sandbox/hexclad",
+        label="sandbox/2",
         base_url="http://localhost:4001",
         kind="sandbox",
-        pair_id="pair_hexclad",
+        pair_id="pair_2",
     )
     other_report = ProbeReport(
         target=other_target,

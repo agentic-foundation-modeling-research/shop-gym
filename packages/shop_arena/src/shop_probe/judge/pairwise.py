@@ -60,7 +60,7 @@ class PairwisePair(BaseModel):
 
     Attributes:
         pair_id: Stable identifier for the pair. Equal to the cohort
-            ``pair_id`` for experimental pairs, e.g. ``"pair_hardware"``;
+            ``pair_id`` for experimental pairs, e.g. ``"pair_1"``;
             an opaque ``"control_<i>"`` token for control pairs.
         condition: Pair population (see :data:`PairCondition`).
         members: The two storefronts presented to the judge, in

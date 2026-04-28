@@ -42,7 +42,7 @@ from shop_probe.targets import Cohort, Pair, Target, TargetKind
 # cohort here so swap tests don't hinge on those open questions.
 # --------------------------------------------------------------------------- #
 
-_PAIR_IDS: tuple[str, str, str] = ("pair_hardware", "pair_hexclad", "pair_aloyoga")
+_PAIR_IDS: tuple[str, str, str] = ("pair_1", "pair_2", "pair_3")
 
 
 def _target(label: str, kind: TargetKind, pair_id: str | None = None) -> Target:

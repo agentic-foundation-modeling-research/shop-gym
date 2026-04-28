@@ -123,7 +123,7 @@ def _sandbox_report(**overrides: object) -> ProbeReport:
     base: dict[str, object] = {
         "label": "sandbox/hardware",
         "kind": "sandbox",
-        "pair_id": "pair_hardware",
+        "pair_id": "pair_1",
         "coverages": {"site_shell": 0.7, "cart": 0.5},
         "coverage_weighted": 0.6,
         "surface": _surface(distinct_templates=4, catalog_products=50),
@@ -136,7 +136,7 @@ def _source_report(**overrides: object) -> ProbeReport:
     base: dict[str, object] = {
         "label": "source/hardware",
         "kind": "source",
-        "pair_id": "pair_hardware",
+        "pair_id": "pair_1",
         "coverages": {"site_shell": 0.9, "cart": 0.8},
         "coverage_weighted": 0.85,
         "surface": _surface(distinct_templates=8, catalog_products=200),
@@ -152,7 +152,7 @@ def _source_report(**overrides: object) -> ProbeReport:
 
 def test_coverage_gap_is_source_minus_sandbox_per_category() -> None:
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
     )
@@ -166,7 +166,7 @@ def test_coverage_gap_weighted_is_zero_at_parity() -> None:
     sandbox = _sandbox_report(coverages={"a": 0.5}, coverage_weighted=0.5)
     source = _source_report(coverages={"a": 0.5}, coverage_weighted=0.5)
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=sandbox,
         source_report=source,
     )
@@ -179,7 +179,7 @@ def test_coverage_gap_rejects_category_mismatch() -> None:
     source = _source_report(coverages={"cart": 0.8})
     with pytest.raises(ValueError, match="category mismatch"):
         compute_pair_fidelity(
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             sandbox_report=sandbox,
             source_report=source,
         )
@@ -192,7 +192,7 @@ def test_coverage_gap_rejects_category_mismatch() -> None:
 
 def test_surface_ratio_is_sandbox_over_source_per_metric() -> None:
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(
             surface=_surface(distinct_templates=4, catalog_products=50),
         ),
@@ -214,7 +214,7 @@ def test_surface_ratio_geomean_matches_manual_geomean() -> None:
         surface=_surface(distinct_templates=8, catalog_products=200),
     )
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=sandbox,
         source_report=source,
     )
@@ -231,7 +231,7 @@ def test_surface_ratio_treats_both_zero_as_parity() -> None:
     sandbox = _sandbox_report(surface=_surface(forms_total=0))
     source = _source_report(surface=_surface(forms_total=0))
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=sandbox,
         source_report=source,
     )
@@ -243,7 +243,7 @@ def test_surface_ratio_rejects_source_zero_with_sandbox_positive() -> None:
     source = _source_report(surface=_surface(forms_total=0))
     with pytest.raises(ValueError, match="surface_ratio"):
         compute_pair_fidelity(
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             sandbox_report=sandbox,
             source_report=source,
         )
@@ -254,7 +254,7 @@ def test_surface_ratio_geomean_collapses_to_zero_when_any_ratio_is_zero() -> Non
     sandbox = _sandbox_report(surface=_surface(catalog_products=0))
     source = _source_report(surface=_surface(catalog_products=200))
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=sandbox,
         source_report=source,
     )
@@ -269,7 +269,7 @@ def test_surface_ratio_geomean_collapses_to_zero_when_any_ratio_is_zero() -> Non
 
 def test_sandbox_in_real_envelope_empty_when_no_population() -> None:
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
     )
@@ -285,7 +285,7 @@ def test_sandbox_in_real_envelope_flags_per_metric_inclusion() -> None:
         _surface(distinct_templates=8, catalog_products=400),
     )
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=sandbox,
         source_report=source,
         real_population=population,
@@ -303,7 +303,7 @@ def test_sandbox_in_real_envelope_marks_outliers_false() -> None:
         _surface(distinct_templates=8),
     )
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=sandbox,
         source_report=source,
         real_population=population,
@@ -324,14 +324,14 @@ def test_compute_pair_fidelity_rejects_wrong_sandbox_kind() -> None:
                 label="oops",
                 base_url="http://localhost",
                 kind="source",
-                pair_id="pair_hardware",
+                pair_id="pair_1",
             )
         },
     )
     source = _source_report()
     with pytest.raises(ValueError, match=r"sandbox_report\.target\.kind"):
         compute_pair_fidelity(
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             sandbox_report=sandbox,
             source_report=source,
         )
@@ -345,13 +345,13 @@ def test_compute_pair_fidelity_rejects_wrong_source_kind() -> None:
                 label="oops",
                 base_url="http://localhost",
                 kind="sandbox",
-                pair_id="pair_hardware",
+                pair_id="pair_1",
             )
         },
     )
     with pytest.raises(ValueError, match=r"source_report\.target\.kind"):
         compute_pair_fidelity(
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             sandbox_report=sandbox,
             source_report=source,
         )
@@ -362,7 +362,7 @@ def test_compute_pair_fidelity_rejects_pair_id_mismatch() -> None:
     source = _source_report()
     with pytest.raises(ValueError, match=r"sandbox_report\.target\.pair_id"):
         compute_pair_fidelity(
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             sandbox_report=sandbox,
             source_report=source,
         )
@@ -373,7 +373,7 @@ def test_compute_pair_fidelity_rejects_axis_a_only_runs() -> None:
     source = _source_report()
     with pytest.raises(ValueError, match="surface metrics"):
         compute_pair_fidelity(
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             sandbox_report=sandbox,
             source_report=source,
         )
@@ -386,7 +386,7 @@ def test_compute_pair_fidelity_rejects_axis_a_only_runs() -> None:
 
 def test_pair_fidelity_judge_fields_default_to_none() -> None:
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
     )
@@ -409,7 +409,7 @@ def test_cohort_fidelity_judge_fields_default_to_none() -> None:
 
 def test_compute_cohort_fidelity_aggregates_pairs_and_envelope() -> None:
     pair = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
     )
@@ -433,7 +433,7 @@ def test_compute_cohort_fidelity_aggregates_pairs_and_envelope() -> None:
 
 def test_pair_fidelity_json_round_trip() -> None:
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
     )
@@ -443,7 +443,7 @@ def test_pair_fidelity_json_round_trip() -> None:
 
 def test_cohort_fidelity_json_round_trip() -> None:
     pair = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
     )
@@ -460,7 +460,7 @@ def test_cohort_fidelity_json_round_trip() -> None:
 
 def test_pair_fidelity_rejects_unknown_field() -> None:
     payload = {
-        "pair_id": "pair_hardware",
+        "pair_id": "pair_1",
         "coverage_gap": {"site_shell": 0.0},
         "coverage_gap_weighted": 0.0,
         "surface_ratio": {"forms_total": 1.0},
@@ -485,7 +485,7 @@ def test_cohort_fidelity_rejects_unknown_field() -> None:
 def test_pair_fidelity_rejects_coverage_gap_weighted_out_of_range() -> None:
     with pytest.raises(ValidationError):
         PairFidelity(
-            pair_id="pair_hardware",
+            pair_id="pair_1",
             coverage_gap={},
             coverage_gap_weighted=1.5,
             surface_ratio={},
@@ -526,7 +526,7 @@ def test_compute_pair_fidelity_populates_experimental_judge_fields() -> None:
         _judge_call(pick="B", truth="A"),
     )
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
         experimental_judge_calls=calls,
@@ -543,7 +543,7 @@ def test_compute_pair_fidelity_drops_swap_inconsistent_calls() -> None:
         _judge_call(pick="B", truth="A", swap_consistent=False),
     )
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
         experimental_judge_calls=calls,
@@ -556,7 +556,7 @@ def test_compute_pair_fidelity_drops_swap_inconsistent_calls() -> None:
 def test_compute_pair_fidelity_empty_judge_calls_keeps_n_pairs_zero() -> None:
     """An empty axis-C invocation reports zero kept calls and ``None`` accuracy."""
     fidelity = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
         experimental_judge_calls=(),
@@ -569,7 +569,7 @@ def test_compute_pair_fidelity_empty_judge_calls_keeps_n_pairs_zero() -> None:
 def test_compute_cohort_fidelity_reports_control_accuracy_and_gap() -> None:
     """T5.3 — ``judge_accuracy_control`` and indistinguishability gap are reported."""
     pair = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
         experimental_judge_calls=(
@@ -594,13 +594,13 @@ def test_compute_cohort_fidelity_reports_control_accuracy_and_gap() -> None:
 def test_compute_cohort_fidelity_skips_gap_when_any_pair_missing_experimental() -> None:
     """Mixed M3-pilot + M5 pairs leave the cohort gap unset (avoid lying)."""
     pair_with = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
         experimental_judge_calls=(_judge_call(pick="A", truth="A"),),
     )
     pair_without = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
     )
@@ -615,7 +615,7 @@ def test_compute_cohort_fidelity_skips_gap_when_any_pair_missing_experimental() 
 def test_compute_cohort_fidelity_skips_gap_when_control_all_dropped() -> None:
     """All-dropped control population → control accuracy is undefined; gap follows."""
     pair = compute_pair_fidelity(
-        pair_id="pair_hardware",
+        pair_id="pair_1",
         sandbox_report=_sandbox_report(),
         source_report=_source_report(),
         experimental_judge_calls=(_judge_call(pick="A", truth="A"),),

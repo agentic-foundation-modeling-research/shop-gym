@@ -42,17 +42,17 @@ from shop_probe.targets import Target
 # --------------------------------------------------------------------------- #
 
 _TARGET: Target = Target(
-    label="sandbox/hardware",
+    label="sandbox/1",
     base_url="http://localhost:4000",
     kind="sandbox",
-    pair_id="pair_hardware",
+    pair_id="pair_1",
 )
 _RUBRIC_HASH: str = "a" * 64
 _OTHER_TARGET: Target = Target(
-    label="sandbox/hexclad",
+    label="sandbox/2",
     base_url="http://localhost:4001",
     kind="sandbox",
-    pair_id="pair_hexclad",
+    pair_id="pair_2",
 )
 
 

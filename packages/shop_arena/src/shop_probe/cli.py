@@ -10,7 +10,7 @@ The v1 ``shop-probe`` CLI exposes two subcommands:
         --label sandbox/run123 \\
         --rubric v1 \\
         --axes A \\
-        --kind sandbox --pair-id pair_hardware \\
+        --kind sandbox --pair-id pair_1 \\
         --out report.json
 
     shop-probe report \\

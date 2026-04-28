@@ -38,8 +38,8 @@ class Target(BaseModel):
     ``None`` on ``real_unpaired`` rows.
 
     Attributes:
-        label: Human-readable identifier, e.g. ``"sandbox/hardware_run123"``,
-            ``"source/hardware"``, ``"real/aloyoga"``.
+        label: Human-readable identifier, e.g. ``"sandbox/1_run123"``,
+            ``"source/1"``, ``"real/1"``.
         base_url: Base URL of the storefront. Crawls and probes are
             rooted here.
         kind: Storefront role (see :data:`TargetKind`).
@@ -83,7 +83,7 @@ class Pair(BaseModel):
     share ``pair_id == id`` and have the matching :attr:`Target.kind`.
 
     Attributes:
-        id: Stable pair identifier, e.g. ``"pair_hardware"``. Used as
+        id: Stable pair identifier, e.g. ``"pair_1"``. Used as
             the ``pair_id`` on both members.
         source: The production storefront row (``kind="source"``).
         sandbox: The SandboxShop row (``kind="sandbox"``).

@@ -10,66 +10,69 @@
 # inline below; full rationale + the anonymization-sufficiency ablation
 # live in `docs/shop_probe/cohort_v0.1.md`.
 #
+# Note: real merchant URLs are not committed (per project policy). The
+# `source-*.example.invalid` / `real-*.example.invalid` placeholders are
+# substituted by the operator-time cohort YAML kept under `outputs/`.
 # Two `sandbox.base_url` values are still `TBD` — those storefronts are
 # pending a `shop-gen` deployment (spec §8.5 Q3) and will be wired by
 # T5.2; the deployment plan and fallback are documented in the v0.1
-# README. Cohort.yaml otherwise reflects v0.1 decisions verbatim.
+# README.
 version: "0.1"
 
 pairs:
-  - id: pair_hardware
+  - id: pair_1
     source:
-      label: source/hardware
-      base_url: https://hardware.shopify.com
+      label: source/1
+      base_url: https://source-1.example.invalid
       kind: source
-      pair_id: pair_hardware
+      pair_id: pair_1
     sandbox:
-      label: sandbox/hardware
+      label: sandbox/1
       base_url: https://shop-arena-51aad95a-126018801413.us-central1.run.app
       kind: sandbox
-      pair_id: pair_hardware
+      pair_id: pair_1
 
-  - id: pair_hexclad
+  - id: pair_2
     source:
-      label: source/hexclad
-      base_url: https://hexclad.com
+      label: source/2
+      base_url: https://source-2.example.invalid
       kind: source
-      pair_id: pair_hexclad
+      pair_id: pair_2
       notes: >-
         Bot-detection mitigation: option (b) — residential proxy +
         slowed probes (≥1 s between requests) + cached HAR. Fallback to
         option (c) (alternate merchant) if probe failure rate exceeds
         5% on the M5 dry-run. See `docs/shop_probe/cohort_v0.1.md` §2.
     sandbox:
-      label: sandbox/hexclad
+      label: sandbox/2
       base_url: TBD
       kind: sandbox
-      pair_id: pair_hexclad
+      pair_id: pair_2
       notes: >-
         Sandbox URL pending `shop-gen` deployment (spec §8.5 Q3).
-        Deploy plan: same Cloud Run service prefix as the hardware
+        Deploy plan: same Cloud Run service prefix as the pair_1
         sandbox (`shop-arena-<hash>-…us-central1.run.app`). T5.2 wires
         the URL once deployed. See `docs/shop_probe/cohort_v0.1.md` §3.
 
-  - id: pair_aloyoga
+  - id: pair_3
     source:
-      label: source/aloyoga
-      base_url: https://aloyoga.com
+      label: source/3
+      base_url: https://source-3.example.invalid
       kind: source
-      pair_id: pair_aloyoga
+      pair_id: pair_3
       notes: >-
         Bot-detection mitigation: option (b) — residential proxy +
         slowed probes (≥1 s between requests) + cached HAR. Fallback to
         option (c) (alternate merchant) if probe failure rate exceeds
         5% on the M5 dry-run. See `docs/shop_probe/cohort_v0.1.md` §2.
     sandbox:
-      label: sandbox/aloyoga
+      label: sandbox/3
       base_url: TBD
       kind: sandbox
-      pair_id: pair_aloyoga
+      pair_id: pair_3
       notes: >-
         Sandbox URL pending `shop-gen` deployment (spec §8.5 Q3).
-        Deploy plan: same Cloud Run service prefix as the hardware
+        Deploy plan: same Cloud Run service prefix as the pair_1
         sandbox (`shop-arena-<hash>-…us-central1.run.app`). T5.2 wires
         the URL once deployed. See `docs/shop_probe/cohort_v0.1.md` §3.
 
@@ -78,22 +81,22 @@ pairs:
 # bot-friendliness + Shopify attribution checks run as part of T5.2's M5
 # dry-run; alternates listed in `docs/shop_probe/cohort_v0.1.md` §1.
 real_unpaired:
-  - label: real/kotn
-    base_url: https://kotn.com
+  - label: real/1
+    base_url: https://real-1.example.invalid
     kind: real_unpaired
     notes: >-
       Stock-leaning Online Store 2.0 / Dawn-derivative theme; smaller
       catalog. Covers the "close-to-default Shopify shop" slot of the
       §5.2 real-shop population. See `docs/shop_probe/cohort_v0.1.md` §1.
-  - label: real/gymshark
-    base_url: https://gymshark.com
+  - label: real/2
+    base_url: https://real-2.example.invalid
     kind: real_unpaired
     notes: >-
       Shopify Plus, heavily customised theme and AJAX-rich UX. Covers
       the "heavy customisation" slot of the §5.2 real-shop population.
       See `docs/shop_probe/cohort_v0.1.md` §1.
-  - label: real/allbirds
-    base_url: https://allbirds.com
+  - label: real/3
+    base_url: https://real-3.example.invalid
     kind: real_unpaired
     notes: >-
       Hydrogen-based with multi-market locale switching. Covers the
