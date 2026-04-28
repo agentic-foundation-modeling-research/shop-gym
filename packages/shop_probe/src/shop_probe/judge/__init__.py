@@ -40,6 +40,15 @@ from shop_probe.judge.prompts import (
     load_judge_prompts,
     load_likert_prompts,
 )
+from shop_probe.judge.run import (
+    M4_SWAP_DROP_RATE_THRESHOLD,
+    M4GateMetrics,
+    PairJudgeOutcome,
+    judge_calls_from_outcomes,
+    judge_pair_for_task,
+    m4_gate_metrics,
+    render_trajectory_for_judge,
+)
 from shop_probe.judge.swap import (
     JudgeCallable,
     Presentation,
@@ -68,6 +77,7 @@ from shop_probe.judge.trajectory import (
 
 __all__ = [
     "DEFAULT_AGENTS_MD",
+    "M4_SWAP_DROP_RATE_THRESHOLD",
     "REDACTED_BRAND",
     "REDACTED_HOST",
     "REDACTED_THEME",
@@ -87,7 +97,9 @@ __all__ = [
     "LikertJudge",
     "LikertOutcome",
     "LikertPromptSet",
+    "M4GateMetrics",
     "PairCondition",
+    "PairJudgeOutcome",
     "PairwisePair",
     "PinnedJudge",
     "PinnedJudgeOutcome",
@@ -107,12 +119,16 @@ __all__ = [
     "evaluate_swap_consistency",
     "hash_token",
     "is_swap_consistent",
+    "judge_calls_from_outcomes",
+    "judge_pair_for_task",
     "load_judge_prompts",
     "load_judge_tasks",
     "load_judge_tasks_bytes",
     "load_likert_prompts",
+    "m4_gate_metrics",
     "presentations_for",
     "real_shop_pool",
+    "render_trajectory_for_judge",
     "run_judge_agent",
     "swap_drop_rate",
 ]
