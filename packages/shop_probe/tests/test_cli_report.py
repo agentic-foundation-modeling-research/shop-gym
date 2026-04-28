@@ -379,6 +379,18 @@ def test_report_renders_turing_chart_when_judge_calls_present(tmp_path: Path) ->
     assert turing.count('class="row"') == 3  # noqa: PLR2004
     assert "intra-real control" in turing
 
+    # T5.3 — the fidelity table now reports per-pair
+    # ``judge_accuracy_experimental`` plus a cohort-level
+    # ``judge_accuracy_control`` (spec §5.5 step 7, §7 M5).
+    table = (out_dir / "fidelity_table.md").read_text(encoding="utf-8")
+    # 8 correct out of 10 sandbox calls → 0.800; both sandbox rows match.
+    assert table.count("0.800") >= 2  # noqa: PLR2004
+    # 5/10 control calls correct → 0.500 on the intra-real row.
+    control_row = next(
+        line for line in table.splitlines() if line.startswith("| intra-real control")
+    )
+    assert "0.500" in control_row
+
 
 def test_report_output_is_deterministic_across_runs(tmp_path: Path) -> None:
     """The four artifacts are byte-stable across repeated runs (T6.1-T6.4)."""

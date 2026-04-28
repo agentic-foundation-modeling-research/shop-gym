@@ -38,7 +38,8 @@ from collections.abc import Iterable, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from shop_probe.report import ProbeReport
+from shop_probe.judge.scoring import JudgeAccuracy, score_judge_calls
+from shop_probe.report import JudgeCall, ProbeReport
 from shop_probe.surface.metrics import SurfaceMetrics
 
 
@@ -134,12 +135,14 @@ def compute_pair_fidelity(
     sandbox_report: ProbeReport,
     source_report: ProbeReport,
     real_population: Sequence[SurfaceMetrics] = (),
+    experimental_judge_calls: Sequence[JudgeCall] | None = None,
 ) -> PairFidelity:
     """Aggregate one ``(sandbox, source)`` pair into a :class:`PairFidelity`.
 
     Both reports must be axis A+B runs (i.e. ``surface`` populated) and
-    must agree on the pair identity. Judge fields are left ``None`` —
-    M4 wires them in.
+    must agree on the pair identity. Pass
+    ``experimental_judge_calls`` once axis-C calls have been recorded;
+    omitting them leaves the M5 judge fields ``None`` (M3 pilot).
 
     Args:
         pair_id: The pair identifier both reports must carry.
@@ -149,6 +152,12 @@ def compute_pair_fidelity(
             compute :attr:`PairFidelity.sandbox_in_real_envelope`.
             Empty during the M3 pilot; the full 6-shop envelope ships
             in M5.
+        experimental_judge_calls: Optional axis-C ``(sandbox, source)``
+            judge calls for this pair (spec §5.5 step 7). When supplied,
+            populates :attr:`PairFidelity.judge_accuracy_experimental`,
+            :attr:`PairFidelity.judge_n_pairs`, and
+            :attr:`PairFidelity.judge_dropped`. ``None`` keeps the M5
+            fields unset for axis-A+B-only runs.
 
     Returns:
         A validated :class:`PairFidelity`.
@@ -194,6 +203,12 @@ def compute_pair_fidelity(
         _compute_envelope(sandbox_report.surface, real_population) if real_population else {}
     )
 
+    judge_accuracy: JudgeAccuracy | None = (
+        score_judge_calls(experimental_judge_calls)
+        if experimental_judge_calls is not None
+        else None
+    )
+
     return PairFidelity(
         pair_id=pair_id,
         coverage_gap=coverage_gap,
@@ -201,6 +216,11 @@ def compute_pair_fidelity(
         surface_ratio=surface_ratio,
         surface_ratio_geomean=surface_ratio_geomean,
         sandbox_in_real_envelope=sandbox_in_real_envelope,
+        judge_accuracy_experimental=(
+            judge_accuracy.accuracy if judge_accuracy is not None else None
+        ),
+        judge_n_pairs=(judge_accuracy.n_total if judge_accuracy is not None else None),
+        judge_dropped=(judge_accuracy.n_dropped if judge_accuracy is not None else None),
     )
 
 
@@ -208,12 +228,18 @@ def compute_cohort_fidelity(
     *,
     pairs: Sequence[PairFidelity],
     real_population: Sequence[SurfaceMetrics] = (),
+    control_judge_calls: Sequence[JudgeCall] | None = None,
 ) -> CohortFidelity:
     """Aggregate per-pair fidelity rows into a :class:`CohortFidelity`.
 
     Computes the per-metric ``(min, max)`` envelope over the real-shop
-    reference population. Judge cohort-level fields are left ``None``
-    until M4.
+    reference population. When ``control_judge_calls`` is supplied,
+    populates :attr:`CohortFidelity.judge_accuracy_control` and
+    :attr:`CohortFidelity.judge_indistinguishability_gap` per spec §5.5
+    step 7 + §5.7. The gap is
+    ``mean(experimental) - control`` over the pairs that themselves have
+    ``judge_accuracy_experimental`` set; if any pair is missing that
+    field the gap stays ``None``.
 
     Args:
         pairs: Per-pair fidelity rows, one per
@@ -221,6 +247,11 @@ def compute_cohort_fidelity(
         real_population: Surface metrics for the real-shop reference
             population. Spec §5.2 specifies 6 shops (3 paired sources +
             3 unpaired) in v1; empty is allowed during M3 pilot work.
+        control_judge_calls: Optional axis-C ``(real_a, real_b)`` judge
+            calls aggregated across the cohort (spec §5.5 step 7). When
+            supplied, populates
+            :attr:`CohortFidelity.judge_accuracy_control` and
+            :attr:`CohortFidelity.judge_indistinguishability_gap`.
 
     Returns:
         A validated :class:`CohortFidelity`.
@@ -231,9 +262,27 @@ def compute_cohort_fidelity(
             values = [float(getattr(m, name)) for m in real_population]
             real_shop_population[name] = (min(values), max(values))
 
+    judge_accuracy_control: float | None = None
+    judge_indistinguishability_gap: float | None = None
+    if control_judge_calls is not None:
+        control = score_judge_calls(control_judge_calls)
+        judge_accuracy_control = control.accuracy
+        if judge_accuracy_control is not None:
+            experimental = tuple(
+                p.judge_accuracy_experimental
+                for p in pairs
+                if p.judge_accuracy_experimental is not None
+            )
+            if experimental and len(experimental) == len(pairs):
+                judge_indistinguishability_gap = (
+                    sum(experimental) / len(experimental) - judge_accuracy_control
+                )
+
     return CohortFidelity(
         pairs=tuple(pairs),
         real_shop_population=real_shop_population,
+        judge_accuracy_control=judge_accuracy_control,
+        judge_indistinguishability_gap=judge_indistinguishability_gap,
     )
 
 

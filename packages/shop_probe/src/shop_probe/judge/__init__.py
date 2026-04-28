@@ -49,6 +49,7 @@ from shop_probe.judge.run import (
     m4_gate_metrics,
     render_trajectory_for_judge,
 )
+from shop_probe.judge.scoring import JudgeAccuracy, score_judge_calls
 from shop_probe.judge.swap import (
     JudgeCallable,
     Presentation,
@@ -85,6 +86,7 @@ __all__ = [
     "REQUIRED_PAIRWISE_PLACEHOLDERS",
     "AnonymizationPlan",
     "CrossJudgeAgreement",
+    "JudgeAccuracy",
     "JudgeCallable",
     "JudgePromptLoadError",
     "JudgePromptSet",
@@ -130,5 +132,6 @@ __all__ = [
     "real_shop_pool",
     "render_trajectory_for_judge",
     "run_judge_agent",
+    "score_judge_calls",
     "swap_drop_rate",
 ]

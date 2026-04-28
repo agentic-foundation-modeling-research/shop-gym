@@ -28,7 +28,14 @@ from shop_probe.fidelity import (
     compute_cohort_fidelity,
     compute_pair_fidelity,
 )
-from shop_probe.report import BrowserMeta, CategoryScore, ProbeReport
+from shop_probe.report import (
+    BrowserMeta,
+    CategoryScore,
+    JudgeCall,
+    JudgePick,
+    JudgeTruth,
+    ProbeReport,
+)
 from shop_probe.surface.metrics import SurfaceMetrics
 from shop_probe.targets import Target
 
@@ -484,3 +491,138 @@ def test_pair_fidelity_rejects_coverage_gap_weighted_out_of_range() -> None:
             surface_ratio={},
             surface_ratio_geomean=1.0,
         )
+
+
+# --------------------------------------------------------------------------- #
+# T5.3 — axis-C judge accuracy wired through fidelity (spec §5.5 step 7, §7 M5).
+# --------------------------------------------------------------------------- #
+
+
+def _judge_call(
+    *,
+    pick: JudgePick = "A",
+    truth: JudgeTruth = "A",
+    swap_consistent: bool = True,
+    evidence_cited: bool = True,
+) -> JudgeCall:
+    return JudgeCall(
+        task_id="t",
+        pair_label=("a", "b"),
+        judge_pick=pick,
+        truth=truth,
+        swap_consistent=swap_consistent,
+        evidence_cited=evidence_cited,
+        confidence=0.5,
+        prompt_hash="0" * 64,
+        response_text="{}",
+    )
+
+
+def test_compute_pair_fidelity_populates_experimental_judge_fields() -> None:
+    """T5.3 — ``judge_accuracy_experimental`` is reported per pair."""
+    calls = (
+        _judge_call(pick="A", truth="A"),
+        _judge_call(pick="A", truth="A"),
+        _judge_call(pick="B", truth="A"),
+    )
+    fidelity = compute_pair_fidelity(
+        pair_id="pair_hardware",
+        sandbox_report=_sandbox_report(),
+        source_report=_source_report(),
+        experimental_judge_calls=calls,
+    )
+    assert fidelity.judge_accuracy_experimental == pytest.approx(2.0 / 3.0)
+    assert fidelity.judge_n_pairs == 3  # noqa: PLR2004
+    assert fidelity.judge_dropped == 0
+
+
+def test_compute_pair_fidelity_drops_swap_inconsistent_calls() -> None:
+    """Spec §5.5 step 6: swap-inconsistent calls drop out of the denominator."""
+    calls = (
+        _judge_call(pick="A", truth="A"),
+        _judge_call(pick="B", truth="A", swap_consistent=False),
+    )
+    fidelity = compute_pair_fidelity(
+        pair_id="pair_hardware",
+        sandbox_report=_sandbox_report(),
+        source_report=_source_report(),
+        experimental_judge_calls=calls,
+    )
+    assert fidelity.judge_accuracy_experimental == pytest.approx(1.0)
+    assert fidelity.judge_n_pairs == 2  # noqa: PLR2004
+    assert fidelity.judge_dropped == 1
+
+
+def test_compute_pair_fidelity_empty_judge_calls_keeps_n_pairs_zero() -> None:
+    """An empty axis-C invocation reports zero kept calls and ``None`` accuracy."""
+    fidelity = compute_pair_fidelity(
+        pair_id="pair_hardware",
+        sandbox_report=_sandbox_report(),
+        source_report=_source_report(),
+        experimental_judge_calls=(),
+    )
+    assert fidelity.judge_accuracy_experimental is None
+    assert fidelity.judge_n_pairs == 0
+    assert fidelity.judge_dropped == 0
+
+
+def test_compute_cohort_fidelity_reports_control_accuracy_and_gap() -> None:
+    """T5.3 — ``judge_accuracy_control`` and indistinguishability gap are reported."""
+    pair = compute_pair_fidelity(
+        pair_id="pair_hardware",
+        sandbox_report=_sandbox_report(),
+        source_report=_source_report(),
+        experimental_judge_calls=(
+            _judge_call(pick="A", truth="A"),
+            _judge_call(pick="A", truth="A"),
+            _judge_call(pick="A", truth="A"),
+        ),
+    )
+    control_calls = (
+        _judge_call(pick="A", truth="A"),
+        _judge_call(pick="B", truth="A"),
+    )
+    cohort = compute_cohort_fidelity(
+        pairs=(pair,),
+        control_judge_calls=control_calls,
+    )
+    assert cohort.judge_accuracy_control == pytest.approx(0.5)
+    # Gap = mean(experimental) - control = 1.0 - 0.5 = 0.5.
+    assert cohort.judge_indistinguishability_gap == pytest.approx(0.5)
+
+
+def test_compute_cohort_fidelity_skips_gap_when_any_pair_missing_experimental() -> None:
+    """Mixed M3-pilot + M5 pairs leave the cohort gap unset (avoid lying)."""
+    pair_with = compute_pair_fidelity(
+        pair_id="pair_hardware",
+        sandbox_report=_sandbox_report(),
+        source_report=_source_report(),
+        experimental_judge_calls=(_judge_call(pick="A", truth="A"),),
+    )
+    pair_without = compute_pair_fidelity(
+        pair_id="pair_hardware",
+        sandbox_report=_sandbox_report(),
+        source_report=_source_report(),
+    )
+    cohort = compute_cohort_fidelity(
+        pairs=(pair_with, pair_without),
+        control_judge_calls=(_judge_call(pick="A", truth="A"),),
+    )
+    assert cohort.judge_accuracy_control == pytest.approx(1.0)
+    assert cohort.judge_indistinguishability_gap is None
+
+
+def test_compute_cohort_fidelity_skips_gap_when_control_all_dropped() -> None:
+    """All-dropped control population → control accuracy is undefined; gap follows."""
+    pair = compute_pair_fidelity(
+        pair_id="pair_hardware",
+        sandbox_report=_sandbox_report(),
+        source_report=_source_report(),
+        experimental_judge_calls=(_judge_call(pick="A", truth="A"),),
+    )
+    cohort = compute_cohort_fidelity(
+        pairs=(pair,),
+        control_judge_calls=(_judge_call(pick="A", truth="A", swap_consistent=False),),
+    )
+    assert cohort.judge_accuracy_control is None
+    assert cohort.judge_indistinguishability_gap is None

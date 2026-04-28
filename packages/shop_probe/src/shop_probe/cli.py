@@ -691,6 +691,7 @@ def _cmd_report(args: argparse.Namespace) -> int:
         cohort=cohort,
         sandbox_reports=sandbox_reports,
         source_reports=source_reports,
+        real_unpaired_reports=real_unpaired_reports,
         real_population=real_population,
     )
 
@@ -857,22 +858,41 @@ def _build_cohort_fidelity(
     cohort: Cohort,
     sandbox_reports: tuple[ProbeReport, ...],
     source_reports: tuple[ProbeReport, ...],
+    real_unpaired_reports: tuple[ProbeReport, ...],
     real_population: tuple[SurfaceMetrics, ...],
 ) -> CohortFidelity:
-    """Aggregate per-pair fidelity rows into a :class:`CohortFidelity`."""
+    """Aggregate per-pair fidelity rows into a :class:`CohortFidelity`.
+
+    Per-pair experimental judge calls live on the sandbox
+    :class:`ProbeReport`; cohort-level control judge calls are aggregated
+    across the ``real_unpaired`` reports (spec §5.5 step 4 + step 7).
+    Pairs / cohorts whose reports carry no axis-C calls leave the
+    judge fields ``None`` (M3 pilot scenario).
+    """
     pairs: list[PairFidelity] = []
     for pair, sandbox_report, source_report in zip(
         cohort.pairs, sandbox_reports, source_reports, strict=True
     ):
+        experimental_calls: tuple[JudgeCall, ...] | None = (
+            sandbox_report.judge_calls if sandbox_report.judge_calls else None
+        )
         pairs.append(
             compute_pair_fidelity(
                 pair_id=pair.id,
                 sandbox_report=sandbox_report,
                 source_report=source_report,
                 real_population=real_population,
+                experimental_judge_calls=experimental_calls,
             )
         )
-    return compute_cohort_fidelity(pairs=pairs, real_population=real_population)
+    control_calls: tuple[JudgeCall, ...] = tuple(
+        call for r in real_unpaired_reports for call in r.judge_calls
+    )
+    return compute_cohort_fidelity(
+        pairs=pairs,
+        real_population=real_population,
+        control_judge_calls=control_calls if control_calls else None,
+    )
 
 
 # --------------------------------------------------------------------------- #
