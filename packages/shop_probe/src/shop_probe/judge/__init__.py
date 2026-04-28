@@ -8,6 +8,14 @@ from shop_probe.judge.anonymize import (
     anonymize_trajectory,
     hash_token,
 )
+from shop_probe.judge.pairwise import (
+    PairCondition,
+    PairwisePair,
+    build_control_pairs,
+    build_experimental_pairs,
+    build_task_pairs,
+    real_shop_pool,
+)
 from shop_probe.judge.trajectory import (
     Trajectory,
     TrajectoryAction,
@@ -21,11 +29,17 @@ __all__ = [
     "REDACTED_HOST",
     "REDACTED_THEME",
     "AnonymizationPlan",
+    "PairCondition",
+    "PairwisePair",
     "Trajectory",
     "TrajectoryAction",
     "TrajectoryObservation",
     "TrajectoryStatus",
     "TrajectoryStep",
     "anonymize_trajectory",
+    "build_control_pairs",
+    "build_experimental_pairs",
+    "build_task_pairs",
     "hash_token",
+    "real_shop_pool",
 ]
