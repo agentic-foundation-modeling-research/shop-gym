@@ -26,10 +26,12 @@ import contextlib
 import json
 from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 from unittest.mock import patch
 
+import httpx
 import pytest
+import respx
 
 from harness import (
     AgentRuntime,
@@ -45,6 +47,7 @@ from harness.runtimes.replay import ReplayRuntime
 from shop_gen.build.loop import (
     RunBuildHarnessLoopStep,
     RuntimeFactory,
+    _GraphqlIntrospector,
     default_verifiers_factory,
 )
 from shop_gen.build.prompts import (
@@ -60,7 +63,6 @@ from shop_gen.build.verifiers import (
     NavCoverageVerifier,
     NoBrandLeakVerifier,
     QualityJudgeVerifier,
-    Routes200Verifier,
     TscVerifier,
 )
 from shop_gen.build.verifiers._subprocess import CompletedSubprocess
@@ -626,7 +628,7 @@ def test_step_run_drives_real_harness_with_replay_runtime(tmp_path: Path) -> Non
 
 
 def test_default_verifiers_factory_returns_v01_set(tmp_path: Path) -> None:
-    """Spec §5.5.3: the v0.1 factory wires the eight-verifier table verbatim."""
+    """Spec §5.5.3: the v0.1 factory wires the verifier table verbatim."""
     out_dir = tmp_path / "out"
     out_dir.mkdir()
     _materialise_workspace(out_dir)
@@ -638,13 +640,100 @@ def test_default_verifiers_factory_returns_v01_set(tmp_path: Path) -> None:
     assert types == [
         TscVerifier,
         BuildVerifier,
-        Routes200Verifier,
         DataInUseVerifier,
         NavCoverageVerifier,
         NoBrandLeakVerifier,
         QualityJudgeVerifier,
         CrossTaskConsistencyVerifier,
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Default introspector wiring
+# --------------------------------------------------------------------------- #
+
+
+_INTROSPECTOR_BASE_URL: Final[str] = "http://127.0.0.1:9999"
+"""Loopback URL the introspector tests pretend the sidecar is bound to."""
+
+
+def _introspection_response(
+    *,
+    query_fields: Sequence[str] = (),
+    mutation_fields: Sequence[str] | None = (),
+    subscription_fields: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Render a GraphQL introspection response with the given root fields.
+
+    A ``None`` value for ``mutation_fields`` / ``subscription_fields``
+    encodes the schema not exposing that root (the standard introspection
+    shape returns ``null`` for the slot in that case).
+    """
+
+    def _slot(names: Sequence[str] | None) -> dict[str, Any] | None:
+        if names is None:
+            return None
+        return {"fields": [{"name": n} for n in names]}
+
+    return {
+        "data": {
+            "__schema": {
+                "queryType": _slot(query_fields),
+                "mutationType": _slot(mutation_fields),
+                "subscriptionType": _slot(subscription_fields),
+            },
+        },
+    }
+
+
+@respx.mock
+def test_default_introspector_translates_root_fields() -> None:
+    """The default introspector POSTs to ``/graphql`` and indexes root fields."""
+    route = respx.post(f"{_INTROSPECTOR_BASE_URL}/graphql").mock(
+        return_value=httpx.Response(
+            200,
+            json=_introspection_response(
+                query_fields=("shop", "products"),
+                mutation_fields=("cartCreate",),
+                subscription_fields=None,
+            ),
+        ),
+    )
+
+    schema = _GraphqlIntrospector(base_url=_INTROSPECTOR_BASE_URL)()
+
+    assert route.called
+    request = route.calls.last.request
+    assert json.loads(request.content)["query"].lstrip().startswith("{")
+    assert schema.fields_for("Query") == frozenset({"shop", "products"})
+    assert schema.fields_for("Mutation") == frozenset({"cartCreate"})
+    # ``subscriptionType: null`` → the verifier sees an empty set, not a KeyError.
+    assert schema.fields_for("Subscription") == frozenset()
+
+
+@respx.mock
+def test_default_introspector_raises_on_graphql_errors() -> None:
+    """A ``data: null, errors: [...]`` payload is surfaced as ``RuntimeError``."""
+    respx.post(f"{_INTROSPECTOR_BASE_URL}/graphql").mock(
+        return_value=httpx.Response(
+            200,
+            json={"errors": [{"message": "schema unavailable"}]},
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="schema unavailable"):
+        _GraphqlIntrospector(base_url=_INTROSPECTOR_BASE_URL)()
+
+
+@respx.mock
+def test_default_introspector_raises_on_http_error() -> None:
+    """A non-2xx response is surfaced as :class:`httpx.HTTPStatusError`."""
+    respx.post(f"{_INTROSPECTOR_BASE_URL}/graphql").mock(
+        return_value=httpx.Response(500, text="boom"),
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        _GraphqlIntrospector(base_url=_INTROSPECTOR_BASE_URL)()
 
 
 # --------------------------------------------------------------------------- #

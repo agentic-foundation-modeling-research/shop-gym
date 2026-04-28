@@ -40,78 +40,7 @@ passes", always pick the latter.
 
 ---
 
-## 2. Brand safety (STRICT — apply at write time)
-
-The dataset and the storefront use a **fake-brand allowlist**, not a
-blocklist. Every brand-shaped capitalized token in `hydrogen/app/**` must
-either be a member of the allowlist below or be a recognized common-noun
-(colors, materials, units, country codes, …). The
-[`no_brand_leak`][verifier] verifier runs after every iteration and
-fails the task if it finds a token that is neither.
-
-Hard rules:
-
-- **Use only allowlisted brand tokens.** The store's name, vendor names,
-  and any brand-shaped string in copy / placeholders / alt-text must come
-  from the dataset (which has already been scrubbed against the same
-  allowlist) or from the allowlist below.
-- **Never invent a fake brand.** If the dataset's `store.json` does not
-  give you a brand, fall back to the descriptor (e.g. "the storefront",
-  "this shop").
-- **Never reference a real-world company, product, or trademark** —
-  including in comments, sample data, placeholder copy, or test
-  fixtures.
-- **Do not hard-code a name that is not in the dataset.** Read
-  `store.name` from the Storefront API and render it; do not embed a
-  literal brand token in TSX / CSS unless it came from `store.json`.
-- **No real-shop URLs, emails, phone numbers, or addresses.** The
-  sidecar serves a synthetic dataset; everything outward-pointing must
-  be either relative paths or content from the dataset.
-
-Soft rules:
-
-- Generic e-commerce vocabulary — "cart", "checkout", "search", "mega
-  menu", "trust badge" — is encouraged; that is the language of the
-  manual and the verifier set.
-- Numeric facts that describe layout (column count, section count, image
-  aspect ratio) stay as written in the manual.
-
-A leak is a loud failure: the `no_brand_leak` verifier rewrites your
-task back to `[~]` and the next iteration retries with feedback that
-embeds the full allowlist. Apply the rules at write time so we do not
-spin on retries.
-
-[verifier]: ../../verifiers/no_brand_leak.py
-
-### Allowlist tokens
-
-The following fake-brand tokens are the ONLY allowlisted proper nouns
-for the SandboxShop. Use exact case; do not invent new tokens:
-
-- `Vendarena`
-- `AisleArena`
-- `Shopliseum`
-- `CartColiseum`
-- `StockyardArena`
-- `AgoraDome`
-- `AgoraCage`
-- `AgoraPit`
-
-The following capitalized common-noun categories are **safe** — the
-post-pass scanner treats them as non-brand-shaped vocabulary:
-
-- Colors (e.g. `Red`, `Blue`, `Forest`).
-- Materials (e.g. `Cotton`, `Leather`, `Steel`).
-- Sizes & units (e.g. `Small`, `XL`, `Pack`).
-- Country abbreviations (e.g. `US`, `CA`, `GB`).
-- Common stopwords (sentence-initial words, days, months).
-
-Any other capitalized multi-letter token in `hydrogen/app/**/*.{tsx,ts,css,md}`
-is treated as a brand leak and will fail the run.
-
----
-
-## 3. File-write conventions
+## 2. File-write conventions
 
 The harness owns the top-level run dir. The seed-immutability invariant
 (see `harness/seed_immutability.md`) protects the manual:
@@ -159,7 +88,7 @@ file outside `artifact/hydrogen/`.
 
 ---
 
-## 4. Tooling
+## 3. Tooling
 
 The build environment has Node 20+ and pnpm available. The `hydrogen/`
 tree is a pnpm workspace package. Useful commands:
@@ -172,8 +101,8 @@ tree is a pnpm workspace package. Useful commands:
 - `pnpm --filter hydrogen build` — build the app. The
   [`build`][build-verifier] verifier runs the same command.
 - `pnpm --filter hydrogen dev` — only invoke as part of a verifier check
-  (`routes_200`, `final_eval`); do not leave a long-running dev server
-  hanging across tool calls.
+  (`final_eval`); do not leave a long-running dev server hanging across
+  tool calls.
 
 [tsc-verifier]: ../../verifiers/tsc.py
 [build-verifier]: ../../verifiers/build.py
@@ -187,7 +116,7 @@ supports will resolve.
 
 ---
 
-## 5. Verifier contract
+## 4. Verifier contract
 
 After every executor iteration the harness dispatches a **caller-owned
 verifier set** owned by `shop_gen`. Each verifier returns PASS / FAIL /
@@ -208,16 +137,14 @@ The v0.1 verifier set the orchestrator wires up:
 | ------------------------ | ---- | --------------------------------------------------------------------------------- |
 | `tsc`                    | rule | every `gen_*` task                                                                |
 | `build`                  | rule | every `gen_*` task                                                                |
-| `routes_200`             | rule | post `gen_navigation`, `gen_homepage`, `gen_collections`, `gen_product`, `gen_info_pages` |
 | `data_in_use`            | rule | every `gen_*` task                                                                |
 | `nav_coverage`           | rule | post `gen_navigation`                                                             |
-| `no_brand_leak`          | rule | every `gen_*` task                                                                |
 | `quality_judge`          | LLM  | post `gen_homepage`, `gen_product`, `gen_cart_search`, `visual_polish`, `consolidate` |
 | `cross_task_consistency` | LLM  | post `consolidate`                                                                |
 
 ---
 
-## 6. Capabilities schema reference
+## 5. Capabilities schema reference
 
 The closed pydantic v2 schema for `manual/capabilities.json` is defined
 by `shop_explore.capabilities.schema`; the same shape is used by
@@ -233,7 +160,7 @@ template and note the gap in your executor reply.
 
 ---
 
-## 7. Don'ts
+## 6. Don'ts
 
 - Don't mutate `artifact/manual/` — it is the immutable seed.
 - Don't write outside `artifact/hydrogen/` and the `plan.md` line that

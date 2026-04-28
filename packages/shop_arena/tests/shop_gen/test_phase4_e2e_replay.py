@@ -31,14 +31,10 @@ import contextlib
 import json
 import shutil
 import subprocess
-import threading
 from collections.abc import Iterator, Sequence
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Final
 
-import httpx
 import pytest
 
 from harness import AgentRuntime, Verifier
@@ -55,7 +51,6 @@ from shop_gen.build.verifiers import (
     NavCoverageVerifier,
     NoBrandLeakVerifier,
     QualityJudgeVerifier,
-    Routes200Verifier,
     SchemaIntrospection,
     TscVerifier,
 )
@@ -187,43 +182,6 @@ def _shop_backend_cli_stub() -> Path:
 
 
 # --------------------------------------------------------------------------- #
-# Stubs — Routes200 dev server
-# --------------------------------------------------------------------------- #
-
-
-class _AlwaysOkHandler(BaseHTTPRequestHandler):
-    """HTTP handler that returns ``200 OK`` for every path."""
-
-    def do_GET(self) -> None:
-        self.send_response(HTTPStatus.OK)
-        self.end_headers()
-        self.wfile.write(b"ok")
-
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 — stdlib API
-        del format, args  # silence default access logs
-
-
-@contextlib.contextmanager
-def _dev_server_factory(hydrogen_dir: Path) -> Iterator[str]:
-    """Dev-server factory that boots an in-process HTTP server.
-
-    Every request returns ``200 OK`` so :class:`Routes200Verifier`
-    reports ``PASS`` for every probed task route.
-    """
-    del hydrogen_dir
-    server = HTTPServer(("127.0.0.1", 0), _AlwaysOkHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        port = server.server_address[1]
-        yield f"http://127.0.0.1:{port}"
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=1.0)
-
-
-# --------------------------------------------------------------------------- #
 # Stubs — DataInUse introspector
 # --------------------------------------------------------------------------- #
 
@@ -316,17 +274,6 @@ def _build_verifiers_factory(*, data_dir: Path) -> VerifiersFactory:
         return (
             TscVerifier(runner=_passing_subprocess_runner),
             BuildVerifier(runner=_passing_subprocess_runner),
-            Routes200Verifier(
-                task_routes={
-                    "gen_navigation": ("/",),
-                    "gen_homepage": ("/",),
-                    "gen_collections": ("/collections",),
-                    "gen_product": ("/products/tickless-anti-tick-collar",),
-                    "gen_info_pages": ("/pages/about-us",),
-                    "consolidate": ("/", "/collections"),
-                },
-                dev_server_factory=_dev_server_factory,
-            ),
             DataInUseVerifier(introspect=_stub_introspector),
             NavCoverageVerifier(data_dir=data_dir),
             NoBrandLeakVerifier(allowlist=_permissive_allowlist()),
@@ -475,7 +422,6 @@ def test_phase4_e2e_replay_produces_working_hydrogen_with_no_blocking_verifier(
     assert dispatched_names == {
         "tsc",
         "build",
-        "routes_200",
         "data_in_use",
         "nav_coverage",
         "no_brand_leak",
@@ -555,11 +501,3 @@ def test_replay_completer_runtime_returns_pass_verdict() -> None:
     assert payload == {"verdict": "pass", "feedback": ""}
 
 
-def test_dev_server_factory_returns_200_for_every_path(tmp_path: Path) -> None:
-    """The stub dev server PASSes :class:`Routes200Verifier` against any path."""
-
-    with _dev_server_factory(tmp_path) as base_url:
-        response = httpx.get(f"{base_url}/anything", timeout=2.0)
-        assert response.status_code == 200  # noqa: PLR2004 — HTTP OK
-        response = httpx.get(f"{base_url}/products/whatever", timeout=2.0)
-        assert response.status_code == 200  # noqa: PLR2004 — HTTP OK

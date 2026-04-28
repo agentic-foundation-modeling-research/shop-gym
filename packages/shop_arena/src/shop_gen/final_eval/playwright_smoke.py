@@ -13,11 +13,9 @@ The actual browser automation is delegated to a :class:`BrowserDriver`
 seam: production callers inject a Playwright-backed driver (lands with
 T6.2 / T6.3 alongside the LLM judge and ``final_eval`` step), tests
 inject a stub that records the calls and writes deterministic stand-in
-screenshot bytes. This mirrors the pattern
-:class:`shop_gen.build.verifiers.routes_200.Routes200Verifier` uses for
-its own dev-server seam: the smoke logic stays
-test-deterministic without pulling Playwright into ``shop_arena``'s
-runtime dependency set ahead of T6.3.
+screenshot bytes. The smoke logic stays test-deterministic without
+pulling Playwright into ``shop_arena``'s runtime dependency set ahead
+of T6.3.
 
 The module also owns:
 
@@ -273,9 +271,7 @@ class DevServerFactory(Protocol):
     the server is reachable, and tears the process down on exit
     (including on exception).
 
-    Mirrors :class:`shop_gen.build.verifiers.routes_200.DevServerFactory`
-    so the same factory can be reused for both verifiers and final
-    eval. Production wiring (a ``pnpm dev`` driver) lands with the
+    Production wiring (a ``pnpm dev`` driver) lands with the
     ``final_eval`` step in T6.3; v0.1 callers (and tests) inject a
     factory of their choice.
     """

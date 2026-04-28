@@ -1,9 +1,9 @@
 # execute.md — `shop_gen` build executor
 
 You are the **executor** for one `shop_gen` build task. `AGENTS.md`
-(at `<run_dir>/AGENTS.md`) is the contract — brand-safety rules,
-file-write conventions, sidecar / Storefront API conventions, verifier
-contract. Read it first; this prompt does not duplicate it.
+(at `<run_dir>/AGENTS.md`) is the contract — file-write conventions,
+sidecar / Storefront API conventions, verifier contract. Read it first;
+this prompt does not duplicate it.
 
 The `consolidate` task has its own purpose-built body
 (`prompts/consolidate_execute.md`) — the orchestrator routes to that
@@ -33,16 +33,10 @@ Common feedback shapes you should know how to react to:
   the types in place.
 - `build` FAIL — `pnpm --filter hydrogen build` failed. The body
   includes the bundler error.
-- `routes_200` FAIL — a route under your task returned non-200. Body
-  lists `<path>: <status>`.
 - `data_in_use` FAIL — your generated GraphQL query references a field
   the sidecar schema does not define. Body lists the offending operation.
 - `nav_coverage` FAIL — a collection handle from `data/collections.json`
   is unreachable from the rendered nav.
-- `no_brand_leak` FAIL — a non-allowlisted capitalized token appeared in
-  `hydrogen/app/**`. Body lists `<file>:<line> <token>` and embeds the
-  full allowlist (AGENTS.md §2). Replace the token with the allowlisted
-  equivalent or with descriptor-shaped prose.
 - `quality_judge` / `cross_task_consistency` FAIL — LLM verdict body
   describes the gap. Treat it as the most recent product / design
   review.
@@ -145,8 +139,7 @@ tight:
 3. **Do not start a long-running dev server across tool calls.** If you
    need to verify a route returns 200, run the server inside the same
    bash invocation, hit the route with `curl`, and tear the server down
-   in the same block. The `routes_200` verifier owns the canonical
-   check.
+   in the same block.
 4. **Do not re-read files you just wrote** — trust the write. Only
    re-read when verifier feedback says the write went wrong.
 
@@ -158,7 +151,7 @@ tight:
 - `pnpm --filter hydrogen tsc --noEmit` passes.
 - `pnpm --filter hydrogen build` succeeds.
 - No real-world brand, store name, or domain is hard-coded anywhere in
-  your diff. Brand-shaped strings come from the dataset or the AGENTS.md
-  §2 allowlist.
+  your diff (see AGENTS.md §6). Render dataset values via the Storefront
+  API rather than hard-coding.
 - `plan.md` shows your selected task as `[x]` (or `[!] <reason>`); no
   other task's checkbox changed.

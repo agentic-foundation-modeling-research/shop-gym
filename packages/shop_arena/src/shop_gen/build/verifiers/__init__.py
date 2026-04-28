@@ -13,10 +13,6 @@ The v0.1 verifier set lives here:
   tree. Applies to every ``gen_*`` task plus ``consolidate``.
 * :class:`BuildVerifier` — ``pnpm build`` against the hydrogen tree.
   Same applicability as :class:`TscVerifier`.
-* :class:`Routes200Verifier` — boots a transient dev server, asserts
-  every configured route returns 200. Applies to ``gen_navigation``,
-  ``gen_homepage``, ``gen_collections``, ``gen_product``,
-  ``gen_info_pages``, and ``consolidate``.
 * :class:`DataInUseVerifier` — diffs the agent's GraphQL queries
   against the live shop_backend schema (introspection-derived). Applies
   to every ``gen_*`` task.
@@ -47,23 +43,17 @@ from shop_gen.build.verifiers.data_in_use import (
 from shop_gen.build.verifiers.nav_coverage import NavCoverageVerifier
 from shop_gen.build.verifiers.no_brand_leak import NoBrandLeakVerifier
 from shop_gen.build.verifiers.quality_judge import QualityJudgeVerifier
-from shop_gen.build.verifiers.routes_200 import (
-    DevServerFactory,
-    Routes200Verifier,
-)
 from shop_gen.build.verifiers.tsc import TscVerifier
 
 __all__ = [
     "BuildVerifier",
     "CrossTaskConsistencyVerifier",
     "DataInUseVerifier",
-    "DevServerFactory",
     "GraphQLOperationError",
     "GraphQLOperationRef",
     "NavCoverageVerifier",
     "NoBrandLeakVerifier",
     "QualityJudgeVerifier",
-    "Routes200Verifier",
     "SchemaIntrospection",
     "TscVerifier",
 ]

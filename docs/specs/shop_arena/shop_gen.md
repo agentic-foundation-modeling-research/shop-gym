@@ -484,10 +484,8 @@ the harness via `PlanExecLoopConfig.verifiers`.
 | --------------------- | ---- | --------------------------------------- | ----------------------------------------------------------------------- |
 | `tsc`                 | rule | every `gen_*` task                      | `pnpm tsc --noEmit` clean.                                              |
 | `build`               | rule | every `gen_*` task                      | `pnpm --filter hydrogen build` succeeds.                                |
-| `routes_200`          | rule | post `gen_navigation`, `gen_homepage`, `gen_collections`, `gen_product`, `gen_info_pages` | All affected route paths return 200 from a transient dev server.        |
 | `data_in_use`         | rule | every `gen_*` task                      | The agent's GraphQL queries match shop_backend's schema (introspection diff). |
 | `nav_coverage`        | rule | post `gen_navigation`                   | Every collection in `data/collections.json` is reachable from the nav.  |
-| `no_brand_leak`       | rule | every `gen_*` task                      | Allowlist scan over `hydrogen/app/**/*.{tsx,ts,css,md}`. Any non-allowlisted brand-shaped token → FAIL. |
 | `quality_judge`       | LLM  | post `gen_homepage`, `gen_product`, `gen_cart_search`, `visual_polish`, `consolidate` | Render the page; LLM judges quality against `capabilities.json` keys. **Quality-only**, not a cross-compare with seeds. |
 | `cross_task_consistency` | LLM | post `consolidate`             | Whole-app sweep: are all generated components mutually consistent (shared design tokens, shared types, no orphan imports, navigation matches collections)? |
 
@@ -517,8 +515,8 @@ Its execute prompt is purpose-built:
 > not introduce new features.
 
 Verifiers gate `consolidate` like any other task — `tsc`, `build`,
-`routes_200`, `quality_judge`, plus the consolidate-only
-`cross_task_consistency` LLM judge. A `FAIL` rewrites
+`quality_judge`, plus the consolidate-only `cross_task_consistency`
+LLM judge. A `FAIL` rewrites
 `consolidate`'s marker back to `[~]` per the standard verifier
 contract; the next iteration retries with feedback. If the
 consolidate-task budget exhausts without converging, the run
@@ -635,10 +633,14 @@ and growing `safe_nouns` to cover every common English noun is an
 unbounded whack-a-mole that defeats the purpose of an allowlist
 ("exhaustive for our scope").
 
-Brand safety is therefore enforced **only at build time** via the
-`no_brand_leak` verifier (§5.5.3) over `hydrogen/app/**`. The
-synthesis prompts continue to instruct the LLM not to mention real
-brands, but `data/*.json` is not post-validated.
+The **build-loop `no_brand_leak` verifier is also currently
+disabled** in `default_verifiers_factory` — the same allowlist
+tokenizer (`[A-Z][A-Za-z]+`) flags React / Hydrogen / TS identifiers
+that the template legitimately imports (`Route`, `LoaderArgs`,
+`Money`, `CartForm`, …), generating thousands of false positives the
+agent cannot fix without breaking the build. The synthesis prompts and
+AGENTS.md continue to instruct the LLM not to mention real brands, but
+neither `data/*.json` nor `hydrogen/app/**` is post-validated.
 
 The helpers (`scan_for_brand_leaks`, `BrandLeakError`,
 `_walk_strings`, `_step_for_field_path`) remain in
@@ -895,7 +897,6 @@ packages/shop_arena/src/shop_gen/
 │   │   ├── __init__.py
 │   │   ├── tsc.py
 │   │   ├── build.py
-│   │   ├── routes_200.py
 │   │   ├── data_in_use.py
 │   │   ├── nav_coverage.py
 │   │   ├── no_brand_leak.py

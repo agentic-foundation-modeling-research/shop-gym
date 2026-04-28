@@ -23,7 +23,7 @@ sidecar lifecycle land:
   task.
 
 * :mod:`shop_gen.build.verifiers` — rule-based verifiers used by the
-  T5.6 loop driver: ``tsc``/``build``/``routes_200``/``data_in_use``/
+  T5.6 loop driver: ``tsc``/``build``/``data_in_use``/
   ``nav_coverage``/``no_brand_leak`` (T5.4) plus the LLM-based
   ``quality_judge`` and ``cross_task_consistency`` judges (T5.5).
 * :mod:`shop_gen.build.loop` — :class:`RunBuildHarnessLoopStep` (T5.6)
@@ -76,13 +76,11 @@ from shop_gen.build.verifiers import (
     BuildVerifier,
     CrossTaskConsistencyVerifier,
     DataInUseVerifier,
-    DevServerFactory,
     GraphQLOperationError,
     GraphQLOperationRef,
     NavCoverageVerifier,
     NoBrandLeakVerifier,
     QualityJudgeVerifier,
-    Routes200Verifier,
     SchemaIntrospection,
     TscVerifier,
 )
@@ -96,7 +94,6 @@ __all__ = [
     "CloneTemplateStep",
     "CrossTaskConsistencyVerifier",
     "DataInUseVerifier",
-    "DevServerFactory",
     "GraphQLOperationError",
     "GraphQLOperationRef",
     "LoopRunner",
@@ -104,7 +101,6 @@ __all__ = [
     "NoBrandLeakVerifier",
     "QualityJudgeVerifier",
     "RedoError",
-    "Routes200Verifier",
     "RunBuildHarnessLoopStep",
     "RuntimeFactory",
     "SchemaIntrospection",

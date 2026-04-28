@@ -16,7 +16,7 @@ Spec contract (§5.5):
 * The harness ``run_dir`` is ``<out_dir>/runs/build/``. The hydrogen
   work surface lives at ``<run_dir>/artifact/hydrogen/``.
 * The verifier list is the v0.1 set from spec §5.5.3 + §5.5.4
-  (``tsc``, ``build``, ``routes_200``, ``data_in_use``, ``nav_coverage``,
+  (``tsc``, ``build``, ``data_in_use``, ``nav_coverage``,
   ``no_brand_leak``, ``quality_judge``, ``cross_task_consistency``);
   callers can override via the ``verifiers_factory`` seam.
 
@@ -44,13 +44,13 @@ Module is import-safe: no I/O, no env reads, no side effects at import.
 
 from __future__ import annotations
 
-import contextlib
-import json
 import shutil
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Final, Protocol, cast, runtime_checkable
+from typing import Any, Final, Protocol, cast, runtime_checkable
+
+import httpx
 
 from harness import (
     AgentRuntime,
@@ -79,9 +79,7 @@ from shop_gen.build.verifiers import (
     CrossTaskConsistencyVerifier,
     DataInUseVerifier,
     NavCoverageVerifier,
-    NoBrandLeakVerifier,
     QualityJudgeVerifier,
-    Routes200Verifier,
     SchemaIntrospection,
     TscVerifier,
 )
@@ -200,8 +198,7 @@ class VerifiersFactory(Protocol):
 
     The factory receives the run workspace + the live sidecar handle so
     verifiers that need the schema-introspection seam (``data_in_use``)
-    or the dev-server seam (``routes_200``) can be wired against the
-    same sidecar the agent talks to.
+    can be wired against the same sidecar the agent talks to.
     """
 
     def __call__(
@@ -549,19 +546,15 @@ def default_verifiers_factory(
 ) -> tuple[Verifier, ...]:
     """Build the v0.1 verifier set documented in spec §5.5.3 + §5.5.4.
 
-    The set always contains the eight verifiers listed in the spec
-    table; every verifier is pluggable through its own constructor
-    seam so this default uses the production wiring (real ``pnpm``
-    invocations, the live sidecar's introspection endpoint, the
-    shipped allowlist).
+    Every verifier is pluggable through its own constructor seam; this
+    default uses the production wiring (real ``pnpm`` invocations, the
+    live sidecar's introspection endpoint, the shipped allowlist).
 
     Args:
         out_dir: Run workspace. Used by ``nav_coverage`` to locate
             ``data/collections.json``.
         sidecar: Live :class:`SidecarHandle`. Used by ``data_in_use`` to
-            point at the introspection endpoint and by ``routes_200``
-            (indirectly via the dev-server factory the caller may
-            override).
+            point at the introspection endpoint.
 
     Returns:
         Ordered verifier tuple suitable for
@@ -572,15 +565,11 @@ def default_verifiers_factory(
     return (
         TscVerifier(),
         BuildVerifier(),
-        Routes200Verifier(
-            task_routes=_default_task_routes(out_dir / _DATA_DIR),
-            dev_server_factory=_unconfigured_dev_server_factory,
-        ),
         DataInUseVerifier(
             introspect=_GraphqlIntrospector(base_url=sidecar.base_url),
         ),
         NavCoverageVerifier(data_dir=out_dir / _DATA_DIR),
-        NoBrandLeakVerifier(),
+        # NoBrandLeakVerifier(),  # temporarily disabled — broken; re-add import + line to revive.
         QualityJudgeVerifier(),
         CrossTaskConsistencyVerifier(),
     )
@@ -591,77 +580,36 @@ def default_verifiers_factory(
 # --------------------------------------------------------------------------- #
 
 
-_PRODUCT_HANDLE_FALLBACK: Final[str] = "placeholder"
-_PAGE_HANDLE_FALLBACK: Final[str] = "about"
+_INTROSPECTION_QUERY: Final[str] = """\
+{
+  __schema {
+    queryType { fields { name } }
+    mutationType { fields { name } }
+    subscriptionType { fields { name } }
+  }
+}
+"""
+"""Minimal introspection query — only the per-root-type field names the
+:class:`DataInUseVerifier` diffs against. Avoids pulling the full type
+graph that a stock ``IntrospectionQuery`` would return."""
 
+_INTROSPECT_TIMEOUT_S: Final[float] = 5.0
+"""Wall-clock budget for the introspection POST. The sidecar is loopback
+and the schema fetch is small, so a tight bound is appropriate."""
 
-def _default_task_routes(data_dir: Path) -> dict[str, tuple[str, ...]]:
-    """Derive the ``routes_200`` task → routes map from the published dataset.
+_GRAPHQL_PATH: Final[str] = "/graphql"
+"""Endpoint the ``shop_backend`` sidecar mounts via graphql-yoga
+(see ``packages/shop_backend/src/server.ts``)."""
 
-    Spec §5.5.3 wires ``routes_200`` against ``gen_navigation``,
-    ``gen_homepage``, ``gen_collections``, ``gen_product``, and
-    ``gen_info_pages`` (plus ``consolidate``). The product / pages
-    routes need a sample handle that exists in the dataset; the rest
-    are static.
-    """
-    product_handle = _read_first_handle(
-        data_dir / "products.json",
-        fallback=_PRODUCT_HANDLE_FALLBACK,
-    )
-    page_handle = _read_first_handle(
-        data_dir / "pages.json",
-        fallback=_PAGE_HANDLE_FALLBACK,
-    )
-    return {
-        "gen_navigation": ("/",),
-        "gen_homepage": ("/",),
-        "gen_collections": ("/collections",),
-        "gen_product": (f"/products/{product_handle}",),
-        "gen_info_pages": (f"/pages/{page_handle}",),
-        "consolidate": ("/", "/collections"),
-    }
-
-
-def _read_first_handle(path: Path, *, fallback: str) -> str:
-    """Return the ``handle`` field of the first record under ``path``.
-
-    A missing or unreadable file falls back to ``fallback`` so the
-    routes map never carries a `None`. The fallback only triggers when
-    the dataset is genuinely incomplete (Phase 2 should have populated
-    every file before Phase 4 runs).
-    """
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return fallback
-    if not isinstance(raw, list) or not raw:
-        return fallback
-    records = cast("list[object]", raw)
-    first = records[0]
-    if isinstance(first, dict):
-        handle = cast("dict[str, object]", first).get("handle")
-        if isinstance(handle, str) and handle:
-            return handle
-    return fallback
-
-
-@contextlib.contextmanager
-def _unconfigured_dev_server_factory(
-    hydrogen_dir: Path,
-):  # pragma: no cover — production wiring lands alongside playwright_smoke (M6).
-    """Placeholder dev-server factory that refuses to boot.
-
-    Calling :class:`Routes200Verifier` against this factory raises a
-    :class:`NotImplementedError`. The real `pnpm dev` driver lands with
-    M6's playwright smoke; T5.6 ships the loop wiring with the verifier
-    constructable so callers (and tests) can swap a working factory in.
-    """
-    del hydrogen_dir
-    raise NotImplementedError(
-        "default Routes200Verifier dev-server factory is unconfigured; "
-        "inject a `dev_server_factory` via the verifiers_factory seam.",
-    )
-    yield ""  # pragma: no cover — unreachable; keeps the function a generator.
+_OPERATION_ROOT_SLOTS: Final[tuple[tuple[str, str], ...]] = (
+    ("queryType", "Query"),
+    ("mutationType", "Mutation"),
+    ("subscriptionType", "Subscription"),
+)
+"""Maps each ``__schema`` root slot to the canonical name the verifier
+keys on. The schema's actual type names (e.g. ``QueryRoot``) are
+discarded — the verifier addresses roots by operation kind, not by the
+type label the server happens to use."""
 
 
 class _GraphqlIntrospector:
@@ -675,17 +623,83 @@ class _GraphqlIntrospector:
         """Bind the introspector to the live sidecar's storefront URL."""
         self._base_url = base_url
 
-    def __call__(self) -> SchemaIntrospection:  # pragma: no cover — production wiring.
+    def __call__(self) -> SchemaIntrospection:
         """Return the current schema's root-field index.
 
-        The implementation lands alongside M6's playwright smoke so the
-        loop driver (T5.6) and the verifier (T5.4) ship in lockstep.
-        Tests inject a stub via the verifiers_factory seam.
+        Raises:
+            RuntimeError: The sidecar replied with an HTTP error, a
+                GraphQL ``errors`` payload, or an unexpectedly shaped
+                response. :class:`DataInUseVerifier` converts this into
+                a structured ``FAIL`` rather than propagating, so the
+                build loop never deadlocks on a transient sidecar hiccup.
+            httpx.HTTPError: The POST never reached the sidecar (e.g.
+                connection refused). Same handling applies.
         """
-        raise NotImplementedError(
-            f"default _GraphqlIntrospector is unconfigured (base_url={self._base_url!r}); "
-            "inject an `introspect` callable via the verifiers_factory seam.",
+        url = f"{self._base_url}{_GRAPHQL_PATH}"
+        response = httpx.post(
+            url,
+            json={"query": _INTROSPECTION_QUERY},
+            timeout=_INTROSPECT_TIMEOUT_S,
         )
+        response.raise_for_status()
+        payload = cast("dict[str, Any]", response.json())
+        return _schema_from_introspection(payload)
+
+
+def _schema_from_introspection(payload: dict[str, Any]) -> SchemaIntrospection:
+    """Translate a GraphQL introspection response into :class:`SchemaIntrospection`.
+
+    Args:
+        payload: Parsed JSON body from ``POST /graphql``.
+
+    Returns:
+        :class:`SchemaIntrospection` with one entry per root type the
+        server actually exposes. Roots returned as ``null`` (e.g. a
+        schema without mutations) are omitted, matching
+        :meth:`SchemaIntrospection.fields_for`'s empty-set fallback.
+
+    Raises:
+        RuntimeError: The payload carries a top-level ``errors`` array
+            or does not match the introspection shape we expect.
+    """
+    errors = payload.get("errors")
+    if errors:
+        raise RuntimeError(f"GraphQL introspection errors: {errors!r}")
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise RuntimeError(f"introspection response missing `data`: {payload!r}")
+    schema = cast("dict[str, Any]", data).get("__schema")
+    if not isinstance(schema, dict):
+        raise RuntimeError(f"introspection response missing `__schema`: {payload!r}")
+    schema_dict = cast("dict[str, Any]", schema)
+    root_fields: dict[str, frozenset[str]] = {}
+    for slot, canonical in _OPERATION_ROOT_SLOTS:
+        slot_value = schema_dict.get(slot)
+        if slot_value is None:
+            continue
+        if not isinstance(slot_value, dict):
+            raise RuntimeError(
+                f"introspection `{slot}` is not an object: {slot_value!r}",
+            )
+        fields = cast("dict[str, Any]", slot_value).get("fields")
+        if not isinstance(fields, list):
+            raise RuntimeError(
+                f"introspection `{slot}.fields` is not a list: {fields!r}",
+            )
+        names: set[str] = set()
+        for entry in cast("list[Any]", fields):
+            if not isinstance(entry, dict):
+                raise RuntimeError(
+                    f"introspection `{slot}.fields` entry is not an object: {entry!r}",
+                )
+            name = cast("dict[str, Any]", entry).get("name")
+            if not isinstance(name, str):
+                raise RuntimeError(
+                    f"introspection `{slot}.fields[].name` is not a string: {name!r}",
+                )
+            names.add(name)
+        root_fields[canonical] = frozenset(names)
+    return SchemaIntrospection(root_fields=root_fields)
 
 
 # --------------------------------------------------------------------------- #

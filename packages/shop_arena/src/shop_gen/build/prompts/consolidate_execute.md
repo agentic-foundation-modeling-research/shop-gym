@@ -5,9 +5,9 @@ completed (or has been marked `[!]` with a deferred reason). The harness
 selected the mandatory final task `consolidate`; this prompt replaces
 the generic executor body for that one task.
 
-`AGENTS.md` (at `<run_dir>/AGENTS.md`) is the contract — brand-safety
-rules, file-write conventions, sidecar / Storefront API conventions,
-verifier contract. Read it first; this prompt does not duplicate it.
+`AGENTS.md` (at `<run_dir>/AGENTS.md`) is the contract — file-write
+conventions, sidecar / Storefront API conventions, verifier contract.
+Read it first; this prompt does not duplicate it.
 
 Your job is **cross-task cleanup**, not new features. Do not introduce
 new pages, new components, or new visual treatments. Fix the seams the
@@ -25,9 +25,8 @@ If the block above is empty, this is the first attempt at consolidation
 — proceed normally. If the block contains a verifier report, treat it as
 a hard error description from the previous consolidation iteration:
 
-- For rule verifiers (`tsc`, `build`, `routes_200`, `data_in_use`,
-  `nav_coverage`, `no_brand_leak`) — the body lists the offending
-  file:line + diagnostic. Fix in place.
+- For rule verifiers (`tsc`, `build`, `data_in_use`, `nav_coverage`) —
+  the body lists the offending file:line + diagnostic. Fix in place.
 - For `quality_judge` — the body is an LLM verdict scoped to the
   storefront's manual; treat it as a focused product review and fix
   the called-out gap.
@@ -73,7 +72,7 @@ The full `hydrogen/app/` tree is your scope, but read it surgically:
 
 ---
 
-## 3. What to fix (the seven seams)
+## 3. What to fix (the six seams)
 
 Walk these checks **in order**. Each is a deliberate cross-task seam the
 slice-owned `gen_*` tasks could not own on their own:
@@ -110,12 +109,6 @@ slice-owned `gen_*` tasks could not own on their own:
    `feedback.md`, apply the fix to the right slice, and tighten the
    `plan.md` line to drop the deferral marker if the fix is now in
    place.
-7. **Brand-safety sweep.** Run a final scan of `hydrogen/app/**` for
-   capitalized tokens that are neither in the AGENTS.md §2 allowlist
-   nor recognized common-noun categories. Replace any leak with the
-   allowlisted equivalent or with descriptor-shaped prose. The
-   `no_brand_leak` verifier will catch leaks; you save a retry cycle by
-   fixing them here.
 
 What is **out of scope**:
 
@@ -139,20 +132,17 @@ Consolidation is read-heavy. Keep iteration count down:
 3. **Run `pnpm --filter hydrogen tsc --noEmit` + `pnpm --filter hydrogen build`
    once at the end** to confirm the cleanup did not regress anything.
    The harness verifier set will rerun them; catching here saves a retry.
-4. **Do not start a dev server** unless verifier feedback specifically
-   asked for a `routes_200` re-check.
+4. **Do not start a dev server** during consolidation.
 
 ---
 
 ## 5. Self-check before exit
 
-- Every change is a fix to one of the seven seams in §3 — no new
+- Every change is a fix to one of the six seams in §3 — no new
   features.
 - Every modified file lives under `artifact/hydrogen/`.
 - `pnpm --filter hydrogen tsc --noEmit` passes.
 - `pnpm --filter hydrogen build` succeeds.
-- A spot-grep over `hydrogen/app/**` confirms no real-world brand
-  tokens; only AGENTS.md §2 allowlist tokens or common-noun vocabulary.
 - `plan.md` shows `consolidate` as `[x]` (or `[!] <reason>` if you ran
   out of budget on a specific seam); no other task's checkbox changed.
 - For any deferred `[!]` `gen_*` task whose reason you fixed, the line

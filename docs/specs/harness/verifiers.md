@@ -338,7 +338,7 @@ explicit: "harness should be able to apply them."
 ## 7. Open Questions
 
 1. **Verifier *parallelism*.** v0.1 ships sequential. Dependency
-   among verifiers (e.g. `tsc` must pass before `routes_200`) is
+   among verifiers (e.g. `tsc` must pass before `build`) is
    captured by registration order in v0.1; v0.2 may add explicit
    `depends_on`. Default: defer.
 2. **Rerun limits.** Should the harness track "task X has failed
