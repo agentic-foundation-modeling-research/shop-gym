@@ -83,7 +83,7 @@ versioned reports without manual editing (spec §4, §7 M6).
 
 ### M5 · Full cohort run (spec §7 M5)
 
-- [ ] **T5.1** — Resolve spec §8.5 open questions before the cohort run: (a) the 3 unpaired real shops (selection per §8.5 Q1); (b) bot-detection mitigation for hexclad / aloyoga (§8.5 Q2); (c) sandbox URLs for `pair_hexclad` and `pair_aloyoga` (§8.5 Q3); (d) anonymization-sufficiency ablation for axis C (§8.5 Q4). **Check:** decisions documented in `cohort.yaml` + a v0.1 README; ablation report committed.
+- [x] **T5.1** — Resolve spec §8.5 open questions before the cohort run: (a) the 3 unpaired real shops (selection per §8.5 Q1); (b) bot-detection mitigation for hexclad / aloyoga (§8.5 Q2); (c) sandbox URLs for `pair_hexclad` and `pair_aloyoga` (§8.5 Q3); (d) anonymization-sufficiency ablation for axis C (§8.5 Q4). **Check:** decisions documented in `cohort.yaml` + a v0.1 README; ablation report committed.
 - [ ] **T5.2** — N=3 reruns of axes A and B over all 9 targets per spec §5.8. Compute `flake_rate_per_probe` per `ProbeReport` field. Save HAR captures + all screenshots + a11y snapshots per spec §5.8. **Check:** every report has `flake_rate < 1%`; HAR + evidence trail present.
 - [ ] **T5.3** — Full pairwise judge across experimental + control pairs (spec §7 M5 gate). **Check:** `judge_accuracy_experimental` per pair + `judge_accuracy_control` cohort-level reported.
 
