@@ -3,12 +3,18 @@
 Per-collection LLM-call step that fills in the catalog skeletons emitted by
 :func:`synth_product_skeletons` with rich detail — variants, options,
 ``description_html``, ``vendor`` (drawn from the fake-brand allowlist), and
-``tags``. The step issues one LLM completion per collection (parallel with
-≤ 5 concurrent workers), pydantic-validates each returned detail at the
-boundary, and re-prompts a single time on any rejection. Drops that survive
-both attempts contribute to a global rejection counter; if more than 5% of
-the catalog's skeletons are dropped the step fails (spec §5.3 "Schema
-strictness vs. LLM drift").
+``tags``. Collections run in parallel (≤ 5 concurrent workers); within a
+collection the skeleton list is split into chunks of at most
+:data:`_MAX_SKELETONS_PER_CALL` so each LLM completion's output stays well
+below the model's effective output-token budget (spec §5.3 originally
+specified one call per collection — see :data:`_MAX_SKELETONS_PER_CALL`
+for the deviation rationale). Each chunk's response is
+pydantic-validated at the boundary; both per-row validation rejects
+and whole-response parse failures (e.g. truncated JSON) consume the
+same one re-prompt budget. Drops that survive both attempts contribute
+to a global rejection counter; if more than 5% of the catalog's
+skeletons are dropped the step fails (spec §5.3 "Schema strictness vs.
+LLM drift").
 
 The validated details are cached as JSON arrays under
 ``<out_dir>/.shop_gen/stage_cache/details/<collection_handle>.json`` and a
@@ -61,7 +67,7 @@ _IN_COLLECTIONS: Final[Path] = Path(".shop_gen") / "stage_cache" / "collections.
 _IN_IDENTITY: Final[Path] = Path("identity.json")
 
 _LLM_TIMEOUT_S: Final[float] = 120.0
-"""Per-collection budget; one LLM call per collection."""
+"""Per-LLM-call wall-clock budget; multiple calls may run for one collection."""
 
 _MAX_WORKERS: Final[int] = 5
 """Parallel ceiling for per-collection LLM calls (spec §5.3 "≤ 5 concurrent")."""
@@ -71,6 +77,25 @@ _MAX_REJECTION_RATE: Final[float] = 0.05
 
 _MAX_RETRIES: Final[int] = 1
 """One re-prompt allowed per rejected row (spec §5.3)."""
+
+_MAX_SKELETONS_PER_CALL: Final[int] = 10
+"""Upper bound on skeletons sent in a single LLM call.
+
+Spec §5.3 originally prescribed "one LLM call per collection". With the
+v0.1 default of ``products_per_collection=20`` (see
+``CatalogConfig.DEFAULT_PRODUCTS_PER_COLLECTION``) the per-collection
+response routinely exceeds the model's effective output-token budget,
+which surfaces as ``json.JSONDecodeError: Unterminated string`` and
+fails the entire collection (>5% rejection ⇒ step failure). Splitting
+the skeleton list into chunks of this size keeps each response well
+within the budget while preserving the per-collection cache file shape
+(one ``<collection>.json`` per collection, sum of chunk outputs).
+Concurrency is unchanged: chunks within a collection run sequentially;
+collections still run in parallel under :data:`_MAX_WORKERS`.
+"""
+
+_FAILED_RAW_DUMP_PREFIX: Final[str] = "_failed"
+"""Filename prefix for raw LLM responses persisted on parse failure."""
 
 _TEXT_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[A-Z][A-Za-z]+")
 """Same capitalized-run regex the §5.6 scanner uses."""
@@ -155,16 +180,28 @@ def synth_product_details_for_collection(
     skeletons: list[ProductSkeleton],
     completer: LLMCompleter,
     allowlist: Allowlist | None = None,
+    debug_dir: Path | None = None,
 ) -> tuple[list[ProductDetail], int]:
     """Synthesize details for one collection's product skeletons.
 
-    Issues one LLM completion with all of the collection's skeletons, parses
-    the response into a JSON array, validates each entry against
-    :class:`ProductDetail`, and re-prompts once with the rejected handles.
-    Details whose ``vendor`` / ``description_html`` / ``product_type`` / any
-    ``tags`` element fails the allowlist post-pass are also collected as
-    rejects. After the retry, surviving rejects are dropped and the count
-    is reported back to the caller for the global ``>5%`` accounting.
+    The skeleton list is partitioned into chunks of at most
+    :data:`_MAX_SKELETONS_PER_CALL`; each chunk drives one LLM completion
+    (plus up to :data:`_MAX_RETRIES` re-prompts for rows that fail
+    pydantic / allowlist validation). Chunking is purely a per-call
+    output-size guard — the per-collection cache file shape and the
+    rejection accounting are both unchanged from the single-call
+    contract documented in spec §5.3.
+
+    Each chunk parses the response into a JSON array, validates each
+    entry against :class:`ProductDetail`, and re-prompts once on
+    failure. Two failure modes share the single re-prompt budget:
+    per-row validation rejects (pydantic / allowlist) re-prompt with the
+    rejected handles only; whole-response parse failures (e.g. truncated
+    JSON) re-prompt with the same handle list. After the retry,
+    surviving per-row rejects are dropped and counted toward the global
+    ``>5%`` budget; an unrecovered whole-response parse failure raises
+    :class:`StageSynthError` (the raw response is persisted to
+    ``debug_dir`` first when set).
 
     Args:
         identity: Decoded ``identity.json`` document (read-only context
@@ -176,16 +213,24 @@ def synth_product_details_for_collection(
             :class:`~harness.runtimes.LLMCompleter`).
         allowlist: Optional pre-loaded :class:`Allowlist`. Defaults to the
             in-repo ``fake_brands.json`` (cached after first use).
+        debug_dir: When set, raw LLM responses for chunks whose JSON
+            cannot be parsed are persisted under
+            ``<debug_dir>/_failed_<collection>_chunk_<i>_attempt_<n>.txt``
+            before the :class:`StageSynthError` propagates. Lets the
+            caller inspect truncated / malformed responses without
+            re-running the whole step. ``None`` (default) suppresses
+            the dump.
 
     Returns:
         Tuple ``(details, dropped_count)``: ``details`` is the validated
         list (length ≤ ``len(skeletons)``); ``dropped_count`` is the
-        number of skeletons that failed both attempts.
+        number of skeletons that failed both attempts across all chunks.
 
     Raises:
-        StageSynthError: ``skeletons`` is empty, the LLM response cannot
-            be parsed as a JSON array, or the response is empty after
-            stripping fences.
+        StageSynthError: ``skeletons`` is empty, or any chunk's LLM
+            response cannot be parsed as a JSON array (after stripping
+            fences). The raw response is persisted to ``debug_dir``
+            first when that argument is set.
     """
     if not skeletons:
         raise StageSynthError(
@@ -194,6 +239,69 @@ def synth_product_details_for_collection(
         )
     target_allowlist = allowlist if allowlist is not None else load_allowlist()
 
+    accepted: dict[str, ProductDetail] = {}
+    total_dropped = 0
+    for chunk_index, chunk in enumerate(_iter_chunks(skeletons, _MAX_SKELETONS_PER_CALL)):
+        chunk_accepted, chunk_dropped = _synth_chunk_with_retries(
+            identity=identity,
+            collection=collection,
+            skeletons=chunk,
+            completer=completer,
+            allowlist=target_allowlist,
+            chunk_index=chunk_index,
+            debug_dir=debug_dir,
+        )
+        accepted.update(chunk_accepted)
+        total_dropped += chunk_dropped
+
+    # Preserve the input skeleton order in the returned list.
+    ordered: list[ProductDetail] = [accepted[s.handle] for s in skeletons if s.handle in accepted]
+    return ordered, total_dropped
+
+
+def _iter_chunks(
+    skeletons: list[ProductSkeleton],
+    chunk_size: int,
+    /,
+) -> Iterable[list[ProductSkeleton]]:
+    """Yield successive ``chunk_size``-sized slices of ``skeletons``."""
+    for start in range(0, len(skeletons), chunk_size):
+        yield skeletons[start : start + chunk_size]
+
+
+def _synth_chunk_with_retries(
+    *,
+    identity: dict[str, Any],
+    collection: CollectionDraft,
+    skeletons: list[ProductSkeleton],
+    completer: LLMCompleter,
+    allowlist: Allowlist,
+    chunk_index: int,
+    debug_dir: Path | None,
+) -> tuple[dict[str, ProductDetail], int]:
+    """Synthesize one chunk's details with the per-row retry loop.
+
+    Returns ``(accepted_by_handle, dropped_count)``. The accepted map is
+    keyed by ``ProductSkeleton.handle`` so the caller can merge across
+    chunks without re-ordering.
+
+    Both per-row validation failures and whole-response parse failures
+    consume the same one re-prompt budget (spec §5.3 "Schema strictness
+    vs. LLM drift"):
+
+    * Per-row failures (pydantic / allowlist) on a non-final attempt
+      push the failing skeleton onto ``next_pending``; the surviving
+      rows are accepted as usual.
+    * Whole-response parse failures on a non-final attempt dump the raw
+      response (for inspection) and re-issue the call with the same
+      ``pending`` list — useful when the model truncated transiently
+      and a re-prompt yields a complete payload.
+    * On the final attempt either failure mode escalates: per-row
+      failures drop the skeleton (counted toward the global ≥ 5%
+      budget); a whole-response parse failure raises so the step
+      surfaces the dumped artefact rather than silently dropping the
+      whole chunk.
+    """
     accepted: dict[str, ProductDetail] = {}
     pending = list(skeletons)
     for attempt in range(_MAX_RETRIES + 1):
@@ -204,9 +312,30 @@ def synth_product_details_for_collection(
             collection=collection,
             skeletons=pending,
             completer=completer,
-            allowlist=target_allowlist,
+            allowlist=allowlist,
         )
-        details = _parse_details_payload(raw, expected_handles=[s.handle for s in pending])
+        try:
+            details = _parse_details_payload(
+                raw,
+                expected_handles=[s.handle for s in pending],
+            )
+        except StageSynthError:
+            _dump_failed_response(
+                raw,
+                debug_dir=debug_dir,
+                collection_handle=collection.handle,
+                chunk_index=chunk_index,
+                attempt=attempt,
+            )
+            # Whole-response parse failures (e.g. truncated JSON)
+            # consume the same one re-prompt budget as per-row
+            # validation failures (spec §5.3 "Schema strictness vs.
+            # LLM drift"). On the final attempt the chunk has no
+            # usable payload — escalate to the step-fatal failure so
+            # the user sees the dump path in the run log.
+            if attempt < _MAX_RETRIES:
+                continue
+            raise
         next_pending: list[ProductSkeleton] = []
         for skeleton in pending:
             detail = details.get(skeleton.handle)
@@ -214,8 +343,8 @@ def synth_product_details_for_collection(
                 next_pending.append(skeleton)
                 continue
             try:
-                _assert_no_allowlist_token_in_text_fields(detail, allowlist=target_allowlist)
-                _assert_vendor_in_allowlist(detail, allowlist=target_allowlist)
+                _assert_no_allowlist_token_in_text_fields(detail, allowlist=allowlist)
+                _assert_vendor_in_allowlist(detail, allowlist=allowlist)
                 _assert_variants_match_options(detail)
             except StageSynthError:
                 if attempt < _MAX_RETRIES:
@@ -226,10 +355,37 @@ def synth_product_details_for_collection(
             accepted[skeleton.handle] = detail
         pending = next_pending
 
-    # Preserve the input skeleton order in the returned list.
-    ordered: list[ProductDetail] = [accepted[s.handle] for s in skeletons if s.handle in accepted]
-    dropped = len(skeletons) - len(ordered)
-    return ordered, dropped
+    dropped = len(skeletons) - len(accepted)
+    return accepted, dropped
+
+
+def _dump_failed_response(
+    raw: str,
+    *,
+    debug_dir: Path | None,
+    collection_handle: str,
+    chunk_index: int,
+    attempt: int,
+) -> None:
+    """Persist a parse-failed LLM response so the caller can inspect it.
+
+    The dump is best-effort: ``debug_dir=None`` and any :class:`OSError`
+    during the write are swallowed. The raise of the original parse
+    error is the source of truth for the step failure — a missing
+    debug artefact must not mask it.
+    """
+    if debug_dir is None:
+        return
+    filename = (
+        f"{_FAILED_RAW_DUMP_PREFIX}_{collection_handle}"
+        f"_chunk_{chunk_index}_attempt_{attempt}.txt"
+    )
+    try:
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        (debug_dir / filename).write_text(raw, encoding="utf-8")
+    except OSError:
+        # Never let a debug-side failure shadow the real parse error.
+        return
 
 
 def _run_completion(
@@ -329,14 +485,18 @@ class SynthProductDetailsStep:
 
         Args:
             ctx: Execution context. ``ctx.runtime`` is required — the
-                step issues one LLM call per collection.
+                step issues one LLM call per chunk of skeletons within
+                each collection (see :data:`_MAX_SKELETONS_PER_CALL`).
 
         Raises:
             ValueError: ``ctx.runtime`` is ``None``.
             FileNotFoundError: Any of the upstream cached files
                 (``identity.json``, ``collections.json``,
                 ``skeletons.json``) is missing.
-            StageSynthError: An LLM response is unparseable, or the
+            StageSynthError: An LLM response is unparseable (the raw
+                response is persisted as
+                ``<details_dir>/_failed_<handle>_chunk_<i>_attempt_<n>.txt``
+                for inspection before the error propagates), or the
                 global rejection rate exceeds 5%.
         """
         if ctx.runtime is None:
@@ -378,6 +538,7 @@ class SynthProductDetailsStep:
                     collection=collection,
                     skeletons=skeletons_by_collection[collection.handle],
                     completer=ctx.runtime,
+                    debug_dir=details_dir,
                 ): collection.handle
                 for collection in collections
             }

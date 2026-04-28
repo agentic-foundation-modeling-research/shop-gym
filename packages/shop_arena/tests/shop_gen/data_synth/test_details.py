@@ -43,6 +43,7 @@ from shop_gen.data_synth import (
 from shop_gen.data_synth.details import (
     _MAX_REJECTION_RATE,
     _MAX_RETRIES,
+    _MAX_SKELETONS_PER_CALL,
     synth_product_details_for_collection,
 )
 from shop_gen.data_synth.prompts import load_synth_product_details_template
@@ -300,7 +301,8 @@ def test_synth_details_rejects_empty_skeleton_list() -> None:
 
 
 def test_synth_details_rejects_empty_response() -> None:
-    completer = _StubCompleter(responses={"outerwear": [""]})
+    """Two empty responses (initial + retry) escalate to ``StageSynthError``."""
+    completer = _StubCompleter(responses={"outerwear": ["", ""]})
     with pytest.raises(StageSynthError, match="empty response"):
         synth_product_details_for_collection(
             identity=_IDENTITY,
@@ -308,10 +310,12 @@ def test_synth_details_rejects_empty_response() -> None:
             skeletons=_OUTERWEAR_SKELETONS,
             completer=cast(LLMCompleter, completer),
         )
+    assert len(completer.prompts) == _MAX_RETRIES + 1
 
 
 def test_synth_details_rejects_object_response() -> None:
-    completer = _StubCompleter(responses={"outerwear": ["{}"]})
+    """Two object responses (initial + retry) escalate to ``StageSynthError``."""
+    completer = _StubCompleter(responses={"outerwear": ["{}", "{}"]})
     with pytest.raises(StageSynthError, match="JSON array"):
         synth_product_details_for_collection(
             identity=_IDENTITY,
@@ -319,10 +323,12 @@ def test_synth_details_rejects_object_response() -> None:
             skeletons=_OUTERWEAR_SKELETONS,
             completer=cast(LLMCompleter, completer),
         )
+    assert len(completer.prompts) == _MAX_RETRIES + 1
 
 
 def test_synth_details_rejects_empty_array() -> None:
-    completer = _StubCompleter(responses={"outerwear": ["[]"]})
+    """Two empty arrays (initial + retry) escalate to ``StageSynthError``."""
+    completer = _StubCompleter(responses={"outerwear": ["[]", "[]"]})
     with pytest.raises(StageSynthError, match="empty details array"):
         synth_product_details_for_collection(
             identity=_IDENTITY,
@@ -330,6 +336,7 @@ def test_synth_details_rejects_empty_array() -> None:
             skeletons=_OUTERWEAR_SKELETONS,
             completer=cast(LLMCompleter, completer),
         )
+    assert len(completer.prompts) == _MAX_RETRIES + 1
 
 
 def test_synth_details_retry_recovers_validation_failure() -> None:
@@ -469,6 +476,142 @@ def test_synth_details_silently_drops_extra_handles() -> None:
     assert [d.handle for d in details] == ["warm-winter-coat", "waterproof-rain-jacket"]
 
 
+def test_synth_details_chunks_when_skeletons_exceed_call_size() -> None:
+    """A skeleton list larger than ``_MAX_SKELETONS_PER_CALL`` drives multiple LLM calls.
+
+    Caps total per-call output size so an over-budget collection cannot
+    truncate the model's response and fail the whole step.
+    """
+    chunk_size = _MAX_SKELETONS_PER_CALL
+    total = chunk_size + 5  # exactly two chunks: full + partial.
+    big_collection = _collection("outerwear", count=total)
+    big_skeletons = [_skeleton(f"outerwear-item-{i}", collection="outerwear") for i in range(total)]
+    chunk0 = big_skeletons[:chunk_size]
+    chunk1 = big_skeletons[chunk_size:]
+    completer = _StubCompleter(
+        responses={
+            "outerwear": [
+                json.dumps([_detail_dict(handle=s.handle) for s in chunk0]),
+                json.dumps([_detail_dict(handle=s.handle) for s in chunk1]),
+            ],
+        },
+    )
+    details, dropped = synth_product_details_for_collection(
+        identity=_IDENTITY,
+        collection=big_collection,
+        skeletons=big_skeletons,
+        completer=cast(LLMCompleter, completer),
+    )
+    expected_calls = (total + chunk_size - 1) // chunk_size
+    assert len(completer.prompts) == expected_calls
+    assert dropped == 0
+    assert [d.handle for d in details] == [s.handle for s in big_skeletons]
+
+
+def test_synth_details_dumps_raw_response_on_parse_failure(tmp_path: Path) -> None:
+    """Every-attempt parse failure: each attempt's raw is dumped, then the error propagates."""
+    truncated = '[{"handle": "warm-winter-coat", "description_html": "<p>unfinis'
+    # Both attempts truncate the same way ⇒ unrecoverable. Each attempt's
+    # raw response is persisted with its own ``attempt_<n>`` suffix.
+    completer = _StubCompleter(responses={"outerwear": [truncated, truncated]})
+    debug_dir = tmp_path / "details"
+
+    with pytest.raises(StageSynthError, match="not valid JSON"):
+        synth_product_details_for_collection(
+            identity=_IDENTITY,
+            collection=_OUTERWEAR,
+            skeletons=_OUTERWEAR_SKELETONS,
+            completer=cast(LLMCompleter, completer),
+            debug_dir=debug_dir,
+        )
+
+    dumps = sorted(debug_dir.glob("_failed_outerwear_*.txt"))
+    assert [d.name for d in dumps] == [
+        "_failed_outerwear_chunk_0_attempt_0.txt",
+        "_failed_outerwear_chunk_0_attempt_1.txt",
+    ]
+    for dump in dumps:
+        assert dump.read_text(encoding="utf-8") == truncated
+
+
+def test_synth_details_retry_recovers_from_parse_failure() -> None:
+    """A truncated response on attempt 0 + valid JSON on attempt 1 ⇒ success.
+
+    Targets the transient-truncation case that motivated Fix B in
+    ``docs/specs/shop_arena/shop_gen.md`` §5.3 ("Schema strictness vs. LLM drift"):
+    a single truncated response should not poison the whole step when
+    the re-prompt budget is still available.
+    """
+    truncated = '[{"handle": "warm-winter-coat", "description_html": "<p>unfinis'
+    good = _details_response(["warm-winter-coat", "waterproof-rain-jacket"])
+    completer = _StubCompleter(responses={"outerwear": [truncated, good]})
+
+    details, dropped = synth_product_details_for_collection(
+        identity=_IDENTITY,
+        collection=_OUTERWEAR,
+        skeletons=_OUTERWEAR_SKELETONS,
+        completer=cast(LLMCompleter, completer),
+    )
+    assert len(completer.prompts) == _MAX_RETRIES + 1
+    assert dropped == 0
+    assert [d.handle for d in details] == ["warm-winter-coat", "waterproof-rain-jacket"]
+
+
+def test_synth_details_no_dump_when_debug_dir_unset(tmp_path: Path) -> None:
+    """Without ``debug_dir`` the parse error still propagates but no file is written."""
+    completer = _StubCompleter(
+        responses={"outerwear": ["not even close to json", "still not json"]},
+    )
+    debug_dir = tmp_path / "details"  # exists but never passed in.
+    debug_dir.mkdir()
+
+    with pytest.raises(StageSynthError, match="not valid JSON"):
+        synth_product_details_for_collection(
+            identity=_IDENTITY,
+            collection=_OUTERWEAR,
+            skeletons=_OUTERWEAR_SKELETONS,
+            completer=cast(LLMCompleter, completer),
+        )
+
+    assert list(debug_dir.iterdir()) == []
+
+
+def test_step_run_dumps_raw_on_chunk_parse_failure(tmp_path: Path) -> None:
+    """End-to-end: a truncated chunk response leaves a dump under the details dir.
+
+    Mirrors the production failure mode (model truncation produces
+    invalid JSON across the re-prompt budget) and asserts the user gets
+    a usable on-disk artefact even when the step fails fast.
+    """
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    _materialise_workspace(out_dir)
+    truncated = '[{"handle": "warm-winter-coat", "description_html": "<p>unfinis'
+    completer = _StubCompleter(
+        responses={
+            # Two truncated responses ⇒ retry exhausted ⇒ step-fatal.
+            "outerwear": [truncated, truncated],
+            # kitchen-tools may or may not run depending on thread scheduling;
+            # keep its queue valid so we don't conflate parse failure with
+            # "stub ran dry".
+            "kitchen-tools": [_details_response(["ceramic-coffee-mug", "stainless-mixing-bowl"])],
+        },
+    )
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    ctx = StepContext(config=config, out_dir=out_dir, runtime=cast(LLMCompleter, completer))
+
+    with pytest.raises(StageSynthError, match="not valid JSON"):
+        SynthProductDetailsStep().run(ctx)
+
+    details_dir = out_dir / ".shop_gen" / "stage_cache" / "details"
+    dumps = sorted(details_dir.glob("_failed_outerwear_*.txt"))
+    assert [d.name for d in dumps] == [
+        "_failed_outerwear_chunk_0_attempt_0.txt",
+        "_failed_outerwear_chunk_0_attempt_1.txt",
+    ]
+    for dump in dumps:
+        assert dump.read_text(encoding="utf-8") == truncated
+
 # --------------------------------------------------------------------------- #
 # SynthProductDetailsStep
 # --------------------------------------------------------------------------- #
@@ -554,21 +697,35 @@ def test_step_run_tolerates_drops_under_budget(tmp_path: Path) -> None:
     ]
     all_skeletons = outerwear_skeletons + kitchen_skeletons
     _materialise_workspace(out_dir, collections=big_collections, skeletons=all_skeletons)
+    # With ``_BIG_PER_COLLECTION_COUNT == 20`` and the implementation's
+    # ``_MAX_SKELETONS_PER_CALL == 10`` chunk size, each collection is
+    # synthesised over two LLM calls. Outerwear's chunk-0 contains the
+    # bad row at index 0, which fails on both attempts ⇒ 1 drop. The
+    # other three chunks all return clean payloads.
+    outerwear_chunk0 = outerwear_skeletons[:_MAX_SKELETONS_PER_CALL]
+    outerwear_chunk1 = outerwear_skeletons[_MAX_SKELETONS_PER_CALL:]
+    kitchen_chunk0 = kitchen_skeletons[:_MAX_SKELETONS_PER_CALL]
+    kitchen_chunk1 = kitchen_skeletons[_MAX_SKELETONS_PER_CALL:]
 
-    # outerwear: drop one handle on both attempts -> 1 drop.
-    outerwear_first_payload = [_detail_dict(handle=s.handle) for s in outerwear_skeletons]
-    outerwear_first_payload[0]["tags"] = "not-a-list"
-    outerwear_retry_payload = [
-        {**_detail_dict(handle=outerwear_skeletons[0].handle), "tags": "still-bad"},
+    outerwear_chunk0_first = [_detail_dict(handle=s.handle) for s in outerwear_chunk0]
+    outerwear_chunk0_first[0]["tags"] = "not-a-list"
+    outerwear_chunk0_retry = [
+        {**_detail_dict(handle=outerwear_chunk0[0].handle), "tags": "still-bad"},
     ]
+    outerwear_chunk1_first = [_detail_dict(handle=s.handle) for s in outerwear_chunk1]
+    kitchen_chunk0_first = [_detail_dict(handle=s.handle) for s in kitchen_chunk0]
+    kitchen_chunk1_first = [_detail_dict(handle=s.handle) for s in kitchen_chunk1]
+
     completer = _StubCompleter(
         responses={
             "outerwear": [
-                json.dumps(outerwear_first_payload),
-                json.dumps(outerwear_retry_payload),
+                json.dumps(outerwear_chunk0_first),
+                json.dumps(outerwear_chunk0_retry),
+                json.dumps(outerwear_chunk1_first),
             ],
             "kitchen-tools": [
-                json.dumps([_detail_dict(handle=s.handle) for s in kitchen_skeletons]),
+                json.dumps(kitchen_chunk0_first),
+                json.dumps(kitchen_chunk1_first),
             ],
         },
     )

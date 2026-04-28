@@ -293,7 +293,7 @@ image generation) is deliberately deferred to a v0.2 follow-up.
 | `synth_pages`                | `synth_identity`, merged caps        | `.shop_gen/stage_cache/pages.json`  |
 | `synth_policies`             | `synth_identity`                     | `.shop_gen/stage_cache/policies.json` |
 | `synth_product_skeletons`    | `synth_collections`                  | `.shop_gen/stage_cache/skeletons.json` (200 titles, handles, prices; one bulk call at v0.1 scale) |
-| `synth_product_details`      | `synth_product_skeletons`            | `.shop_gen/stage_cache/details/<collection>.json` (parallel; one LLM call per collection) |
+| `synth_product_details`      | `synth_product_skeletons`            | `.shop_gen/stage_cache/details/<collection>.json` (collections in parallel; within a collection, ≤ 10 skeletons per LLM call) |
 | `synth_alt_text`             | `synth_product_details`              | `.shop_gen/stage_cache/alt_text.json` |
 | `gen_images`                 | `synth_product_details`              | `data/images/*.svg` (placeholder) or `*.png` (AI; later) |
 | `assemble_data`              | all of the above                     | `data/*.json` (final, allowlist-scrubbed) |
@@ -329,11 +329,18 @@ image generation) is deliberately deferred to a v0.2 follow-up.
   At higher scales (v0.2) this fans out to per-collection parallel
   calls; the step interface stays the same.
 
-- **`synth_product_details`** — one LLM call per collection (parallel).
-  Receives the skeletons for that collection + the identity + caps
-  product profile. Returns variants, options, description_html,
-  vendor (allowlist-drawn), tags. Pydantic-validated at the
-  boundary; rejected rows are re-prompted once before being dropped.
+- **`synth_product_details`** — collections run in parallel (≤ 5
+  concurrent workers). Within a collection the skeleton list is
+  partitioned into chunks of ≤ 10 skeletons; each chunk drives one
+  LLM call (chunks within a collection run sequentially). Each call
+  receives the chunk's skeletons + the identity + caps product
+  profile, and returns variants, options, description_html, vendor
+  (allowlist-drawn), tags. Pydantic-validated at the boundary;
+  rejected rows are re-prompted once before being dropped. Chunking
+  bounds per-call output size below the model's effective output-token
+  ceiling so a large collection cannot truncate a single response and
+  fail the whole step — the per-collection cache file shape
+  (`<collection>.json` containing all surviving details) is unchanged.
 
 - **`synth_alt_text`** — one LLM call per collection (parallel).
   Receives skeletons + details. Returns 2 alt-text strings per
@@ -358,8 +365,16 @@ image generation) is deliberately deferred to a v0.2 follow-up.
   intra-collection dedup trivial. Cross-collection conflicts are
   resolved at assembly time by handle suffixing.
 - **Schema strictness vs. LLM drift.** Strict pydantic at the
-  boundary; rejected rows get one re-prompt attempt; >5% rejection
-  rate fails the step (the catalog cap is structural).
+  boundary. Both per-row validation rejects (pydantic / allowlist)
+  and whole-response parse failures (e.g. truncated JSON) consume the
+  same one re-prompt budget; the raw response of every parse failure
+  is persisted under
+  `.shop_gen/stage_cache/details/_failed_<collection>_chunk_<i>_attempt_<n>.txt`
+  for inspection. Surviving per-row drops contribute to the global
+  rejection counter; > 5% rejection rate fails the step (the catalog
+  cap is structural). An unrecovered whole-response parse failure
+  also fails the step — there is no usable payload to silently drop
+  the chunk's skeletons against.
 - **Stats faithfulness.** The seed's `stats.json` priors (median
   price, variant axes) are *priors*, not targets. The catalog must
   be plausible, not statistically identical.
