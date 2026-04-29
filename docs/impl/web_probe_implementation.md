@@ -62,7 +62,7 @@ versioned reports without manual editing (spec §4, §7 M6).
 ### M3 · Pilot pair + per-pair fidelity (spec §7 M3)
 
 - [x] **T3.1** — `fidelity.py`: `PairFidelity`, `CohortFidelity` pydantic models per spec §5.7. Compute `coverage_gap` (per-category + weighted), `surface_ratio` (per-metric + geomean), `sandbox_in_real_envelope` per metric. Judge fields default to `None` until M4. **Check:** unit tests on synthetic A+B reports.
-- [x] **T3.2** — Pilot run: full axis A + B against `pair_1` (`source/1` + `sandbox/1`). Commit reports under `outputs/web_probe/pair_1/`. **Check:** spec §7 M3 gate — one full pair report committed; rubric gaps logged as v1.1 candidates.
+- [x] **T3.2** — Pilot run: full axis A + B against `pair_1` (`source/1` + `sandbox/1`). **Check:** spec §7 M3 gate — one full pair report produced; rubric gaps logged as v1.1 candidates.
 - [x] **T3.3** — Bump `rubric/v1.yaml` toward 60 probes by adding remaining `core` + `modern` probes across `homepage`, `search`, `i18n`, `floating`, `dynamics`, `a11y`, `media` per spec §5.3 category targets (drop `level: advanced` per §5.3). **Check:** rubric hash bumped; pilot report regenerated; flake spot-check.
 
 **M3 acceptance:** spec §7 M3 gate — pair-1 report committed; gaps logged.

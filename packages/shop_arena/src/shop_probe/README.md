@@ -31,8 +31,8 @@ paper figures all render from versioned reports without manual editing.
 
 The v0.1 cohort — 3 (source, sandbox) pairs + 3 unpaired real shops — is
 defined in [`cohort.yaml`](cohort.yaml); rationale and the
-anonymization-sufficiency ablation live in
-[`docs/shop_probe/cohort_v0.1.md`](../../docs/shop_probe/cohort_v0.1.md).
+anonymization-sufficiency ablation live in spec
+[`web_probe.md`](../../../../docs/specs/shop_arena/web_probe.md) §8.6.
 Two sandbox URLs in the cohort are `TBD` pending a `shop-gen` deployment
 (spec §8.5 Q3).
 

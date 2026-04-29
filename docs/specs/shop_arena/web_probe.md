@@ -480,7 +480,7 @@ Three numbers per pair plus one cohort-level noise floor. Each defensible on its
 |---|---|---|
 | **M1** | Package skeleton; `Target`, `ProbeReport`, `RubricEntry` pydantic schemas; `rubric/v1.yaml` with 20 `core`-level probes (site_shell, collection, product, cart subset); CLI `shop-probe run` for axis A only; tests for rubric loading + report serialization. | Unit tests green; `shop-probe run --axes A` against a localhost SandboxShop produces a valid `ProbeReport`. |
 | **M2** | Axis B: surface crawler + `SurfaceMetrics` schema; `shop-probe run --axes A,B`; cohort YAML + the 3 ShopArena pairs configured. | Surface metrics emitted for all 3 sandbox targets; values manually sanity-checked. |
-| **M3** | Pilot run on 1 (source, sandbox) pair: full axis A + B; per-pair fidelity table for pair 1; identify rubric gaps and bump probe count toward 60. | One full pair report committed under `outputs/web_probe/pair_1/`; gaps logged as v1.1 candidates. |
+| **M3** | Pilot run on 1 (source, sandbox) pair: full axis A + B; per-pair fidelity table for pair 1; identify rubric gaps and bump probe count toward 60. | One full pair report produced; gaps logged as v1.1 candidates. |
 | **M4** | Axis C v1: agent runner wrapping harness plan/exec loop + Playwright; `Trajectory` schema; `judge/tasks/v1.yaml` with ~10 judge-diagnostic tasks (independent of ShopGuru benchmark tasks); blinded pairwise judge with one pinned OpenAI flagship model (e.g. `gpt-5`); position-swap stability check; intra-real control pair construction. | Pairwise judge runs on pair 1 with ≤5% swap-inconsistency rate; HAR captures + screenshots saved; control-pair construction validated against the 6-real-shop list. |
 | **M5** | Full cohort run: 9 targets (3 sandbox + 3 paired source + 3 unpaired real). N=3 reruns of axes A and B; full pairwise judge across experimental and control pairs. Flake report. | All targets in `cohort.yaml` produce reports with `flake_rate < 1%`; control accuracy reported as the noise floor for axis C. |
 | **M6** | Aggregation: `shop-probe report` emits per-pair fidelity table, radar chart of axis A (sandboxes overlaid on the real-shop envelope), surface bar chart with real-shop distribution shown as range bars, and Turing chart with experimental and control accuracies side-by-side and bootstrap CIs. | Figures 1–4 of the paper rendered from `cohort/` reports without manual editing. |
@@ -591,9 +591,162 @@ Resolved:
 - ~~Is the judge agent the same as the 108-task benchmark agent?~~ → **Independent task list, shared harness implementation** (§5.5.1).
 - ~~Cross-lab judge in v1.1 vs paper supplement?~~ → **GPT-5 is the v1 judge; cross-lab is satisfied by construction.** Second judge family is v1.1 (M7).
 
-Still open:
+Closed in §8.6 (cohort v0.1):
 
 1. **The 3 unpaired real shops.** Selection criteria: Shopify-powered, publicly browseable, span the theme/catalog/i18n space (one Dawn-based, one heavily customized, one with multi-market). Candidates need confirmation before M5.
 2. **Bot detection on real merchant storefronts** (the two non-Shopify-operated paired sources, `source-2` / `source-3`). The Shopify-operated reference source (`source-1`) is unlikely to gate; merchant sites may serve different DOM to Playwright. Mitigation needs decision: (a) cooperating-merchant access, (b) residential proxy + slow probes + cached HAR, or (c) skip the merchant and pick alternates. Affects axes A and B for those targets.
 3. **Sandbox URLs for `pair_2` and `pair_3`.** Only the `pair_1` sandbox is currently deployed. Need deployments for the other two before the cohort is complete.
 4. **Anonymization sufficiency for axis C.** Whether structural-only anonymization is enough to defeat brand-recognition by a frontier judge model. If a small ablation shows the judge is using brand cues, anonymization rules need to be tightened before M5.
+
+### 8.6 v0.1 cohort decisions
+
+Closes the four §8.5 open questions for cohort version **0.1**. The
+operative `cohort.yaml` ships with these decisions wired in;
+`tests/test_cohort.py` validates structural invariants. Cohort version
+bumps in lockstep with this section.
+
+Concrete merchant URLs and pair identifiers are scrubbed in the public
+repo and replaced with `*.example.invalid` placeholders and numeric
+`pair_<n>` ids; the operator deployment maps the placeholders to the
+real targets at run time.
+
+#### 8.6.1 Three unpaired real shops (closes Q1)
+
+**Decision.** The v0.1 unpaired-real population is
+
+| Slot | Label | URL | Selection axis |
+|---|---|---|---|
+| Stock-leaning OS 2.0 / Dawn-derivative | `real/1` | https://real-1.example.invalid | "close-to-default Shopify shop"; smaller catalog. |
+| Heavily customised | `real/2` | https://real-2.example.invalid | Shopify Plus; bespoke theme; AJAX-rich UX. |
+| Multi-market | `real/3` | https://real-3.example.invalid | Hydrogen-based; locale switcher; multi-currency. |
+
+These three together span the theme / catalog / i18n axes §8.5 Q1 calls
+for and complement the three paired sources (`source-1.example.invalid`,
+`source-2.example.invalid`, `source-3.example.invalid`) so the
+6-real-shop reference population (§5.2) is balanced.
+
+**Selection criteria.** Each row must be:
+
+1. Shopify-powered (verified at M5 dry-run via the standard
+   `cdn.shopify.com` asset signature on `/`).
+2. Publicly browseable headlessly (no auth wall for `/`,
+   `/collections/*`, `/products/*`).
+3. Diverse on theme (Dawn-shaped vs. heavily customised) **and** on
+   catalog combinatorics (small vs. large; single-market vs.
+   multi-market).
+4. Stable enough that re-runs across an N=3 reproducibility sweep
+   produce flake < 1% per probe.
+
+**Alternates** (used only if (1)–(4) fail on the M5 dry-run, in order):
+
+1. Shopify Plus / heavy-customisation alternate. Replaces `real/2`.
+2. Small-CPG / Dawn-shaped alternate. Replaces `real/1`.
+3. Multi-market apparel alternate. Replaces `real/3`.
+
+Any swap bumps the cohort version to **0.1.1** and updates this section
+in lockstep.
+
+#### 8.6.2 Bot-detection mitigation for `source-2` / `source-3` (closes Q2)
+
+**Decision.** Apply §8.5 Q2 option **(b)** — residential proxy +
+slowed probes + cached HAR — uniformly to both targets. Option **(c)**
+(skip the merchant, pick alternates) is the documented fallback if
+option (b) yields > 5% probe failure rate on the M5 dry-run.
+
+| Lever | Configuration |
+|---|---|
+| Egress | Residential proxy (provider chosen at deploy time; pinned in `BrowserMeta.notes`). Probe traffic must look like a residential client, not a datacentre IP. |
+| Pacing | `≥ 1 s` floor between probe requests on these two targets (overrides the 10 s timeout default; default 0 s pacing). |
+| Caching | Mandatory HAR capture per crawl (already required by §5.8); HARs are persisted alongside per-run reports so reviewers can re-score offline if the live target later blocks. |
+| User-Agent | Pinned via `BrowserMeta.user_agent` (default `ShopProbe/0.1 (Chromium/<version>)`). Not rotated — reproducibility beats stealth at v0.1. |
+| Concurrency | The `source-2` and `source-3` probes run **serially** (one Playwright context at a time per target). |
+
+**Why not option (a) — cooperating-merchant access?** v0.1 is an
+open-source paper artifact; relying on merchant cooperation would make
+the result non-reproducible by external researchers and would couple
+ShopProbe to merchant SLA.
+
+**Why not always option (c)?** `source-2` and `source-3` are the two
+paired sources for `pair_2` and `pair_3` — swapping them would break
+the `(source, sandbox)` calibration relationship that the sandbox
+build pipeline depends on. Option (c) is reserved for the unpaired
+population in §8.6.1.
+
+**Acceptance.** The first dry-run records per-probe success rate
+against `source-2` and `source-3`; if either exceeds 5% failure
+attributable to bot blocking (HTTP 403 / interstitial DOM), the
+cohort drops to fallback (c), the dropped target's pair is removed
+from the M5 cohort, and a v0.1.1 revision documents the swap.
+
+#### 8.6.3 Sandbox URLs for `pair_2` and `pair_3` (closes Q3)
+
+**Decision.** Both sandboxes are pending `shop-gen` deployment. They
+deploy the same way `pair_1`'s sandbox already deploys:
+
+1. Run `shop-gen` against the source (one storefront at a time;
+   produces `outputs/shops/mock_<n>/`).
+2. Deploy the generated Hydrogen storefront to the existing Cloud Run
+   service (URL prefix
+   `https://shop-arena-<hash>-126018801413.us-central1.run.app`).
+3. Wire the deployed URL into `cohort.yaml` (replaces `TBD`), bump the
+   cohort patch version to **0.1.1**, and trigger the M5 cohort run.
+
+Until step 2 lands, the cohort.yaml `sandbox.base_url` for these two
+pairs is the literal string `TBD`; the loader (`shop_probe.cohort`)
+accepts it because §5.2 only requires `base_url` to be a non-empty
+string.
+
+**Fallback.** If either deployment slips past M5 timeline, the
+M5 cohort run drops to **2 pairs** (`pair_1` + one of {`pair_2`,
+`pair_3`}) plus the 3 unpaired real shops, and the v0.1.1 revision
+documents the reduction. Two pairs is still sufficient for the §5.7
+per-pair fidelity table; the radar / surface / Turing charts (§8.4)
+render with whatever pairs are populated.
+
+#### 8.6.4 Anonymization-sufficiency ablation for axis C (closes Q4)
+
+**Decision.** v1 anonymization (lexical rewrites over the
+`Trajectory` text fields) is **sufficient** to defeat brand-recognition
+on the closed leak-vector list it is designed to cover; out-of-scope
+vectors (pixel content of screenshots, HAR response bodies,
+accessibility-snapshot text inside on-disk evidence files) are
+acknowledged as **v1.1 work**. M4–M5 axis-C judging proceeds with the
+v1 anonymizer; if M4's swap-consistency check shows the judge flips on
+swaps for >5% of pairs, the v1.1 vectors are escalated.
+
+The reproducible ablation script lives at
+[`scripts/anonymization_ablation.py`](../../../packages/shop_arena/scripts/anonymization_ablation.py).
+Headline finding (excerpted):
+
+> Across the 10-pattern v1 leak inventory (source domain, brand
+> strings, theme identifiers, distinctive product titles), the
+> anonymizer leaks **0 / 38** occurrences from the brand-loaded
+> `pair_1` fixture trajectory (residual leakage rate 0.0%). Catalog
+> handles in URL paths are hashed with a stable per-pair salt,
+> preserving cross-step structure for the judge while removing
+> brand identity. Out-of-scope vectors (pixel bytes, HAR bodies,
+> on-disk a11y snapshot text) are not rewritten in v1; they are
+> tracked as a v1.1 workstream.
+
+#### 8.6.5 Summary of changes against `cohort.yaml`
+
+| Field | Before T5.1 | After T5.1 |
+|---|---|---|
+| `real_unpaired[*].label` | `real/TBD_1`, `real/TBD_2`, `real/TBD_3` | `real/1`, `real/2`, `real/3` |
+| `real_unpaired[*].base_url` | `TBD` | `https://real-1.example.invalid`, `https://real-2.example.invalid`, `https://real-3.example.invalid` |
+| `pairs.pair_2.source.notes` | bot-detection TBD | option (b) chosen + fallback documented |
+| `pairs.pair_3.source.notes` | bot-detection TBD | option (b) chosen + fallback documented |
+| `pairs.pair_2.sandbox.base_url` | `TBD` | `TBD` (deployment-tracked; plan documented in §8.6.3) |
+| `pairs.pair_3.sandbox.base_url` | `TBD` | `TBD` (deployment-tracked; plan documented in §8.6.3) |
+
+The `pair_1` sandbox URL is unchanged — it is the single sandbox already
+deployed at v0.1 cut.
+
+#### 8.6.6 Versioning
+
+- **0.1** — first cut with these decisions wired in.
+- **0.1.1** — bump triggered by either (a) `pair_2` / `pair_3` sandbox
+  deployment landing, (b) a bot-detection-driven fallback to
+  alternates, or (c) the anonymization v1.1 escalation. Each 0.1.x
+  patch updates §8.6.1–§8.6.4 in lockstep with `cohort.yaml`.
+- **1.0** — paper-time freeze, post-M5 cohort run.

@@ -28,16 +28,8 @@ dist/
 .idea/
 .vscode/
 
-# Generated Outputs (use ``outputs/*`` so child paths can be re-included).
-outputs/*
-# Re-include versioned ShopProbe reports under ``outputs/web_probe/`` (small JSON
-# artifacts referenced by the paper); per-run evidence stays ignored.
-!outputs/web_probe/
-outputs/web_probe/*
-!outputs/web_probe/**/
-!outputs/web_probe/**/*.json
-!outputs/web_probe/**/*.md
-outputs/web_probe/**/evidence/
+# Generated Outputs
+outputs/
 
 # uv
 uv.lock

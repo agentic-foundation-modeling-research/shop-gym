@@ -8,7 +8,7 @@ two artifacts under ``outputs/web_probe/anonymization_ablation/``:
   pre / post anonymization plus the structural-feature preservation
   audit.
 * ``report.md`` — human-readable methodology + headline numbers,
-  cross-linked from ``packages/shop_arena/docs/shop_probe/cohort_v0.1.md`` §4.
+  cross-linked from `docs/specs/shop_arena/web_probe.md` §8.6.4.
 
 The script is **import-safe** — module load does no I/O; the audit
 runs from ``main()``. Re-run after any change to
@@ -517,7 +517,7 @@ def _render_markdown_report(audit: AblationAudit) -> str:
         "M5 cohort run shows `judge_accuracy_experimental` cohort-mean ≥\n"
         "control + 0.10 with a Spearman \u03c1 \u2265 0.5 between brand-cue density of\n"
         "the original trajectory and the judge's pick. Both conditions are\n"
-        "recorded in `outputs/web_probe/cohort_v0.1/` once M5 runs.\n"
+        "recorded in the M5 cohort run report once it lands.\n"
         "\n"
         "## Reproduce\n"
         "\n"
