@@ -99,7 +99,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 ### M3 · Configurable LLM-judge set + score / concurrency knobs
 
-- [ ] **T3.1** — `ShopGenConfig.judges: frozenset[str] = frozenset({"visual_judge", "quality_judge", "cross_task_consistency"})`. Validate against the known judge list at config-validation time; unknown names raise. Spec §5.5. **Check:** invalid name in `judges` raises `ValueError` with the offending token.
+- [x] **T3.1** — `ShopGenConfig.judges: frozenset[str] = frozenset({"visual_judge", "quality_judge", "cross_task_consistency"})`. Validate against the known judge list at config-validation time; unknown names raise. Spec §5.5. **Check:** invalid name in `judges` raises `ValueError` with the offending token.
 
 - [ ] **T3.2** — `default_verifiers_factory(*, out_dir, sidecar, judges, ...) -> tuple[Verifier, ...]`: gate each LLM-judge constructor behind a membership check on `judges`. Rule verifiers always included. The `visual_judge` branch also gates on `is_playwright_skill_available()` (T1.5). Spec §5.5, §5.5.1. **Check:** `judges=frozenset()` returns only the rule verifiers; `judges={"visual_judge"}` includes exactly one LLM judge (when skill present); `judges={"visual_judge"}` + skill missing returns rule verifiers only with one warning.
 

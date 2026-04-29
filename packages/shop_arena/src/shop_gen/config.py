@@ -111,6 +111,17 @@ tolerates against the same task before downgrading to ADVISORY. ``0``
 disables the budget entirely.
 """
 
+KNOWN_JUDGES: Final[frozenset[str]] = frozenset(
+    {"visual_judge", "quality_judge", "cross_task_consistency"},
+)
+"""Closed set of LLM-judge verifier names selectable via
+``ShopGenConfig.judges`` (spec §5.5). Rule verifiers are not
+selectable in v0.1 — every one is required for a valid build.
+"""
+
+DEFAULT_JUDGES: Final[frozenset[str]] = KNOWN_JUDGES
+"""Default judge set: every known LLM judge enabled (spec §5.5)."""
+
 
 class CatalogConfig(BaseModel):
     """Scale knobs for Phase 2 data synthesis.
@@ -170,6 +181,11 @@ class ShopGenConfig(BaseModel):
         visual_retry_budget: Per-task cap on consecutive ``visual_judge``
             FAILs before the verifier downgrades to ADVISORY (spec
             §5.4). ``0`` disables the budget entirely. Non-negative.
+        judges: Set of LLM-judge verifier names to enable for the run
+            (spec §5.5). Defaults to :data:`DEFAULT_JUDGES` (every
+            known judge). Unknown tokens raise ``ValidationError`` at
+            config-construction time. Pass ``frozenset()`` to disable
+            every LLM judge; rule verifiers always run.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -183,6 +199,7 @@ class ShopGenConfig(BaseModel):
     max_iters: int = Field(default=DEFAULT_MAX_ITERS, gt=0)
     image_backend: ImageBackend = DEFAULT_IMAGE_BACKEND
     visual_retry_budget: int = Field(default=DEFAULT_VISUAL_RETRY_BUDGET, ge=0)
+    judges: frozenset[str] = Field(default=DEFAULT_JUDGES)
 
     @field_validator("seeds", mode="before")
     @classmethod
@@ -210,6 +227,40 @@ class ShopGenConfig(BaseModel):
         if isinstance(value, (list, tuple)):
             items: list[object] = list(value)  # type: ignore[arg-type]
             return tuple(_coerce_one(item) for item in items)
+        return value
+
+    @field_validator("judges", mode="before")
+    @classmethod
+    def _coerce_judges(cls, value: object) -> object:
+        """Accept any iterable of judge names; coerce to ``frozenset[str]``.
+
+        ``frozenset`` is required for hashability under ``frozen=True``.
+        Pydantic's default coercion rejects ``set``/``list`` inputs for
+        ``frozenset[str]`` fields under strict mode, so coerce eagerly.
+        """
+        if value is None:
+            return value
+        if isinstance(value, frozenset):
+            return value
+        if isinstance(value, (set, list, tuple)):
+            return frozenset(value)  # type: ignore[arg-type]
+        return value
+
+    @field_validator("judges")
+    @classmethod
+    def _validate_judges(cls, value: frozenset[str]) -> frozenset[str]:
+        """Reject unknown judge names against :data:`KNOWN_JUDGES`.
+
+        Spec §5.5: only the closed set of LLM-judge verifier names
+        is selectable. The error message names the offending tokens
+        so CLI / library callers see exactly which entry is wrong.
+        """
+        unknown = value - KNOWN_JUDGES
+        if unknown:
+            offending = ", ".join(sorted(unknown))
+            raise ValueError(
+                f"unknown judge name(s): {offending}; known judges are {sorted(KNOWN_JUDGES)}",
+            )
         return value
 
     @field_validator("name")

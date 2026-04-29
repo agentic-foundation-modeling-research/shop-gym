@@ -23,11 +23,13 @@ from shop_gen.config import (
     DEFAULT_COLLECTIONS,
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_IMAGES_PER_PRODUCT,
+    DEFAULT_JUDGES,
     DEFAULT_MAX_ITERS,
     DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_PRODUCTS_PER_COLLECTION,
     DEFAULT_RUNTIME,
     DEFAULT_VISUAL_RETRY_BUDGET,
+    KNOWN_JUDGES,
     CatalogConfig,
     RuntimeName,
     ShopGenConfig,
@@ -93,6 +95,7 @@ def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
     assert cfg.image_backend == DEFAULT_IMAGE_BACKEND
     assert cfg.catalog == CatalogConfig()
     assert cfg.visual_retry_budget == DEFAULT_VISUAL_RETRY_BUDGET
+    assert cfg.judges == DEFAULT_JUDGES
 
 
 def test_default_model_for_returns_per_runtime_pinned_opus() -> None:
@@ -262,6 +265,97 @@ def test_shop_gen_config_accepts_non_negative_visual_retry_budget(
     seed = _seed(tmp_path)
     cfg = ShopGenConfig(seeds=[seed], visual_retry_budget=good)
     assert cfg.visual_retry_budget == good
+
+
+# --------------------------------------------------------------------------- #
+# ShopGenConfig — judges validation (impl plan T3.1, spec §5.5)
+# --------------------------------------------------------------------------- #
+
+
+def test_known_judges_matches_spec_section_5_5() -> None:
+    """Spec §5.5: closed set of three LLM judges."""
+    assert (
+        frozenset(
+            {"visual_judge", "quality_judge", "cross_task_consistency"},
+        )
+        == KNOWN_JUDGES
+    )
+
+
+def test_default_judges_is_full_known_set() -> None:
+    """Spec §5.5: defaults to the full LLM-judge set (every known judge)."""
+    assert DEFAULT_JUDGES == KNOWN_JUDGES
+
+
+def test_shop_gen_config_default_judges_match_spec(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed])
+    assert cfg.judges == DEFAULT_JUDGES
+
+
+def test_shop_gen_config_accepts_subset_of_judges(tmp_path: Path) -> None:
+    """Spec §5.5: a subset of known judges is a valid selection."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(
+        seeds=[seed],
+        judges=frozenset({"visual_judge", "quality_judge"}),
+    )
+    assert cfg.judges == frozenset({"visual_judge", "quality_judge"})
+
+
+def test_shop_gen_config_accepts_empty_judges(tmp_path: Path) -> None:
+    """Spec §5.5 + CLI ``--judges none``: empty set disables every LLM judge."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], judges=frozenset())
+    assert cfg.judges == frozenset()
+
+
+def test_shop_gen_config_coerces_set_judges_to_frozenset(tmp_path: Path) -> None:
+    """Mutable ``set`` inputs coerce to ``frozenset`` (frozen-config requirement)."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], judges={"visual_judge"})  # type: ignore[arg-type]
+    assert isinstance(cfg.judges, frozenset)
+    assert cfg.judges == frozenset({"visual_judge"})
+
+
+def test_shop_gen_config_coerces_list_judges_to_frozenset(tmp_path: Path) -> None:
+    """List inputs coerce to ``frozenset`` and de-duplicate."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(
+        seeds=[seed],
+        judges=["visual_judge", "visual_judge", "quality_judge"],  # type: ignore[arg-type]
+    )
+    assert cfg.judges == frozenset({"visual_judge", "quality_judge"})
+
+
+def test_shop_gen_config_rejects_unknown_judge_name(tmp_path: Path) -> None:
+    """T3.1: unknown judge name raises with the offending token in the message."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError, match="bogus"):
+        ShopGenConfig(
+            seeds=[seed],
+            judges=frozenset({"visual_judge", "bogus"}),
+        )
+
+
+def test_shop_gen_config_rejects_rule_verifier_in_judges(tmp_path: Path) -> None:
+    """Spec §5.5: rule verifiers are not selectable; only LLM judges."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError, match="tsc"):
+        ShopGenConfig(
+            seeds=[seed],
+            judges=frozenset({"tsc", "visual_judge"}),
+        )
+
+
+def test_shop_gen_config_unknown_judge_error_lists_known_set(tmp_path: Path) -> None:
+    """Error message should help the user by enumerating valid names."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError) as excinfo:
+        ShopGenConfig(seeds=[seed], judges=frozenset({"nope"}))
+    msg = str(excinfo.value)
+    assert "nope" in msg
+    assert "visual_judge" in msg
 
 
 def test_shop_gen_config_rejects_empty_name(tmp_path: Path) -> None:
