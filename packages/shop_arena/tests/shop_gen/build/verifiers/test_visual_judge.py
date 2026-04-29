@@ -607,6 +607,149 @@ def test_seed_capabilities_helper_used_consistently(
 
 
 # --------------------------------------------------------------------------- #
+# Per-task retry budget (T2.2 — spec §5.4)
+# --------------------------------------------------------------------------- #
+
+
+def _write_visual_judge_record(
+    *,
+    run_dir: Path,
+    iter_id: str,
+    task_id: str,
+    verdict: str,
+) -> Path:
+    """Write a dispatch-shaped ``visual_judge.json`` telemetry sibling."""
+    record_dir = run_dir / "iters" / iter_id / "checks" / "verifiers"
+    record_dir.mkdir(parents=True, exist_ok=True)
+    record_path = record_dir / "visual_judge.json"
+    record_path.write_text(
+        json.dumps(
+            {
+                "iter_id": iter_id,
+                "name": "visual_judge",
+                "task_id": task_id,
+                "verdict": verdict,
+                "started_at": "2024-01-01T00:00:00+00:00",
+                "duration_ms": 1,
+                "feedback": "",
+                "details": {},
+            },
+        ),
+        encoding="utf-8",
+    )
+    return record_path
+
+
+def test_run_downgrades_to_advisory_when_retry_budget_met(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """4th call after 3 sibling FAILs returns ADVISORY without invoking the runtime."""
+    del caplog  # unused; the test asserts on call counts, not log lines.
+    runtime = _RecordingRuntime(verdict_body=_pass_body())
+    server = _StubDevServer()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=server,
+        retry_budget=3,
+    )
+    ctx = make_visual_ctx(
+        runtime=runtime,
+        selected_task_id="gen_homepage",
+        iter_id="exec-0004",
+    )
+    for i in range(1, 4):
+        _write_visual_judge_record(
+            run_dir=ctx.run_dir,
+            iter_id=f"exec-{i:04d}",
+            task_id="gen_homepage",
+            verdict="fail",
+        )
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.ADVISORY
+    assert result.details["retry_budget_exhausted"] is True
+    assert result.details["prior_fails"] == 3  # noqa: PLR2004 -- mirrors fixture
+    assert result.details["retry_budget"] == 3  # noqa: PLR2004 -- mirrors ctor arg
+    assert "retry budget" in result.feedback
+    assert "gen_homepage" in result.feedback
+    # Spec §5.4: dev server is *not* booted and the runtime is *not* called.
+    assert server.enters == 0
+    assert server.exits == 0
+    assert runtime.calls == []
+
+
+def test_run_does_not_downgrade_below_retry_budget(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """With 2 prior FAILs and budget 3, the verifier still runs the iteration."""
+    runtime = _RecordingRuntime(verdict_body=_pass_body())
+    server = _StubDevServer()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=server,
+        retry_budget=3,
+    )
+    ctx = make_visual_ctx(
+        runtime=runtime,
+        selected_task_id="gen_homepage",
+        iter_id="exec-0003",
+    )
+    for i in range(1, 3):
+        _write_visual_judge_record(
+            run_dir=ctx.run_dir,
+            iter_id=f"exec-{i:04d}",
+            task_id="gen_homepage",
+            verdict="fail",
+        )
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.PASS
+    assert result.details["retry_budget_exhausted"] is False
+    assert result.details["prior_fails"] == 2  # noqa: PLR2004 -- mirrors fixture
+    assert len(runtime.calls) == 1
+    assert server.enters == 1
+
+
+def test_run_ignores_retry_budget_when_zero(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """``retry_budget=0`` disables the budget (spec §5.4)."""
+    runtime = _RecordingRuntime(verdict_body=_pass_body())
+    server = _StubDevServer()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=server,
+        retry_budget=0,
+    )
+    ctx = make_visual_ctx(
+        runtime=runtime,
+        selected_task_id="gen_homepage",
+        iter_id="exec-0011",
+    )
+    for i in range(1, 11):
+        _write_visual_judge_record(
+            run_dir=ctx.run_dir,
+            iter_id=f"exec-{i:04d}",
+            task_id="gen_homepage",
+            verdict="fail",
+        )
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.PASS
+    assert result.details["retry_budget_exhausted"] is False
+    assert result.details["prior_fails"] == 10  # noqa: PLR2004 -- mirrors fixture
+    assert len(runtime.calls) == 1
+
+
+# --------------------------------------------------------------------------- #
 # Default fixture seeding
 # --------------------------------------------------------------------------- #
 # The PASS / FAIL tests above seed capabilities through the verifier

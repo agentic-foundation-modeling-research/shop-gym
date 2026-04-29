@@ -10,8 +10,9 @@ score → verdict coercion rules from spec §9.3 are applied inside
 
 This M1 landing covers per-task invocations only
 (``gen_homepage``, ``gen_product``, …). The ``consolidate``
-page-bucket fan-out and the retry-budget check land later
-(T5.7 + T2.1).
+page-bucket fan-out lands later (T5.7); the per-task retry budget
+(M2 / T2.2) is enforced inline via
+:func:`shop_gen.build.verifiers._history.count_prior_task_fails`.
 
 The verifier reads:
 
@@ -45,6 +46,7 @@ from typing import Any, Final
 
 from harness.verifiers import Verdict, VerifierContext, VerifierResult
 from shop_gen.build.prompts import load_visual_judge_prompt
+from shop_gen.build.verifiers._history import count_prior_task_fails
 from shop_gen.build.verifiers._runtime_call import (
     VisualVerdict,
     run_visual_iteration,
@@ -71,7 +73,7 @@ headroom for cold-start latency on the configured runtime.
 """
 
 _DEFAULT_RETRY_BUDGET: Final[int] = 3
-"""Per-task retry budget surface; M1 stores it without enforcement (T2.1 wires the check)."""
+"""Per-task cap on consecutive ``visual_judge`` FAILs (spec §5.4)."""
 
 _DEFAULT_PASS_THRESHOLD: Final[float] = 7.0
 """Score floor below which an emitted ``pass`` is coerced to ``fail`` (spec §9.3)."""
@@ -162,7 +164,7 @@ class VisualJudgeVerifier:
                 deterministic base URL.
             retry_budget: Per-task cap on consecutive ``visual_judge``
                 FAILs before the verifier downgrades to ADVISORY.
-                Stored in M1; the count check itself lands in T2.1.
+                ``0`` disables the budget entirely (spec §5.4).
             timeout_s: Wall-clock budget for the nested agent
                 iteration. Defaults to :data:`_DEFAULT_TIMEOUT_S`.
             pass_threshold: Score floor for the §9.3 coercion rule.
@@ -197,10 +199,10 @@ class VisualJudgeVerifier:
     ) -> VerifierResult:
         """Render the visual-judge prompt, run the nested iteration, parse the verdict.
 
-        Spec §5.2.1 lifecycle — M1 implements steps 1, 3-7 of the
-        eight-step contract; the retry-budget check (step 2) lands in
-        T2.1, and the multi-bucket fan-out (the ``consolidate`` arm
-        of step 5 + the merge in step 6) lands in T5.7.
+        Spec §5.2.1 lifecycle — implements steps 1-7 of the
+        eight-step contract (the multi-bucket fan-out arm of step 5
+        + the merge in step 6 lands in T5.7). The retry-budget check
+        is interposed between step 1 and step 3 per spec §5.4.
 
         Args:
             ctx: Verifier context. Reads ``ctx.artifact_dir`` for the
@@ -297,6 +299,38 @@ class VisualJudgeVerifier:
                 },
             )
 
+        # Step 2: per-task retry budget (spec §5.4). When the budget
+        # is non-zero and the configured number of prior FAILs is
+        # already on disk, downgrade to ADVISORY without booting the
+        # dev server or invoking the runtime.
+        prior_fails = count_prior_task_fails(
+            run_dir=ctx.run_dir,
+            iter_id=ctx.iter_id,
+            verifier_name=self.name,
+            task_id=ctx.selected_task_id,
+        )
+        if self._retry_budget > 0 and prior_fails >= self._retry_budget:
+            return VerifierResult(
+                verdict=Verdict.ADVISORY,
+                feedback=(
+                    f"`visual_judge` has FAILed {prior_fails} time(s) against "
+                    f"task `{ctx.selected_task_id}`, meeting the configured "
+                    f"retry budget ({self._retry_budget}). Downgrading to "
+                    "ADVISORY to break the loop. See prior "
+                    "`visual_judge.json` records under "
+                    "`iters/exec-*/checks/verifiers/` for the per-iteration "
+                    "feedback."
+                ),
+                details={
+                    "task_id": ctx.selected_task_id,
+                    "buckets_run": buckets_run,
+                    "routes": list(routes),
+                    "retry_budget": self._retry_budget,
+                    "retry_budget_exhausted": True,
+                    "prior_fails": prior_fails,
+                },
+            )
+
         parent_dir = ctx.run_dir / "iters" / ctx.iter_id / "checks" / "verifiers" / self.name
         parent_dir.mkdir(parents=True, exist_ok=True)
 
@@ -353,7 +387,7 @@ class VisualJudgeVerifier:
             "buckets_run": buckets_run,
             "routes": list(routes),
             "retry_budget_exhausted": False,
-            "prior_fails": 0,
+            "prior_fails": prior_fails,
         }
 
         if parsed is None:
