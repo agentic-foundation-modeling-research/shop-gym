@@ -172,6 +172,33 @@ specifics live in the task brief; the contract below is what every
    When you mark `[x]`, also update the note's `(retry N/3)`
    annotation per the retry-budget rules above.
 
+### `gen_navigation`: reuse the template's nav primitives
+
+When your selected task is `gen_navigation`, build on the primitives
+the template already ships under `app/components/` and `app/lib/`
+rather than re-deriving the same logic inline:
+
+- **`<NavMenu>`** (`app/components/NavMenu.tsx`) — recursive renderer
+  for `HeaderQuery['menu']`. Owns parent → child nesting, hover-
+  intent popovers, and primary-domain URL stripping. Pass it the
+  loader's `header.menu`; the consumer owns CSS only.
+- **`<NavTrigger>`** (`app/components/NavTrigger.tsx`) — the canonical
+  `<button>` for opening a nav popover. Owns the ARIA contract
+  (`aria-haspopup` / `aria-expanded` / `aria-controls`) and the
+  button-typography reset (`font: inherit`, `color: inherit`,
+  `background: transparent`, `border: 0`, `padding: 0`). Use it in
+  place of styling a raw `<button>` per parent menu item.
+- **`useHoverIntent`** (`app/lib/use-hover-intent.ts`) — hover-debounce
+  hook. Returns `{open, triggerProps, contentProps, close}`; spread
+  `triggerProps` onto the trigger element and `contentProps` onto the
+  popover so dragging the cursor between them does not close the menu.
+
+Re-deriving these — for example an inline `setTimeout`-based hover-
+intent on a `<button>`, or local `font: inherit` / `line-height:
+inherit` resets on a nav trigger — is a verifier failure (the
+`navigation_primitive_usage` verifier flags both the missing import
+and the re-derived anti-patterns). Compose the primitives instead.
+
 ---
 
 ## 4. Tool-use efficiency
