@@ -66,7 +66,7 @@ from shop_gen.build.verifiers import (
     VisualJudgeVerifier,
 )
 from shop_gen.build.verifiers._subprocess import CompletedSubprocess
-from shop_gen.config import ShopGenConfig
+from shop_gen.config import DEFAULT_VISUAL_RETRY_BUDGET, ShopGenConfig
 from shop_gen.pipeline import list_steps
 from shop_gen.steps.base import FileInput, Step, StepContext, StepInput
 
@@ -177,11 +177,21 @@ def _materialise_workspace(out_dir: Path, *, port: int = _PORT) -> None:
     )
 
 
-def _build_ctx(out_dir: Path, *, max_iters: int = 5) -> StepContext:
+def _build_ctx(
+    out_dir: Path,
+    *,
+    max_iters: int = 5,
+    visual_retry_budget: int = 3,
+) -> StepContext:
     """Construct a :class:`StepContext` rooted at ``out_dir``."""
     seed = out_dir.parent / "seed"
     seed.mkdir(exist_ok=True)
-    cfg = ShopGenConfig(seeds=(seed,), out_dir=out_dir, max_iters=max_iters)
+    cfg = ShopGenConfig(
+        seeds=(seed,),
+        out_dir=out_dir,
+        max_iters=max_iters,
+        visual_retry_budget=visual_retry_budget,
+    )
     return StepContext(config=cfg, out_dir=out_dir)
 
 
@@ -198,9 +208,10 @@ def _empty_verifiers_factory(
     *,
     out_dir: Path,
     sidecar: SidecarHandle,
+    visual_retry_budget: int = 3,
 ) -> tuple[Verifier, ...]:
     """Return an empty verifier tuple; reused across tests that don't care about dispatch."""
-    del out_dir, sidecar
+    del out_dir, sidecar, visual_retry_budget
     return ()
 
 
@@ -264,6 +275,57 @@ def test_run_build_harness_loop_registered_in_build_phase() -> None:
     assert build[-1] == "run_build_harness_loop"
 
 
+def test_step_forwards_visual_retry_budget_to_verifiers_factory(
+    tmp_path: Path,
+) -> None:
+    """Impl plan T2.3: ``ctx.config.visual_retry_budget`` reaches the factory."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    captured_budgets: list[int] = []
+
+    def _verifiers_factory(
+        *,
+        out_dir: Path,
+        sidecar: SidecarHandle,
+        visual_retry_budget: int = 3,
+    ) -> tuple[Verifier, ...]:
+        del out_dir, sidecar
+        captured_budgets.append(visual_retry_budget)
+        return ()
+
+    def _loop_runner(
+        config: PlanExecLoopConfig,
+        runtime: AgentRuntime,
+        *,
+        force: bool,
+    ) -> PlanExecLoopResult:
+        del runtime, force
+        return PlanExecLoopResult(
+            run_dir=config.run_dir,
+            final_status=FinalStatus.COMPLETED,
+            plan_iter_count=0,
+            exec_iter_count=0,
+        )
+
+    step = RunBuildHarnessLoopStep(
+        loop_runner=_loop_runner,
+        runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
+        sidecar_factory=_stub_sidecar_factory,
+        verifiers_factory=_verifiers_factory,
+        install_runner=_stub_install_runner,
+    )
+
+    with patch(
+        "shop_gen.build.loop.find_shop_backend_cli",
+        return_value=_shop_backend_cli_stub(),
+    ):
+        step.run(_build_ctx(out_dir, visual_retry_budget=0))
+
+    assert captured_budgets == [0]
+
+
 # --------------------------------------------------------------------------- #
 # Step.run wires the harness with the expected config
 # --------------------------------------------------------------------------- #
@@ -306,8 +368,9 @@ def test_step_run_passes_expected_loop_config_to_harness(tmp_path: Path) -> None
         *,
         out_dir: Path,
         sidecar: SidecarHandle,
+        visual_retry_budget: int = 3,
     ) -> tuple[Verifier, ...]:
-        del out_dir
+        del out_dir, visual_retry_budget
         captured_handles.append(sidecar)
         return (sentinel,)
 
@@ -706,6 +769,42 @@ def test_default_verifiers_factory_includes_visual_judge_when_skill_present(
         for record in caplog.records
         if record.levelname == "WARNING" and "visual_judge" in record.getMessage()
     ]
+
+
+def test_default_verifiers_factory_threads_visual_retry_budget(
+    tmp_path: Path,
+) -> None:
+    """Impl plan T2.3: ``visual_retry_budget`` is forwarded to the verifier."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            visual_retry_budget=0,
+        )
+
+    visual = next(v for v in verifiers if isinstance(v, VisualJudgeVerifier))
+    assert visual._retry_budget == 0
+
+
+def test_default_verifiers_factory_uses_default_visual_retry_budget(
+    tmp_path: Path,
+) -> None:
+    """Impl plan T2.3: omitting the kwarg keeps the spec §5.4 default of 3."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True):
+        verifiers = default_verifiers_factory(out_dir=out_dir, sidecar=sidecar)
+
+    visual = next(v for v in verifiers if isinstance(v, VisualJudgeVerifier))
+    assert visual._retry_budget == DEFAULT_VISUAL_RETRY_BUDGET
 
 
 # --------------------------------------------------------------------------- #

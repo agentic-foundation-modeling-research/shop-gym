@@ -87,7 +87,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 - [x] **T2.2** — Wire the budget check into `VisualJudgeVerifier.run` as the second step (after route resolution, before dev-server boot). On overflow: return `Verdict.ADVISORY` with feedback that names the budget + points to prior failed iter dirs; persist `details.retry_budget_exhausted = true` and `details.prior_fails = <count>`. Do **not** boot the dev server, do **not** call the runtime. Spec §5.4. **Check:** unit test under stub runtime — 4th call against a task with 3 prior FAILs returns ADVISORY without invoking the runtime stub (assert call count = 0).
 
-- [ ] **T2.3** — Make `retry_budget` configurable: `ShopGenConfig.visual_retry_budget: int = 3`; threaded through `default_verifiers_factory`. `0` disables the budget. Spec §5.4 + §5.9. **Check:** library round-trip; unit test `visual_retry_budget=0` runs the runtime even after 10 prior FAILs.
+- [x] **T2.3** — Make `retry_budget` configurable: `ShopGenConfig.visual_retry_budget: int = 3`; threaded through `default_verifiers_factory`. `0` disables the budget. Spec §5.4 + §5.9. **Check:** library round-trip; unit test `visual_retry_budget=0` runs the runtime even after 10 prior FAILs.
 
 - [ ] **T2.4** — CLI flag `--visual-retry-budget <int>` on `cli.py`. Spec §5.9. **Check:** `shop-gen --visual-retry-budget 5 ...` propagates to `VisualJudgeVerifier`.
 

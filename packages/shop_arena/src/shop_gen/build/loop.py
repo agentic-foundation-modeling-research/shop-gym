@@ -91,7 +91,7 @@ from shop_gen.build.verifiers._subprocess import (
     default_subprocess_runner,
     truncate_stream,
 )
-from shop_gen.config import ShopGenConfig
+from shop_gen.config import DEFAULT_VISUAL_RETRY_BUDGET, ShopGenConfig
 from shop_gen.data_validation.hosting_check import find_shop_backend_cli
 from shop_gen.final_eval.playwright_smoke import DevServerFactory
 from shop_gen.steps.base import FileInput, InputRef, StepContext, StepInput
@@ -214,6 +214,7 @@ class VerifiersFactory(Protocol):
         *,
         out_dir: Path,
         sidecar: SidecarHandle,
+        visual_retry_budget: int = ...,
     ) -> tuple[Verifier, ...]:
         """Return the verifier tuple the harness should dispatch."""
         ...
@@ -377,7 +378,11 @@ class RunBuildHarnessLoopStep:
 
         plan_path = run_dir / "plan.md"
         with self._sidecar_factory(argv=argv, port=port) as sidecar:
-            verifiers = self._verifiers_factory(out_dir=out_dir, sidecar=sidecar)
+            verifiers = self._verifiers_factory(
+                out_dir=out_dir,
+                sidecar=sidecar,
+                visual_retry_budget=ctx.config.visual_retry_budget,
+            )
             loop_config = harness_config.model_copy(update={"verifiers": verifiers})
             result = self._loop_runner(loop_config, runtime, force=force)
 
@@ -571,6 +576,7 @@ def default_verifiers_factory(
     out_dir: Path,
     sidecar: SidecarHandle,
     dev_server_factory: DevServerFactory | None = None,
+    visual_retry_budget: int = DEFAULT_VISUAL_RETRY_BUDGET,
 ) -> tuple[Verifier, ...]:
     """Build the v0.1 verifier set documented in spec §5.5.3 + §5.5.4.
 
@@ -594,6 +600,9 @@ def default_verifiers_factory(
             hydrogen dev server for the visual-judge sub-iteration.
             Defaults to :func:`_unconfigured_dev_server_factory`; the
             production ``pnpm dev`` runner replaces it under T6.1.
+        visual_retry_budget: Per-task cap on consecutive ``visual_judge``
+            FAILs before the verifier downgrades to ADVISORY (spec §5.4).
+            ``0`` disables the budget. Forwarded to the verifier ctor.
 
     Returns:
         Ordered verifier tuple suitable for
@@ -617,6 +626,7 @@ def default_verifiers_factory(
             VisualJudgeVerifier(
                 data_dir=out_dir / _DATA_DIR,
                 dev_server_factory=factory,
+                retry_budget=visual_retry_budget,
             ),
         )
     else:

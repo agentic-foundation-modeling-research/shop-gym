@@ -269,8 +269,9 @@ def _build_verifiers_factory(*, data_dir: Path) -> VerifiersFactory:
         *,
         out_dir: Path,
         sidecar: SidecarHandle,
+        visual_retry_budget: int = 3,
     ) -> tuple[Verifier, ...]:
-        del out_dir, sidecar
+        del out_dir, sidecar, visual_retry_budget
         return (
             TscVerifier(runner=_passing_subprocess_runner),
             BuildVerifier(runner=_passing_subprocess_runner),
@@ -499,5 +500,3 @@ def test_replay_completer_runtime_returns_pass_verdict() -> None:
     raw = runtime.complete("ignored", timeout=1.0)
     payload = json.loads(raw)
     assert payload == {"verdict": "pass", "feedback": ""}
-
-

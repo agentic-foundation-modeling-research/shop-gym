@@ -103,6 +103,14 @@ DEFAULT_PRODUCTS_PER_COLLECTION: Final[int] = 20
 DEFAULT_IMAGES_PER_PRODUCT: Final[int] = 2
 """Default images per product (spec §4.1, v0.1 small scale)."""
 
+DEFAULT_VISUAL_RETRY_BUDGET: Final[int] = 3
+"""Default per-task ``visual_judge`` retry budget (spec §5.4).
+
+Caps the number of consecutive ``visual_judge`` FAILs the verifier
+tolerates against the same task before downgrading to ADVISORY. ``0``
+disables the budget entirely.
+"""
+
 
 class CatalogConfig(BaseModel):
     """Scale knobs for Phase 2 data synthesis.
@@ -159,6 +167,9 @@ class ShopGenConfig(BaseModel):
             Strictly positive.
         image_backend: ``placeholder`` (v0.1 default) or ``ai`` (v0.2,
             stubbed in v0.1).
+        visual_retry_budget: Per-task cap on consecutive ``visual_judge``
+            FAILs before the verifier downgrades to ADVISORY (spec
+            §5.4). ``0`` disables the budget entirely. Non-negative.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -171,6 +182,7 @@ class ShopGenConfig(BaseModel):
     catalog: CatalogConfig = Field(default_factory=CatalogConfig)
     max_iters: int = Field(default=DEFAULT_MAX_ITERS, gt=0)
     image_backend: ImageBackend = DEFAULT_IMAGE_BACKEND
+    visual_retry_budget: int = Field(default=DEFAULT_VISUAL_RETRY_BUDGET, ge=0)
 
     @field_validator("seeds", mode="before")
     @classmethod

@@ -27,6 +27,7 @@ from shop_gen.config import (
     DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_PRODUCTS_PER_COLLECTION,
     DEFAULT_RUNTIME,
+    DEFAULT_VISUAL_RETRY_BUDGET,
     CatalogConfig,
     RuntimeName,
     ShopGenConfig,
@@ -91,6 +92,7 @@ def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
     assert cfg.max_iters == DEFAULT_MAX_ITERS
     assert cfg.image_backend == DEFAULT_IMAGE_BACKEND
     assert cfg.catalog == CatalogConfig()
+    assert cfg.visual_retry_budget == DEFAULT_VISUAL_RETRY_BUDGET
 
 
 def test_default_model_for_returns_per_runtime_pinned_opus() -> None:
@@ -238,6 +240,28 @@ def test_shop_gen_config_rejects_unknown_runtime(tmp_path: Path) -> None:
     seed = _seed(tmp_path)
     with pytest.raises(ValidationError):
         ShopGenConfig(seeds=[seed], runtime="gpt")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("bad", [-1, -3, -42])
+def test_shop_gen_config_rejects_negative_visual_retry_budget(
+    tmp_path: Path,
+    bad: int,
+) -> None:
+    """Spec §5.4: ``visual_retry_budget`` is non-negative; ``0`` is a valid disable."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], visual_retry_budget=bad)
+
+
+@pytest.mark.parametrize("good", [0, 1, 5, 100])
+def test_shop_gen_config_accepts_non_negative_visual_retry_budget(
+    tmp_path: Path,
+    good: int,
+) -> None:
+    """Spec §5.4: ``0`` disables the budget; positive values cap retries."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], visual_retry_budget=good)
+    assert cfg.visual_retry_budget == good
 
 
 def test_shop_gen_config_rejects_empty_name(tmp_path: Path) -> None:

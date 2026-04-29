@@ -96,9 +96,10 @@ def _empty_verifiers_factory(
     *,
     out_dir: Path,
     sidecar: SidecarHandle,
+    visual_retry_budget: int = 3,
 ) -> tuple[Verifier, ...]:
     """Skip the v0.1 verifier set — T5.9 covers the loop driver only."""
-    del out_dir, sidecar
+    del out_dir, sidecar, visual_retry_budget
     return ()
 
 
