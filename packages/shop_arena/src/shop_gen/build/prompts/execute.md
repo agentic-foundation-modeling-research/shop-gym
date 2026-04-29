@@ -191,11 +191,60 @@ rather than re-deriving the same logic inline:
 - **`useHoverIntent`** (`app/lib/use-hover-intent.ts`) — hover-debounce
   hook. Returns `{open, triggerProps, contentProps, close}`; spread
   `triggerProps` onto the trigger element and `contentProps` onto the
+  `triggerProps` onto the trigger element and `contentProps` onto the
   popover so dragging the cursor between them does not close the menu.
+- **`<HeaderShell>`** (`app/components/HeaderShell.tsx`) — presentational
+  header layout with three slots (`brand`, `primary`, `ctas`) and the
+  canonical `.header` / `.header-left` / `.header-ctas` class names. Use
+  it instead of hand-rolling the outer `<header>` element so brand → nav
+  spacing stays in lockstep across shops.
+
+### `gen_collections` / `gen_product`: reuse `<Breadcrumbs>`
+
+When your selected task is `gen_collections` or `gen_product`, render
+breadcrumb trails through the template's `<Breadcrumbs>` primitive
+(`app/components/Breadcrumbs.tsx`) rather than building an ad-hoc
+`<nav><ol>` per route:
+
+- **`<Breadcrumbs.FromCollections>`** — the canonical PDP path. Pass
+  the product's `collections` (from the Storefront query), the
+  `productTitle`, and a `navPriority` array of preferred collection
+  handles; the primitive picks the priority winner over the first-
+  membership fallback and emits `Home → <collection> → <product>`
+  with `aria-current="page"` on the trailing crumb. Every link is
+  provably backed by real data — no fabricated mid-crumbs.
+- **`<Breadcrumbs.FromMatches>`** — for collection-list and other
+  non-PDP routes. Pass `useMatches()` plus a `crumbBuilders` map
+  keyed by route id; unknown ids are silently skipped so a single
+  call site can serve a layout that hosts heterogeneous child
+  routes.
+
+Re-deriving the breadcrumb structure inline — especially fabricating
+a mid-crumb that is not in `product.collections.nodes` — is a
+verifier failure under the same `navigation_primitive_usage` rule.
+- **`<MobileNavDrawer>`** (`app/components/MobileNavDrawer.tsx`) —
+  accordion drawer for the mobile aside. Enforces the single-open
+  invariant (opening one parent closes the prior) and closes the aside
+  via `useAside().close` on link click. Mount it inside `<Aside
+  type="mobile">`; do not re-derive `<details>` controlled state inline.
+- **`<AnnouncementBar>`** (`app/components/AnnouncementBar.tsx`) —
+  dismissible top bar with optional rotation across `messages` and
+  `localStorage` persistence keyed by `storageKey`. SSR-safe by
+  construction (the storage read lives in `useEffect`); reuse it
+  instead of writing a new dismissible bar per shop.
+- **`useNavActive`** (`app/lib/use-nav-active.ts`) — active-state
+  hook returning `{isActive, isParentActive}`. Pass the predicates
+  into `<NavMenu>`'s `linkClassName` / `triggerClassName` builders to
+  highlight the current route and its ancestors without duplicating
+  `useMatches()` plumbing in every consumer.
 
 Re-deriving these — for example an inline `setTimeout`-based hover-
-intent on a `<button>`, or local `font: inherit` / `line-height:
-inherit` resets on a nav trigger — is a verifier failure (the
+intent on a `<button>`, local `font: inherit` / `line-height:
+inherit` resets on a nav trigger, a hand-rolled `<header>` wrapper
+that re-implements `<HeaderShell>`'s slot contract, a custom
+`<details>`-accordion mobile drawer that lets two sections stay open
+at once, or a per-shop announcement bar with its own dismissal-
+persistence logic — is a verifier failure (the
 `navigation_primitive_usage` verifier flags both the missing import
 and the re-derived anti-patterns). Compose the primitives instead.
 
