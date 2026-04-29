@@ -142,9 +142,14 @@ Notable flags:
 - `--name` — filename-friendly identifier; unique within the benchmark.
 - `--label` — `sandbox` or `real`.
 - `--axes` — `A` or `A,B` today; axis C lands in a follow-on patch.
-- `--rubric` — `v1` / `v1.1` (packaged) or a path to a custom YAML.
+- `--rubric` — `v1` / `v1.1` / `v1.2` (packaged) or a path to a custom YAML.
+  `v1.2` adds an 8-probe `level: advanced` behavioral tier on top of v1.1
+  that drives interactions (sort, filter, pagination, variant swap, qty
+  spinner, predictive search, cart-count badge update) and asserts the page
+  state actually changes.
 - `--include-auth` — opt into the v1.1 authenticated/transactional slice
-  (default: skipped).
+  (default: skipped). The 8 v1.2 advanced probes are unauthenticated and
+  ship without this gate.
 - `--record-har` — save a HAR per probe under
   `<out>/evidence/<label>__<name>__rerun<N>/<probe_id>/network.har`.
 - `--rerun-index` — 1-indexed slot in a rerun group, consumed by

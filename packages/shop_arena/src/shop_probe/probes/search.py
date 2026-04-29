@@ -1,4 +1,4 @@
-"""Axis A — ``search`` probes (T3.3 — spec §5.3, §7 M3).
+"""Axis A — ``search`` probes (T3.3 — spec §5.3, §7 M3; v1.2 advanced tier).
 
 Probes asserted against the storefront search surface — both the
 header trigger and the dedicated ``/search`` results page:
@@ -14,6 +14,13 @@ header trigger and the dedicated ``/search`` results page:
 * :func:`predictive_listbox_present` — the header search exposes a
   ``role="combobox"`` + ``role="listbox"`` predictive UI
   (``search.predictive_listbox``).
+
+v1.2 ``advanced`` tier — behavioral probes (spec
+``web_probe_v1_2_advanced.md`` §Proposal §2):
+
+* :func:`predictive_listbox_populates` — typing into the header search
+  populates the predictive listbox with at least one option
+  (``search.predictive.populates_listbox``).
 """
 
 from __future__ import annotations
@@ -130,4 +137,66 @@ async def predictive_listbox_present(page: Page, ctx: ProbeContext) -> ProbeOutc
         notes=None
         if passed
         else f"missing predictive UI (combobox={has_combo}, listbox={has_listbox})",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# v1.2 advanced (behavioral) tier
+# --------------------------------------------------------------------------- #
+
+_PREDICTIVE_TYPE_QUERY: str = "shi"
+"""3-char query used to trigger predictive search. Long enough to clear
+the typical 2-char debounce minimum, short enough to stay generic."""
+
+_PREDICTIVE_DEBOUNCE_MS: int = 1500
+"""Wait budget for predictive results to appear after typing. Honours
+the 250-400 ms debounce typical of Shopify themes plus a network round-trip,
+while staying well under the 10-s probe timeout."""
+
+
+async def predictive_listbox_populates(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """Typing into the header search populates the predictive listbox.
+
+    v1.2 advanced — exercises the predictive behaviour that
+    :func:`predictive_listbox_present` only asserts the *presence* of.
+    Returns ``passed=None`` when the header lacks a combobox + listbox
+    pair or the search input cannot be focused.
+    """
+    await page.goto(ctx.base_url, wait_until="domcontentloaded")
+    combo = page.locator('header [role="combobox"]').first
+    listbox = page.locator('header [role="listbox"]').first
+    if await combo.count() == 0 or await listbox.count() == 0:
+        return ProbeOutcome(
+            passed=None,
+            notes="no header combobox + listbox pair; cannot exercise predictive search",
+        )
+    search_input = page.locator(
+        'header input[type="search"], header [role="combobox"] input, '
+        'header [role="search"] input, header input[name="q"]'
+    ).first
+    if await search_input.count() == 0:
+        return ProbeOutcome(
+            passed=None,
+            notes="header has combobox + listbox but no input to type into",
+        )
+    before_shot = await ctx.screenshot("before-predictive")
+    before_snap = await ctx.snapshot("before-predictive")
+    await search_input.click()
+    await search_input.fill("")
+    await search_input.type(_PREDICTIVE_TYPE_QUERY, delay=50)
+    await page.wait_for_timeout(_PREDICTIVE_DEBOUNCE_MS)
+    options = listbox.locator('[role="option"], li, a')
+    n_options = await options.count()
+    after_shot = await ctx.screenshot("after-predictive")
+    after_snap = await ctx.snapshot("after-predictive")
+    passed = n_options > 0
+    return ProbeOutcome(
+        passed=passed,
+        evidence=(before_shot, before_snap, after_shot, after_snap),
+        notes=None
+        if passed
+        else (
+            f"predictive listbox empty {_PREDICTIVE_DEBOUNCE_MS}ms after typing "
+            f"{_PREDICTIVE_TYPE_QUERY!r}"
+        ),
     )

@@ -1,7 +1,7 @@
-"""Axis A — ``product`` probes (T1.7 — spec §5.3, §7 M1).
+"""Axis A — ``product`` probes (T1.7 — spec §5.3, §7 M1; v1.2 advanced tier).
 
-Five M1 ``core`` probes asserted against a sample PDP URL handed to the
-runner via :attr:`ProbeContext.sample_product_url`:
+Presence probes asserted against a sample PDP URL handed to the runner
+via :attr:`ProbeContext.sample_product_url`:
 
 * :func:`gallery_has_image` — at least one product image renders
   (rubric ``product.gallery.image``).
@@ -12,16 +12,31 @@ runner via :attr:`ProbeContext.sample_product_url`:
   (``product.add_to_cart.button``).
 * :func:`has_description` — a product description block renders
   (``product.description.present``).
+* :func:`gallery_has_thumbnails` — gallery thumbnail strip ≥ 2 thumbnails.
+* :func:`has_variant_selector` — radio / select / swatch variant control.
+* :func:`has_quantity_spinner` — numeric quantity spinner.
+* :func:`has_breadcrumbs` — breadcrumb trail.
+* :func:`has_recommendations` — "you may also like" section.
 
-All probes capture a screenshot + DOM snapshot before returning. When the
-runner could not pre-resolve a sample PDP URL the probe returns
-``passed=None`` ("not_applicable") per the contract on
-:class:`ProbeContext`.
+v1.2 ``advanced`` tier — behavioral probes (spec
+``web_probe_v1_2_advanced.md`` §Proposal §2):
+
+* :func:`variant_swap_updates_state` — clicking the second variant changes
+  price text or main gallery image (``product.variant.swap_updates_state``).
+* :func:`qty_spinner_increments` — incrementing the qty spinner raises its
+  value (``product.qty.spinner_increments``).
+
+Advanced probes return ``passed=None`` when the storefront does not expose
+the surface required to drive the interaction (e.g. a single-variant PDP
+cannot exercise variant swap).
 """
 
 from __future__ import annotations
 
+import contextlib
+
 from playwright.async_api import Page
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from shop_probe.probes._runner import ProbeContext, ProbeOutcome
 
@@ -258,4 +273,146 @@ async def has_recommendations(page: Page, ctx: ProbeContext) -> ProbeOutcome:
         passed=passed,
         evidence=(shot, snap),
         notes=None if passed else "recommendations section is empty",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# v1.2 advanced (behavioral) tier
+# --------------------------------------------------------------------------- #
+
+_BEHAVIORAL_WAIT_MS: int = 3000
+"""Hard ceiling on per-interaction waits in advanced probes (3 s).
+
+Stays well under the 10-s default probe timeout in
+:mod:`shop_probe.probes._runner` so a missing UI event bubbles up as a
+clean ``False`` rather than a timeout."""
+
+_VARIANT_OPTION_SELECTOR: str = (
+    'input[type="radio"][name*="variant" i], input[type="radio"][name*="option" i], '
+    '[class*="swatch"] input[type="radio"], '
+    'fieldset[class*="variant"] label, [class*="swatch"] label'
+)
+"""Selector union for clickable variant options (radio inputs / swatch labels).
+
+Mirrors :func:`has_variant_selector` so the behavioral probe agrees with
+the presence probe about what counts as a variant control."""
+
+
+async def variant_swap_updates_state(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """Clicking a second variant updates the price text or gallery image.
+
+    v1.2 advanced — exercises the variant behaviour that
+    :func:`has_variant_selector` only asserts the *presence* of. Returns
+    ``passed=None`` when the PDP exposes fewer than 2 variant options.
+    """
+    if ctx.sample_product_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_product_url provided")
+    await page.goto(ctx.sample_product_url, wait_until="domcontentloaded")
+    options = page.locator(_VARIANT_OPTION_SELECTOR)
+    n_options = await options.count()
+    if n_options < 2:  # noqa: PLR2004 — need at least 2 options to swap
+        return ProbeOutcome(
+            passed=None,
+            notes=f"only {n_options} variant option(s); cannot exercise swap",
+        )
+    price = page.locator('[class*="price"], [data-testid*="price"], [itemprop="price"]').first
+    gallery_img = page.locator(
+        'main img, [class*="product-gallery"] img, [class*="product-media"] img'
+    ).first
+    before_price = ((await price.text_content()) or "").strip() if await price.count() else ""
+    before_src = (await gallery_img.get_attribute("src")) or "" if await gallery_img.count() else ""
+    if not before_price and not before_src:
+        return ProbeOutcome(
+            passed=None,
+            notes="PDP exposes neither a price nor a gallery image to compare against",
+        )
+    before_shot = await ctx.screenshot("before-variant-swap")
+    before_snap = await ctx.snapshot("before-variant-swap")
+    target = options.nth(1)
+    try:
+        async with page.expect_navigation(
+            wait_until="domcontentloaded", timeout=_BEHAVIORAL_WAIT_MS
+        ):
+            await target.click(timeout=_BEHAVIORAL_WAIT_MS)
+    except PlaywrightTimeoutError:
+        # Most modern variant pickers re-render in place; wait briefly.
+        await page.wait_for_timeout(500)
+    after_price = ((await price.text_content()) or "").strip() if await price.count() else ""
+    after_src = (await gallery_img.get_attribute("src")) or "" if await gallery_img.count() else ""
+    after_shot = await ctx.screenshot("after-variant-swap")
+    after_snap = await ctx.snapshot("after-variant-swap")
+    price_changed = before_price != after_price
+    src_changed = before_src != after_src
+    passed = price_changed or src_changed
+    return ProbeOutcome(
+        passed=passed,
+        evidence=(before_shot, before_snap, after_shot, after_snap),
+        notes=None
+        if passed
+        else (
+            f"variant click had no effect "
+            f"(price {before_price[:30]!r}→{after_price[:30]!r}, "
+            f"img src unchanged)"
+        ),
+    )
+
+
+async def qty_spinner_increments(page: Page, ctx: ProbeContext) -> ProbeOutcome:
+    """Incrementing the qty spinner raises its numeric value.
+
+    v1.2 advanced — exercises the qty-spinner behaviour that
+    :func:`has_quantity_spinner` only asserts the *presence* of. Tries the
+    visible ``+`` button first; falls back to ``HTMLInputElement.stepUp()``
+    so themes with a custom button shape still pass. Returns
+    ``passed=None`` when no qty input is present.
+    """
+    if ctx.sample_product_url is None:
+        return ProbeOutcome(passed=None, notes="no sample_product_url provided")
+    await page.goto(ctx.sample_product_url, wait_until="domcontentloaded")
+    qty_input = page.locator(
+        'input[type="number"][name*="quantity" i], input[type="number"][name*="qty" i], '
+        '[class*="quantity-selector"] input[type="number"], '
+        '[class*="qty"][role="spinbutton"]'
+    ).first
+    if await qty_input.count() == 0:
+        return ProbeOutcome(passed=None, notes="no quantity spinner on PDP")
+    before_value_str = (await qty_input.input_value()) or ""
+    try:
+        before_value = int(before_value_str.strip() or "1")
+    except ValueError:
+        return ProbeOutcome(
+            passed=None,
+            notes=f"qty spinner value {before_value_str!r} is not numeric",
+        )
+    before_shot = await ctx.screenshot("before-qty")
+    before_snap = await ctx.snapshot("before-qty")
+    plus_button = page.locator(
+        'button[name="plus"], button[class*="quantity__button"][class*="plus"], '
+        'button[aria-label*="increase" i], button[data-action="increment"], '
+        '[class*="quantity-selector"] button:has-text("+")'
+    ).first
+    if await plus_button.count() > 0 and await plus_button.is_enabled():
+        with contextlib.suppress(PlaywrightTimeoutError):
+            await plus_button.click(timeout=_BEHAVIORAL_WAIT_MS)
+    else:
+        # No clickable + button: drive the input via stepUp() so themes that
+        # only ship the bare <input type="number"> can still satisfy the probe.
+        await qty_input.evaluate("(el) => el.stepUp()")
+        await qty_input.dispatch_event("change")
+    after_value_str = (await qty_input.input_value()) or ""
+    after_shot = await ctx.screenshot("after-qty")
+    after_snap = await ctx.snapshot("after-qty")
+    try:
+        after_value = int(after_value_str.strip() or "0")
+    except ValueError:
+        return ProbeOutcome(
+            passed=False,
+            evidence=(before_shot, before_snap, after_shot, after_snap),
+            notes=f"qty value after increment is non-numeric: {after_value_str!r}",
+        )
+    passed = after_value > before_value
+    return ProbeOutcome(
+        passed=passed,
+        evidence=(before_shot, before_snap, after_shot, after_snap),
+        notes=None if passed else f"qty value did not increase ({before_value} → {after_value})",
     )
