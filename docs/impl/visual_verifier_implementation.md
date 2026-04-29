@@ -130,7 +130,7 @@ into the second consumer.
 
 - [x] **T4.2** — Sample-token resolution for `cart_search`: pick the first product title's first noun-token as the `q=` value. Deterministic per dataset. Spec §9.1. **Check:** unit test against a fixture `products.json` returns a stable token across reruns.
 
-- [ ] **T4.3** — Tests: deterministic ordering of multi-bucket route unions (`visual_polish`, `consolidate`); cap respected per §5.6.1 (per-iteration vs. sweep); `_redo_<n>` task ids resolve to the same routes as the base. **Check:** assert sorted tuple, length within caps, prefix-match coverage for redo flow, sweep `BucketCaps` widens beyond per-iteration.
+- [x] **T4.3** — Tests: deterministic ordering of multi-bucket route unions (`visual_polish`, `consolidate`); cap respected per §5.6.1 (per-iteration vs. sweep); `_redo_<n>` task ids resolve to the same routes as the base. **Check:** assert sorted tuple, length within caps, prefix-match coverage for redo flow, sweep `BucketCaps` widens beyond per-iteration.
 
 **M4 acceptance:** one source of truth for task → buckets → routes/capabilities; `routes_200` and `visual_judge` consume the same module.
 
