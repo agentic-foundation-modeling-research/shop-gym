@@ -25,7 +25,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 - [x] **T1.2** — `src/shop_gen/build/prompts/visual_judge.md`: per-iteration prompt template with slots `{base_url}`, `{task_id}`, `{capabilities_slice}`, `{route_list}`, `{verdict_schema}`, `{prior_feedback_or_empty}`. Bake in the "judge only what you have rendered" instruction (spec §9.2) and the structured-score expectation (`score`, `category_scores`, `severity` per §9.3). Spec §9.2, §9.3. **Check:** all slots load; `load_visual_judge_prompt()` exposed from `shop_gen.build.prompts`; rendered prompt explicitly tells the agent the capabilities slice has been pre-filtered for this task's bucket(s).
 
-- [ ] **T1.3** — `src/shop_gen/build/verifiers/_task_routes.py`: 2-layer **task → buckets → (routes, capabilities)** module per spec §5.3 + §9.1. Constants:
+- [x] **T1.3** — `src/shop_gen/build/verifiers/_task_routes.py`: 2-layer **task → buckets → (routes, capabilities)** module per spec §5.3 + §9.1. Constants:
   - `TASK_BUCKETS: dict[str, frozenset[str]]` — 8 keys covering the canonical `gen_*` task ids plus `visual_polish` and `consolidate`.
   - `BUCKET_CAPABILITY_KEYS: dict[str, frozenset[str]]` — 6 buckets, capability key globs.
 
