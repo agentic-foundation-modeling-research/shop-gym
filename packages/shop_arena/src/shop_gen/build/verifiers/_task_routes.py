@@ -343,16 +343,18 @@ def _sample_product_handles(
 
 
 def _sample_search_token(data_dir: Path) -> str:
-    """Pick a deterministic search token from ``data/products.json``.
+    """Pick a deterministic noun-token from ``data/products.json``.
 
-    Returns the first whitespace-delimited word of the first product
-    title, lowercased. Empty / missing dataset falls back to
-    ``"shop"`` so the resulting ``/search?q=…`` URL is still well-formed
-    (the route is exercised for shape, not for realism).
+    Walks the first product title left to right and returns the first
+    token that is *not* an obvious non-noun (article, preposition,
+    conjunction, prefix, common adjective, or word with a clear
+    adjective/adverb suffix). The result is deterministic per dataset:
+    the same ``products.json`` always yields the same token, regardless
+    of run order. Spec §9.1 + impl plan T4.2.
 
-    A richer noun-token resolver lands in T4.2; this baseline version
-    is enough for the M1 visual judge wiring and is deterministic per
-    dataset (a property T4.2 also requires).
+    Empty / missing dataset, or a title whose tokens are all skipped,
+    falls back to ``"shop"`` so the resulting ``/search?q=…`` URL is
+    still well-formed.
     """
     raw = _load_json_list(data_dir / "products.json")
     if raw is None:
@@ -363,10 +365,109 @@ def _sample_search_token(data_dir: Path) -> str:
         title = cast("dict[str, Any]", entry).get("title")
         if not isinstance(title, str):
             continue
-        first = title.strip().split()
-        if first:
-            return first[0].lower()
+        token = _first_noun_token(title)
+        if token is not None:
+            return token
     return "shop"
+
+
+_NON_NOUN_WORDS: Final[frozenset[str]] = frozenset(
+    {
+        # Articles, conjunctions, common prepositions.
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "nor",
+        "yet",
+        "so",
+        "of",
+        "for",
+        "with",
+        "without",
+        "in",
+        "on",
+        "at",
+        "to",
+        "by",
+        "from",
+        "as",
+        "into",
+        "onto",
+        "per",
+        # Standalone prefix-style words.
+        "anti",
+        "non",
+        "pre",
+        "post",
+        "sub",
+        "super",
+        "ultra",
+        # Common adjectives that frequently lead product titles.
+        "new",
+        "old",
+        "big",
+        "small",
+        "large",
+        "tiny",
+        "mini",
+        "best",
+        "great",
+        "good",
+        "better",
+        "premium",
+        "luxury",
+        "deluxe",
+        "free",
+        "easy",
+        "soft",
+        "hard",
+        "light",
+        "dark",
+        "pure",
+        "fresh",
+    },
+)
+"""Stoplist of obvious non-noun words skipped by :func:`_first_noun_token`."""
+
+
+_ADJECTIVE_SUFFIXES: Final[tuple[str, ...]] = ("less", "ish")
+"""Suffixes that reliably mark adjectives (e.g. ``tickless``, ``greenish``)."""
+
+
+_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]+")
+"""Alphabetic tokens; numbers / punctuation are skipped."""
+
+
+_MIN_TOKEN_LEN: Final[int] = 3
+"""Single- and two-letter tokens are too short to be useful search queries."""
+
+
+def _first_noun_token(title: str) -> str | None:
+    """Return the first noun-like alphabetic token from ``title``.
+
+    A token is considered noun-like when it is alphabetic, at least
+    :data:`_MIN_TOKEN_LEN` characters long, not in :data:`_NON_NOUN_WORDS`,
+    and does not end in any of :data:`_ADJECTIVE_SUFFIXES`. The check is
+    intentionally lightweight: it rejects the obvious adjective /
+    function-word leads typical of product titles (``Tickless Anti …``,
+    ``Best Premium …``) without pulling in a full POS tagger.
+
+    Returns ``None`` when no token in ``title`` qualifies, leaving the
+    caller's ``"shop"`` fallback in charge of route well-formedness.
+    """
+    for raw in _TOKEN_RE.findall(title):
+        token = raw.lower()
+        if len(token) < _MIN_TOKEN_LEN:
+            continue
+        if token in _NON_NOUN_WORDS:
+            continue
+        if token.endswith(_ADJECTIVE_SUFFIXES):
+            continue
+        return token
+    return None
 
 
 def _load_json_list(path: Path) -> list[Any] | None:

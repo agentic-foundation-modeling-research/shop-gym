@@ -162,7 +162,10 @@ def test_bucket_routes_product_uses_first_collection_first_product(tmp_path: Pat
 def test_bucket_routes_cart_search_renders_cart_and_search(tmp_path: Path) -> None:
     _seed_dataset(tmp_path)
     routes = bucket_routes("cart_search", tmp_path)
-    assert routes == ("/cart", "/search?q=tickless")
+    # First product title is ``Tickless Anti Tick Collar``; the noun-token
+    # resolver skips ``tickless`` (-less suffix) and ``anti`` (prefix word),
+    # landing on ``tick``. Spec §9.1 + T4.2.
+    assert routes == ("/cart", "/search?q=tick")
 
 
 def test_bucket_routes_info_pages_caps_and_appends_policies(tmp_path: Path) -> None:
@@ -184,6 +187,60 @@ def test_bucket_routes_handles_missing_data_files(tmp_path: Path) -> None:
     assert bucket_routes("info_pages", tmp_path) == ("/policies/privacy",)
     # Search falls back to the default token.
     assert bucket_routes("cart_search", tmp_path) == ("/cart", "/search?q=shop")
+
+
+# ---------------------------------------------------------------------------
+# Search-token resolution (spec §9.1 + impl plan T4.2)
+# ---------------------------------------------------------------------------
+
+
+def test_search_token_skips_adjective_lead_then_prefix_word(tmp_path: Path) -> None:
+    """Tickless (-less suffix) and ``anti`` (prefix word) are skipped; first
+    surviving token is ``tick``. Spec §9.1 + T4.2."""
+    _write_dataset(
+        tmp_path,
+        products=[{"handle": "a", "title": "Tickless Anti Tick Collar"}],
+    )
+    assert bucket_routes("cart_search", tmp_path) == ("/cart", "/search?q=tick")
+
+
+def test_search_token_skips_common_adjective_leads(tmp_path: Path) -> None:
+    """Common adjectives (``best``, ``premium``, articles) are skipped."""
+    _write_dataset(
+        tmp_path,
+        products=[{"handle": "a", "title": "The Best Premium Mushroom Lamp"}],
+    )
+    assert bucket_routes("cart_search", tmp_path) == ("/cart", "/search?q=mushroom")
+
+
+def test_search_token_falls_back_to_shop_when_all_tokens_skipped(tmp_path: Path) -> None:
+    """A title made entirely of stop-listed words yields the ``"shop"`` fallback."""
+    _write_dataset(
+        tmp_path,
+        products=[{"handle": "a", "title": "The Best New Premium"}],
+    )
+    assert bucket_routes("cart_search", tmp_path) == ("/cart", "/search?q=shop")
+
+
+def test_search_token_is_deterministic_across_reruns(tmp_path: Path) -> None:
+    """Same dataset → same token, regardless of how many times it's resolved."""
+    _seed_dataset(tmp_path)
+    first = bucket_routes("cart_search", tmp_path)
+    second = bucket_routes("cart_search", tmp_path)
+    third = bucket_routes("cart_search", tmp_path)
+    assert first == second == third
+    assert first == ("/cart", "/search?q=tick")
+
+
+def test_search_token_strips_numbers_and_punctuation(tmp_path: Path) -> None:
+    """Tokens with digits / punctuation are excluded (alphabetic-only regex)."""
+    _write_dataset(
+        tmp_path,
+        products=[{"handle": "a", "title": "2024 Edition: Ergonomic Keyboard"}],
+    )
+    # ``2024`` is non-alphabetic; ``edition`` is the first alpha noun-token
+    # (≥ 3 chars, not stop-listed, no adjective suffix).
+    assert bucket_routes("cart_search", tmp_path) == ("/cart", "/search?q=edition")
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +344,7 @@ def test_routes_for_buckets_consolidate_covers_full_set(tmp_path: Path) -> None:
     assert "/collections/col-00" in routes
     assert "/products/prod-00-a" in routes
     assert "/cart" in routes
-    assert "/search?q=tickless" in routes
+    assert "/search?q=tick" in routes
     assert "/pages/page-00" in routes
     assert "/policies/privacy" in routes
 
