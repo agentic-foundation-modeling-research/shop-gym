@@ -91,7 +91,7 @@ from shop_gen.build.verifiers._subprocess import (
     default_subprocess_runner,
     truncate_stream,
 )
-from shop_gen.config import DEFAULT_VISUAL_RETRY_BUDGET, ShopGenConfig
+from shop_gen.config import DEFAULT_JUDGES, DEFAULT_VISUAL_RETRY_BUDGET, ShopGenConfig
 from shop_gen.data_validation.hosting_check import find_shop_backend_cli
 from shop_gen.final_eval.playwright_smoke import DevServerFactory
 from shop_gen.steps.base import FileInput, InputRef, StepContext, StepInput
@@ -214,6 +214,7 @@ class VerifiersFactory(Protocol):
         *,
         out_dir: Path,
         sidecar: SidecarHandle,
+        judges: frozenset[str] = ...,
         visual_retry_budget: int = ...,
     ) -> tuple[Verifier, ...]:
         """Return the verifier tuple the harness should dispatch."""
@@ -575,6 +576,7 @@ def default_verifiers_factory(
     *,
     out_dir: Path,
     sidecar: SidecarHandle,
+    judges: frozenset[str] = DEFAULT_JUDGES,
     dev_server_factory: DevServerFactory | None = None,
     visual_retry_budget: int = DEFAULT_VISUAL_RETRY_BUDGET,
 ) -> tuple[Verifier, ...]:
@@ -584,11 +586,16 @@ def default_verifiers_factory(
     default uses the production wiring (real ``pnpm`` invocations, the
     live sidecar's introspection endpoint, the shipped allowlist).
 
-    The ``visual_judge`` LLM verifier (spec §5.2) is gated behind the
+    LLM-judge verifiers are gated by the ``judges`` set (spec §5.5,
+    impl plan T3.2): only judges whose name appears in ``judges``
+    are constructed. Rule verifiers are always present. The default
+    is :data:`~shop_gen.config.DEFAULT_JUDGES` (every known judge).
+
+    The ``visual_judge`` branch is additionally gated behind the
     :func:`~shop_gen.build.verifiers._skills.is_playwright_skill_available`
-    probe (impl plan T1.5): when the ``pi-playwright`` skill is missing
-    the verifier is omitted from the tuple and a single warning is
-    logged with the install hint. Rule verifiers are always present.
+    probe (impl plan T1.5): when ``visual_judge`` is requested but the
+    ``pi-playwright`` skill is missing the verifier is omitted from the
+    tuple and a single warning is logged with the install hint.
 
     Args:
         out_dir: Run workspace. Used by ``nav_coverage`` to locate
@@ -596,6 +603,10 @@ def default_verifiers_factory(
             ``data/{collections,products,pages}.json``.
         sidecar: Live :class:`SidecarHandle`. Used by ``data_in_use`` to
             point at the introspection endpoint.
+        judges: Set of LLM-judge verifier names to construct (spec
+            §5.5). Names outside this set are omitted; rule verifiers
+            are always included. Defaults to
+            :data:`~shop_gen.config.DEFAULT_JUDGES`.
         dev_server_factory: :class:`DevServerFactory` that boots the
             hydrogen dev server for the visual-judge sub-iteration.
             Defaults to :func:`_unconfigured_dev_server_factory`; the
@@ -619,22 +630,25 @@ def default_verifiers_factory(
         ),
         NavCoverageVerifier(data_dir=out_dir / _DATA_DIR),
         # NoBrandLeakVerifier(),  # temporarily disabled — broken; re-add import + line to revive.
-        QualityJudgeVerifier(),
     ]
-    if is_playwright_skill_available():
-        verifiers.append(
-            VisualJudgeVerifier(
-                data_dir=out_dir / _DATA_DIR,
-                dev_server_factory=factory,
-                retry_budget=visual_retry_budget,
-            ),
-        )
-    else:
-        _log.warning(
-            "`visual_judge` skipped: pi-playwright skill not found. "
-            "Install with `pnpm add -g pi-playwright` (or `npm i -g pi-playwright`) to enable.",
-        )
-    verifiers.append(CrossTaskConsistencyVerifier())
+    if "quality_judge" in judges:
+        verifiers.append(QualityJudgeVerifier())
+    if "visual_judge" in judges:
+        if is_playwright_skill_available():
+            verifiers.append(
+                VisualJudgeVerifier(
+                    data_dir=out_dir / _DATA_DIR,
+                    dev_server_factory=factory,
+                    retry_budget=visual_retry_budget,
+                ),
+            )
+        else:
+            _log.warning(
+                "`visual_judge` skipped: pi-playwright skill not found. "
+                "Install with `pnpm add -g pi-playwright` (or `npm i -g pi-playwright`) to enable.",
+            )
+    if "cross_task_consistency" in judges:
+        verifiers.append(CrossTaskConsistencyVerifier())
     return tuple(verifiers)
 
 

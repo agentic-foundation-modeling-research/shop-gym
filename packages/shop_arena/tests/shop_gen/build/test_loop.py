@@ -807,6 +807,105 @@ def test_default_verifiers_factory_uses_default_visual_retry_budget(
     assert visual._retry_budget == DEFAULT_VISUAL_RETRY_BUDGET
 
 
+def test_default_verifiers_factory_judges_empty_returns_only_rule_verifiers(
+    tmp_path: Path,
+) -> None:
+    """Impl plan T3.2: ``judges=frozenset()`` drops every LLM judge; rule verifiers stay."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            judges=frozenset(),
+        )
+
+    types = [type(v) for v in verifiers]
+    assert types == [
+        TscVerifier,
+        BuildVerifier,
+        DataInUseVerifier,
+        NavCoverageVerifier,
+    ]
+
+
+def test_default_verifiers_factory_judges_visual_only_when_skill_present(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Impl plan T3.2: ``judges={"visual_judge"}`` includes exactly that LLM judge."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with (
+        patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True),
+        caplog.at_level("WARNING", logger="shop_gen.build.loop"),
+    ):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            judges=frozenset({"visual_judge"}),
+        )
+
+    types = [type(v) for v in verifiers]
+    assert types == [
+        TscVerifier,
+        BuildVerifier,
+        DataInUseVerifier,
+        NavCoverageVerifier,
+        VisualJudgeVerifier,
+    ]
+    assert not [
+        record
+        for record in caplog.records
+        if record.levelname == "WARNING" and "visual_judge" in record.getMessage()
+    ]
+
+
+def test_default_verifiers_factory_judges_visual_only_skill_missing_warns(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Impl plan T3.2: ``judges={"visual_judge"}`` + skill missing.
+
+    Expected: rule verifiers only + a single warning logged.
+    """
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with (
+        patch("shop_gen.build.loop.is_playwright_skill_available", return_value=False),
+        caplog.at_level("WARNING", logger="shop_gen.build.loop"),
+    ):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            judges=frozenset({"visual_judge"}),
+        )
+
+    types = [type(v) for v in verifiers]
+    assert types == [
+        TscVerifier,
+        BuildVerifier,
+        DataInUseVerifier,
+        NavCoverageVerifier,
+    ]
+    visual_warnings = [
+        record
+        for record in caplog.records
+        if record.levelname == "WARNING" and "visual_judge" in record.getMessage()
+    ]
+    assert len(visual_warnings) == 1
+    assert "pi-playwright" in visual_warnings[0].getMessage()
+
+
 # --------------------------------------------------------------------------- #
 # Default introspector wiring
 # --------------------------------------------------------------------------- #
