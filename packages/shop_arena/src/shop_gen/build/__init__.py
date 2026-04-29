@@ -64,6 +64,7 @@ from shop_gen.build.prompts import (
     load_execute_prompt,
     load_planner_prompt,
     load_quality_judge_prompt,
+    load_visual_judge_prompt,
 )
 from shop_gen.build.redo import RedoError, append_redo_task
 from shop_gen.build.sidecar import (
@@ -120,5 +121,6 @@ __all__ = [
     "load_execute_prompt",
     "load_planner_prompt",
     "load_quality_judge_prompt",
+    "load_visual_judge_prompt",
     "sidecar_lifecycle",
 ]

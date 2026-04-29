@@ -26,6 +26,7 @@ from shop_gen.build.prompts import (
     load_execute_prompt,
     load_planner_prompt,
     load_quality_judge_prompt,
+    load_visual_judge_prompt,
 )
 
 # The four loaders T5.3 ships, keyed by the prompt-file slot they
@@ -38,6 +39,7 @@ _LOADERS: Final[dict[str, Callable[[], str]]] = {
     "consolidate_execute.md": load_consolidate_execute_prompt,
     "quality_judge.md": load_quality_judge_prompt,
     "cross_task_consistency.md": load_cross_task_consistency_prompt,
+    "visual_judge.md": load_visual_judge_prompt,
 }
 
 # The two executor bodies must carry the verifier-feedback placeholder.
@@ -213,3 +215,49 @@ def test_cross_task_consistency_prompt_carries_required_format_slots() -> None:
         source_blocks="### x",
     )
     assert "### x" in rendered
+
+
+def test_visual_judge_prompt_carries_required_format_slots() -> None:
+    """The ``visual_judge`` template must accept the six T1.2 slots.
+
+    Spec §9.2 fixes six placeholders the verifier renders before each
+    iteration: ``base_url`` / ``task_id`` / ``capabilities_slice`` /
+    ``route_list`` / ``verdict_schema`` / ``prior_feedback_or_empty``.
+    A missing placeholder would crash with ``KeyError`` at the first
+    dispatch; a stray literal ``{`` would crash ``str.format`` with a
+    different error. The test exercises the format call directly with
+    placeholder values to lock the contract.
+    """
+    body = load_visual_judge_prompt()
+    rendered = body.format(
+        base_url="http://localhost:3000",
+        task_id="gen_homepage",
+        capabilities_slice="{}",
+        route_list="- /",
+        verdict_schema="{}",
+        prior_feedback_or_empty="",
+    )
+    assert "http://localhost:3000" in rendered
+    assert "gen_homepage" in rendered
+    assert "- /" in rendered
+
+
+def test_visual_judge_prompt_calls_out_pre_filtered_capability_slice() -> None:
+    """The visual-judge prompt must tell the agent the slice is pre-filtered.
+
+    Spec §9.2 — the prompt must explicitly tell the agent the
+    capabilities slice has been pre-filtered for this task's bucket(s)
+    so it does not penalise the absence of features that belong to a
+    different bucket. T1.2 "Check" pins this contract.
+    """
+    body = load_visual_judge_prompt()
+    flat = " ".join(body.split()).lower()
+    assert "pre-filtered" in flat, (
+        "visual_judge.md must call out that the capabilities slice has "
+        "been pre-filtered for the task's bucket(s) (visual-verifier "
+        "spec §9.2)."
+    )
+    assert "bucket" in flat, (
+        "visual_judge.md must reference the page-bucket axis so the "
+        "agent understands why the slice is narrow (spec §9.2)."
+    )

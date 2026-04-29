@@ -21,9 +21,11 @@ Six files live next to this module under
   §5.5.4). Carries the same ``{{verifier_feedback}}`` slot so the
   consolidation pass can react to its own verifier failures across
   iterations.
-* ``quality_judge.md`` / ``cross_task_consistency.md`` — the
-  ``str.format()`` templates the verifier dispatcher renders (T5.5).
-
+  iterations.
+* ``quality_judge.md`` / ``cross_task_consistency.md`` /
+  ``visual_judge.md`` — the ``str.format()`` templates the verifier
+  dispatcher renders (T5.5; ``visual_judge`` per the visual-verifier
+  spec §9.2).
 The files are checked into the repo and considered API: changes flow
 through prompt-engineering review, not silent edits to the loop driver.
 The two executor bodies are intentionally kept as standalone files even
@@ -49,6 +51,7 @@ _EXECUTE_FILE: Final[str] = "execute.md"
 _CONSOLIDATE_EXECUTE_FILE: Final[str] = "consolidate_execute.md"
 _QUALITY_JUDGE_FILE: Final[str] = "quality_judge.md"
 _CROSS_TASK_CONSISTENCY_FILE: Final[str] = "cross_task_consistency.md"
+_VISUAL_JUDGE_FILE: Final[str] = "visual_judge.md"
 
 VERIFIER_FEEDBACK_PLACEHOLDER: Final[str] = "{{verifier_feedback}}"
 """The placeholder the harness renders with verifier feedback (verifiers spec §5.5).
@@ -191,6 +194,33 @@ def load_cross_task_consistency_prompt() -> str:
     return _read_prompt_file(_CROSS_TASK_CONSISTENCY_FILE)
 
 
+@cache
+def load_visual_judge_prompt() -> str:
+    """Return the ``str.format()`` template for the ``visual_judge`` verifier (T1.2).
+
+    The template carries six slots the verifier renders before each
+    iteration (visual-verifier spec §9.2):
+
+    * ``{base_url}`` — dev-server base URL the playwright skill drives.
+    * ``{task_id}`` — selected task id at dispatch time.
+    * ``{capabilities_slice}`` — JSON-rendered capabilities filtered
+      to the task's page bucket(s) (§5.3.1).
+    * ``{route_list}`` — rendered list of routes the agent must
+      render at desktop + mobile viewports.
+    * ``{verdict_schema}`` — JSON schema the agent must emit into
+      ``verdict.json`` (§9.3).
+    * ``{prior_feedback_or_empty}`` — prior-iteration verifier
+      feedback for this task, or the empty string.
+
+    Returns:
+        The template body, terminated by a single newline.
+
+    Raises:
+        FileNotFoundError: ``visual_judge.md`` is missing.
+    """
+    return _read_prompt_file(_VISUAL_JUDGE_FILE)
+
+
 def _read_prompt_file(name: str) -> str:
     """Read ``<prompts dir>/<name>`` as UTF-8 text."""
     return (_PROMPTS_DIR / name).read_text(encoding="utf-8")
@@ -204,4 +234,5 @@ __all__ = [
     "load_execute_prompt",
     "load_planner_prompt",
     "load_quality_judge_prompt",
+    "load_visual_judge_prompt",
 ]
