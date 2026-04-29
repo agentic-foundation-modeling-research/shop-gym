@@ -176,7 +176,7 @@ Lands the page-bucket `ThreadPoolExecutor` fan-out for both
 
 - [x] **T7.1** — Update [`docs/specs/shop_arena/shop_gen.md`](../specs/shop_arena/shop_gen.md) §5.5.3 verifier table to add `visual_judge` and reference `visual_verifier.md`. **Check:** cross-link resolves.
 
-- [ ] **T7.2** — Update [`docs/specs/README.md`](../specs/README.md) ShopArena table with the new `visual_verifier.md` row (already listed; bump status). **Check:** spec index lists the new spec + impl plan with current status.
+- [x] **T7.2** — Update [`docs/specs/README.md`](../specs/README.md) ShopArena table with the new `visual_verifier.md` row (already listed; bump status). **Check:** spec index lists the new spec + impl plan with current status.
 
 - [ ] **T7.3** — Update spec status badge in [`docs/specs/shop_arena/visual_verifier.md`](../specs/shop_arena/visual_verifier.md) from `Spec (draft)` to `v0.1` once M1–M5 land. **Check:** badge accurate.
 
