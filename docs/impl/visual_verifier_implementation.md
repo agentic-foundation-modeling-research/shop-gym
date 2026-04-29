@@ -166,7 +166,7 @@ Lands the page-bucket `ThreadPoolExecutor` fan-out for both
 
 - [x] **T6.2** — End-to-end visual sub-iter against a real `pi` runtime: a fresh sub-workspace with no `AGENTS.md` / `plan.md` should complete cleanly (the `pi` adapter already supports this — same shape `shop_explore` and the `shop_gen` build executor use). **Check:** sub-iter completes; `iter/native.log` populated; playwright skill available; screenshots written; `verdict.json` parsed.
 
-- [ ] **T6.3** — End-to-end smoke test wiring `visual_judge` and the visual sweep against a real (recorded) hydrogen tree. Spec §5.2 + §5.6. **Check:** at least one PASS and one FAIL captured; screenshots present; `verdict.json` parsed.
+- [x] **T6.3** — End-to-end smoke test wiring `visual_judge` and the visual sweep against a real (recorded) hydrogen tree. Spec §5.2 + §5.6. **Check:** at least one PASS and one FAIL captured; screenshots present; `verdict.json` parsed.
 
 **M6 acceptance:** production wiring lands; replay-runtime tests green; `_unconfigured_*` placeholders deleted.
 
