@@ -108,7 +108,7 @@ entry with an inline `agent_task:` block; v1.1 / v1.2 rubrics still load.
   `{probe, agent_task}` per entry, and `agent_task` is required iff
   `level == "agent_driven"`. **Check:** strict pyright passes; existing
   rubric load tests stay green.
-- [ ] **T1.2** — Scaffold `packages/shop_arena/src/shop_probe/agent/`:
+- [x] **T1.2** — Scaffold `packages/shop_arena/src/shop_probe/agent/`:
   - `__init__.py` re-exports `AgentRuntimeConfig`.
   - `config.py` defines a frozen dataclass `AgentRuntimeConfig` with
     `runtime: Literal["claude_code", "pi"] = "claude_code"`,
