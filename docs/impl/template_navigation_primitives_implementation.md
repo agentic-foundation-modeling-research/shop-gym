@@ -1,0 +1,165 @@
+# Template Navigation Primitives — Implementation Plan
+
+Status: **Plan (proposed)** · Version: **0.1**
+Spec: [`docs/specs/shop_arena/template_navigation_primitives.md`](../specs/shop_arena/template_navigation_primitives.md)
+Target package: `packages/shop_arena/src/shop_gen/templates/hydrogen` (template tree) + `packages/shop_arena/src/shop_gen/build/prompts` (executor prompt) + `packages/shop_arena/src/shop_gen/build/verifiers` (one new verifier)
+Related plans:
+- [`template_baseline_fixes_implementation.md`](template_baseline_fixes_implementation.md) — *to be written*
+- [`template_data_binding_fixes_implementation.md`](template_data_binding_fixes_implementation.md) — *to be written*
+
+> Pure task checklist. Behavior comes from the spec; this doc only
+> says what to do and in what order.
+
+---
+
+## Conventions
+
+All paths under `templates/hydrogen/` are relative to
+`packages/shop_arena/src/shop_gen/templates/hydrogen/` unless
+prefixed.
+
+The template package does not ship `vitest`. Behavioral verification
+runs through:
+
+1. **Type-check** — `pnpm --filter hydrogen tsc --noEmit`
+   (already in `verifiers/tsc.py`).
+2. **Build** — `pnpm --filter hydrogen build`
+   (already in `verifiers/build.py`).
+3. **Cassette replay** — re-run the `fixture_build_loop` cassette
+   under `tests/shop_gen/cassettes/fixture_build_loop/` and assert
+   the post-build `Header.tsx` imports the expected primitives.
+4. **End-to-end smoke** — `final_eval/playwright_smoke.py` against
+   `mock_hardware` confirms rendered nav still works.
+
+Do not add a TS test runner to the template — every shop clones the
+template, so test-runner deps would bloat every artifact.
+
+---
+
+## Tasks
+
+### M0 · Prereqs (external)
+
+- [ ] **T0.1** — Land [`template_baseline_fixes_implementation.md`](template_baseline_fixes_implementation.md) M1+M2 (P1–P4). Spec §"Order-of-operations note". **Why required:** N2 (`<NavTrigger>`) duplicates P3's button-typography reset locally; landing P3 first means N2 can rely on the global rule and stay even smaller. **Check:** `app/styles/reset.css` contains the `button { font: inherit; ... }` rule.
+- [ ] **T0.2** — Land [`template_data_binding_fixes_implementation.md`](template_data_binding_fixes_implementation.md) Tier B (B1+B2 — empty fallback menus). **Why required:** N1 (`<NavMenu>`) renders `(menu || FALLBACK).items.map(...)`; an empty fallback prevents N1 from rendering stub Shopify items when the loader fails. **Check:** `Header.tsx` and `Footer.tsx` `FALLBACK_*_MENU` are `{items: []}`.
+
+### M1 · Trigger + recursion + hover-intent
+
+Goal: ship the three primitives that close `mock_hardware` Issues 2 and 3 by construction. No template wiring yet — purely additive files. Existing `Header.tsx` / `Footer.tsx` are untouched in this milestone.
+
+- [x] **T1.1** — `app/lib/use-hover-intent.ts`: export `useHoverIntent(closeDelay = 120): {open, triggerProps, contentProps, close}`. Internals: `useState<boolean>` for `open`, `useRef<ReturnType<typeof setTimeout> | null>` for the close timer, `useEffect` cleanup on unmount. `triggerProps` and `contentProps` both return `{onMouseEnter, onMouseLeave}` so the consumer can wire them onto separate elements; entering either cancels the timer. Spec §N3. **Check:** `pnpm --filter hydrogen tsc --noEmit` clean; no React-key / hooks-rule warnings. **Status:** Landed ahead of M0 prereqs — file is purely additive (nothing in the template imports it yet) so it composes cleanly when T0.1/T0.2 land. Verified type-clean under the template's `tsconfig.json` (strict + `verbatimModuleSyntax`) via an isolated `tsc --noEmit` run; the 46 pre-existing errors in the template tree are about generated `./+types/*` modules from `react-router typegen` and are unrelated. Module also exports a `DEFAULT_HOVER_CLOSE_DELAY_MS = 120` constant and a `HoverIntentHandlers` interface so consumers (T1.3) can spread the bundle into typed JSX without re-deriving the shape.
+- [ ] **T1.2** — `app/components/NavTrigger.tsx`: `forwardRef`-ed `<button>` primitive. Inline style asserts `font: 'inherit'`, `lineHeight: 'inherit'`, `color: 'inherit'`, `background: 'transparent'`, `border: 0`, `padding: 0`, `cursor: 'pointer'`. Props: `open: boolean`, `menuId: string`, plus standard `<button>` HTML attrs. ARIA: `aria-haspopup="menu"`, `aria-expanded={open}`, `aria-controls={menuId}`. Forwards `ref`. Spec §N2. **Check:** `tsc --noEmit` clean; component renders with no warnings under `<StrictMode>`.
+- [ ] **T1.3** — `app/components/NavMenu.tsx`: recursive renderer. Props: `menu: HeaderQuery['menu']`, `viewport: 'desktop' | 'mobile'`, `primaryDomainUrl: string`, `publicStoreDomain: string`, `linkClassName?: string`, `triggerClassName?: string`, `renderChildren?: (item, defaultRender) => ReactNode`. URL-stripping logic (already inline in today's `HeaderMenu`) extracted into a local `toLocalUrl(url, primaryDomainUrl, publicStoreDomain)` helper. For each `item`: if `item.items?.length > 0` render via `<NavWithChildren>` (internal helper that uses `useHoverIntent` + `<NavTrigger>` + a `<ul>` of children); else render `<NavLink>`. Spec §N1. **Check:** `tsc --noEmit` clean; rendering against a fixture menu with one parent + two children produces the right DOM shape (smoke test under `tests/shop_gen/test_template_smoke.py`, see T1.5).
+- [ ] **T1.4** — `app/components/NavMenu.tsx` (continued): expose `<NavMenu>` and the internal helper `toLocalUrl` as named exports. Do **not** export `NavWithChildren` — keep it internal so consumers can't accidentally couple to its props. Spec §N1. **Check:** named exports list is exactly `{NavMenu, toLocalUrl}`; no default export.
+- [ ] **T1.5** — `tests/shop_gen/test_template_smoke.py`: new module. After each milestone, asserts the template tree contains the expected new files and that `pnpm --filter hydrogen tsc --noEmit` (run via subprocess, skipped if `pnpm` is unavailable, `xfail` on CI without Node) is clean. For M1, asserts existence of `app/lib/use-hover-intent.ts`, `app/components/NavTrigger.tsx`, `app/components/NavMenu.tsx`, and that the latter exports `NavMenu`. **Check:** test green locally; skipped (not failed) when `pnpm` is missing.
+- [ ] **T1.6** — Update `prompts/execute.md` `gen_navigation` slice (around line 131): add a "Reuse the template's nav primitives" subsection naming `<NavMenu>`, `<NavTrigger>`, and `useHoverIntent` with one-line descriptions and a note that re-deriving hover-debounce or button-typography overrides is a verifier failure (forward-ref to T4.1). Spec §"Desired Status". **Check:** lint-only; `prompts.py::load_execute_prompt()` still resolves; the executor prompt now mentions all three primitive names.
+
+**M1 acceptance:** New files compile clean; `gen_navigation` prompt names them; existing build cassettes still replay (the new files are unimported by template-side code, so they're invisible to existing artifacts). No verifier wired yet.
+
+### M2 · Drawer + announcement + breadcrumbs + header shell
+
+Goal: complete the primitive set so `gen_navigation` becomes a wiring task rather than a build-from-scratch task.
+
+- [ ] **T2.1** — `app/components/HeaderShell.tsx`: presentational layout. Props: `brand: ReactNode`, `primary: ReactNode`, `ctas: ReactNode`. Renders `<header className="header"><div className="header-left">{brand}{primary}</div><div className="header-ctas">{ctas}</div></header>`. CSS for `.header-left` (flex + `gap: var(--space-6)`) added to `app/styles/app.css` alongside the existing `.header-menu-desktop` rule (will be the single source of brand→nav spacing once the executor migrates Header.tsx onto `HeaderShell`). Spec §N8. **Check:** `tsc --noEmit` clean; rendered DOM matches the prop-slot contract exactly.
+- [ ] **T2.2** — `app/components/MobileNavDrawer.tsx`: accordion drawer. Props mirror `<NavMenu>` minus `viewport`. Internal: `useState<string | null>` for the currently-open accordion item; flipping items closes prior. Uses `useAside().close` on link click. Renders a `<details>` per parent (open-state controlled); leaves render as `<NavLink>`. Spec §N4. **Check:** `tsc --noEmit` clean; opening one section programmatically closes any previously open section.
+- [ ] **T2.3** — `app/components/AnnouncementBar.tsx`: dismissible bar. Props: `messages: readonly string[]`, `href?: string`, `storageKey?: string` (default `'shop_announcement_dismissed'`). Internal: `useEffect` reads `localStorage[storageKey]` post-mount (avoid SSR mismatch); `useState<number>` for rotation index advancing on a 5s interval if `messages.length > 1`. ARIA `role="status"`. Renders `null` when dismissed or `messages.length === 0`. Spec §N7. **Check:** `tsc --noEmit` clean; SSR snapshot-test (rendered to string) shows no `localStorage` access at render time.
+- [ ] **T2.4** — `app/components/Breadcrumbs.tsx`: dual-mode component. Two named exports: `Breadcrumbs.FromCollections` (props: `collections: {handle, title}[]`, `productTitle: string`, `navPriority: readonly string[]`) and `Breadcrumbs.FromMatches` (props: `matches: ReturnType<typeof useMatches>`, `crumbBuilders: Record<string, (match) => Crumb | null>`). Both render `<nav aria-label="Breadcrumb"><ol>...</ol></nav>`. `FromCollections` picks primary by `collections.find(c => navPriority.includes(c.handle)) ?? collections[0]`. Spec §N6. **Check:** `tsc --noEmit` clean; `FromCollections` returns the priority-list winner over the first-membership fallback when both apply.
+- [ ] **T2.5** — `app/lib/use-nav-active.ts`: `useNavActive(): {isActive: (path: string) => boolean, isParentActive: (paths: readonly string[]) => boolean}`. Reads `useMatches()`; returns helpers a consumer can pass to className builders. Spec §"Bonus". **Check:** `tsc --noEmit` clean; `isParentActive(['/collections/x'])` true when current route is `/collections/x/sub`.
+- [ ] **T2.6** — Extend `tests/shop_gen/test_template_smoke.py`: assert M2 files exist; assert their named exports via grep (`NavMenu`, `Breadcrumbs.FromCollections`, `Breadcrumbs.FromMatches`, `MobileNavDrawer`, `AnnouncementBar`, `HeaderShell`, `useNavActive`). **Check:** test green.
+- [ ] **T2.7** — Update `prompts/execute.md` `gen_navigation` slice: add the four M2 primitives to the "Reuse" list. Add a separate `gen_collections` / `gen_product` slice mention of `<Breadcrumbs.FromCollections>` so the breadcrumb primitive is discovered by the right tasks (per shop-ui-fixes #9 the offenders are PDP / collection routes). Spec §N6 + §"Desired Status". **Check:** lint-only; `gen_navigation` and `gen_collections` slices both reference primitives.
+- [ ] **T2.8** — Cassette regeneration: re-run the `fixture_build_loop` cassette for `mock_hardware` against the patched template + prompt. Verify the post-build `Header.tsx` and `Footer.tsx` import the expected primitives. Update the cassette under `tests/shop_gen/cassettes/fixture_build_loop/` if the executor's output legitimately changes (it should — that's the point of M2). **Check:** `pytest tests/shop_gen/test_build_loop_replay.py` green; `Header.tsx` in the post-build artifact contains `from '~/components/NavMenu'` and `from '~/components/HeaderShell'`.
+
+**M2 acceptance:** All eight primitives + the active-state hook are present; type-check + build pass; cassette replay green against the regenerated reference.
+
+### M3 · Multi-handle footer
+
+Goal: let `data_synth` emit multiple footer-column menus and let the template consume them all. Touches GraphQL, env, and `shop_gen.build.env`.
+
+- [ ] **T3.1** — `app/lib/fragments.ts`: replace `FOOTER_QUERY` (single `$footerMenuHandle: String!`) with a fan-out variant that takes `$footerMenuHandles: [String!]!`. Emit one aliased `menu(handle: ...)` per handle via a small GraphQL helper, or — simpler — define `FOOTER_QUERY_FOR_HANDLE` as a single-handle query and call it N times in parallel from the loader. Choose the parallel-call approach (simpler, no aliased-codegen surprises). Spec §N5. **Check:** `pnpm --filter hydrogen tsc --noEmit` clean; existing single-handle behavior preserved when N=1.
+- [ ] **T3.2** — `app/root.tsx`: replace the literal `footerMenuHandle: 'footer'` with a list read from `env.PUBLIC_FOOTER_MENU_HANDLES` (CSV; defaults to `'footer'` when unset). `loadDeferredData` returns `footers: Promise<Array<FooterQuery | null>>`. Spec §N5. **Check:** `tsc --noEmit` clean; loader returns array shape; existing artifacts still work because `mock_hardware`'s env will default to `'footer'` until `data_synth` is updated.
+- [ ] **T3.3** — `app/components/FooterColumns.tsx`: takes `footers: Array<FooterQuery | null>` and `headerShop` (for primary-domain stripping). Renders one `<nav className="footer-column">` per non-null menu. Spec §N5. **Check:** `tsc --noEmit` clean; renders 1 column when given 1 menu, 3 when given 3.
+- [ ] **T3.4** — `app/components/PageLayout.tsx`: thread the new `footers` array through to `<Footer>` (or `<FooterColumns>` directly). Keep `<Footer>` as a thin wrapper around `<FooterColumns>` for backward compat with anyone still passing the old single-`footer` prop name; deprecate `<Footer>` in a comment for executors to migrate later. Spec §N5. **Check:** `tsc --noEmit` clean; calls compile against both old single-menu and new array shapes.
+- [ ] **T3.5** — `src/shop_gen/build/env.py`: extend `write_env_file` to accept an optional `footer_menu_handles: list[str]` and emit `PUBLIC_FOOTER_MENU_HANDLES=h1,h2,h3` when set, falling back to `PUBLIC_FOOTER_MENU_HANDLES=footer` otherwise. Spec §N5. **Check:** unit test asserts the env line is emitted with the expected CSV; default behavior unchanged for existing callers.
+- [ ] **T3.6** — Optional: `data_synth/navigation.py` extension to emit multiple footer menus. Out of scope for this plan (belongs to a `data_synth` follow-up); the template change is backward-compatible so this can land independently. Spec §N5 + Tier D in the data-binding spec. **Check:** flagged in the spec's "Out of scope" — no work item here, just a forward reference.
+- [ ] **T3.7** — Update `prompts/execute.md` `gen_navigation` slice: note that the footer is now multi-column-ready, document the `<FooterColumns>` component, and instruct the executor to use whatever `footer-*` handles the data layer emits (with the single-menu fallback). Spec §N5. **Check:** lint-only; cassette unaffected because `mock_hardware`'s data still emits one `footer` menu.
+- [ ] **T3.8** — Cassette assertion update: extend `test_template_smoke.py` to assert `app/components/FooterColumns.tsx` exists and that `app/root.tsx` reads `PUBLIC_FOOTER_MENU_HANDLES`. Spec §N5. **Check:** test green.
+
+**M3 acceptance:** Single-menu footer still works (back-compat); multi-menu footer renders N columns when `data_synth` is updated to emit them; env contract documented in `build/env.py` docstring.
+
+### M4 · Verifier — `navigation_primitive_usage`
+
+Goal: enforce that future `gen_navigation` runs adopt the primitives instead of re-deriving the same code.
+
+- [ ] **T4.1** — `src/shop_gen/build/verifiers/navigation_primitive_usage.py`: rule-based verifier (no LLM). Greps the post-build `app/components/Header.tsx` for one of: `import .* from '~/components/NavMenu'` OR `import .* from '~/components/HeaderShell'`. Greps for the *anti-patterns* the primitives replace: `setTimeout(() => setOpen(false)` (re-derived hover-intent), `'line-height': 'inherit'` inline on a `<button>` (re-derived button typography), `margin-left: 3rem` on `.header-menu-desktop` (legacy CSS). Returns FAIL with a pointer to the spec when a primitive is missing or an anti-pattern is present. Spec §"Acceptance". **Check:** unit test with synthetic Header.tsx fixtures (passing + failing for each pattern).
+- [ ] **T4.2** — Register `NavigationPrimitiveUsageVerifier` in `default_verifiers_factory` (after `tsc` and `build`, before LLM judges). Make it advisory in M4 (warns but doesn't fail) so the cassette migration in T2.8 doesn't get blocked retroactively. Promote to hard-fail in M5. Spec §"Acceptance". **Check:** verifier is in the default tuple; `iters/exec-XXXX/checks/verifiers/navigation_primitive_usage.json` records advisory verdict against the M2 cassette.
+- [ ] **T4.3** — Tests: extend `test_build_loop_replay.py` (or a new `test_navigation_verifier.py`) to assert the verifier (a) PASSes against the post-M2 cassette, (b) FAILs against a synthetic `Header.tsx` that re-derives hover-intent inline. Spec §"Acceptance". **Check:** both cases green.
+
+**M4 acceptance:** Verifier registered as advisory; future executor outputs that bypass the primitives surface in the verifier feedback loop without blocking landing.
+
+### M5 · Promotion + cleanup
+
+Goal: lock in the new contract once at least one full shop-gen run validates the primitives end-to-end.
+
+- [ ] **T5.1** — Promote `NavigationPrimitiveUsageVerifier` from advisory to hard-fail in `default_verifiers_factory`. Spec §"Acceptance". **Check:** an artifact missing the primitive imports fails the build loop instead of warning.
+- [ ] **T5.2** — Drop the deprecated `<Footer>` shim from `Footer.tsx` (T3.4) once the cassette confirms no executor still consumes it. Spec §N5. **Check:** `tsc --noEmit` clean; `grep -r 'from .Footer.' app/` returns only `<FooterColumns>` consumers.
+- [ ] **T5.3** — Documentation pass: update `templates/hydrogen/README.md` (or create a one-page `app/components/README.md`) listing the eight primitives + hook + their intended consumers. Spec §"Why the primitive layer pays for itself". **Check:** README lists every primitive with one-line description and a code snippet showing the canonical use site.
+- [ ] **T5.4** — End-to-end smoke against a *second* shop (not `mock_hardware`) to confirm the primitives generalize. Use whichever fixture is freshest in `outputs/shops/`. Spec §"Acceptance". **Check:** `pnpm --filter hydrogen build` passes; `final_eval/playwright_smoke.py` passes; rendered nav shows recursive sub-items, mega-menu hover works without dead-zone, mobile drawer accordion works.
+
+**M5 acceptance:** Verifier is hard-fail; legacy shims gone; primitives documented; second shop validates the contract.
+
+---
+
+## Test strategy summary
+
+| Layer | What it gates | Where it lives |
+|---|---|---|
+| `tsc --noEmit` | New primitives type-check | `verifiers/tsc.py` (existing) |
+| `pnpm build` | New primitives compile + Vite bundles | `verifiers/build.py` (existing) |
+| `test_template_smoke.py` | Files exist + named exports correct | `tests/shop_gen/test_template_smoke.py` (T1.5, extended each milestone) |
+| `test_build_loop_replay.py` | Cassette executor adopts primitives | `tests/shop_gen/test_build_loop_replay.py` (existing, regenerated at T2.8) |
+| `navigation_primitive_usage` verifier | Per-run enforcement | `verifiers/navigation_primitive_usage.py` (T4.1) |
+| `final_eval/playwright_smoke.py` | Rendered behavior against a real browser | `final_eval/playwright_smoke.py` (existing, exercised at T5.4) |
+
+No new TS test runner. No vitest.
+
+---
+
+## Out of scope
+
+These belong to other plans (or are deliberately deferred):
+
+- **CSS for the new components** — design tokens, hover affordances,
+  responsive breakpoints. Per spec §"Desired Status", structure is
+  template-owned; styling is consumer-owned.
+- **Locale-aware nav** (region switcher, language picker) — gated on
+  `template_data_binding_fixes_implementation.md` C1.
+- **`data_synth/navigation.py`** emitting multiple footer menus —
+  flagged at T3.6; lands as a `data_synth` follow-up.
+- **Upstreaming the primitives to `@shopify/hydrogen`** — spec §A3
+  alternative; track separately.
+- **A standalone `Header.tsx` migration** — the template's
+  `Header.tsx` is owned by `gen_navigation` per
+  `prompts/execute.md`; it gets rewritten on every run anyway, so
+  there is no value in pre-migrating it. The primitives ship; the
+  executor's first run after M1+M2 produces the migrated header.
+
+---
+
+## Rollout order across the three template specs
+
+| Step | Plan | Milestone |
+|---|---|---|
+| 1 | `template_baseline_fixes` | M1 (CSS-only P1/P2/P4) |
+| 2 | `template_baseline_fixes` | M2 (P3 button reset) |
+| 3 | `template_data_binding_fixes` | M1 (Tier A — Hydrogen leaks) |
+| 4 | `template_data_binding_fixes` | M2 (Tier B — empty fallback menus) |
+| 5 | **this plan** | M1 (trigger + recursion + hover-intent) |
+| 6 | **this plan** | M2 (drawer + announcement + breadcrumbs + shell) |
+| 7 | `template_data_binding_fixes` | M3 (Tier C — env-driven config) |
+| 8 | **this plan** | M3 (multi-handle footer — uses C2's env contract) |
+| 9 | **this plan** | M4 (advisory verifier) |
+| 10 | `template_data_binding_fixes` | M4 (`no_template_residue` verifier) |
+| 11 | **this plan** | M5 (promote verifier; second-shop smoke) |
+
+Each step preserves the previous step's invariants. Steps 1–4 are
+pre-reqs for step 5 per T0.1 / T0.2.
