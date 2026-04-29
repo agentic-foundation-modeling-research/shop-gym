@@ -1,129 +1,76 @@
+/**
+ * @fileoverview Backward-compatible footer wrapper.
+ *
+ * @deprecated Prefer `<FooterColumns>` (composed with a consumer-owned
+ *   `<footer>` chrome) for new code. This module survives only so
+ *   pre-T3.4 executor outputs that still pass the single-handle
+ *   `footer: Promise<FooterQuery | null>` prop keep compiling against
+ *   the new array-shaped loader contract from T3.2 (root.tsx) and the
+ *   multi-column primitive from T3.3 (FooterColumns.tsx). Slated for
+ *   removal in T5.2 once the cassette confirms no executor still
+ *   consumes `<Footer>`. See
+ *   `docs/specs/shop_arena/template_navigation_primitives.md` §N5.
+ */
+
 import {Suspense} from 'react';
-import {Await, NavLink} from 'react-router';
+import {Await} from 'react-router';
 import type {FooterQuery, HeaderQuery} from 'storefrontapi.generated';
 
+import {FooterColumns} from '~/components/FooterColumns';
+
 interface FooterProps {
-  footer: Promise<FooterQuery | null>;
-  header: HeaderQuery;
-  publicStoreDomain: string;
+  /**
+   * @deprecated Pass `footers` instead. Single-handle Promise kept so
+   *   pre-migration executor output still compiles; the wrapper lifts
+   *   it into a one-element array before forwarding to `<FooterColumns>`.
+   */
+  readonly footer?: Promise<FooterQuery | null>;
+  /**
+   * Array-shaped footer payload from `app/root.tsx`'s deferred loader
+   * (one entry per handle in `env.PUBLIC_FOOTER_MENU_HANDLES`). When
+   * supplied, takes precedence over the deprecated `footer` prop.
+   */
+  readonly footers?: Promise<Array<FooterQuery | null>>;
+  readonly header: HeaderQuery;
+  readonly publicStoreDomain: string;
 }
 
+/**
+ * Renders the page footer.
+ *
+ * @deprecated New consumers should compose `<FooterColumns>` inside
+ *   their own `<footer>` chrome; this wrapper exists for backward
+ *   compatibility with executors that still pass the legacy single
+ *   `footer` prop. The wrapper normalizes either prop shape into the
+ *   array contract `<FooterColumns>` expects.
+ */
 export function Footer({
-  footer: footerPromise,
+  footer,
+  footers,
   header,
   publicStoreDomain,
 }: FooterProps) {
+  // Normalize the two accepted prop shapes into the array contract
+  // `<FooterColumns>` consumes. `footers` wins when both are supplied
+  // (matches the back-compat shim in `root.tsx`'s loader, where the
+  // single `footer` is derived from `footers[0]` and is always less
+  // information than the array).
+  const resolved: Promise<Array<FooterQuery | null>> =
+    footers ?? (footer ? footer.then((entry) => [entry]) : Promise.resolve([]));
+
   return (
     <Suspense>
-      <Await resolve={footerPromise}>
-        {(footer) => (
+      <Await resolve={resolved}>
+        {(entries) => (
           <footer className="footer">
-            {footer?.menu && header.shop.primaryDomain?.url && (
-              <FooterMenu
-                menu={footer.menu}
-                primaryDomainUrl={header.shop.primaryDomain.url}
-                publicStoreDomain={publicStoreDomain}
-              />
-            )}
+            <FooterColumns
+              footers={entries}
+              headerShop={header.shop}
+              publicStoreDomain={publicStoreDomain}
+            />
           </footer>
         )}
       </Await>
     </Suspense>
   );
-}
-
-function FooterMenu({
-  menu,
-  primaryDomainUrl,
-  publicStoreDomain,
-}: {
-  menu: FooterQuery['menu'];
-  primaryDomainUrl: FooterProps['header']['shop']['primaryDomain']['url'];
-  publicStoreDomain: string;
-}) {
-  return (
-    <nav className="footer-menu" role="navigation">
-      {(menu || FALLBACK_FOOTER_MENU).items.map((item) => {
-        if (!item.url) return null;
-        // if the url is internal, we strip the domain
-        const url =
-          item.url.includes('myshopify.com') ||
-          item.url.includes(publicStoreDomain) ||
-          item.url.includes(primaryDomainUrl)
-            ? new URL(item.url).pathname
-            : item.url;
-        const isExternal = !url.startsWith('/');
-        return isExternal ? (
-          <a href={url} key={item.id} rel="noopener noreferrer" target="_blank">
-            {item.title}
-          </a>
-        ) : (
-          <NavLink
-            end
-            key={item.id}
-            prefetch="intent"
-            style={activeLinkStyle}
-            to={url}
-          >
-            {item.title}
-          </NavLink>
-        );
-      })}
-    </nav>
-  );
-}
-
-const FALLBACK_FOOTER_MENU = {
-  id: 'gid://shopify/Menu/199655620664',
-  items: [
-    {
-      id: 'gid://shopify/MenuItem/461633060920',
-      resourceId: 'gid://shopify/ShopPolicy/23358046264',
-      tags: [],
-      title: 'Privacy Policy',
-      type: 'SHOP_POLICY',
-      url: '/policies/privacy-policy',
-      items: [],
-    },
-    {
-      id: 'gid://shopify/MenuItem/461633093688',
-      resourceId: 'gid://shopify/ShopPolicy/23358013496',
-      tags: [],
-      title: 'Refund Policy',
-      type: 'SHOP_POLICY',
-      url: '/policies/refund-policy',
-      items: [],
-    },
-    {
-      id: 'gid://shopify/MenuItem/461633126456',
-      resourceId: 'gid://shopify/ShopPolicy/23358111800',
-      tags: [],
-      title: 'Shipping Policy',
-      type: 'SHOP_POLICY',
-      url: '/policies/shipping-policy',
-      items: [],
-    },
-    {
-      id: 'gid://shopify/MenuItem/461633159224',
-      resourceId: 'gid://shopify/ShopPolicy/23358079032',
-      tags: [],
-      title: 'Terms of Service',
-      type: 'SHOP_POLICY',
-      url: '/policies/terms-of-service',
-      items: [],
-    },
-  ],
-};
-
-function activeLinkStyle({
-  isActive,
-  isPending,
-}: {
-  isActive: boolean;
-  isPending: boolean;
-}) {
-  return {
-    fontWeight: isActive ? 'bold' : undefined,
-    color: isPending ? 'grey' : 'white',
-  };
 }

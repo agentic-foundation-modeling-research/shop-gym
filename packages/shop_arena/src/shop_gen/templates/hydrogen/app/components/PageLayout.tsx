@@ -17,7 +17,13 @@ import {SearchResultsPredictive} from '~/components/SearchResultsPredictive';
 
 interface PageLayoutProps {
   cart: Promise<CartApiQueryFragment | null>;
-  footer: Promise<FooterQuery | null>;
+  /**
+   * Array of per-handle footer payloads from `app/root.tsx`'s
+   * deferred loader (one entry per handle in
+   * `env.PUBLIC_FOOTER_MENU_HANDLES`). Forwarded to the deprecated
+   * `<Footer>` wrapper, which normalizes it for `<FooterColumns>`.
+   */
+  footers: Promise<Array<FooterQuery | null>>;
   header: HeaderQuery;
   isLoggedIn: Promise<boolean>;
   publicStoreDomain: string;
@@ -27,7 +33,7 @@ interface PageLayoutProps {
 export function PageLayout({
   cart,
   children = null,
-  footer,
+  footers,
   header,
   isLoggedIn,
   publicStoreDomain,
@@ -47,7 +53,7 @@ export function PageLayout({
       )}
       <main>{children}</main>
       <Footer
-        footer={footer}
+        footers={footers}
         header={header}
         publicStoreDomain={publicStoreDomain}
       />
