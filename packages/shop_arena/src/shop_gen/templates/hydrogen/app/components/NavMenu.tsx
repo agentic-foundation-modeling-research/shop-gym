@@ -78,8 +78,15 @@ export function toLocalUrl(
 
 /**
  * Props for {@link NavMenu}.
+ *
+ * Intentionally unexported — per the public-surface contract the only
+ * named exports from this module are `NavMenu` and `toLocalUrl`. Wrappers
+ * that need to forward props should derive them with
+ * `React.ComponentProps<typeof NavMenu>` instead of importing this
+ * interface, which keeps the indirection one-directional and lets the
+ * primitive evolve without breaking call sites.
  */
-export interface NavMenuProps {
+interface NavMenuProps {
   /** Storefront `menu` payload (may be `null` when the loader fails). */
   readonly menu: MenuData;
   /**
