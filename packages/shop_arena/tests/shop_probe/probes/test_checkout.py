@@ -58,7 +58,7 @@ def test_is_checkout_surface_recognizes_same_origin_path() -> None:
 
 
 def test_is_checkout_surface_recognizes_checkout_subdomain() -> None:
-    """Real Shopify storefronts redirect to ``checkout.shopify.com``."""
+    """Real storefronts redirect."""
     assert _is_checkout_surface("https://checkout.shopify.com/abc", "https://example.com")
 
 

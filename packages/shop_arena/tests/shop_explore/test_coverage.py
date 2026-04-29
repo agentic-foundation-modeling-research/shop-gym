@@ -278,10 +278,10 @@ def test_coverage_gaps_accepts_taxonomy_aliases_in_omitted_areas(
 - about — page is auto-generated boilerplate.
 - contact — contact info is footer-only.
 - faq — no FAQ page on this shop.
-- shipping_policy — boilerplate Shopify policy.
-- returns_policy — boilerplate Shopify policy.
-- privacy_policy — boilerplate Shopify policy.
-- terms_of_service — boilerplate Shopify policy.
+- shipping_policy — boilerplate policy.
+- returns_policy — boilerplate policy.
+- privacy_policy — boilerplate policy.
+- terms_of_service — boilerplate policy.
 """
     run_dir = _seed_full_run_dir(tmp_path, plan_md=plan_md)
     assert coverage_gaps(run_dir) == []

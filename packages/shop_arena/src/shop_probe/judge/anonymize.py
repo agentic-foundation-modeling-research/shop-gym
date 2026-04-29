@@ -68,7 +68,7 @@ _HASH_LENGTH = 12
 _DEFAULT_SALT = "shop_probe.v1"
 """Default deterministic salt for catalog-identifier hashes."""
 
-# Path prefixes whose first segment is a Shopify-shaped catalog handle
+# Path prefixes whose first segment is a real catalog handle
 # (spec §5.4 storefront routes). Anonymization replaces just the handle,
 # leaving the route shape intact so the judge can still see "this is a PDP"
 # without learning *which* PDP.
@@ -339,7 +339,7 @@ class _Rewriter:
     # ------------------------------------------------------------------ #
 
     def _rewrite_url_path(self, path: str) -> str:
-        """Hash catalog handles in a Shopify-shaped URL path.
+        """Hash catalog handles in a real URL path.
 
         Only the segment that follows a recognized prefix
         (``/products/``, ``/collections/``, etc.) is hashed; trailing

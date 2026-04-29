@@ -399,7 +399,7 @@ function normalizePredictiveTypes(
 /**
  * Coerce the caller-supplied limit into a positive integer, falling back to
  * the documented default. Non-positive or non-finite inputs collapse to the
- * default rather than producing empty results — matches Shopify's tolerant
+ * default rather than producing empty results — tolerant
  * handling of bad `limit` values.
  */
 function clampPredictiveLimit(limit: number | null | undefined): number {

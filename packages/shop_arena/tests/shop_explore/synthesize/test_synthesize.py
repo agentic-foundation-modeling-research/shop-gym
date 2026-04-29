@@ -56,7 +56,7 @@ def _seed_run_dir(tmp_path: Path) -> Path:
 
     * ``<run_dir>/plan.md`` — final cassette plan (all four tasks done).
     * ``<run_dir>/artifact/parts/`` — every fragment from the cassette.
-    * ``<run_dir>/artifact/prefetch/`` — minimal Shopify-shaped JSON
+    * ``<run_dir>/artifact/prefetch/`` — minimal JSON
       sufficient for stats compute.
     * ``<run_dir>/run.json`` — harness summary echo.
     """
@@ -81,7 +81,7 @@ def _seed_run_dir(tmp_path: Path) -> Path:
     # Copy the final plan.md (all tasks `[x]`, one omitted area).
     shutil.copy2(_FINAL_ITER_DIR / "workspace_after" / "plan.md", run_dir / "plan.md")
 
-    # Minimal prefetch shaped as Shopify ajax responses so stats compute.
+    # Minimal prefetch shaped as an ajax responses so stats compute.
     (prefetch_dir / "products.json").write_text(
         json.dumps(
             {

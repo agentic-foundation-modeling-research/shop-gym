@@ -127,8 +127,7 @@ async def footer_has_link_group(page: Page, ctx: ProbeContext) -> ProbeOutcome:
 
     "Labeled" means either a ``<nav aria-label>`` inside ``<footer>`` or a
     list-of-links preceded by a heading (``h2``/``h3``/``h4``) — both the
-    Dawn-style "footer link group" patterns we expect on a real Shopify
-    storefront.
+    Dawn-style "footer link group" patterns we expect on a real storefront.
     """
     await page.goto(ctx.base_url, wait_until="domcontentloaded")
     labeled_nav = page.locator("footer nav[aria-label]").first

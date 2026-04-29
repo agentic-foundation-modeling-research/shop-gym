@@ -64,7 +64,7 @@ choke on truncated phrases (spec §5.3 "alt-text strings")."""
 
 _MAX_ALT_CHARS: Final[int] = 200
 """Upper bound on each alt-text string. Above this most CMS validators
-reject the field (Shopify's storefront alt-text limit is 512; we keep
+reject the field (storefront alt-text limit is 512; we keep
 a tighter budget so the prompt encourages concise descriptions)."""
 
 

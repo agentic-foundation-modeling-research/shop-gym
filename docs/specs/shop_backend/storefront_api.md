@@ -3,9 +3,8 @@
 Status: **Spec (proposed)** · Version: **0.1**
 Owners: ShopBackend
 
-> A local GraphQL server that mirrors a useful subset of Shopify's
-> Storefront API and resolves against a **SandboxShop dataset** — a small
-> bundle of synthesized JSON files describing one fake storefront.
+> A local GraphQL API server that resolves against a **SandboxShop dataset**
+> — a small bundle of synthesized JSON files describing one fake storefront.
 
 ---
 
@@ -63,13 +62,6 @@ GraphQL surface, and it is the planned host of an RL environment.
   biome, exposing a placeholder `Query.ping` schema (`src/schema.ts`,
   `src/server.ts`, `src/cli.ts`). No SandboxShop schema, no resolvers,
   no dataset loader.
-- A reference implementation exists out-of-tree at
-  `shopify-playground/shop-arena/packages/mock-api/`. It uses
-  `graphql-yoga` and reads two dataset formats (a legacy raw extraction
-  and a newer ETL format). Its types are loose (`: any`, `(data as
-  any).foo` casts), it merges legacy + new paths in one loader, and it
-  has no tests. It is suitable as a reference for SDL and resolver
-  shape, not as a direct port.
 - ShopArena `shop_gen` does not yet emit a SandboxShop dataset; that
   spec lives separately. This spec defines the consumer contract that
   `shop_gen` will target.
@@ -372,10 +364,6 @@ without a second pass. Revisit if a benchmark shows resolver overhead.
   `dataset_version: "0.1"` field so the loader can refuse forward-
   incompatible inputs? Default: yes, add an optional field;
   unenforced in v0.1 but reserved.
-- **Image URL rewrite policy.** When `images[].src` is a CDN URL
-  (e.g. `https://cdn.shopify.com/...`), do we pass it through or
-  rewrite to `<server>/images/...`? Default: pass through if absolute,
-  rewrite only if relative — matches mock-api behavior.
 - **Top-level `metafieldsByIdentifiers` query.** A flat batch read
   taking owner-keyed identifiers across product/collection/shop
   buckets in one call. **Deferred** (not in §5.2). The per-owner
@@ -394,9 +382,7 @@ without a second pass. Revisit if a benchmark shows resolver overhead.
 ### 8.1 SandboxShop dataset schema (v0.1)
 
 Source-of-truth shape that ShopArena `shop_gen` produces and
-`shop_backend` consumes. Slimmed from the live sample at
-`shopify-playground/shop-arena/outputs/shops/<domain>/data/` to keep
-only fields the GraphQL surface in §5.2 actually serves.
+`shop_backend` consumes.
 
 #### 8.1.1 Required files
 

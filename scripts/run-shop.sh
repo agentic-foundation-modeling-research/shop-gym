@@ -2,7 +2,7 @@
 # Manage locally-running generated shops (shop_backend GraphQL + Hydrogen).
 #
 # Usage:
-#   ./scripts/run-shop.sh start <shop-name> <port>
+#   ./scripts/run-shop.sh start <shop-name> [port]   (auto-picks a free port if omitted)
 #   ./scripts/run-shop.sh list [-a|--all]    (-a also shows hostable but not running)
 #   ./scripts/run-shop.sh stop <shop-name|all>
 #   ./scripts/run-shop.sh restart <shop-name>
@@ -22,6 +22,8 @@
 #
 # Port convention: Hydrogen runs on <port>, shop_backend on <port>+1000.
 # Example: start mock_hardware 3001  → API:4001, Hydrogen:3001
+# When <port> is omitted, a free port is auto-picked from HYDROGEN_PORT_BASE
+# upward (default 4100..4199; API: 5100..5199).
 
 set -euo pipefail
 
@@ -80,10 +82,42 @@ kill_tree() {
   kill "$pid" 2>/dev/null || true
 }
 
+# Auto-allocation range for hydrogen ports. API port = hydrogen + 1000.
+# 4100..4199 / 5100..5199 avoids common collisions on dev machines
+# (AirPlay 5000/7000, cbtemulator 9000, Kafka 9092/9093, ES 9200/9300).
+HYDROGEN_PORT_BASE=${HYDROGEN_PORT_BASE:-4100}
+HYDROGEN_PORT_COUNT=${HYDROGEN_PORT_COUNT:-100}
+
+# True if any process is LISTENing on $1.
+port_in_use() {
+  lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+# Print a free hydrogen port (and its api=+1000 also free). Exits 1 if none.
+pick_port() {
+  local i p api
+  for ((i=0; i<HYDROGEN_PORT_COUNT; i++)); do
+    p=$((HYDROGEN_PORT_BASE + i))
+    api=$((p + 1000))
+    if ! port_in_use "$p" && ! port_in_use "$api"; then
+      echo "$p"; return 0
+    fi
+  done
+  return 1
+}
+
 cmd_start() {
   local name="${1:-}" port="${2:-}"
-  if [ -z "$name" ] || [ -z "$port" ]; then
-    echo "Usage: $0 start <shop-name> <port>" >&2; exit 1
+  if [ -z "$name" ]; then
+    echo "Usage: $0 start <shop-name> [port]" >&2; exit 1
+  fi
+
+  if [ -z "$port" ]; then
+    port="$(pick_port)" || {
+      echo "❌ No free port in range $HYDROGEN_PORT_BASE..$((HYDROGEN_PORT_BASE+HYDROGEN_PORT_COUNT-1))" >&2
+      exit 1
+    }
+    echo "ℹ Auto-allocated hydrogen port $port (api: $((port+1000)))"
   fi
 
   local api_port=$((port + 1000))
@@ -119,6 +153,21 @@ cmd_start() {
       echo "⚠ $name already running — stopping first"
       cmd_stop "$name" >/dev/null
     fi
+  fi
+
+  # Pre-flight: refuse if either port is already bound (after auto-stop above,
+  # so restarting the same shop on its own port still works).
+  if port_in_use "$port"; then
+    echo "❌ Hydrogen port $port is already bound:" >&2
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | sed 's/^/   /' >&2
+    echo "   Pick another port, or omit the port arg to auto-allocate." >&2
+    exit 1
+  fi
+  if port_in_use "$api_port"; then
+    echo "❌ API port $api_port (hydrogen + 1000) is already bound:" >&2
+    lsof -nP -iTCP:"$api_port" -sTCP:LISTEN 2>/dev/null | sed 's/^/   /' >&2
+    echo "   Pick a different hydrogen port, or omit the port arg to auto-allocate." >&2
+    exit 1
   fi
 
   local api_log hyd_log

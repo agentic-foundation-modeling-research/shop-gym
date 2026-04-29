@@ -1,13 +1,12 @@
 # ShopProbe
 
-Reproducible measurement instrument that scores any deployed Shopify-shaped
+Reproducible measurement instrument that scores any deployed
 storefront on three independent axes — **capability coverage**, **surface
 area**, and **agent indistinguishability** — and produces group-vs-group
 fidelity numbers between a population of generated SandboxShops and a
 population of real Shopify storefronts.
 
-`shop-probe` is deployment-agnostic: it takes a base URL and assumes a
-Shopify-shaped storefront (`/`, `/collections/*`, `/products/*`, `/cart`,
+`shop-probe` is deployment-agnostic: it takes a base URL and assumes a storefront (`/`, `/collections/*`, `/products/*`, `/cart`,
 `/search`, `/policies/*`, `/pages/*`). It does not care whether the target is
 a real Shopify shop, a SandboxShop served by `shop_backend`, or another
 vendor's storefront. Specs:

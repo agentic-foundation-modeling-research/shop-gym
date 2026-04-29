@@ -89,8 +89,7 @@ sidecar) and the harness verifier extension.
 - `packages/shop_arena/src/shop_gen/` is a 4-file scaffold (`cli.py`
   prints "not implemented yet"). No spec, no module structure, no
   pipeline logic.
-- An out-of-tree reference exists at
-  `shopify-playground/shop-arena/packages/shop_gen/`. It uses
+- An out-of-tree reference uses
   `browser_use` agents and a hand-rolled step-runner state machine
   with ~14 ordered steps. It pre-dates `packages/harness` and
   `shop_backend`.
@@ -945,7 +944,7 @@ packages/shop_arena/src/shop_gen/
    Rejected per user feedback: `final_eval` and the build-time
    `quality_judge` verifier are quality-only, no cross-compare.
 
-6. **Use Shopify's official Hydrogen Skeleton template instead of the
+6. **Use open sourced Hydrogen Skeleton template instead of the
    playground template.** Cleaner, officially maintained. Deferred:
    user instruction in this round is to vendor the playground
    template; we can swap by replacing the contents of
@@ -1042,8 +1041,6 @@ packages/shop_arena/src/shop_gen/
 
 ### 9.3 Reference materials
 
-- `shopify-playground/shop-arena/packages/shop_gen/` — legacy
-  reference pipeline (browser_use, hand-rolled step-runner).
 - `packages/shop_arena/src/shop_gen/templates/hydrogen/` — vendored
   Hydrogen template (this round).
 - [`shop_backend/storefront_api.md`](../shop_backend/storefront_api.md)

@@ -1,4 +1,4 @@
-"""ShopProbe: structural-fidelity measurement instrument for Shopify-shaped storefronts."""
+"""ShopProbe: structural-fidelity measurement instrument for real storefronts."""
 
 # `__version__` is defined before any submodule imports so that modules
 # pulled in transitively (e.g. ``shop_probe.probes._runner``) can read it

@@ -51,7 +51,7 @@ from shop_probe.targets import Target
 # --------------------------------------------------------------------------- #
 
 _SOURCE_DOMAIN = "source-1.example.invalid"
-_BRAND_TERMS: tuple[str, ...] = ("Hardware", "Shopify Hardware")
+_BRAND_TERMS: tuple[str, ...] = ("Hardware", "ShopGym Hardware")
 _THEME_IDS: tuple[str, ...] = ("Dawn", "atelier")
 _PRODUCT_TITLES: tuple[str, ...] = (
     "Premium Snowboard Pro",
@@ -124,7 +124,7 @@ def _hardware_trajectory() -> Trajectory:
             ),
             observation=TrajectoryObservation(
                 url=f"https://{_SOURCE_DOMAIN}/collections/snowboards",
-                title="Snowboards — Shopify Hardware",
+                title="Snowboards — ShopGym Hardware",
                 screenshot=_evidence(0),
                 a11y_snapshot=_evidence(0, kind="a11y_snapshot"),
             ),
@@ -140,7 +140,7 @@ def _hardware_trajectory() -> Trajectory:
             ),
             observation=TrajectoryObservation(
                 url=f"https://{_SOURCE_DOMAIN}/products/premium-snowboard-pro",
-                title="Premium Snowboard Pro — Shopify Hardware (Dawn theme)",
+                title="Premium Snowboard Pro — ShopGym Hardware (Dawn theme)",
                 screenshot=_evidence(1),
                 a11y_snapshot=_evidence(1, kind="a11y_snapshot"),
             ),
@@ -290,7 +290,7 @@ def test_anonymize_trajectory_strips_brand_terms() -> None:
     """T4.4 check: no brand-string leakage post-anonymization."""
     out = anonymize_trajectory(_hardware_trajectory(), _plan())
     for field in _all_text_fields(out):
-        # Whole-word case-insensitive: assert no "Hardware" or "Shopify Hardware"
+        # Whole-word case-insensitive: assert no "Hardware" or "ShopGym Hardware"
         # token survives. Substring matches inside hashes (12 hex chars) are not
         # possible because hex is lowercase a-f0-9.
         lower = field.lower()
@@ -399,7 +399,7 @@ def test_anonymize_trajectory_strips_brand_in_observation_title() -> None:
 
 
 def test_anonymize_trajectory_handles_longer_brand_before_shorter() -> None:
-    """Longest-first ordering: ``Shopify Hardware`` is matched before ``Hardware``."""
+    """Longest-first ordering: ``ShopGym Hardware`` is matched before ``Hardware``."""
     plan = _plan()
     out = anonymize_trajectory(_hardware_trajectory(), plan)
     for step in out.steps:

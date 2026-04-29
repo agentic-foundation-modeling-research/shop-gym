@@ -31,6 +31,9 @@ dist/
 # Generated Outputs
 outputs/
 
+# Internal
+docs/internal/
+
 # uv
 uv.lock
 

@@ -1092,13 +1092,3 @@ well-defined.
   — `AgentRuntime.run_iteration` contract.
 - [`shop_arena/shop_explore.md`](shop_explore.md) §5.2 — playwright
   skill availability on the `pi` runtime.
-- **Prior art:** `packages/shop_gen/verifiers/visual_judge.py` in
-  the `shopify-playground/shop-arena` repo — first-pass
-  implementation this spec supersedes. Differences: (a) bypassed
-  the harness `AgentRuntime` by spawning `claude --print`
-  subprocesses, (b) compared against the live source storefront
-  URL (incompatible with shop-gym's anonymization invariant — see
-  §7 Q6), (c) had no harness-gated retry / verifier-set
-  integration. The structured findings schema (`category_scores`,
-  severity-tagged issues, page weights) is borrowed and adapted
-  into §9.3 + §9.5.

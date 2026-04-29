@@ -153,7 +153,7 @@ export interface ShopPolicyNode {
 const GID_PREFIX = 'gid://shopify';
 
 /**
- * Build a Shopify-style GID. Numeric ids are pasted in as-is; string keys are
+ * Build a GID. Numeric ids are pasted in as-is; string keys are
  * hashed via 32-bit FNV-1a (rendered as 8-char hex) so the same `(type, key)`
  * pair always yields the same GID across server instances.
  */

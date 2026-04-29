@@ -38,7 +38,7 @@ Implements the [verifier extension spec](../../docs/specs/harness/verifiers.md)
   `AlwaysFail`, `RaisesException`, and `LLMCompleterDriven`. Reusable
   from downstream consumers.
 
-[0.3.0]: https://github.com/Shopify/shop-gym/releases/tag/harness-v0.3.0
+[0.3.0]: https://github.com/agentic-foundation-modeling-research/shop-gym/releases/tag/harness-v0.3.0
 
 ## [0.2.0] — 2026-04-25
 
@@ -66,7 +66,7 @@ corrupted `artifact_seed_dir` contents now abort with
   existing plan-protocol result. Any seed violation is terminal:
   `final_status` becomes `protocol_violation` and the loop stops.
 
-[0.2.0]: https://github.com/Shopify/shop-gym/releases/tag/harness-v0.2.0
+[0.2.0]: https://github.com/agentic-foundation-modeling-research/shop-gym/releases/tag/harness-v0.2.0
 
 ## [0.1.0] — 2026-04-25
 
@@ -110,4 +110,4 @@ Initial release. Implements the
 - **Docs**: `README.md` with usage example, runtime selection notes, and
   cassette recording workflow.
 
-[0.1.0]: https://github.com/Shopify/shop-gym/releases/tag/harness-v0.1.0
+[0.1.0]: https://github.com/agentic-foundation-modeling-research/shop-gym/releases/tag/harness-v0.1.0

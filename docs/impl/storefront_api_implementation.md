@@ -18,12 +18,6 @@ M2 SDL + read-only resolvers, M3 search + recommendations, M4 cart store
 versioned routing + image serving. Tasks below are ordered; later tasks
 assume earlier ones.
 
-A reference implementation lives at
-`shopify-playground/shop-arena/packages/mock-api/src/{schema,data,resolvers,server}.ts`.
-Treat it as a reference: copy SDL prose where it's correct, but
-re-author resolvers under strict typing and drop the legacy raw-format
-loader.
-
 ## 2. Terminology
 
 Uses the spec's vocabulary verbatim. No new terms.
@@ -50,9 +44,7 @@ are clean. SC1–SC6 from the spec satisfied.
 
 - [x] **T1.1** — Add a fixture dataset under
   `packages/shop_backend/tests/fixtures/sandbox_shop_v0/` covering all
-  required + both optional files. Source: trim the live sample at
-  `shopify-playground/shop-arena/outputs/shops/carlislepetfoods.ca/data/`
-  to ~5 products / 2 collections / 1 page / 1 blog / 1 policy / 2
+  required + both optional files.
   metafields, anonymized. **Check:** files validate against §8.1
   shape; `git ls-files | wc -l` confirms small footprint.
 - [x] **T1.2** — `src/data/types.ts`: dataset schema types (§8.1)

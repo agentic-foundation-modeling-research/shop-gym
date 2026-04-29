@@ -16,9 +16,6 @@ export type SandboxSchemaResolvers = NonNullable<
  * Storefront API SDL (v0.1).
  *
  * Mirrors the subset enumerated in `docs/specs/shop_backend/storefront_api.md`
- * §5.2. Ported from the mock-api reference at
- * `shopify-playground/shop-arena/packages/mock-api/src/schema.ts`, with two
- * spec-mandated changes (§8.2):
  *
  *   1. `enum CurrencyCode` / `enum CountryCode` cover the ISO codes appearing
  *      in the v0.1 fixtures (CAD/USD/CA/US). The mock-api set already covers

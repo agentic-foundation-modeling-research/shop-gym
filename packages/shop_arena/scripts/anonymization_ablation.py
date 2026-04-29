@@ -56,7 +56,7 @@ from shop_probe.targets import Target
 # --------------------------------------------------------------------------- #
 
 _SOURCE_DOMAIN = "source-1.example.invalid"
-_BRAND_TERMS: tuple[str, ...] = ("Hardware", "Shopify Hardware")
+_BRAND_TERMS: tuple[str, ...] = ("Hardware", "ShopGym Hardware")
 _THEME_IDS: tuple[str, ...] = ("Dawn", "atelier")
 _PRODUCT_TITLES: tuple[str, ...] = (
     "Premium Snowboard Pro",
@@ -112,7 +112,7 @@ def _hardware_trajectory() -> Trajectory:
             ),
             observation=TrajectoryObservation(
                 url=f"https://{_SOURCE_DOMAIN}/collections/snowboards",
-                title="Snowboards — Shopify Hardware",
+                title="Snowboards — ShopGym Hardware",
                 screenshot=_evidence(0),
                 a11y_snapshot=_evidence(0, kind="a11y_snapshot"),
             ),
@@ -129,7 +129,7 @@ def _hardware_trajectory() -> Trajectory:
             ),
             observation=TrajectoryObservation(
                 url=f"https://{_SOURCE_DOMAIN}/products/premium-snowboard-pro",
-                title="Premium Snowboard Pro — Shopify Hardware (Dawn theme)",
+                title="Premium Snowboard Pro — ShopGym Hardware (Dawn theme)",
                 screenshot=_evidence(1),
                 a11y_snapshot=_evidence(1, kind="a11y_snapshot"),
             ),

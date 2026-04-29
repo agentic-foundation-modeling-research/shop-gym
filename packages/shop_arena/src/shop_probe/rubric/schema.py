@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 RubricLevel = Literal["core", "modern", "advanced"]
 """Capability tier (spec §5.3).
 
-* ``core`` — every modern Shopify storefront has this.
+* ``core`` — every modern storefront has this.
 * ``modern`` — common in 2025-era themes; fidelity signal.
 * ``advanced`` — stretch behavior; dropped from v1 per spec §5.3.
 """

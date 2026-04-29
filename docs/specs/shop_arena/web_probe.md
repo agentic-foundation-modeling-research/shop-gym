@@ -4,7 +4,7 @@ Status: **Spec (proposed)** · Version: **0.1**
 Owners: ShopGym
 
 > A reproducible measurement tool that scores any deployed
-> Shopify-shaped storefront on three independent axes — **capability
+> Real storefront on three independent axes — **capability
 > coverage**, **surface area**, and **agent indistinguishability** — to
 > quantify the structural fidelity of a generated SandboxShop relative
 > to its source storefront, and against external benchmark
@@ -138,7 +138,7 @@ shop-probe report \
 ```
 
 The tool is **deployment-agnostic** — it takes a URL and assumes a
-Shopify-shaped storefront (`/`, `/collections/*`, `/products/*`,
+real storefront (`/`, `/collections/*`, `/products/*`,
 `/cart`, `/search`, `/policies/*`, `/pages/*`). It does not know
 whether the target is a real Shopify shop, a SandboxShop served by
 `shop_backend`, or another vendor's storefront.

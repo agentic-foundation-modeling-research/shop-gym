@@ -10,7 +10,7 @@ together produce reproducible shopping environments and evaluation datasets.
 |---|---|---|
 | [`packages/shop_arena`](packages/shop_arena) | Python | **ShopArena** — Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from any live storefront. Ships three modules: [`shop_gen`](packages/shop_arena/src/shop_gen) (generation pipeline; **v0.1.0** — see [spec](docs/specs/shop_arena/shop_gen.md) and [impl plan](docs/impl/shop_gen_implementation.md)), [`shop_explore`](packages/shop_arena/src/shop_explore) (storefront exploration; **v0.1 in progress** — see [spec](docs/specs/shop_arena/shop_explore.md) and [impl plan](docs/impl/shop_explore_implementation.md)), and [`shop_probe`](packages/shop_arena/src/shop_probe) (structural-fidelity measurement instrument; **v0.1 (M1–M7 landed)** — see [spec](docs/specs/shop_arena/web_probe.md) and [impl plan](docs/impl/web_probe_implementation.md)). |
 | [`packages/shop_guru`](packages/shop_guru) | Python | **ShopGuru** — Automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation structure, and policies to synthesize grounded evaluation tasks across 7 skill categories. |
-| [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server that mirrors Shopify's Storefront/Admin API against SandboxShop data. Serves both as a benchmarking backend and an RL environment. |
+| [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server hosting SandboxShop data. |
 
 A typical loop:
 
@@ -60,10 +60,14 @@ up a generated shop end-to-end: the `shop_backend` GraphQL server pointed at
 `outputs/shops/<name>/data/` plus the Hydrogen storefront wired to it. Both
 processes run detached; logs live under `.run/shops/`.
 
-Hydrogen runs on `<port>`, `shop_backend` on `<port>+1000`.
+Hydrogen runs on `<port>`, `shop_backend` on `<port>+1000`. The port arg is
+optional — if omitted, a free port is auto-picked from `4100..4199` (api:
+`5100..5199`). The script also refuses to start if either port is already
+bound by another process.
 
 ```bash
-pnpm shop:host start mock_hardware 8000
+pnpm shop:host start mock_hardware             # auto-pick a free port
+pnpm shop:host start mock_hardware 8000        # or pick explicitly
 # → shop_backend on http://localhost:9000, Hydrogen on http://localhost:8000
 
 pnpm shop:host list -a                      # all shops, running + available

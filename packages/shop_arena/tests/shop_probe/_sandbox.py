@@ -1,6 +1,6 @@
 """Localhost SandboxShop fixture for axis-A probe tests (T1.7 + T3.3).
 
-A single in-process HTTP server that serves a deterministic Shopify-shaped
+A single in-process HTTP server that serves a deterministic
 storefront — the minimum HTML needed to exercise every probe in the
 ``rubric/v1.yaml`` v1 slice (M1 core probes plus the M3 expansion to
 ~60 probes across all 11 categories per spec §5.3). Routes:
@@ -733,7 +733,7 @@ class _Server(socketserver.TCPServer):
 
 
 class SandboxShop:
-    """Localhost SandboxShop fixture — a Shopify-shaped storefront in-process.
+    """Localhost SandboxShop fixture — a storefront in-process.
 
     Use as a context manager. ``base_url`` is yielded once the server is
     bound to an ephemeral port and serving requests on a daemon thread.

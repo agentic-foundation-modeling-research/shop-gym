@@ -39,8 +39,7 @@ exercises its public surface end-to-end.
 
 ## 2. Terminology
 
-- **Storefront** — the public, unauthenticated view of a Shopify (or
-  Shopify-like) online store at a given base URL.
+- **Storefront** — the public, unauthenticated view of an online store at a given base URL.
 - **Shop Manual** — the bundle this module emits for one storefront run:
   `manual.md` (prose), `capabilities.json` (structured features),
   `stats.json` (analysis statistics), per-task evidence, and a
@@ -49,7 +48,7 @@ exercises its public surface end-to-end.
   feature of the storefront (e.g. `cart.type=drawer`,
   `search.has_predictive=true`, `collection.filters=[size,color,price]`).
 - **Prefetch** — a deterministic, no-LLM HTTP fetch of a fixed set of
-  Shopify-conventional pages and JSON endpoints (`/`, `/sitemap.xml`,
+  shop webpages and JSON endpoints (`/`, `/sitemap.xml`,
   `/products.json`, `/collections.json`, `/search/suggest.json`,
   `/cart.js`, `robots.txt`, policy pages). Output is seeded into the
   harness `run_dir/artifact/prefetch/`.
@@ -70,9 +69,7 @@ exercises its public surface end-to-end.
 
 - `packages/shop_arena/src/shop_explore/` is a 2-line scaffold (`cli.py`
   prints "not implemented"). No spec, no module structure.
-- A legacy reference exists out-of-tree at
-  `shopify-playground/shop-arena/packages/shop_gen/build_shop_manual.py`.
-  It uses `browser_use` and one hard-coded agent per fixed page type
+- A legacy reference exists out-of-tree uses `browser_use` and one hard-coded agent per fixed page type
   (`homepage`, `collections`, `product`, `cart_and_search`,
   `info_pages`, `navigation`). Output is a single free-form
   `shop_manual.md` plus per-agent `reference_screenshots/`. It has no

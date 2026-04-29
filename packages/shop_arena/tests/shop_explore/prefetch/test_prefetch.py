@@ -224,7 +224,7 @@ def test_run_rejects_negative_rate_limit(tmp_path: Path) -> None:
 
 
 def _make_products(start: int, count: int) -> list[dict[str, Any]]:
-    """Build ``count`` Shopify-shaped product dicts, ids starting at ``start``."""
+    """Build ``count`` product dicts, ids starting at ``start``."""
     return [
         {
             "id": start + i,

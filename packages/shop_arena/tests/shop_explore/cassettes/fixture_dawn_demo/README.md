@@ -1,6 +1,6 @@
 # `fixture_dawn_demo` cassette
 
-Hand-crafted replay cassette modelling a **minimal** Shopify storefront
+Hand-crafted replay cassette modelling a **minimal** storefront
 profile (the Dawn default-theme demo at
 `https://theme-dawn-demo.myshopify.com`) used by
 `tests/shop_explore/test_pipeline_replay.py` (T4.2).

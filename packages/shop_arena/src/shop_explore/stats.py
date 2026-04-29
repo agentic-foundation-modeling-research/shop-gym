@@ -172,7 +172,7 @@ def _load_json(path: Path) -> Any:
 
 
 def _load_array(path: Path, key: str) -> list[dict[str, Any]]:
-    """Load a Shopify ajax-API response shaped ``{"<key>": [...]}``.
+    """Load an ajax-API response shaped ``{"<key>": [...]}``.
 
     Returns the list at ``key``, dropping any non-object entries so the
     downstream helpers can rely on dict access without re-checking each
@@ -243,7 +243,7 @@ def _cart_js_currency(prefetch_dir: Path) -> str:
 
 
 def _coerce_price(value: Any) -> float | None:
-    """Parse a Shopify price (string or numeric) into a float, else ``None``."""
+    """Parse a price (string or numeric) into a float, else ``None``."""
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
@@ -267,7 +267,7 @@ def _variants(product: dict[str, Any]) -> list[dict[str, Any]]:
 def _products_with_variants_pct(products: list[dict[str, Any]]) -> float:
     """Fraction of products that ship with more than one variant.
 
-    Single-variant products are Shopify's no-options default; the
+    Single-variant products are no-options default; the
     "has variants" signal we want is ``len(variants) > 1``.
     """
     if not products:

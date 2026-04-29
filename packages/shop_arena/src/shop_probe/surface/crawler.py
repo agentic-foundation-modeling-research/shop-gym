@@ -1,6 +1,6 @@
 """Axis B — surface-area crawler (T2.2 — spec §5.4 + §7 M2).
 
-Crawls a Shopify-shaped storefront in a Playwright runtime and computes
+Crawls a real storefront in a Playwright runtime and computes
 the descriptive metrics enumerated in
 :class:`shop_probe.surface.metrics.SurfaceMetrics`.
 
@@ -217,7 +217,7 @@ class _CrawlState:
 
 
 class SurfaceCrawler:
-    """Walk a Shopify-shaped storefront and emit a :class:`SurfaceMetrics`.
+    """Walk a real storefront and emit a :class:`SurfaceMetrics`.
 
     Use as an async context manager; Playwright + Chromium are launched on
     enter and torn down on exit::

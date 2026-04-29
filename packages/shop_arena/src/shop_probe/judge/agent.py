@@ -70,7 +70,7 @@ from shop_probe.targets import Target
 
 DEFAULT_AGENTS_MD: Final[str] = (
     "# Judge agent — Playwright storefront task runner\n\n"
-    "You are an agent driving a Shopify-shaped storefront via a Playwright tool\n"
+    "You are an agent driving a storefront via a Playwright tool\n"
     "stack. Use the provided tools to complete each PENDING task in `plan.md`\n"
     "against the configured target URL. After every storefront action capture a\n"
     "screenshot AND an accessibility-tree snapshot before marking the task `[x]`.\n"

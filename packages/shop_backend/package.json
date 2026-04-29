@@ -2,7 +2,7 @@
   "name": "@shop-gym/shop-backend",
   "version": "0.0.0",
   "private": true,
-  "description": "ShopBackend: local GraphQL server backing SandboxShop sandboxes; mirrors Shopify's Storefront/Admin API surface.",
+  "description": "ShopBackend: local GraphQL server backing SandboxShop sandboxes.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
