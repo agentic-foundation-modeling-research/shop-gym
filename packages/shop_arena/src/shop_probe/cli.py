@@ -515,22 +515,33 @@ async def _run(
                 runner, target.base_url
             )
             for entry in selected_entries:
-                # `probe` is optional on the schema since v1.3 (agent_driven entries
-                # carry an inline agent_task block instead). Agent-driven dispatch
-                # lands in M4; until then no v1.3 rubric ships, so every entry here
-                # has a non-None probe.
-                assert entry.probe is not None, (
-                    f"rubric entry {entry.id!r} has level={entry.level!r} but no "
-                    f"probe; agent_driven dispatch is not wired yet (M4)"
-                )
-                probe = _resolve_probe(entry.probe)
-                outcome = await runner.run(
-                    probe,
-                    base_url=target.base_url,
-                    probe_id=entry.id,
-                    sample_product_url=sample_product_url,
-                    sample_collection_url=sample_collection_url,
-                )
+                if entry.level == "agent_driven":
+                    # v1.3 agent-driven dispatch (impl plan T4.1). Inline
+                    # ``agent_task`` block drives the runner-owned closure
+                    # around ``run_agent_task``; outer wait gets the
+                    # task budget + buffer.
+                    outcome = await runner.run_agent_entry(
+                        entry,
+                        base_url=target.base_url,
+                        sample_product_url=sample_product_url,
+                        sample_collection_url=sample_collection_url,
+                    )
+                else:
+                    # Deterministic entries always carry a ``probe`` ref;
+                    # the schema validator enforces this for non
+                    # ``agent_driven`` levels.
+                    assert entry.probe is not None, (
+                        f"rubric entry {entry.id!r} has level={entry.level!r} "
+                        f"but no probe; schema validator should have caught this"
+                    )
+                    probe = _resolve_probe(entry.probe)
+                    outcome = await runner.run(
+                        probe,
+                        base_url=target.base_url,
+                        probe_id=entry.id,
+                        sample_product_url=sample_product_url,
+                        sample_collection_url=sample_collection_url,
+                    )
                 results.append(
                     ProbeResult(
                         id=entry.id,

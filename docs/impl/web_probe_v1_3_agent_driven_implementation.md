@@ -252,7 +252,7 @@ emits a real ProbeOutcome shape end-to-end against fakes.
 **Goal:** A `level: agent_driven` rubric entry routes through
 `run_agent_task` end-to-end inside `ProbeRunner`.
 
-- [ ] **T4.1** — `packages/shop_arena/src/shop_probe/probes/_runner.py`:
+- [x] **T4.1** — `packages/shop_arena/src/shop_probe/probes/_runner.py`:
   in `_run_one(entry, ctx)`, add the agent-driven branch before the
   existing deterministic dispatch:
   ```python
@@ -269,7 +269,7 @@ emits a real ProbeOutcome shape end-to-end against fakes.
   `AGENT_BUFFER_S = 30`. Keep deterministic entries on the existing
   `DEFAULT_PROBE_TIMEOUT_S = 10` outer wait.
   **Check:** pyright clean; existing deterministic probe tests untouched.
-- [ ] **T4.2** — `packages/shop_arena/tests/agent/test_dispatch.py`:
+- [x] **T4.2** — `packages/shop_arena/tests/agent/test_dispatch.py`:
   build a 1-entry rubric with an `agent_driven` row + minimal inline
   block, run `ProbeRunner` against a stub Page + a stub
   `run_agent_task` (monkey-patched on the module). Assert stub was called
