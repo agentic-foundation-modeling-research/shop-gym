@@ -40,6 +40,7 @@ from typing import Any, Final, cast
 __all__ = [
     "BUCKET_CAPABILITY_KEYS",
     "DEFAULT_CAPS",
+    "PAGE_WEIGHTS",
     "SWEEP_CAPS",
     "TASK_BUCKETS",
     "BucketCaps",
@@ -134,6 +135,24 @@ Keys are shell-glob patterns matched via :func:`fnmatch.fnmatch`; the
 union over the active bucket set filters the capabilities slice handed
 to the agent so it never sees (and never penalises the absence of)
 features that belong to a different bucket.
+"""
+
+
+PAGE_WEIGHTS: Final[dict[str, float]] = {
+    "homepage": 0.25,
+    "navigation": 0.20,
+    "collections": 0.20,
+    "product": 0.20,
+    "cart_search": 0.08,
+    "info_pages": 0.07,
+}
+"""Page-bucket weights for merging per-bucket verdicts (spec §9.5).
+
+Used by :class:`shop_gen.build.verifiers.visual_judge.VisualJudgeVerifier`
+to merge ``consolidate``-task fan-out results (T5.7) and by
+the :mod:`shop_gen.final_eval.visual_sweep` driver (T5.3) to compute
+the overall sweep score. Buckets absent from a fan-out are dropped from
+both numerator and denominator so the weighted average stays well-defined.
 """
 
 

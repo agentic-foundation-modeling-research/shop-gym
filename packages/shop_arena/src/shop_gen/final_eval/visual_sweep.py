@@ -57,6 +57,7 @@ from shop_gen.build.verifiers._runtime_call import (
 )
 from shop_gen.build.verifiers._task_routes import (
     BUCKET_CAPABILITY_KEYS,
+    PAGE_WEIGHTS,
     SWEEP_CAPS,
     TASK_BUCKETS,
     BucketCaps,
@@ -526,11 +527,171 @@ def _render_report(results: list[BucketResult], *, base_url: str) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+# --------------------------------------------------------------------------- #
+# Merge driver — projects the per-bucket payload onto the `visual` subtree
+# --------------------------------------------------------------------------- #
+
+
+_VERDICT_PASS: Final[str] = "pass"
+_VERDICT_FAIL: Final[str] = "fail"
+
+_SEVERITY_ORDER: Final[dict[str, int]] = {"critical": 0, "major": 1, "minor": 2}
+"""Severity ordering for issue concatenation (spec §5.2.1 step 6)."""
+
+_NO_ROUTES_SKIP_REASON: Final[str] = "no routes resolved for bucket"
+"""Per-bucket ``error`` value emitted when a bucket has no routes; dropped from the merge."""
+
+
+def merge_sweep_to_visual_subtree(report: Mapping[str, Any]) -> dict[str, Any]:
+    """Project a :func:`run_visual_sweep` payload onto the ``visual`` subtree.
+
+    Implements the spec §5.2.1 step 6 + §9.5 merge:
+
+    * Weighted overall ``score`` via :data:`PAGE_WEIGHTS`. Buckets absent
+      from a fan-out (no routes) are dropped from both numerator and
+      denominator so the weighted average stays well-defined (§9.5).
+    * ``category_scores`` averaged per key across the buckets that
+      emitted that key.
+    * Issues concatenated across buckets, severity-sorted
+      (``critical`` → ``major`` → ``minor``), bucket name as the
+      stable secondary key.
+    * Merged verdict is ``"fail"`` if any usable bucket failed **or**
+      any bucket errored (missing / malformed verdict, runtime crash);
+      ``"pass"`` only when every usable bucket passed and no errors
+      surfaced.
+
+    Args:
+        report: The mapping returned by :func:`run_visual_sweep`. Must
+            carry a ``per_bucket`` list and a ``report_path`` string.
+
+    Returns:
+        JSON-serialisable mapping with the §4.1 ``visual`` subtree
+        keys: ``ok``, ``verdict``, ``score``, ``category_scores``,
+        ``pages_judged``, ``feedback``, ``report_path``, plus an
+        ``error`` field that is ``None`` on a clean run and a short
+        diagnostic enumerating the errored buckets otherwise.
+    """
+    per_bucket = list(report.get("per_bucket", []))
+
+    usable: list[Mapping[str, Any]] = []
+    errored: list[Mapping[str, Any]] = []
+    for entry in per_bucket:
+        if entry.get("verdict") is not None:
+            usable.append(entry)
+        elif entry.get("error") == _NO_ROUTES_SKIP_REASON:
+            # Empty dataset — drop from numerator and denominator (§9.5).
+            continue
+        else:
+            errored.append(entry)
+
+    weighted_score = _weighted_score(usable)
+    category_scores = _average_category_scores(usable)
+    pages_judged = sum(int(entry["pages_judged"]) for entry in usable)
+
+    has_fail = any(entry["verdict"] == _VERDICT_FAIL for entry in usable)
+    has_error = bool(errored)
+    merged_verdict = _VERDICT_FAIL if (has_fail or has_error) else _VERDICT_PASS
+
+    feedback = _render_merged_feedback(usable=usable, errored=errored)
+    error_msg = _render_error_summary(errored) if errored else None
+
+    return {
+        "ok": merged_verdict == _VERDICT_PASS and not has_error,
+        "verdict": merged_verdict,
+        "score": round(weighted_score, 2),
+        "category_scores": {k: round(v, 2) for k, v in category_scores.items()},
+        "pages_judged": pages_judged,
+        "feedback": feedback,
+        "report_path": report.get("report_path"),
+        "error": error_msg,
+    }
+
+
+def _weighted_score(usable: list[Mapping[str, Any]]) -> float:
+    """Compute the §9.5 weighted score over usable buckets only."""
+    score_num = 0.0
+    weight_sum = 0.0
+    for entry in usable:
+        weight = PAGE_WEIGHTS.get(entry["bucket"], 0.0)
+        if weight <= 0.0:
+            continue
+        score_num += weight * float(entry["score"])
+        weight_sum += weight
+    if weight_sum <= 0.0:
+        return 0.0
+    return score_num / weight_sum
+
+
+def _average_category_scores(
+    usable: list[Mapping[str, Any]],
+) -> dict[str, float]:
+    """Average per-category scores across the buckets that emitted each key."""
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for entry in usable:
+        cats: Mapping[str, Any] = entry.get("category_scores") or {}
+        for key, value in cats.items():
+            sums[key] = sums.get(key, 0.0) + float(value)
+            counts[key] = counts.get(key, 0) + 1
+    return {key: sums[key] / counts[key] for key in sums}
+
+
+def _render_merged_feedback(
+    *,
+    usable: list[Mapping[str, Any]],
+    errored: list[Mapping[str, Any]],
+) -> str:
+    """Render the merged feedback body (severity-sorted issues + per-bucket bodies)."""
+    issues: list[tuple[str, Mapping[str, Any]]] = []
+    for entry in usable:
+        for issue in entry.get("issues") or ():
+            issues.append((entry["bucket"], issue))
+    issues.sort(
+        key=lambda pair: (
+            _SEVERITY_ORDER.get(pair[1].get("severity", ""), 99),
+            pair[0],
+            pair[1].get("route", ""),
+        ),
+    )
+
+    lines: list[str] = []
+    if errored:
+        lines.append("## Bucket errors")
+        for entry in errored:
+            lines.append(f"- `{entry['bucket']}`: {entry.get('error') or 'unknown error'}")
+        lines.append("")
+    if issues:
+        lines.append("## Issues")
+        for bucket, issue in issues:
+            lines.append(
+                f"- [{issue.get('severity', '?')}] `{bucket}` "
+                f"`{issue.get('route', '?')}` ({issue.get('viewport', '?')}): "
+                f"{issue.get('summary', '')}",
+            )
+        lines.append("")
+    for entry in usable:
+        body = (entry.get("feedback") or "").strip()
+        if not body:
+            continue
+        lines.append(f"## `{entry['bucket']}`")
+        lines.append("")
+        lines.append(body)
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def _render_error_summary(errored: list[Mapping[str, Any]]) -> str:
+    """Short diagnostic enumerating the errored bucket names."""
+    parts = [f"{entry['bucket']}: {entry.get('error') or 'unknown'}" for entry in errored]
+    return "; ".join(parts)
+
+
 # Re-export the bucket capability key map so callers that want to
 # render a custom prompt slice do not need to reach into
 # :mod:`shop_gen.build.verifiers._task_routes` directly.
 __all__ = [
     "BUCKET_CAPABILITY_KEYS",
     "BucketResult",
+    "merge_sweep_to_visual_subtree",
     "run_visual_sweep",
 ]

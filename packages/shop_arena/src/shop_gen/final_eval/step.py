@@ -48,7 +48,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, Final, Protocol, cast, runtime_checkable
 
-from harness.runtimes.base import LLMCompleter
+from harness.runtimes.base import AgentRuntime, LLMCompleter
 from shop_gen.final_eval.playwright_smoke import (
     DEFAULT_VIEWPORTS,
     BrowserDriver,
@@ -61,7 +61,11 @@ from shop_gen.final_eval.playwright_smoke import (
     resolve_smoke_flow,
     run_playwright_smoke,
 )
-from shop_gen.final_eval.prompts import load_quality_judge_prompt
+from shop_gen.final_eval.prompts import load_quality_judge_prompt, load_visual_sweep_prompt
+from shop_gen.final_eval.visual_sweep import (
+    merge_sweep_to_visual_subtree,
+    run_visual_sweep,
+)
 from shop_gen.steps.base import FileInput, InputRef, StepContext, StepInput
 
 _PHASE: Final[str] = "final_eval"
@@ -84,6 +88,14 @@ mutated tree under ``<run_dir>/artifact/hydrogen/``; the smoke flow walks
 the dev server rooted there.
 """
 
+_DATA_DIR: Final[Path] = Path("data")
+"""Run-relative directory carrying the published storefront dataset.
+
+The visual sweep reads ``collections.json`` / ``products.json`` /
+``pages.json`` from this directory to resolve per-bucket route lists
+(spec §5.6 step 1).
+"""
+
 _SCREENSHOTS_DIR: Final[Path] = Path("runs") / "build" / "final_eval" / "screenshots"
 """Run-relative directory the playwright driver writes screenshots into."""
 
@@ -94,6 +106,15 @@ Conservative: visually grounded judging over multiple screenshots can
 run a few thousand tokens; 3 minutes leaves headroom for cold-start
 latency on the configured runtime.
 """
+
+_DEFAULT_VISUAL_TIMEOUT_S: Final[float] = 900.0
+"""Per-bucket visual-sweep iteration budget (spec §5.6 step 4)."""
+
+_DEFAULT_VISUAL_PASS_THRESHOLD: Final[float] = 7.0
+"""Score floor for the per-bucket §9.3 coercion rule inside the sweep."""
+
+_DEFAULT_VISUAL_MAX_CONCURRENCY: Final[int] = 3
+"""``ThreadPoolExecutor`` width for the page-bucket fan-out (spec §5.6 step 4)."""
 
 _FAILURES_PLACEHOLDER: Final[str] = "_(none)_"
 """Body shipped in ``{failures_table}`` when the smoke run was clean."""
@@ -137,6 +158,34 @@ class SmokeRunner(Protocol):
         ...
 
 
+@runtime_checkable
+class VisualSweepRunner(Protocol):
+    """Callable that drives one all-pages visual sweep (spec §5.6).
+
+    Production callers pass :func:`run_visual_sweep`; tests inject a
+    stub that returns a deterministic mapping with the same shape so
+    the merge into ``final_eval.json`` can be exercised without
+    booting the agent runtime.
+    """
+
+    def __call__(
+        self,
+        *,
+        out_dir: Path,
+        data_dir: Path,
+        hydrogen_dir: Path,
+        runtime: AgentRuntime,
+        dev_server_factory: DevServerFactory,
+        capabilities: Any,
+        prompt_template: str,
+        timeout_s: float,
+        max_concurrency: int,
+        pass_threshold: float,
+    ) -> dict[str, Any]:
+        """Walk every page bucket and return the per-bucket payload."""
+        ...
+
+
 # --------------------------------------------------------------------------- #
 # Step
 # --------------------------------------------------------------------------- #
@@ -166,8 +215,12 @@ class FinalEvalStep:
         dev_server_factory: DevServerFactory | None = None,
         browser_driver: BrowserDriver | None = None,
         smoke_runner: SmokeRunner | None = None,
+        visual_sweep_runner: VisualSweepRunner | None = None,
         viewports: Sequence[Viewport] = DEFAULT_VIEWPORTS,
         timeout_s: float = _DEFAULT_TIMEOUT_S,
+        visual_timeout_s: float = _DEFAULT_VISUAL_TIMEOUT_S,
+        visual_max_concurrency: int = _DEFAULT_VISUAL_MAX_CONCURRENCY,
+        visual_pass_threshold: float = _DEFAULT_VISUAL_PASS_THRESHOLD,
     ) -> None:
         """Build the step with optional injection seams.
 
@@ -187,6 +240,17 @@ class FinalEvalStep:
                 mobile per spec §5.5.5).
             timeout_s: Wall-clock budget for the LLM judge call.
                 Defaults to :data:`_DEFAULT_TIMEOUT_S`.
+            visual_sweep_runner: Drives the all-pages visual sweep
+                (T5.1, spec §5.6). Defaults to
+                :func:`~shop_gen.final_eval.visual_sweep.run_visual_sweep`.
+            visual_timeout_s: Per-bucket visual-sweep iteration budget.
+                Defaults to :data:`_DEFAULT_VISUAL_TIMEOUT_S` (15 minutes).
+            visual_max_concurrency: ``ThreadPoolExecutor`` width for the
+                page-bucket fan-out (spec §5.6 step 4). Defaults to
+                :data:`_DEFAULT_VISUAL_MAX_CONCURRENCY`.
+            visual_pass_threshold: Score floor for the per-bucket §9.3
+                coercion rule. Defaults to
+                :data:`_DEFAULT_VISUAL_PASS_THRESHOLD`.
         """
         self.id: str = _STEP_ID
         self.phase: str = _PHASE
@@ -203,8 +267,12 @@ class FinalEvalStep:
         )
         self._browser_driver: BrowserDriver = browser_driver or _unconfigured_browser_driver
         self._smoke_runner: SmokeRunner = smoke_runner or run_playwright_smoke
+        self._visual_sweep_runner: VisualSweepRunner = visual_sweep_runner or run_visual_sweep
         self._viewports: tuple[Viewport, ...] = tuple(viewports)
         self._timeout_s: float = timeout_s
+        self._visual_timeout_s: float = visual_timeout_s
+        self._visual_max_concurrency: int = visual_max_concurrency
+        self._visual_pass_threshold: float = visual_pass_threshold
 
     def run(self, ctx: StepContext) -> None:
         """Walk the smoke flow, ask the LLM judge, write ``final_eval.json``.
@@ -228,8 +296,12 @@ class FinalEvalStep:
             dev_server_factory=self._dev_server_factory,
             browser_driver=self._browser_driver,
             smoke_runner=self._smoke_runner,
+            visual_sweep_runner=self._visual_sweep_runner,
             viewports=self._viewports,
             timeout_s=self._timeout_s,
+            visual_timeout_s=self._visual_timeout_s,
+            visual_max_concurrency=self._visual_max_concurrency,
+            visual_pass_threshold=self._visual_pass_threshold,
         )
         out_path = ctx.out_dir / _OUT_REPORT
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -251,8 +323,12 @@ def run_final_eval(
     dev_server_factory: DevServerFactory,
     browser_driver: BrowserDriver,
     smoke_runner: SmokeRunner = run_playwright_smoke,
+    visual_sweep_runner: VisualSweepRunner | None = None,
     viewports: Sequence[Viewport] = DEFAULT_VIEWPORTS,
     timeout_s: float = _DEFAULT_TIMEOUT_S,
+    visual_timeout_s: float = _DEFAULT_VISUAL_TIMEOUT_S,
+    visual_max_concurrency: int = _DEFAULT_VISUAL_MAX_CONCURRENCY,
+    visual_pass_threshold: float = _DEFAULT_VISUAL_PASS_THRESHOLD,
 ) -> dict[str, Any]:
     """Drive the smoke flow + LLM judge and return the advisory verdict body.
 
@@ -276,15 +352,30 @@ def run_final_eval(
             end-to-end. Defaults to :func:`run_playwright_smoke`.
         viewports: Viewports each smoke step is captured at.
         timeout_s: Wall-clock budget for the LLM judge call.
+        visual_sweep_runner: Drives the all-pages visual sweep (T5.1).
+            Defaults to ``None`` which resolves to
+            :func:`~shop_gen.final_eval.visual_sweep.run_visual_sweep`.
+        visual_timeout_s: Per-bucket visual-sweep iteration budget.
+        visual_max_concurrency: Page-bucket fan-out worker count.
+        visual_pass_threshold: Per-bucket score floor for the §9.3
+            coercion rule applied inside the sweep.
 
     Returns:
         JSON-serialisable mapping with keys:
 
-        * ``ok`` — overall pass (smoke clean *and* verdict ``pass``).
+        * ``ok`` — overall pass (smoke clean *and* judge ``pass``).
+          The ``visual`` subtree is advisory and does not gate ``ok``.
         * ``smoke`` — ``{base_url, screenshots[], failures[]}``.
         * ``judge`` — ``{verdict, feedback, error}``. ``verdict`` is
           ``"pass"`` / ``"fail"`` / ``"error"``; ``error`` is ``null``
           on a clean LLM round trip and a short diagnostic otherwise.
+        * ``visual`` — advisory all-pages sweep subtree (§4.1):
+          ``{ok, verdict, score, category_scores, pages_judged,
+          feedback, report_path, error}``. ``error`` carries a
+          short diagnostic on probe miss / runtime crash / parse
+          error and the rest of the subtree collapses to a
+          ""`error`"" verdict; otherwise ``error`` is ``null`` and
+          the per-bucket merge populates the body.
     """
     flow = resolve_smoke_flow(out_dir=out_dir, viewports=viewports)
     hydrogen_dir = out_dir / _HYDROGEN_DIR
@@ -307,11 +398,26 @@ def run_final_eval(
         timeout_s=timeout_s,
     )
 
+    visual_payload = _run_visual_sweep(
+        out_dir=out_dir,
+        hydrogen_dir=hydrogen_dir,
+        runtime=completer,
+        dev_server_factory=dev_server_factory,
+        visual_sweep_runner=visual_sweep_runner or run_visual_sweep,
+        timeout_s=visual_timeout_s,
+        max_concurrency=visual_max_concurrency,
+        pass_threshold=visual_pass_threshold,
+    )
+
+    # The ``visual`` subtree is **advisory** (spec §5.6, §5.5.5): a
+    # ``visual.error`` or ``visual.ok=false`` does not gate the
+    # top-level ``ok`` field. Reviewers consult ``visual`` directly.
     smoke_clean = not smoke_payload["failures"] and smoke_payload.get("error") is None
     return {
         "ok": smoke_clean and judge_payload["verdict"] == _VERDICT_PASS,
         "smoke": smoke_payload,
         "judge": judge_payload,
+        "visual": visual_payload,
     }
 
 
@@ -394,6 +500,77 @@ def _relative_or_str(path: Path, *, base: Path) -> str:
         return path.relative_to(base).as_posix()
     except ValueError:
         return str(path)
+
+
+# --------------------------------------------------------------------------- #
+# Internals — visual sweep
+# --------------------------------------------------------------------------- #
+
+
+def _run_visual_sweep(
+    *,
+    out_dir: Path,
+    hydrogen_dir: Path,
+    runtime: Any,
+    dev_server_factory: DevServerFactory,
+    visual_sweep_runner: VisualSweepRunner,
+    timeout_s: float,
+    max_concurrency: int,
+    pass_threshold: float,
+) -> dict[str, Any]:
+    """Drive the all-pages visual sweep and project it onto the ``visual`` subtree.
+
+    Implements the spec §5.6 step 6 merge: parse each per-bucket
+    ``verdict.json``, weight scores via :data:`PAGE_WEIGHTS`, average
+    category scores, and concatenate severity-sorted issues. Failures
+    (missing capabilities, runtime without ``run_iteration``, sweep
+    crash) collapse to a single ``error`` payload — the sweep is
+    advisory and never re-raises (spec §5.5.5).
+    """
+    capabilities_payload = _load_capabilities(out_dir / _IN_CAPABILITIES)
+    if isinstance(capabilities_payload, str):
+        return _visual_error(capabilities_payload)
+    if not isinstance(runtime, AgentRuntime):
+        return _visual_error(
+            "runtime does not implement AgentRuntime; visual sweep skipped",
+        )
+    data_dir = out_dir / _DATA_DIR
+    if not data_dir.is_dir():
+        return _visual_error(f"data directory not found at `{_DATA_DIR.as_posix()}`")
+    try:
+        prompt_template = load_visual_sweep_prompt()
+    except FileNotFoundError as exc:
+        return _visual_error(f"could not load visual-sweep prompt: {exc}")
+    try:
+        sweep_report = visual_sweep_runner(
+            out_dir=out_dir,
+            data_dir=data_dir,
+            hydrogen_dir=hydrogen_dir,
+            runtime=runtime,
+            dev_server_factory=dev_server_factory,
+            capabilities=capabilities_payload,
+            prompt_template=prompt_template,
+            timeout_s=timeout_s,
+            max_concurrency=max_concurrency,
+            pass_threshold=pass_threshold,
+        )
+    except Exception as exc:
+        return _visual_error(f"visual sweep raised {type(exc).__name__}: {exc}")
+    return merge_sweep_to_visual_subtree(sweep_report)
+
+
+def _visual_error(message: str) -> dict[str, Any]:
+    """Shape an ``error`` visual subtree (spec §4.1, §5.6)."""
+    return {
+        "ok": False,
+        "verdict": _VERDICT_ERROR,
+        "score": None,
+        "category_scores": {},
+        "pages_judged": 0,
+        "feedback": "",
+        "report_path": None,
+        "error": message,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -596,5 +773,6 @@ def _unconfigured_browser_driver(
 __all__ = [
     "FinalEvalStep",
     "SmokeRunner",
+    "VisualSweepRunner",
     "run_final_eval",
 ]

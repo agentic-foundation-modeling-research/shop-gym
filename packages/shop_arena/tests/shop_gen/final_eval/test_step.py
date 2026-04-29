@@ -17,6 +17,7 @@ Spec contract under test (``docs/specs/shop_arena/shop_gen.md`` §5.5.5):
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import json
 import shutil
 import subprocess
@@ -24,6 +25,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Final
 
+from harness.runtimes.base import RuntimeIterationResult
+from harness.trajectory import Trajectory
 from shop_gen.config import ShopGenConfig
 from shop_gen.final_eval.playwright_smoke import (
     Screenshot,
@@ -142,6 +145,88 @@ class _StubCompleter:
         return self.response
 
 
+def _stub_visual_sweep_runner(
+    *,
+    out_dir: Path,
+    data_dir: Path,
+    hydrogen_dir: Path,
+    runtime: Any,
+    dev_server_factory: Any,
+    capabilities: Any,
+    prompt_template: str,
+    timeout_s: float,
+    max_concurrency: int,
+    pass_threshold: float,
+) -> dict[str, Any]:
+    """Stub :class:`VisualSweepRunner` that fabricates a clean per-bucket payload."""
+    del (
+        data_dir,
+        hydrogen_dir,
+        runtime,
+        dev_server_factory,
+        capabilities,
+        prompt_template,
+        timeout_s,
+        max_concurrency,
+        pass_threshold,
+    )
+    visual_eval = out_dir / "visual_eval"
+    (visual_eval / "screenshots" / "homepage" / "home").mkdir(parents=True)
+    (visual_eval / "screenshots" / "homepage" / "home" / "desktop.png").write_bytes(
+        b"PNGSTUB\n",
+    )
+    report_path = visual_eval / "report.md"
+    report_path.write_text("# Visual sweep report\n\nstub body\n", encoding="utf-8")
+    return {
+        "base_url": _BASE_URL,
+        "buckets": ["homepage"],
+        "per_bucket": [
+            {
+                "bucket": "homepage",
+                "routes": ["/"],
+                "verdict": "pass",
+                "score": 8.5,
+                "category_scores": {"structure": 8, "components": 9},
+                "pages_judged": 2,
+                "feedback": "homepage looks good",
+                "issues": [],
+                "error": None,
+            },
+        ],
+        "pages_judged": 2,
+        "report_path": "visual_eval/report.md",
+    }
+
+
+class _StubAgentRuntime:
+    """Stub :class:`AgentRuntime` for the visual sweep injection seam."""
+
+    def run_iteration(
+        self,
+        *,
+        run_dir: Path,
+        iter_dir: Path,
+        prompt: str,
+        timeout: float,
+    ) -> RuntimeIterationResult:
+        del run_dir, iter_dir, prompt, timeout
+        now = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+        return RuntimeIterationResult(
+            trajectory=Trajectory(
+                iter_id="stub",
+                runtime="stub",
+                started_at=now,
+                ended_at=now,
+                exit_code=0,
+                prompt_sha256="0" * 64,
+            ),
+        )
+
+
+class _StubFullRuntime(_StubCompleter, _StubAgentRuntime):
+    """Composite stub that satisfies both ``LLMCompleter`` and ``AgentRuntime``."""
+
+
 class _RaisingCompleter:
     """Stub :class:`LLMCompleter` that raises a transport error."""
 
@@ -243,6 +328,7 @@ def test_final_eval_step_writes_pass_verdict(tmp_path: Path) -> None:
     step = FinalEvalStep(
         dev_server_factory=_stub_dev_server_factory,
         browser_driver=_stub_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
     )
 
     step.run(_build_ctx(out_dir, runtime=completer))
@@ -284,6 +370,7 @@ def test_final_eval_step_does_not_raise_on_fail_verdict(tmp_path: Path) -> None:
     step = FinalEvalStep(
         dev_server_factory=_stub_dev_server_factory,
         browser_driver=_stub_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
     )
 
     # The step.run() call must NOT raise — that is the entire advisory contract.
@@ -303,6 +390,7 @@ def test_final_eval_step_records_smoke_failures(tmp_path: Path) -> None:
     step = FinalEvalStep(
         dev_server_factory=_stub_dev_server_factory,
         browser_driver=_failing_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
     )
 
     step.run(_build_ctx(out_dir, runtime=completer))
@@ -325,6 +413,7 @@ def test_final_eval_step_records_llm_transport_error(tmp_path: Path) -> None:
     step = FinalEvalStep(
         dev_server_factory=_stub_dev_server_factory,
         browser_driver=_stub_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
     )
 
     step.run(_build_ctx(out_dir, runtime=completer))
@@ -342,6 +431,7 @@ def test_final_eval_step_records_parse_error(tmp_path: Path) -> None:
     step = FinalEvalStep(
         dev_server_factory=_stub_dev_server_factory,
         browser_driver=_stub_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
     )
 
     step.run(_build_ctx(out_dir, runtime=completer))
@@ -360,6 +450,7 @@ def test_final_eval_step_records_missing_capabilities(tmp_path: Path) -> None:
     step = FinalEvalStep(
         dev_server_factory=_stub_dev_server_factory,
         browser_driver=_stub_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
     )
 
     step.run(_build_ctx(out_dir, runtime=completer))
@@ -379,6 +470,7 @@ def test_final_eval_step_records_missing_hydrogen_tree(tmp_path: Path) -> None:
     step = FinalEvalStep(
         dev_server_factory=_stub_dev_server_factory,
         browser_driver=_stub_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
     )
 
     step.run(_build_ctx(out_dir, runtime=completer))
@@ -398,6 +490,7 @@ def test_final_eval_step_records_missing_completer(tmp_path: Path) -> None:
     step = FinalEvalStep(
         dev_server_factory=_stub_dev_server_factory,
         browser_driver=_stub_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
     )
 
     step.run(_build_ctx(out_dir, runtime=None))
@@ -405,6 +498,62 @@ def test_final_eval_step_records_missing_completer(tmp_path: Path) -> None:
     report = _read_report(out_dir)
     assert report["judge"]["verdict"] == "error"
     assert "LLMCompleter" in report["judge"]["error"]
+
+
+# --------------------------------------------------------------------------- #
+# Visual subtree (T5.3 / SC6)
+# --------------------------------------------------------------------------- #
+
+
+def test_final_eval_step_writes_visual_subtree_on_pass(tmp_path: Path) -> None:
+    """SC6: a clean sweep populates the full ``visual.{ok,...,report_path}`` subtree."""
+    out_dir = _materialise_workspace(tmp_path / "out")
+    runtime = _StubFullRuntime(_PASS_RESPONSE)
+    step = FinalEvalStep(
+        dev_server_factory=_stub_dev_server_factory,
+        browser_driver=_stub_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
+    )
+
+    step.run(_build_ctx(out_dir, runtime=runtime))
+
+    report = _read_report(out_dir)
+    visual = report["visual"]
+    assert visual["ok"] is True
+    assert visual["verdict"] == "pass"
+    assert visual["score"] == 8.5  # noqa: PLR2004 -- mirrors stub payload
+    assert visual["category_scores"] == {"structure": 8.0, "components": 9.0}
+    assert visual["pages_judged"] == 2  # noqa: PLR2004 -- mirrors stub payload
+    assert visual["report_path"] == "visual_eval/report.md"
+    assert visual["error"] is None
+    # The advisory artifacts are on disk where reviewers expect them.
+    assert (out_dir / "visual_eval" / "report.md").is_file()
+    assert (out_dir / "visual_eval" / "screenshots" / "homepage" / "home" / "desktop.png").is_file()
+
+
+def test_final_eval_step_writes_visual_error_when_runtime_lacks_agent_runtime(
+    tmp_path: Path,
+) -> None:
+    """T5.3: a runtime without ``run_iteration`` collapses to ``visual.error``."""
+    out_dir = _materialise_workspace(tmp_path / "out")
+    completer = _StubCompleter(_PASS_RESPONSE)
+    # No visual_sweep_runner override — the default factory will be invoked
+    # but the runtime probe in ``_run_visual_sweep`` short-circuits because
+    # ``_StubCompleter`` does not implement ``AgentRuntime``.
+    step = FinalEvalStep(
+        dev_server_factory=_stub_dev_server_factory,
+        browser_driver=_stub_browser_driver,
+    )
+
+    step.run(_build_ctx(out_dir, runtime=completer))
+
+    report = _read_report(out_dir)
+    visual = report["visual"]
+    assert visual["verdict"] == "error"
+    assert visual["error"]
+    assert "AgentRuntime" in visual["error"]
+    # Top-level ok unaffected by visual error — sweep is advisory.
+    assert report["ok"] is True
 
 
 # --------------------------------------------------------------------------- #
@@ -422,13 +571,24 @@ def test_run_final_eval_returns_serialisable_payload(tmp_path: Path) -> None:
         completer=completer,
         dev_server_factory=_stub_dev_server_factory,
         browser_driver=_stub_browser_driver,
+        visual_sweep_runner=_stub_visual_sweep_runner,
     )
 
     # Round-trip through json.dumps to guarantee serialisability.
     body = json.loads(json.dumps(payload))
-    assert set(body.keys()) == {"ok", "smoke", "judge"}
+    assert set(body.keys()) == {"ok", "smoke", "judge", "visual"}
     assert set(body["smoke"].keys()) == {"base_url", "screenshots", "failures", "error"}
     assert set(body["judge"].keys()) == {"verdict", "feedback", "error"}
+    assert set(body["visual"].keys()) == {
+        "ok",
+        "verdict",
+        "score",
+        "category_scores",
+        "pages_judged",
+        "feedback",
+        "report_path",
+        "error",
+    }
 
 
 # --------------------------------------------------------------------------- #
