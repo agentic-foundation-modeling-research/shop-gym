@@ -151,6 +151,49 @@ def test_template_smoke_m2_breadcrumbs_dual_mode_exports() -> None:
 
 
 # ---------------------------------------------------------------------------
+# M3 — multi-handle footer
+# ---------------------------------------------------------------------------
+
+_M3_FILES: Final[tuple[str, ...]] = ("app/components/FooterColumns.tsx",)
+"""Files M3 of the navigation-primitives plan must add to the template tree."""
+
+_M3_NAMED_EXPORTS: Final[tuple[tuple[str, str], ...]] = (
+    ("app/components/FooterColumns.tsx", "export function FooterColumns("),
+)
+"""M3 components whose named export is a single ``export function`` line."""
+
+
+@pytest.mark.parametrize("relpath", _M3_FILES)
+def test_template_smoke_m3_files_exist(relpath: str) -> None:
+    """Each M3 primitive file is present in the template tree."""
+    path = _HYDROGEN_DIR / relpath
+    assert path.is_file(), f"expected primitive file at {path}, got nothing"
+
+
+@pytest.mark.parametrize(("relpath", "needle"), _M3_NAMED_EXPORTS)
+def test_template_smoke_m3_named_exports(relpath: str, needle: str) -> None:
+    """Each M3 primitive file declares its canonical named export."""
+    source = (_HYDROGEN_DIR / relpath).read_text(encoding="utf-8")
+    assert needle in source, f"{relpath} must declare a named export matching `{needle}`"
+
+
+def test_template_smoke_m3_root_reads_footer_menu_handles_env() -> None:
+    """``app/root.tsx`` reads ``env.PUBLIC_FOOTER_MENU_HANDLES``.
+
+    Per T3.2, the loader fans the footer query out across one entry per
+    CSV-parsed handle in ``env.PUBLIC_FOOTER_MENU_HANDLES`` (defaulting to a
+    single ``'footer'`` menu when the var is unset). The grep is intentionally
+    narrow — it asserts the env-var name is *referenced* somewhere in
+    ``root.tsx`` rather than parsing the loader body, since the strict shape
+    is re-verified by ``pnpm typecheck`` below.
+    """
+    source = (_HYDROGEN_DIR / "app/root.tsx").read_text(encoding="utf-8")
+    assert "env.PUBLIC_FOOTER_MENU_HANDLES" in source, (
+        "app/root.tsx must read `env.PUBLIC_FOOTER_MENU_HANDLES` to fan out the footer query (T3.2)"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Shared — ``pnpm tsc --noEmit`` against the template
 # ---------------------------------------------------------------------------
 
