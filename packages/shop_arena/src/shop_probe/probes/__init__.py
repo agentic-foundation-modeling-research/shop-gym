@@ -2,7 +2,11 @@
 
 The leaf modules implement the rubrics in ``rubric/v1.yaml``,
 ``rubric/v1.1.yaml`` (auth / checkout slice), and ``rubric/v1.2.yaml``
-(advanced behavioral tier):
+(advanced behavioral tier). ``rubric/v1.3.yaml`` replaces the v1.2
+advanced tier with 8 ``level: agent_driven`` entries that carry inline
+``agent_task`` blocks instead of dotted ``probe`` references — see
+``rubric/v1.3.yaml`` for the canonical task list, dispatched through
+:mod:`shop_probe.agent.runner` rather than this package:
 
 * :mod:`shop_probe.probes.site_shell` — header / nav / footer shell.
 * :mod:`shop_probe.probes.homepage` — homepage section types.
@@ -34,5 +38,10 @@ isolation + evidence root + timeouts; leaf probes assert one capability and
 return a :class:`shop_probe.probes._runner.ProbeOutcome`. v1.2 behavioral
 probes return ``passed=None`` when the storefront does not expose the
 surface required to drive the interaction; the runner excludes those from
-coverage aggregation.
+coverage aggregation. v1.3 ``agent_driven`` entries are not implemented
+in this package — see ``rubric/v1.3.yaml`` for the 8 task IDs
+(``collection.sort.changes_order``, ``collection.filters.applies_to_results``,
+``collection.pagination.advances``, ``collection.filters.url_state_advances``,
+``product.variant.swap_updates_state``, ``product.qty.spinner_increments``,
+``search.predictive.populates_listbox``, ``dynamics.cart_count_badge_updates``).
 """

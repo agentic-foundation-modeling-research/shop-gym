@@ -289,7 +289,7 @@ stubs; outer timeout doesn't cut the inner harness loop.
 
 **Goal:** Real rubric on disk, hash-pinned, all 8 inline blocks valid.
 
-- [ ] **T5.1** — `packages/shop_arena/src/shop_probe/rubric/v1.3.yaml`:
+- [x] **T5.1** — `packages/shop_arena/src/shop_probe/rubric/v1.3.yaml`:
   copy the 66 v1.1 entries verbatim from `v1.1.yaml` (preserving order),
   bump `version: v1.3`, then append the 8 agent-driven entries from
   Appendix B below. Each entry has `level: agent_driven`, no `probe:`,
@@ -297,13 +297,13 @@ stubs; outer timeout doesn't cut the inner harness loop.
   v1.2 advanced (collection ×4, product ×2, search ×1, dynamics ×1; total
   weight 14). **Check:** YAML round-trips through the loader; total entry
   count = 74.
-- [ ] **T5.2** — `packages/shop_arena/src/shop_probe/rubric/loader.py`:
+- [x] **T5.2** — `packages/shop_arena/src/shop_probe/rubric/loader.py`:
   register `"v1.3"` → `v1.3.yaml`. **Check:** `load_rubric("v1.3")`
   returns a `Rubric` instance.
-- [ ] **T5.3** — `packages/shop_arena/src/shop_probe/probes/__init__.py`:
+- [x] **T5.3** — `packages/shop_arena/src/shop_probe/probes/__init__.py`:
   module docstring lists the 8 agent-driven task IDs (linking to YAML,
   not Python). **Check:** docstring renders.
-- [ ] **T5.4** — `packages/shop_arena/tests/shop_probe/test_rubric_v1_3.py`
+- [x] **T5.4** — `packages/shop_arena/tests/shop_probe/test_rubric_v1_3.py`
   mirroring `test_rubric_v1_2.py` style:
   - `EXPECTED_V1_3_HASH = "<paste once tests run>"` — pin SHA-256 over
     raw YAML bytes after T5.1.
