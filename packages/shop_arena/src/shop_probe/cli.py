@@ -620,15 +620,7 @@ async def _run(
                         sample_product_url=sample_product_url,
                         sample_collection_url=sample_collection_url,
                     )
-                results.append(
-                    ProbeResult(
-                        id=entry.id,
-                        passed=outcome.passed,
-                        evidence=outcome.evidence,
-                        notes=outcome.notes,
-                        duration_ms=outcome.duration_ms,
-                    )
-                )
+                results.append(_build_probe_result(entry.id, outcome))
         categories, c_core, c_modern, c_advanced, c_weighted = _aggregate_coverage(
             selected_entries, results
         )
@@ -646,6 +638,7 @@ async def _run(
         viewport=(VIEWPORT_WIDTH, VIEWPORT_HEIGHT),
         headless=True,
     )
+    total_judge_cost_usd, total_agent_cost_usd = _aggregate_cost_totals(results)
     return ProbeReport(
         target=target,
         rubric_version=rubric.version,
@@ -661,6 +654,8 @@ async def _run(
         coverage_weighted=c_weighted,
         surface=surface,
         rerun_index=rerun_index,
+        total_judge_cost_usd=total_judge_cost_usd,
+        total_agent_cost_usd=total_agent_cost_usd,
     )
 
 
@@ -669,6 +664,70 @@ def _select_rubric_entries(rubric: Rubric, *, include_auth: bool) -> tuple[Rubri
     if include_auth:
         return rubric.entries
     return tuple(e for e in rubric.entries if not (e.authenticated or e.transactional))
+
+
+def _build_probe_result(probe_id: str, outcome: ProbeOutcome) -> ProbeResult:
+    """Project a :class:`ProbeOutcome` into the closed :class:`ProbeResult`.
+
+    Forwards optional v1.3 cost / model side-channel values from
+    :attr:`ProbeOutcome.extra` (``judge_cost_usd``, ``judge_model``,
+    ``agent_cost_usd``, ``agent_model``) onto the report row so the
+    aggregator can roll cohort cost totals up to :class:`ProbeReport`.
+    Deterministic probes leave ``extra`` empty and the four cost fields
+    stay ``None``.
+    """
+    return ProbeResult(
+        id=probe_id,
+        passed=outcome.passed,
+        evidence=outcome.evidence,
+        notes=outcome.notes,
+        duration_ms=outcome.duration_ms,
+        judge_cost_usd=_extra_float(outcome.extra, "judge_cost_usd"),
+        judge_model=_extra_str(outcome.extra, "judge_model"),
+        agent_cost_usd=_extra_float(outcome.extra, "agent_cost_usd"),
+        agent_model=_extra_str(outcome.extra, "agent_model"),
+    )
+
+
+def _extra_float(extra: object, key: str) -> float | None:
+    """Return ``extra[key]`` coerced to ``float`` when present, else ``None``."""
+    if not isinstance(extra, dict):
+        return None
+    value = extra.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool):  # bool is a subclass of int; reject explicitly.
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _extra_str(extra: object, key: str) -> str | None:
+    """Return ``extra[key]`` when it is a non-empty string, else ``None``."""
+    if not isinstance(extra, dict):
+        return None
+    value = extra.get(key)
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _aggregate_cost_totals(
+    results: list[ProbeResult],
+) -> tuple[float | None, float | None]:
+    """Sum per-probe v1.3 cost fields into cohort-level rollups.
+
+    Returns ``(total_judge_cost_usd, total_agent_cost_usd)``. Either
+    rollup is ``None`` when no probe in the report carried that field
+    — distinguishing "v1.1 cohort, never priced" from "v1.3 cohort, all
+    judge calls free" (which would surface as ``0.0``).
+    """
+    judge_costs = [r.judge_cost_usd for r in results if r.judge_cost_usd is not None]
+    agent_costs = [r.agent_cost_usd for r in results if r.agent_cost_usd is not None]
+    total_judge = sum(judge_costs) if judge_costs else None
+    total_agent = sum(agent_costs) if agent_costs else None
+    return total_judge, total_agent
 
 
 def _aggregate_coverage(

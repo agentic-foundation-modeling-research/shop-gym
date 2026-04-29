@@ -261,3 +261,67 @@ def test_judge_call_rejects_negative_cost() -> None:
             cost_usd=-0.01,
             model_id="m",
         )
+
+
+# --------------------------------------------------------------------------- #
+# v1.3 cost / model side-channel fields (impl plan T6.2).
+# --------------------------------------------------------------------------- #
+
+
+def test_probe_result_carries_v1_3_cost_fields() -> None:
+    """Agent-driven results round-trip with judge + agent cost / model."""
+    r = ProbeResult(
+        id="collection.sort.changes_order",
+        passed=True,
+        evidence=(_evidence_ref(),),
+        notes=None,
+        duration_ms=87_412,
+        judge_cost_usd=0.0123,
+        judge_model="claude-opus-4-7",
+        agent_cost_usd=0.2456,
+        agent_model="claude-opus-4-7",
+    )
+    assert ProbeResult.model_validate_json(r.model_dump_json()) == r
+
+
+def test_probe_result_v1_3_cost_fields_default_to_none() -> None:
+    """Deterministic probes leave the four side-channel fields ``None``."""
+    r = _probe_result()
+    assert r.judge_cost_usd is None
+    assert r.judge_model is None
+    assert r.agent_cost_usd is None
+    assert r.agent_model is None
+
+
+@pytest.mark.parametrize("field", ["judge_cost_usd", "agent_cost_usd"])
+def test_probe_result_rejects_negative_v1_3_cost(field: str) -> None:
+    with pytest.raises(ValidationError):
+        ProbeResult(
+            id="x",
+            passed=True,
+            duration_ms=1,
+            **{field: -0.01},  # type: ignore[arg-type]
+        )
+
+
+def test_probe_report_carries_total_cost_rollups() -> None:
+    r = _report(
+        total_judge_cost_usd=0.08,
+        total_agent_cost_usd=1.92,
+    )
+    payload = json.loads(r.model_dump_json())
+    assert payload["total_judge_cost_usd"] == pytest.approx(0.08)
+    assert payload["total_agent_cost_usd"] == pytest.approx(1.92)
+    assert ProbeReport.model_validate(payload) == r
+
+
+def test_probe_report_total_cost_rollups_default_to_none() -> None:
+    r = _report()
+    assert r.total_judge_cost_usd is None
+    assert r.total_agent_cost_usd is None
+
+
+@pytest.mark.parametrize("field", ["total_judge_cost_usd", "total_agent_cost_usd"])
+def test_probe_report_rejects_negative_total_cost(field: str) -> None:
+    with pytest.raises(ValidationError):
+        _report(**{field: -0.5})

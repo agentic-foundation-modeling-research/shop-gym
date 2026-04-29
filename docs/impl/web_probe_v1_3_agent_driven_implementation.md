@@ -342,7 +342,7 @@ report records per-probe agent + judge cost.
   Build `AgentRuntimeConfig` from flags; pass into `ProbeContext`. `eval`
   forwards all five into each spawned `run` invocation. **Check:**
   `--rubric v1.1` ignores all flags, makes zero Anthropic calls.
-- [ ] **T6.2** — `packages/shop_arena/src/shop_probe/report.py`:
+- [x] **T6.2** — `packages/shop_arena/src/shop_probe/report.py`:
   `ProbeResult` gains optional `judge_cost_usd: float | None`,
   `judge_model: str | None`, `agent_cost_usd: float | None`,
   `agent_model: str | None`. `ProbeReport` aggregates totals

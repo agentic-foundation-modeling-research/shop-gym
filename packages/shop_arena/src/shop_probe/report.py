@@ -128,6 +128,16 @@ class ProbeResult(BaseModel):
         notes: Optional free-form note (failure reason, observed value).
         duration_ms: Wall-clock duration of the probe call, in
             milliseconds. Used for runtime budgeting + flake debugging.
+        judge_cost_usd: USD cost of the v1.3 completion-judge call
+            for this probe (``None`` for deterministic probes that
+            issue no judge call).
+        judge_model: Pinned model id of the completion judge that
+            decided this probe (``None`` outside the v1.3 path).
+        agent_cost_usd: USD cost of the v1.3 agent harness loop for
+            this probe (``None`` outside the v1.3 path or when the
+            harness does not surface a cost estimate).
+        agent_model: Pinned model id of the v1.3 agent runtime
+            (``None`` outside the v1.3 path).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -137,6 +147,10 @@ class ProbeResult(BaseModel):
     evidence: tuple[EvidenceRef, ...] = ()
     notes: str | None = None
     duration_ms: int = Field(ge=0)
+    judge_cost_usd: float | None = Field(default=None, ge=0.0)
+    judge_model: str | None = Field(default=None, min_length=1)
+    agent_cost_usd: float | None = Field(default=None, ge=0.0)
+    agent_model: str | None = Field(default=None, min_length=1)
 
 
 class CategoryScore(BaseModel):
@@ -245,6 +259,12 @@ class ProbeReport(BaseModel):
             (spec §5.8).
         flake_rate_per_probe: ``probe_id -> flake_rate ∈ [0, 1]`` from
             the rerun group; populated by the aggregation step.
+        total_judge_cost_usd: Sum of ``judge_cost_usd`` across all
+            probe results that recorded one (``None`` when no probe
+            issued a judge call — e.g. v1.1 / v1.2 cohorts).
+        total_agent_cost_usd: Sum of ``agent_cost_usd`` across all
+            probe results that recorded one (``None`` when no probe
+            ran an agent harness loop).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -274,3 +294,7 @@ class ProbeReport(BaseModel):
     # Stability (spec §5.8)
     rerun_index: int = Field(ge=1)
     flake_rate_per_probe: dict[str, float] = Field(default_factory=dict)
+
+    # v1.3 cost rollups (web_probe_v1_3_agent_driven_implementation.md T6.2)
+    total_judge_cost_usd: float | None = Field(default=None, ge=0.0)
+    total_agent_cost_usd: float | None = Field(default=None, ge=0.0)
