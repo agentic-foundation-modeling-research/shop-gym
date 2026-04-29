@@ -207,6 +207,15 @@ class _LoopState:
         self._trajectory_paths: list[str] = []
         self._final_status: FinalStatus | None = None
         self._verifier_runs: list[VerifierRun] = []
+        # Task ids whose executor iteration timed out within this attempt.
+        # Held in runner-local state so the timed-out task stays PENDING in
+        # `plan.md` (a future resume retries it) but the in-flight loop
+        # advances to the next selectable task instead of looping forever.
+        self._timed_out_task_ids: set[str] = set()
+        # Latched when any executor iteration times out. Surfaces TIMEOUT
+        # as the run's terminal status even when the loop later drains all
+        # other tasks or exhausts its budget.
+        self._had_timeout: bool = False
 
     # ------------------------------------------------------------------
     # Resume hooks
@@ -325,7 +334,17 @@ class _LoopState:
     # ------------------------------------------------------------------
 
     def run_executor_loop(self) -> None:
-        """Drive the executor loop until completion, budget, or failure."""
+        """Drive the executor loop until completion, budget, or failure.
+
+        Task selection skips ids in `self._timed_out_task_ids` so a single
+        runaway task does not stall the rest of the plan; those ids stay
+        PENDING in `plan.md` and a future resume retries them.
+
+        When at least one iteration timed out and the loop would
+        otherwise terminate as ``COMPLETED`` or ``BUDGET_EXHAUSTED``, the
+        terminal status is overridden to ``TIMEOUT`` so the caller (and
+        ``run.json``) reflect that the run did not complete cleanly.
+        """
         while True:
             try:
                 tasks = _parse_workspace_plan(self._workspace)
@@ -334,13 +353,17 @@ class _LoopState:
                 self._rewrite_run_summary()
                 return
 
-            selected = select_next(tasks)
+            selected = _select_next_skipping(tasks, skip=self._timed_out_task_ids)
             if selected is None:
-                self._final_status = FinalStatus.COMPLETED
+                self._final_status = (
+                    FinalStatus.TIMEOUT if self._had_timeout else FinalStatus.COMPLETED
+                )
                 self._rewrite_run_summary()
                 return
             if (self._exec_iter_count - self._exec_iter_baseline) >= self._config.max_iters:
-                self._final_status = FinalStatus.BUDGET_EXHAUSTED
+                self._final_status = (
+                    FinalStatus.TIMEOUT if self._had_timeout else FinalStatus.BUDGET_EXHAUSTED
+                )
                 self._rewrite_run_summary()
                 return
 
@@ -348,7 +371,15 @@ class _LoopState:
                 return
 
     def _run_one_executor(self, *, before: TaskList, selected: Task) -> bool:
-        """Run a single executor iteration. Returns False on terminal failure."""
+        """Run a single executor iteration. Returns False on terminal failure.
+
+        ``TIMEOUT`` is handled non-terminally: the partial iter dir is
+        quarantined to ``iters/<id>.aborted-<N>/`` with a sentinel, the
+        timed-out task id is added to the runner-local skip set, and the
+        loop continues with the next selectable task. The task stays
+        PENDING in `plan.md` so a future resume retries it. ``RUNTIME_ERROR``
+        and ``PROTOCOL_VIOLATION`` continue to terminate the run.
+        """
         next_count = self._exec_iter_count + 1
         exec_id = exec_iter_id(next_count)
         exec_dir = iter_dir(self._workspace, exec_id)
@@ -369,6 +400,21 @@ class _LoopState:
             selected.id,
         )
         outcome = self._invoke_runtime(iter_dir_path=exec_dir, prompt=prompt)
+        if outcome.error_status is FinalStatus.TIMEOUT:
+            _log.warning(
+                "executor iteration %s timed out on task=%s; quarantining and skipping",
+                exec_id,
+                selected.id,
+            )
+            _quarantine_iter_dir(
+                self._workspace,
+                exec_dir,
+                reason="timeout",
+            )
+            self._timed_out_task_ids.add(selected.id)
+            self._had_timeout = True
+            self._rewrite_run_summary()
+            return True
         if outcome.error_status is not None:
             self._final_status = outcome.error_status
             self._rewrite_run_summary()
@@ -480,7 +526,9 @@ class _LoopState:
         # status assignment, but defensive coverage keeps mypy/pyright
         # happy and protects against future control-flow changes.
         if self._final_status is None:
-            self._final_status = FinalStatus.COMPLETED
+            self._final_status = (
+                FinalStatus.TIMEOUT if self._had_timeout else FinalStatus.COMPLETED
+            )
 
         return self._rewrite_run_summary()
 
@@ -580,6 +628,20 @@ def _parse_workspace_plan(workspace: Workspace) -> TaskList:
     if not text.strip():
         return TaskList(tasks=())
     return parse(text)
+
+
+def _select_next_skipping(tasks: TaskList, *, skip: set[str]) -> Task | None:
+    """`select_next` variant that pretends task ids in `skip` are not selectable.
+
+    Used to bypass executor tasks that timed out earlier in this attempt
+    so the loop can drain the rest of the plan. The skip set is in-memory
+    only; `plan.md` is unchanged, so a future resume retries the task
+    cleanly.
+    """
+    if not skip:
+        return select_next(tasks)
+    filtered = TaskList(tasks=tuple(t for t in tasks.tasks if t.id not in skip))
+    return select_next(filtered)
 
 
 def _safe_parse_tasks(workspace: Workspace) -> tuple[Task, ...]:
@@ -841,3 +903,30 @@ def _next_aborted_path(iters_dir: Path, base_name: str) -> Path:
         if not candidate.exists():
             return candidate
         counter += 1
+
+
+def _quarantine_iter_dir(workspace: Workspace, iter_dir_path: Path, *, reason: str) -> None:
+    """Move a partial iter dir to `<id>.aborted-<N>/` with a sentinel.
+
+    Mirrors :func:`_quarantine_partial_iters` but acts on a single dir
+    mid-run (e.g. when the executor times out and the harness wants to
+    free the canonical iter slot for the next selectable task).
+
+    The dir is expected to be partial — no ``trajectory.json`` present —
+    so resume's :func:`telemetry.recovery.scan_iter_dirs` will already
+    ignore it; the rename only matters because the next iteration
+    expects to ``mkdir`` its own dir at the canonical id and a stale
+    partial would block that.
+
+    Args:
+        workspace: The active workspace.
+        iter_dir_path: The iter dir to quarantine. Its parent must be
+            ``workspace.iters_dir``.
+        reason: Short tag written into the sentinel (e.g. ``"timeout"``).
+    """
+    iters_dir = workspace.iters_dir
+    base_name = iter_dir_path.name
+    target = _next_aborted_path(iters_dir, base_name)
+    iter_dir_path.rename(target)
+    sentinel = f"aborted_at: {dt.datetime.now(dt.UTC).isoformat()}\nreason: {reason}\n"
+    (target / _ABORTED_SENTINEL_FILENAME).write_text(sentinel, encoding="utf-8")

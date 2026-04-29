@@ -219,23 +219,26 @@ def test_resume_after_timeout_continues_at_next_exec_without_replanning(
 
 
 def test_resume_quarantines_partial_exec_dir_with_sentinel(tmp_path: Path) -> None:
-    """A partial `iters/exec-0001/` is renamed to `*.aborted-1/` with sentinel."""
-    first = _ScriptedRuntime(
+    """A partial `iters/exec-0001/` left over from a prior crash is quarantined on resume.
+
+    A normal in-run TIMEOUT now quarantines the iter dir mid-attempt
+    (see `test_in_run_timeout_quarantines_iter_dir_with_sentinel`), so
+    this test simulates the case where the harness process itself was
+    killed externally (no `subprocess.TimeoutExpired` propagated, no
+    chance to clean up). `_bootstrap_workspace` produces that exact
+    on-disk state — a partial `exec-0001/` with no `trajectory.json`
+    and a `run.json` recording the prior `timeout` final status.
+    """
+    run_dir = tmp_path / "run"
+    _bootstrap_workspace(
+        run_dir,
         plan_md=_PLAN_TWO_PENDING,
-        post_plan_error=subprocess.TimeoutExpired(cmd="agent", timeout=1.0),
+        partial_exec_ids=("exec-0001",),
+        prior_final_status=FinalStatus.TIMEOUT,
     )
+    iters_dir = run_dir / "iters"
+
     cfg = _config(tmp_path)
-    run_plan_exec_loop(cfg, first)
-
-    iters_dir = cfg.run_dir / "iters"
-    partial = iters_dir / "exec-0001"
-    # The harness creates the iter dir before invoking the runtime; the
-    # timeout aborts before `trajectory.json` is written, so a partial
-    # `exec-0001/` should be present on disk.
-    assert partial.is_dir()
-    assert not (partial / "trajectory.json").exists()
-
-    # Second attempt reaches `_quarantine_partial_iters` before any runtime call.
     scenario_dir = tmp_path / "cassettes"
     _write_cassette(scenario_dir, "exec-0001", plan_md=_PLAN_ONE_DONE)
     _write_cassette(scenario_dir, "exec-0002", plan_md=_PLAN_BOTH_DONE)
@@ -253,6 +256,102 @@ def test_resume_quarantines_partial_exec_dir_with_sentinel(tmp_path: Path) -> No
     body = sentinel.read_text(encoding="utf-8")
     assert "resume_at:" in body
     assert "prior_final_status: timeout" in body
+
+
+def test_in_run_timeout_quarantines_iter_dir_with_sentinel(tmp_path: Path) -> None:
+    """An in-run executor TIMEOUT renames the partial iter dir mid-attempt."""
+    first = _ScriptedRuntime(
+        plan_md=_PLAN_TWO_PENDING,
+        post_plan_error=subprocess.TimeoutExpired(cmd="agent", timeout=1.0),
+    )
+    cfg = _config(tmp_path)
+    result = run_plan_exec_loop(cfg, first)
+
+    assert result.final_status is FinalStatus.TIMEOUT
+
+    iters_dir = cfg.run_dir / "iters"
+    # The canonical exec-0001 slot was reused for the second pending task
+    # after the first TIMEOUT was quarantined, so we expect TWO aborted
+    # dirs (one per pending task that timed out).
+    aborted_first = iters_dir / "exec-0001.aborted-1"
+    aborted_second = iters_dir / "exec-0001.aborted-2"
+    assert aborted_first.is_dir()
+    assert aborted_second.is_dir()
+    # The canonical exec-0001/ slot is empty after quarantine (or was
+    # never re-created because no further pending task remained).
+    assert not (iters_dir / "exec-0001").exists()
+
+    sentinel = aborted_first / "aborted.txt"
+    assert sentinel.is_file()
+    body = sentinel.read_text(encoding="utf-8")
+    assert "aborted_at:" in body
+    assert "reason: timeout" in body
+
+
+def test_in_run_timeout_advances_to_next_pending_task(tmp_path: Path) -> None:
+    """A TIMEOUT on one task does not block subsequent pending tasks from running."""
+
+    plan_product_done = (
+        "# Plan\n\n"
+        "## Tasks\n"
+        "- [ ] homepage         [priority: 2]\n"
+        "- [x] product_detail   [priority: 1]\n"
+    )
+
+    planner_call = 1
+    timeout_call = 2
+
+    class _TimeoutThenSucceedRuntime:
+        """Plan, then TIMEOUT on the first executor call, then succeed thereafter."""
+
+        def __init__(self) -> None:
+            self.iter_ids: list[str] = []
+            self.selected_task_ids: list[str] = []
+            self._calls = 0
+
+        def run_iteration(
+            self,
+            *,
+            run_dir: Path,
+            iter_dir: Path,
+            prompt: str,
+            timeout: float,
+        ) -> RuntimeIterationResult:
+            del timeout
+            self._calls += 1
+            self.iter_ids.append(iter_dir.name)
+            # The selected task id is encoded in the harness-control header.
+            for line in prompt.splitlines():
+                if line.startswith("selected_task_id:"):
+                    self.selected_task_ids.append(line.split(":", 1)[1].strip())
+                    break
+            if self._calls == planner_call:
+                (run_dir / "plan.md").write_text(_PLAN_TWO_PENDING, encoding="utf-8")
+                return RuntimeIterationResult(trajectory=_trajectory(iter_dir.name))
+            if self._calls == timeout_call:
+                # TIMEOUT on the first executor call (task=homepage).
+                raise subprocess.TimeoutExpired(cmd="agent", timeout=1.0)
+            # Subsequent executor call (task=product_detail) succeeds. Mark
+            # only the selected task done so the harness protocol checks
+            # accept the iteration.
+            (run_dir / "plan.md").write_text(plan_product_done, encoding="utf-8")
+            return RuntimeIterationResult(trajectory=_trajectory(iter_dir.name))
+
+    runtime = _TimeoutThenSucceedRuntime()
+    cfg = _config(tmp_path)
+    result = run_plan_exec_loop(cfg, runtime)
+
+    # The run terminated as TIMEOUT (homepage timed out) but product_detail
+    # still ran and was marked done — the loop did not stop after the timeout.
+    assert result.final_status is FinalStatus.TIMEOUT
+    # plan + 2 executor invocations (homepage timeout, product_detail success).
+    assert runtime.selected_task_ids == ["homepage", "product_detail"]
+    # Only product_detail produced a trajectory (homepage was quarantined).
+    assert result.exec_iter_count == 1
+    assert "iters/exec-0001/trajectory.json" in result.trajectory_paths
+    # The on-disk plan still has homepage PENDING — a future resume retries it.
+    final_by_id = {t.id: t.status.value for t in result.tasks_final}
+    assert final_by_id == {"homepage": "pending", "product_detail": "done"}
 
 
 def test_resume_quarantines_with_unique_counter_for_repeat_attempts(
