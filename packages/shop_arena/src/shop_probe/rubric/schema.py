@@ -20,12 +20,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-RubricLevel = Literal["core", "modern", "advanced"]
-"""Capability tier (spec §5.3).
+RubricLevel = Literal["core", "modern", "advanced", "agent_driven"]
+"""Capability tier (spec §5.3, extended for v1.3 agent-driven advanced tier).
 
 * ``core`` — every modern storefront has this.
 * ``modern`` — common in 2025-era themes; fidelity signal.
-* ``advanced`` — stretch behavior; dropped from v1 per spec §5.3.
+* ``advanced`` — stretch behavior; deterministic Playwright probes (v1.2).
+* ``agent_driven`` — behavioural task driven by an LLM agent + LLM judge
+  via an inline ``agent_task`` block (v1.3, spec ``web_probe_v1_3_agent_driven.md``).
 """
 
 RubricCategory = Literal[
@@ -51,6 +53,42 @@ behind ``authenticated: true`` / ``transactional: true`` and are gated behind
 """
 
 
+class AgentTaskInline(BaseModel):
+    """Inline task definition for a ``level: agent_driven`` rubric entry.
+
+    Drives the generic agent runner (``shop_probe.agent.runner.run_agent_task``)
+    and the completion judge (``shop_probe.agent.judge.run_completion_judge``).
+    Adding a new agent-driven probe is one YAML edit — no Python wrapper needed.
+
+    Attributes:
+        goal: Natural-language instruction for the agent (the planner /
+            executor prompt body).
+        judge_prompt: Natural-language rubric for the vision judge,
+            evaluating the BEFORE / AFTER screenshots and trajectory.
+        precondition_url_attr: Which ``ProbeContext`` URL the runner should
+            navigate to before spawning the agent. Must be one of the URL
+            slots that exist on the context.
+        step_budget: Optional per-task override of the default agent step
+            budget (``AgentRuntimeConfig.step_budget``). ``None`` falls back
+            to the runtime default.
+        timeout_s: Optional per-task override of the default agent timeout
+            (``AgentRuntimeConfig.timeout_s``). ``None`` falls back to the
+            runtime default.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    goal: str = Field(min_length=1)
+    judge_prompt: str = Field(min_length=1)
+    precondition_url_attr: Literal[
+        "base_url",
+        "sample_collection_url",
+        "sample_product_url",
+    ]
+    step_budget: int | None = Field(default=None, ge=1, le=50)
+    timeout_s: int | None = Field(default=None, ge=10, le=600)
+
+
 class RubricEntry(BaseModel):
     """One row of the capability rubric.
 
@@ -68,8 +106,12 @@ class RubricEntry(BaseModel):
             per-category coverage formula
             ``Σ weight·passed / Σ weight`` (spec §5.3).
         probe: Dotted Python reference to the probe callable, e.g.
-            ``"probes.product.gallery_has_thumbnails"``. Resolved by the
-            runner at execution time.
+            ``"probes.product.gallery_has_thumbnails"``. Required for
+            deterministic entries (``core`` / ``modern`` / ``advanced``);
+            must be ``None`` for ``agent_driven`` entries — those carry an
+            inline :class:`AgentTaskInline` block on ``agent_task`` instead.
+        agent_task: Inline agent-task definition. Required for
+            ``level: agent_driven`` entries; must be ``None`` otherwise.
         description: One-line human-readable description of what the
             probe asserts. Surfaces in reports and figures.
         authenticated: ``True`` if the probe requires a logged-in
@@ -85,10 +127,48 @@ class RubricEntry(BaseModel):
     category: RubricCategory
     level: RubricLevel
     weight: int = Field(ge=1, le=3)
-    probe: str = Field(min_length=1)
+    probe: str | None = Field(default=None, min_length=1)
     description: str = Field(min_length=1)
     authenticated: bool
     transactional: bool
+    agent_task: AgentTaskInline | None = None
+
+    @model_validator(mode="after")
+    def _check_probe_xor_agent_task(self) -> RubricEntry:
+        """Enforce the probe / agent_task contract per ``level``.
+
+        * ``agent_driven`` entries: ``agent_task`` is required and ``probe``
+          must be ``None``.
+        * Other levels: ``probe`` is required and ``agent_task`` must be
+          ``None``.
+        """
+        if self.level == "agent_driven":
+            if self.agent_task is None:
+                msg = (
+                    f"rubric entry {self.id!r}: level='agent_driven' requires an "
+                    f"inline 'agent_task' block"
+                )
+                raise ValueError(msg)
+            if self.probe is not None:
+                msg = (
+                    f"rubric entry {self.id!r}: level='agent_driven' must not set "
+                    f"'probe' (use the inline 'agent_task' block instead)"
+                )
+                raise ValueError(msg)
+        else:
+            if self.probe is None:
+                msg = (
+                    f"rubric entry {self.id!r}: level={self.level!r} requires a "
+                    f"'probe' dotted reference"
+                )
+                raise ValueError(msg)
+            if self.agent_task is not None:
+                msg = (
+                    f"rubric entry {self.id!r}: level={self.level!r} must not set "
+                    f"'agent_task' (only 'agent_driven' entries carry one)"
+                )
+                raise ValueError(msg)
+        return self
 
 
 class Rubric(BaseModel):

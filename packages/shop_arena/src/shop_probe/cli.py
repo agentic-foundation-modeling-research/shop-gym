@@ -515,6 +515,14 @@ async def _run(
                 runner, target.base_url
             )
             for entry in selected_entries:
+                # `probe` is optional on the schema since v1.3 (agent_driven entries
+                # carry an inline agent_task block instead). Agent-driven dispatch
+                # lands in M4; until then no v1.3 rubric ships, so every entry here
+                # has a non-None probe.
+                assert entry.probe is not None, (
+                    f"rubric entry {entry.id!r} has level={entry.level!r} but no "
+                    f"probe; agent_driven dispatch is not wired yet (M4)"
+                )
                 probe = _resolve_probe(entry.probe)
                 outcome = await runner.run(
                     probe,

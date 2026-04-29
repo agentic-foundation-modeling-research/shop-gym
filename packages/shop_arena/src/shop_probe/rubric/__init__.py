@@ -7,6 +7,7 @@ from shop_probe.rubric.loader import (
     load_rubric_bytes,
 )
 from shop_probe.rubric.schema import (
+    AgentTaskInline,
     Rubric,
     RubricCategory,
     RubricEntry,
@@ -14,6 +15,7 @@ from shop_probe.rubric.schema import (
 )
 
 __all__ = [
+    "AgentTaskInline",
     "Rubric",
     "RubricCategory",
     "RubricEntry",

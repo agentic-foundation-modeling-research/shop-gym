@@ -96,7 +96,7 @@ entry with an inline `agent_task:` block; v1.1 / v1.2 rubrics still load.
   | [shop_arena/web_probe_v1_3_agent_driven.md](shop_arena/web_probe_v1_3_agent_driven.md) | `packages/shop_arena/src/shop_probe` | Agent-driven advanced tier: replaces v1.2 deterministic behavioural probes with LLM-agent + LLM-judge runs over inline `agent_task` rubric blocks. **Status:** Draft (proposed). | [impl](../impl/web_probe_v1_3_agent_driven_implementation.md) |
   ```
   **Check:** spec renders cleanly; impl doc + spec link to each other.
-- [ ] **T1.1** — `packages/shop_arena/src/shop_probe/rubric/schema.py`:
+- [x] **T1.1** — `packages/shop_arena/src/shop_probe/rubric/schema.py`:
   extend `RubricLevel` literal with `"agent_driven"`; add new
   `AgentTaskInline` Pydantic model (`goal: str`, `judge_prompt: str`,
   `precondition_url_attr: Literal["base_url", "sample_collection_url",
