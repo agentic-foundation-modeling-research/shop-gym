@@ -49,6 +49,6 @@ def test_all_names_in_all_are_resolvable() -> None:
         assert hasattr(module, name), f"{name} listed in __all__ but missing"
 
 
-def test_version_is_v0_1_0() -> None:
-    """``__version__`` is bumped to the v0.1.0 release per T7.1."""
-    assert __version__ == "0.1.0"
+def test_version_is_v0_2_0() -> None:
+    """``__version__`` is bumped to the v0.2.0 release per T7.4."""
+    assert __version__ == "0.2.0"

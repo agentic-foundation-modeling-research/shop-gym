@@ -180,7 +180,7 @@ Lands the page-bucket `ThreadPoolExecutor` fan-out for both
 
 - [x] **T7.3** — Update spec status badge in [`docs/specs/shop_arena/visual_verifier.md`](../specs/shop_arena/visual_verifier.md) from `Spec (draft)` to `v0.1` once M1–M5 land. **Check:** badge accurate.
 
-- [ ] **T7.4** — `packages/shop_arena/src/shop_gen/_version.py`: bump to the next minor (e.g. `0.2.0`). **Check:** `from shop_gen import __version__` returns the new version.
+- [x] **T7.4** — `packages/shop_arena/src/shop_gen/_version.py`: bump to the next minor (e.g. `0.2.0`). **Check:** `from shop_gen import __version__` returns the new version.
 
 **M7 acceptance:** spec marked v0.1; cross-references in place.
 
