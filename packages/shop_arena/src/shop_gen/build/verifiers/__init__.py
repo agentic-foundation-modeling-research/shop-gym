@@ -44,6 +44,7 @@ from shop_gen.build.verifiers.data_in_use import (
     SchemaIntrospection,
 )
 from shop_gen.build.verifiers.nav_coverage import NavCoverageVerifier
+from shop_gen.build.verifiers.navigation_primitive_usage import NavigationPrimitiveUsageVerifier
 from shop_gen.build.verifiers.no_brand_leak import NoBrandLeakVerifier
 from shop_gen.build.verifiers.quality_judge import QualityJudgeVerifier
 from shop_gen.build.verifiers.routes_200 import Routes200Verifier
@@ -57,6 +58,7 @@ __all__ = [
     "GraphQLOperationError",
     "GraphQLOperationRef",
     "NavCoverageVerifier",
+    "NavigationPrimitiveUsageVerifier",
     "NoBrandLeakVerifier",
     "QualityJudgeVerifier",
     "Routes200Verifier",
