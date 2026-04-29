@@ -37,6 +37,7 @@ from shop_gen.config import (
     DEFAULT_MAX_ITERS,
     DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_RUNTIME,
+    DEFAULT_VISUAL_RETRY_BUDGET,
     CatalogConfig,
     ImageBackend,
     RuntimeName,
@@ -186,6 +187,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             f"Image-generation backend. Default: {DEFAULT_IMAGE_BACKEND!r}. "
             "'ai' is stubbed in v0.1 (lands in M8)."
+        ),
+    )
+    parser.add_argument(
+        "--visual-retry-budget",
+        type=int,
+        default=DEFAULT_VISUAL_RETRY_BUDGET,
+        metavar="N",
+        help=(
+            "Per-task cap on consecutive ``visual_judge`` FAILs before the verifier "
+            "downgrades to ADVISORY (spec \u00a75.4). ``0`` disables the budget. "
+            f"Default: {DEFAULT_VISUAL_RETRY_BUDGET}."
         ),
     )
 
@@ -360,6 +372,7 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
         catalog=catalog,
         max_iters=args.max_iters,
         image_backend=image_backend,
+        visual_retry_budget=args.visual_retry_budget,
     )
 
 

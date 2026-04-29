@@ -34,6 +34,7 @@ from shop_gen.config import (
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_MAX_ITERS,
     DEFAULT_RUNTIME,
+    DEFAULT_VISUAL_RETRY_BUDGET,
     ShopGenConfig,
     default_model_for,
 )
@@ -46,6 +47,7 @@ _EXPECTED_MAX_ITERS = 7
 _EXPECTED_COLLECTIONS = 3
 _EXPECTED_PRODUCTS_PER_COLLECTION = 4
 _EXPECTED_IMAGES_PER_PRODUCT = 5
+_EXPECTED_VISUAL_RETRY_BUDGET = 5
 
 
 # --------------------------------------------------------------------------- #
@@ -192,6 +194,7 @@ def test_default_run_builds_config_with_defaults(
     assert config.model == default_model_for("pi")
     assert config.max_iters == DEFAULT_MAX_ITERS
     assert config.image_backend == DEFAULT_IMAGE_BACKEND
+    assert config.visual_retry_budget == DEFAULT_VISUAL_RETRY_BUDGET
     assert config.catalog.collections > 0
     assert captured_run["force_ids"] == frozenset()
 
@@ -248,6 +251,63 @@ def test_empty_model_flag_skips_runtime_default(
     rc = main([str(seed), "--out-dir", str(tmp_path / "out"), "--model", ""])
     assert rc == EXIT_OK
     assert captured_run["config"].model is None
+
+
+def test_visual_retry_budget_flag_propagates_to_config(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Impl plan T2.4: ``--visual-retry-budget`` threads into ``ShopGenConfig``."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--visual-retry-budget",
+            str(_EXPECTED_VISUAL_RETRY_BUDGET),
+        ]
+    )
+    assert rc == EXIT_OK
+    assert captured_run["config"].visual_retry_budget == _EXPECTED_VISUAL_RETRY_BUDGET
+
+
+def test_visual_retry_budget_zero_disables_budget(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """``--visual-retry-budget 0`` is a valid disable per spec \u00a75.4."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--visual-retry-budget",
+            "0",
+        ]
+    )
+    assert rc == EXIT_OK
+    assert captured_run["config"].visual_retry_budget == 0
+
+
+def test_visual_retry_budget_negative_is_config_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Negative budgets fail pydantic's ``ge=0`` and exit ``EXIT_CONFIG``."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--visual-retry-budget",
+            "-1",
+        ]
+    )
+    assert rc == EXIT_CONFIG
+    assert "invalid configuration" in capsys.readouterr().err
 
 
 def test_default_run_rejects_pi_grammar_model_with_claude_code_runtime(

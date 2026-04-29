@@ -89,7 +89,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 - [x] **T2.3** — Make `retry_budget` configurable: `ShopGenConfig.visual_retry_budget: int = 3`; threaded through `default_verifiers_factory`. `0` disables the budget. Spec §5.4 + §5.9. **Check:** library round-trip; unit test `visual_retry_budget=0` runs the runtime even after 10 prior FAILs.
 
-- [ ] **T2.4** — CLI flag `--visual-retry-budget <int>` on `cli.py`. Spec §5.9. **Check:** `shop-gen --visual-retry-budget 5 ...` propagates to `VisualJudgeVerifier`.
+- [x] **T2.4** — CLI flag `--visual-retry-budget <int>` on `cli.py`. Spec §5.9. **Check:** `shop-gen --visual-retry-budget 5 ...` propagates to `VisualJudgeVerifier`.
 
 - [ ] **T2.5** — Tests: SC3 — 4 consecutive FAILs against `gen_homepage` with budget 3 → 4th invocation is ADVISORY with `details.retry_budget_exhausted = true`. **Check:** test green; `runs/build/iters/exec-0004/checks/verifiers/visual_judge.json` records the downgrade.
 
