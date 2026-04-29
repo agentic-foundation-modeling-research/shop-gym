@@ -172,19 +172,9 @@ function loadDeferredData({context}: Route.LoaderArgs) {
         }),
     ),
   );
-
-  // Back-compat: emit a single-menu `footer` derived from the first handle so
-  // existing `<PageLayout>` / `<Footer>` consumers (which still expect
-  // `footer: Promise<FooterQuery | null>`) keep compiling until T3.4 migrates
-  // them onto the array shape.
-  const footer: Promise<FooterQuery | null> = footers.then(
-    (results) => results[0] ?? null,
-  );
-
   return {
     cart: cart.get(),
     isLoggedIn: customerAccount.isLoggedIn(),
-    footer,
     footers,
   };
 }

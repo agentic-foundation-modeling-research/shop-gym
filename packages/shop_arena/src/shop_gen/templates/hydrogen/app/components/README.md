@@ -222,7 +222,7 @@ null>>` array (one entry per handle in
 menu) and renders one `<nav className="footer-column">` per non-null
 entry. `null` entries (a single bad handle) are skipped silently so
 the surviving columns still render — the page still 200s on partial
-outage. Consumed by **`gen_navigation`** in `Footer.tsx`.
+outage. Consumed by **`gen_navigation`** (rendered via `<PageLayout>`).
 
 ```tsx
 import {Await, Suspense} from 'react';
@@ -242,11 +242,6 @@ import {FooterColumns} from '~/components/FooterColumns';
   </Await>
 </Suspense>
 ```
-
-`<Footer>` ships as a thin deprecated wrapper that accepts both the
-legacy `footer: Promise<FooterQuery | null>` prop and the new
-`footers` array; new call sites should use `<FooterColumns>`
-directly.
 
 ### `useHoverIntent` — `app/lib/use-hover-intent.ts`
 

@@ -6,7 +6,7 @@ import type {
   HeaderQuery,
 } from 'storefrontapi.generated';
 import {Aside} from '~/components/Aside';
-import {Footer} from '~/components/Footer';
+import {FooterColumns} from '~/components/FooterColumns';
 import {Header, HeaderMenu} from '~/components/Header';
 import {CartMain} from '~/components/CartMain';
 import {
@@ -20,8 +20,8 @@ interface PageLayoutProps {
   /**
    * Array of per-handle footer payloads from `app/root.tsx`'s
    * deferred loader (one entry per handle in
-   * `env.PUBLIC_FOOTER_MENU_HANDLES`). Forwarded to the deprecated
-   * `<Footer>` wrapper, which normalizes it for `<FooterColumns>`.
+   * `env.PUBLIC_FOOTER_MENU_HANDLES`). Resolved inside a `<Suspense>` /
+   * `<Await>` and rendered through `<FooterColumns>`.
    */
   footers: Promise<Array<FooterQuery | null>>;
   header: HeaderQuery;
@@ -52,11 +52,19 @@ export function PageLayout({
         />
       )}
       <main>{children}</main>
-      <Footer
-        footers={footers}
-        header={header}
-        publicStoreDomain={publicStoreDomain}
-      />
+      <Suspense>
+        <Await resolve={footers}>
+          {(entries) => (
+            <footer className="footer">
+              <FooterColumns
+                footers={entries}
+                headerShop={header.shop}
+                publicStoreDomain={publicStoreDomain}
+              />
+            </footer>
+          )}
+        </Await>
+      </Suspense>
     </Aside.Provider>
   );
 }
