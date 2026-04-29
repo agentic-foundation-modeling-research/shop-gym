@@ -1,12 +1,12 @@
-"""Tests for `shop_probe.targets` (T1.2 acceptance — spec §5.2).
+"""Tests for `shop_probe.targets` (web_probe_patch.md).
 
 Covers:
 
-* JSON / dict round-trip for ``Target`` and ``Cohort``.
+* JSON / dict round-trip for ``Target`` and ``Bench``.
 * Unknown-field rejection (``extra="forbid"``).
-* The ``pair_id`` / ``kind`` invariant from spec §5.2.
-* Pair-level kind + pair_id consistency.
-* Cohort-level cross-pair uniqueness and unpaired-kind invariant.
+* Group/label invariant (``label`` must agree with the group the target
+  appears in).
+* Bench-level uniqueness of ``name`` across the union of groups.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from shop_probe.targets import Cohort, Pair, Target
+from shop_probe.targets import Bench, Target
 
 # --------------------------------------------------------------------------- #
 # Target — round-trip + unknown-field rejection
@@ -25,238 +25,142 @@ from shop_probe.targets import Cohort, Pair, Target
 
 def test_target_round_trip_sandbox() -> None:
     raw = {
-        "label": "sandbox/1_run123",
+        "name": "shop_alpha",
         "base_url": "http://localhost:4000",
-        "kind": "sandbox",
-        "pair_id": "pair_1",
-        "notes": "calibrated 2026-01-15",
+        "label": "sandbox",
+        "notes": "deployed 2026-01-15",
     }
     target = Target.model_validate(raw)
     assert target.model_dump() == raw
-    # JSON round-trip too — confirms no exotic default coercion.
     assert Target.model_validate_json(target.model_dump_json()) == target
 
 
-def test_target_round_trip_real_unpaired_optional_notes() -> None:
+def test_target_round_trip_real_no_notes() -> None:
     raw = {
-        "label": "real/3",
-        "base_url": "https://real-3.example.invalid",
-        "kind": "real_unpaired",
+        "name": "real_a",
+        "base_url": "https://real-1.example.invalid",
+        "label": "real",
     }
     target = Target.model_validate(raw)
-    assert target.pair_id is None
     assert target.notes is None
 
 
 def test_target_rejects_unknown_field() -> None:
     raw = {
-        "label": "source/1",
-        "base_url": "https://source-1.example.invalid",
-        "kind": "source",
-        "pair_id": "pair_1",
+        "name": "shop_alpha",
+        "base_url": "https://example.invalid",
+        "label": "sandbox",
         "extra_field": "nope",
     }
     with pytest.raises(ValidationError, match="extra_field"):
         Target.model_validate(raw)
 
 
-def test_target_rejects_unknown_kind() -> None:
+def test_target_rejects_unknown_label() -> None:
     raw = {
-        "label": "weird",
-        "base_url": "https://example.com",
-        "kind": "bogus",
-        "pair_id": None,
+        "name": "weird",
+        "base_url": "https://example.invalid",
+        "label": "source",
     }
     with pytest.raises(ValidationError):
         Target.model_validate(raw)
 
 
-# --------------------------------------------------------------------------- #
-# Target — pair_id / kind invariant (spec §5.2)
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize("kind", ["sandbox", "source"])
-def test_target_requires_pair_id_when_kind_is_paired(kind: str) -> None:
-    with pytest.raises(ValidationError, match="pair_id is required"):
-        Target.model_validate(
-            {
-                "label": f"{kind}/1",
-                "base_url": "http://localhost",
-                "kind": kind,
-                "pair_id": None,
-            }
-        )
-
-
-@pytest.mark.parametrize("kind", ["sandbox", "source"])
-def test_target_rejects_empty_pair_id_when_kind_is_paired(kind: str) -> None:
+def test_target_rejects_empty_name() -> None:
     with pytest.raises(ValidationError):
         Target.model_validate(
-            {
-                "label": f"{kind}/1",
-                "base_url": "http://localhost",
-                "kind": kind,
-                "pair_id": "",
-            }
-        )
-
-
-def test_target_rejects_pair_id_when_kind_is_real_unpaired() -> None:
-    with pytest.raises(ValidationError, match="pair_id must be None"):
-        Target.model_validate(
-            {
-                "label": "real/3",
-                "base_url": "https://real-3.example.invalid",
-                "kind": "real_unpaired",
-                "pair_id": "pair_3",
-            }
+            {"name": "", "base_url": "https://example.invalid", "label": "sandbox"}
         )
 
 
 # --------------------------------------------------------------------------- #
-# Pair — kind + pair_id consistency
+# Bench — round-trip + cross-group invariants
 # --------------------------------------------------------------------------- #
 
 
-def _source(pair_id: str = "pair_1") -> Target:
-    return Target(
-        label="source/1",
-        base_url="https://source-1.example.invalid",
-        kind="source",
-        pair_id=pair_id,
-    )
+def _sandbox(name: str = "shop_alpha") -> Target:
+    return Target(name=name, base_url="http://localhost:4000", label="sandbox")
 
 
-def _sandbox(pair_id: str = "pair_1") -> Target:
-    return Target(
-        label="sandbox/1",
-        base_url="http://localhost:4000",
-        kind="sandbox",
-        pair_id=pair_id,
-    )
+def _real(name: str = "real_a") -> Target:
+    return Target(name=name, base_url="https://real-a.example.invalid", label="real")
 
 
-def test_pair_accepts_matched_members() -> None:
-    pair = Pair(id="pair_1", source=_source(), sandbox=_sandbox())
-    # Round-trip via dump / validate keeps us honest about defaults.
-    assert Pair.model_validate(pair.model_dump()) == pair
-
-
-def test_pair_rejects_mismatched_source_kind() -> None:
-    with pytest.raises(ValidationError, match=r"source\.kind must be 'source'"):
-        Pair(
-            id="pair_1",
-            source=_sandbox(),  # wrong kind
-            sandbox=_sandbox(),
-        )
-
-
-def test_pair_rejects_mismatched_sandbox_kind() -> None:
-    with pytest.raises(ValidationError, match=r"sandbox\.kind must be 'sandbox'"):
-        Pair(
-            id="pair_1",
-            source=_source(),
-            sandbox=_source(),  # wrong kind
-        )
-
-
-def test_pair_rejects_pair_id_disagreement_on_source() -> None:
-    with pytest.raises(ValidationError, match=r"source\.pair_id must equal id"):
-        Pair(
-            id="pair_1",
-            source=_source(pair_id="pair_other"),
-            sandbox=_sandbox(),
-        )
-
-
-def test_pair_rejects_pair_id_disagreement_on_sandbox() -> None:
-    with pytest.raises(ValidationError, match=r"sandbox\.pair_id must equal id"):
-        Pair(
-            id="pair_1",
-            source=_source(),
-            sandbox=_sandbox(pair_id="pair_other"),
-        )
-
-
-# --------------------------------------------------------------------------- #
-# Cohort — round-trip + cross-pair invariants
-# --------------------------------------------------------------------------- #
-
-
-def test_cohort_round_trip_matches_spec_section_8_2() -> None:
+def test_bench_round_trip() -> None:
     raw = {
         "version": "0.1",
-        "pairs": [
+        "sandboxes": [
             {
-                "id": "pair_1",
-                "source": {
-                    "label": "source/1",
-                    "base_url": "https://source-1.example.invalid",
-                    "kind": "source",
-                    "pair_id": "pair_1",
-                    "notes": None,
-                },
-                "sandbox": {
-                    "label": "sandbox/1",
-                    "base_url": "http://localhost:4000",
-                    "kind": "sandbox",
-                    "pair_id": "pair_1",
-                    "notes": None,
-                },
+                "name": "shop_alpha",
+                "base_url": "http://localhost:4000",
+                "label": "sandbox",
+                "notes": None,
             }
         ],
-        "real_unpaired": [
+        "reals": [
             {
-                "label": "real/TBD_1",
-                "base_url": "https://tbd1.example.com",
-                "kind": "real_unpaired",
-                "pair_id": None,
+                "name": "real_a",
+                "base_url": "https://real-a.example.invalid",
+                "label": "real",
                 "notes": None,
             }
         ],
     }
-    cohort = Cohort.model_validate(raw)
-    # Pydantic dumps `tuple[...]` as Python tuples; compare via JSON, which
-    # is the canonical wire format and normalises sequences to lists.
-    assert json.loads(cohort.model_dump_json()) == raw
-    assert Cohort.model_validate_json(cohort.model_dump_json()) == cohort
+    bench = Bench.model_validate(raw)
+    assert json.loads(bench.model_dump_json()) == raw
+    assert Bench.model_validate_json(bench.model_dump_json()) == bench
 
 
-def test_cohort_rejects_unknown_field() -> None:
+def test_bench_rejects_unknown_field() -> None:
     with pytest.raises(ValidationError, match="oops"):
-        Cohort.model_validate({"version": "0.1", "oops": True})
+        Bench.model_validate({"version": "0.1", "oops": True})
 
 
-def test_cohort_rejects_duplicate_pair_id() -> None:
-    pair_a = Pair(id="pair_1", source=_source(), sandbox=_sandbox())
-    pair_b = Pair(id="pair_1", source=_source(), sandbox=_sandbox())
-    with pytest.raises(ValidationError, match="duplicate pair id"):
-        Cohort(version="0.1", pairs=(pair_a, pair_b))
+def test_bench_accepts_empty_groups() -> None:
+    bench = Bench(version="0.1")
+    assert bench.sandboxes == ()
+    assert bench.reals == ()
 
 
-def test_cohort_accepts_empty_pairs_and_real_unpaired() -> None:
-    cohort = Cohort(version="0.1")
-    assert cohort.pairs == ()
-    assert cohort.real_unpaired == ()
-
-
-def test_cohort_real_unpaired_kind_is_validated_by_target() -> None:
-    # A `Target` with kind != "real_unpaired" cannot be constructed without
-    # a pair_id, and one with a pair_id is rejected by the model-level
-    # validator. Together this means real_unpaired entries cannot smuggle
-    # the wrong kind through the Cohort, which is what spec §5.2 requires.
-    with pytest.raises(ValidationError):
-        Cohort.model_validate(
+def test_bench_rejects_sandbox_with_real_label() -> None:
+    raw = {
+        "version": "0.1",
+        "sandboxes": [
             {
-                "version": "0.1",
-                "real_unpaired": [
-                    {
-                        "label": "real/oops",
-                        "base_url": "https://oops.example.com",
-                        "kind": "source",  # wrong kind for real_unpaired slot
-                        "pair_id": "pair_oops",
-                    }
-                ],
+                "name": "shop_alpha",
+                "base_url": "http://localhost",
+                "label": "real",
             }
+        ],
+    }
+    with pytest.raises(ValidationError, match="expected 'sandbox'"):
+        Bench.model_validate(raw)
+
+
+def test_bench_rejects_real_with_sandbox_label() -> None:
+    raw = {
+        "version": "0.1",
+        "reals": [
+            {
+                "name": "real_a",
+                "base_url": "https://real.example.invalid",
+                "label": "sandbox",
+            }
+        ],
+    }
+    with pytest.raises(ValidationError, match="expected 'real'"):
+        Bench.model_validate(raw)
+
+
+def test_bench_rejects_duplicate_name_within_group() -> None:
+    with pytest.raises(ValidationError, match="duplicate target name"):
+        Bench(version="0.1", sandboxes=(_sandbox("a"), _sandbox("a")))
+
+
+def test_bench_rejects_duplicate_name_across_groups() -> None:
+    with pytest.raises(ValidationError, match="duplicate target name"):
+        Bench(
+            version="0.1",
+            sandboxes=(_sandbox("shared"),),
+            reals=(_real("shared"),),
         )

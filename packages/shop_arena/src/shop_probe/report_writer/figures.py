@@ -128,7 +128,7 @@ def render_radar_chart_svg(
         actual = set(_categories_of(report))
         if actual != expected:
             msg = (
-                f"render_radar_chart_svg: real report {report.target.label!r} "
+                f"render_radar_chart_svg: real report {report.target.name!r} "
                 f"categories {sorted(actual)} disagree with {categories}"
             )
             raise ValueError(msg)
@@ -136,7 +136,7 @@ def render_radar_chart_svg(
         actual = set(_categories_of(report))
         if actual != expected:
             msg = (
-                f"render_radar_chart_svg: sandbox report {report.target.label!r} "
+                f"render_radar_chart_svg: sandbox report {report.target.name!r} "
                 f"categories {sorted(actual)} disagree with {categories}"
             )
             raise ValueError(msg)
@@ -359,7 +359,7 @@ def _sandbox_polygon(
 ) -> str:
     coverages = _categories_of(report)
     points = _polygon_points(coverages, categories, angles)
-    label = _xml_escape(report.target.label)
+    label = _xml_escape(report.target.name)
     return (
         f'<g class="sandbox" data-label="{label}">'
         f'<polygon points="{points}" '
@@ -393,7 +393,7 @@ def _legend(sandbox_reports: Sequence[ProbeReport]) -> str:
     parts.extend(_entry(0, _ENVELOPE_FILL, _ENVELOPE_FILL_OPACITY, _ENVELOPE_LABEL))
     for i, report in enumerate(sandbox_reports):
         color = _SANDBOX_PALETTE[i % len(_SANDBOX_PALETTE)]
-        parts.extend(_entry(i + 1, color, 0.0, report.target.label))
+        parts.extend(_entry(i + 1, color, 0.0, report.target.name))
     parts.append("</g>")
     return "\n".join(parts)
 

@@ -11,7 +11,7 @@ storefront that renders against it.
 - Status: **v0.1.0** — M0–M6 landed (step DAG + manual merge + data
   synth + data validation + build harness loop + advisory final eval).
   Public surface: `run`, `ShopGenConfig`, `ShopGenResult`,
-  `__version__`. v0.2 follow-ups (AI image backend, programmatic
+  `__version__`. v0.2 follow-ups (image generation, programmatic
   per-shop allowlist, hosting auto-retry) are out of scope for v0.1.
 
 ---
@@ -324,6 +324,105 @@ happily skip downstream steps. Stick to editing seeds, or use
 
 ---
 
+## Build-loop state (harness layer)
+
+`run_build_harness_loop` is a single row in `.shop_gen/state.json`
+from the pipeline's perspective, but inside it the harness drives
+its own plan-then-loop state machine over many iterations, with
+state persisted under `<out_dir>/runs/build/`. The two layers are
+independent: the pipeline owns "did the step finish?", the harness
+owns "where in the loop am I?". They meet only at the step's
+return-or-raise.
+
+### Files under `runs/build/`
+
+| File / dir                            | Purpose                                                                |
+| ------------------------------------- | ---------------------------------------------------------------------- |
+| `run.json`                            | `PlanExecLoopResult` snapshot; rewritten after every iteration.        |
+| `plan.md`                             | Live plan — planner writes once, executors mutate as tasks complete.   |
+| `prompts/`                            | Frozen prompt copies for the run.                                      |
+| `iters/plan/`                         | The single planner iteration (trajectory + plan snapshots).            |
+| `iters/exec-NNNN/`                    | One per executor iteration; their count drives the next index.         |
+| `artifact/manual/`                    | Seed-immutable working tree (manifest captured by `Workspace.create`). |
+| `artifact/{hydrogen,data}/`           | Mutable working tree; executors edit files in place each iteration.    |
+
+### Sources of truth
+
+The harness derives every loop decision from the filesystem, not
+from `run.json`:
+
+| Question                                       | Source                                                |
+| ---------------------------------------------- | ----------------------------------------------------- |
+| Did the planner already run?                   | `iters/plan/trajectory.json` exists                   |
+| What's the next exec iter index?               | `count(iters/exec-NNNN/trajectory.json) + 1`          |
+| Which task does the executor pick next?        | `plan.md` — highest-priority `[ ]` task               |
+| Did the prior run terminate, and how?          | `run.json.final_status`                               |
+| Was an iter mid-flight at crash time?          | exec dir without `trajectory.json` → quarantined      |
+
+`run.json` is the only file the harness writes; everything else is
+derived from on-disk telemetry.
+
+### Two-layer call flow
+
+```
+shop-gen <args>
+  │
+  ▼
+pipeline runner          ── reads/writes .shop_gen/state.json
+  │
+  ▼   run_build_harness_loop is stale (RUNNING / FAILED / force_ids)?
+RunBuildHarnessLoopStep.run()
+  • _setup_run_dir()         (Workspace.create + pnpm install if run_dir empty)
+  • _verifiers_factory()     (verifier list rebuilt every call)
+  • sidecar_lifecycle()      (spawn shop-backend subprocess)
+  │
+  ▼
+run_plan_exec_loop(force=True)
+  • Workspace.open / create
+  • _quarantine_partial_iters  (drop half-written exec dirs)
+  • run_planner               (only if iters/plan/ is absent)
+  • loop: pick PENDING task → exec → mutate plan.md → rewrite run.json
+  │
+  ▲
+  └── returns; pipeline records the step FRESH or FAILED in state.json
+```
+
+The pipeline's `RUNNING` row for `run_build_harness_loop` is the
+only visible signal of an in-flight or crashed harness run;
+everything else lives one level down under `runs/build/`.
+
+### Granularity asymmetry
+
+|                | Pipeline (Layer 1)                  | Harness (Layer 2)                              |
+| -------------- | ----------------------------------- | ---------------------------------------------- |
+| Granularity    | one step                            | one iter (planner or exec-NNNN)                |
+| Invalidation   | fingerprint of declared I/O         | filesystem presence (trajectories, plan.md)    |
+| Code edits     | not tracked                         | not tracked                                    |
+| Re-entry knob  | `--from` / `--only`                 | `force=True` (hardcoded by the step)           |
+
+Two consequences worth knowing:
+
+- **Editing verifier or prompt source does not invalidate
+  `run_build_harness_loop`.** The next re-entry rebuilds the
+  verifier list and re-loads prompts, but doesn't *trigger* one.
+  Force re-entry with `--from run_build_harness_loop`.
+- **Deleting a non-tail `iters/exec-NNNN/` dir corrupts the iter
+  numbering.** The next iter index is `count + 1` over exec dirs
+  that hold a `trajectory.json`, so punching a hole in the middle
+  collides with an existing dir name. Only delete a contiguous tail.
+
+### Common recipes
+
+| Goal                                                  | Recipe                                                                                                                          |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Resume a crashed harness run                          | Bare re-run. The `RUNNING` step row is auto-stale; the harness's `force=True` bypasses refusal policy.                          |
+| Redo one build-loop task                              | `--only <task_id>` — appends `<task>_redo_<N>` to `plan.md`, forces the step.                                                   |
+| Re-enter the build phase, keep upstream artifacts     | `rm -rf runs/build/` (the step's declared output disappears → auto-stale). The step re-clones, re-installs, re-plans.           |
+| Redo executor iterations, keep planner output         | Restore `plan.md` from `iters/plan/plan.after.md`; `rm -rf iters/exec-*`; restore `artifact/{hydrogen,data}/` from `<out_dir>/{hydrogen,data}/`. |
+| Plumb a verifier / prompt change                      | `--from run_build_harness_loop`. No upstream is invalidated — the change is code, not data.                                     |
+
+---
+
 ## Output layout
 
 `out_dir` is the run workspace. Every published artifact lives at a
@@ -344,7 +443,7 @@ predictable path under it.
 │   ├── navigation.json
 │   ├── pages.json
 │   ├── policies.json
-│   └── images/                 # placeholder SVGs (v0.1) or AI images (v0.2)
+│   └── images/                 # placeholder SVGs (v0.1) or generated images (v0.2)
 ├── hydrogen/                   # PUBLISHED — generated Hydrogen app
 ├── data_validation.json        # PUBLISHED — schema + hosting check verdict
 ├── sidecar.json                # PUBLISHED — start_sidecar pre-flight verdict

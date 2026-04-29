@@ -330,9 +330,9 @@ class _Rewriter:
             return urlunsplit(("", "", path, query, fragment))
         return urlunsplit((scheme, netloc, path, query, fragment))
 
-    def hash_label(self, label: str) -> str:
-        """Return the redacted ``Target.label`` placeholder for ``label``."""
-        return f"target_{hash_token(label, salt=self._plan.salt, length=self._plan.hash_length)}"
+    def hash_name(self, name: str) -> str:
+        """Return the redacted ``Target.name`` placeholder for ``name``."""
+        return f"target_{hash_token(name, salt=self._plan.salt, length=self._plan.hash_length)}"
 
     # ------------------------------------------------------------------ #
     # Internal helpers
@@ -376,11 +376,11 @@ class _Rewriter:
 
 
 def _anonymize_target(target: Target, rewriter: _Rewriter) -> Target:
-    """Return ``target`` with label / base_url / notes redacted."""
+    """Return ``target`` with name / base_url / notes redacted."""
     redacted_url = rewriter.rewrite_url(target.base_url) or f"https://{REDACTED_HOST}/"
     return target.model_copy(
         update={
-            "label": rewriter.hash_label(target.label),
+            "name": rewriter.hash_name(target.name),
             "base_url": redacted_url,
             "notes": rewriter.rewrite_text(target.notes),
         }

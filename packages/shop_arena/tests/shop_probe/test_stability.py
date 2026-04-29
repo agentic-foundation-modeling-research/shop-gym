@@ -42,17 +42,15 @@ from shop_probe.targets import Target
 # --------------------------------------------------------------------------- #
 
 _TARGET: Target = Target(
-    label="sandbox/1",
+    name="shop_alpha",
     base_url="http://localhost:4000",
-    kind="sandbox",
-    pair_id="pair_1",
+    label="sandbox",
 )
 _RUBRIC_HASH: str = "a" * 64
 _OTHER_TARGET: Target = Target(
-    label="sandbox/2",
+    name="shop_beta",
     base_url="http://localhost:4001",
-    kind="sandbox",
-    pair_id="pair_2",
+    label="sandbox",
 )
 
 

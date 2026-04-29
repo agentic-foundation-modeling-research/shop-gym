@@ -191,7 +191,7 @@ class Trajectory(BaseModel):
         """Enforce ``ended_at >= started_at`` (spec §5.5 step 2 invariant)."""
         if self.ended_at < self.started_at:
             msg = (
-                f"trajectory {self.task_id!r} on {self.target.label!r}: "
+                f"trajectory {self.task_id!r} on {self.target.name!r}: "
                 f"ended_at ({self.ended_at.isoformat()}) precedes "
                 f"started_at ({self.started_at.isoformat()})"
             )

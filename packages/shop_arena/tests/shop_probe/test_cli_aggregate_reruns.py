@@ -25,10 +25,9 @@ from shop_probe.report import BrowserMeta, ProbeReport, ProbeResult
 from shop_probe.targets import Target
 
 _TARGET: Target = Target(
-    label="sandbox/1",
+    name="shop_alpha",
     base_url="http://localhost:4000",
-    kind="sandbox",
-    pair_id="pair_1",
+    label="sandbox",
 )
 _RUBRIC_HASH: str = "a" * 64
 
@@ -87,7 +86,7 @@ def test_aggregate_reruns_clean_group_writes_consolidated_report(
             ),
         )
         runs.append(path)
-    out_path = tmp_path / "reports" / "sandbox__1.json"
+    out_path = tmp_path / "reports" / "sandbox__shop_alpha.json"
 
     rc = main(
         [
@@ -117,7 +116,7 @@ def test_aggregate_reruns_one_disagreement_surfaces_third_flake(
         path = tmp_path / f"run{i}.json"
         _write_report(path, rerun_index=i, results=(_result("a.b", passed=passed),))
         paths.append(path)
-    out_path = tmp_path / "reports" / "sandbox__1.json"
+    out_path = tmp_path / "reports" / "sandbox__shop_alpha.json"
 
     rc = main(
         [
@@ -143,7 +142,7 @@ def test_aggregate_reruns_gate_violation_returns_usage_error(
         path = tmp_path / f"run{i}.json"
         _write_report(path, rerun_index=i, results=(_result("a.b", passed=passed),))
         paths.append(path)
-    out_path = tmp_path / "reports" / "sandbox__1.json"
+    out_path = tmp_path / "reports" / "sandbox__shop_alpha.json"
 
     rc = main(
         [
@@ -237,10 +236,9 @@ def test_aggregate_reruns_mismatched_targets_fail_loudly(
 
     other = tmp_path / "run2.json"
     other_target = Target(
-        label="sandbox/2",
+        name="shop_beta",
         base_url="http://localhost:4001",
-        kind="sandbox",
-        pair_id="pair_2",
+        label="sandbox",
     )
     other_report = ProbeReport(
         target=other_target,

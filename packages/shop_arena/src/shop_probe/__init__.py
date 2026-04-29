@@ -7,28 +7,21 @@
 # → ``shop_probe.probes._runner`` → ``shop_probe``.
 __version__ = "0.0.0"
 
-from shop_probe.cohort import CohortLoadError, load_cohort, load_cohort_bytes
+from shop_probe.bench import BenchLoadError, load_bench, load_bench_bytes
 from shop_probe.fidelity import (
-    CohortFidelity,
-    PairFidelity,
-    compute_cohort_fidelity,
-    compute_pair_fidelity,
+    BenchComparison,
+    GroupSummary,
+    compute_bench_comparison,
 )
 from shop_probe.report import (
-    LIKERT_DIMENSIONS,
     BrowserMeta,
     CategoryScore,
     EvidenceKind,
     EvidenceRef,
     JudgeCall,
-    JudgePick,
-    JudgeTruth,
-    LikertCall,
-    LikertDimension,
-    LikertDistribution,
+    JudgePrediction,
     ProbeReport,
     ProbeResult,
-    aggregate_likert_distributions,
 )
 from shop_probe.stability import (
     FLAKE_RATE_GATE,
@@ -37,38 +30,30 @@ from shop_probe.stability import (
     consolidate_rerun_group,
     exceeds_flake_gate,
 )
-from shop_probe.targets import Cohort, Pair, Target, TargetKind
+from shop_probe.targets import Bench, Target, TargetLabel
 
 __all__ = [
     "FLAKE_RATE_GATE",
-    "LIKERT_DIMENSIONS",
+    "Bench",
+    "BenchComparison",
+    "BenchLoadError",
     "BrowserMeta",
     "CategoryScore",
-    "Cohort",
-    "CohortFidelity",
-    "CohortLoadError",
     "EvidenceKind",
     "EvidenceRef",
+    "GroupSummary",
     "JudgeCall",
-    "JudgePick",
-    "JudgeTruth",
-    "LikertCall",
-    "LikertDimension",
-    "LikertDistribution",
-    "Pair",
-    "PairFidelity",
+    "JudgePrediction",
     "ProbeReport",
     "ProbeResult",
     "RerunGroupError",
     "Target",
-    "TargetKind",
+    "TargetLabel",
     "__version__",
     "aggregate_flake_rates",
-    "aggregate_likert_distributions",
-    "compute_cohort_fidelity",
-    "compute_pair_fidelity",
+    "compute_bench_comparison",
     "consolidate_rerun_group",
     "exceeds_flake_gate",
-    "load_cohort",
-    "load_cohort_bytes",
+    "load_bench",
+    "load_bench_bytes",
 ]

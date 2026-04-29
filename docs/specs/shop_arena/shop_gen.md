@@ -147,7 +147,7 @@ passing build verifier suite.
 │   ├── policies.json
 │   ├── blogs.json            # optional
 │   ├── metafields.json       # optional
-│   └── images/               # placeholder SVGs (v0.1) or AI images (later)
+│   └── images/               # placeholder SVGs (v0.1) or generated images (v0.2)
 ├── hydrogen/                 # PUBLISHED — generated Hydrogen app (cloned from template, then mutated)
 ├── data_validation.json      # PUBLISHED — schema + hosting check verdict
 ├── final_eval.json           # PUBLISHED — advisory quality verdict
@@ -350,7 +350,7 @@ image generation) is deliberately deferred to a v0.2 follow-up.
 - **`gen_images`** — pluggable backend. v0.1 ships a deterministic
   **placeholder** generator: an SVG per image with the category
   icon + the product title rendered as text, sized to honor
-  capabilities.json's gallery hints. The AI-image generator is a
+  capabilities.json's gallery hints. The image generator is a
   swap-in module landing in a follow-up milestone (see §8); the
   Protocol is shaped to accept either.
 
@@ -1000,8 +1000,8 @@ packages/shop_arena/src/shop_gen/
   judge. Advisory.
 - **M7 — v0.1.0.** Docs, CLI surface stable, multi-seed e2e against
   recorded fixtures.
-- **M8 (post-v0.1) — AI image backend.** Pluggable replacement for
-  the placeholder generator.
+- **M8 (post-v0.1) — Image generation.** Pluggable replacement for
+  the placeholder generator. See [`image_generation.md`](image_generation.md).
 
 ---
 

@@ -87,10 +87,9 @@ def _evidence(idx: int, kind: str = "screenshot") -> EvidenceRef:
 
 def _source_target() -> Target:
     return Target(
-        label="source/1",
+        name="shop_alpha",
         base_url=f"https://{_SOURCE_DOMAIN}/",
-        kind="source",
-        pair_id="pair_1",
+        label="real",
         notes="Production Hardware storefront calibrated against Dawn theme.",
     )
 
@@ -196,7 +195,7 @@ def _all_text_fields(trajectory: Trajectory) -> list[str]:
     Used by the leakage assertions below.
     """
     out: list[str] = [
-        trajectory.target.label,
+        trajectory.target.name,
         trajectory.target.base_url,
         trajectory.notes or "",
         trajectory.target.notes or "",
@@ -342,9 +341,9 @@ def test_anonymize_trajectory_handles_are_stable_across_runs() -> None:
     assert out_a.steps[1].observation.url == out_b.steps[1].observation.url
 
 
-def test_anonymize_trajectory_rewrites_target_label_and_base_url() -> None:
+def test_anonymize_trajectory_rewrites_target_name_and_base_url() -> None:
     out = anonymize_trajectory(_hardware_trajectory(), _plan())
-    assert out.target.label.startswith("target_")
+    assert out.target.name.startswith("target_")
     assert REDACTED_HOST in out.target.base_url
     assert _SOURCE_DOMAIN not in out.target.base_url
 
@@ -410,10 +409,9 @@ def test_anonymize_trajectory_handles_longer_brand_before_shorter() -> None:
         assert "Shopify" not in step.observation.title
 
 
-def test_anonymize_trajectory_preserves_target_kind_and_pair_id() -> None:
+def test_anonymize_trajectory_preserves_target_label() -> None:
     out = anonymize_trajectory(_hardware_trajectory(), _plan())
-    assert out.target.kind == "source"
-    assert out.target.pair_id == "pair_1"
+    assert out.target.label == "real"
 
 
 def test_anonymize_trajectory_relative_url_stays_relative() -> None:

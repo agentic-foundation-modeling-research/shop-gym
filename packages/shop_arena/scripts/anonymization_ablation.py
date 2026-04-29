@@ -91,10 +91,9 @@ def _evidence(idx: int, kind: str = "screenshot") -> EvidenceRef:
 
 def _source_target() -> Target:
     return Target(
-        label="source/1",
+        name="shop_alpha",
         base_url=f"https://{_SOURCE_DOMAIN}/",
-        kind="source",
-        pair_id="pair_1",
+        label="real",
         notes="Production Hardware storefront calibrated against Dawn theme.",
     )
 

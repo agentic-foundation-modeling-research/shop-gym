@@ -1,97 +1,19 @@
 """Command-line entrypoint for ShopProbe.
 
-T1.8 + T6.5 + T7.4 — spec §4, §5.3, §5.6, §5.8, §5.9, §7 M6+M7.
+Three-stage pipeline per ``docs/specs/shop_arena/web_probe_patch.md``:
 
-Every subcommand takes a single ``--out`` argument pointing at a *run
-root directory* (default ``outputs/shop_probe``). The run root has a
-fixed subdirectory layout:
-
-* ``<out>/reports/``  — one :class:`ProbeReport` JSON per (target, rerun).
-  Raw reruns are named ``<safe(label)>__rerun<N>.json``;
-  :func:`aggregate-reruns` writes the consolidated form as
-  ``<safe(label)>.json`` (no rerun suffix). ``/`` in labels is rewritten
-  to ``__`` for filename safety.
-* ``<out>/evidence/`` — per-run evidence subdirectory
-  ``<safe(label)>__rerun<N>/`` populated by :class:`ProbeRunner`.
-* ``<out>/figures/``  — :func:`shop-probe report` artifacts.
-
-The v1 ``shop-probe`` CLI exposes three subcommands:
-
-.. code-block:: bash
-
-    shop-probe run <base_url> \\
-        --label sandbox/run123 \\
-        --rubric v1 \\
-        --axes A \\
-        --kind sandbox --pair-id pair_1 \\
-        --rerun-index 1
-        # writes <out>/reports/sandbox__run123__rerun1.json
-        # writes <out>/evidence/sandbox__run123__rerun1/...
-
-    shop-probe aggregate-reruns \\
-        --runs <out>/reports/sandbox__run123__rerun{1,2,3}.json
-        # writes <out>/reports/sandbox__run123.json (consolidated)
-
-    shop-probe report --cohort cohort.yaml
-        # reads <out>/reports/, prefers the consolidated <label>.json
-        # per target, falling back to the max-N raw rerun
-        # writes <out>/figures/{fidelity_table.md,radar.svg,...}
-
-For ``--axes A`` the ``run`` command:
-
-1. Loads the requested rubric (``v1`` resolves to the YAML packaged inside
-   ``shop_probe.rubric``; an arbitrary path is also accepted).
-2. Discovers a sample collection URL and a sample product URL from the
-   homepage so the ``collection.*`` / ``product.*`` / ``cart.line_item.*``
-   probes have something to navigate to.
-3. Drives every rubric leaf through :class:`ProbeRunner` in dotted-name
-   order, capturing structured evidence under
-   ``<out>/evidence/<safe(label)>__rerun<N>/``.
-4. Aggregates ``ProbeResult`` rows into per-category coverage plus the
-   four headline ``coverage_core/modern/advanced/weighted`` numbers
-   (spec §5.3).
-5. Embeds the rubric version + content hash, runner version, and the
-   pinned Playwright/Chromium runtime metadata into a closed
-   :class:`ProbeReport` (spec §5.6 + §5.8) and writes it under
-   ``<out>/reports/``.
-
-``--include-auth`` (T7.4 — spec §5.9 / M7) toggles the v1.1 auth + checkout
-slice. By default rubric entries flagged ``authenticated=true`` or
-``transactional=true`` are skipped before any probe runs; with the flag they
-are included. v1 has no such entries, so the gate is a no-op for v1 rubrics.
-When ``--axes`` includes ``B`` the command additionally drives a
-:class:`SurfaceCrawler` against the same target and embeds the resulting
-:class:`SurfaceMetrics` in ``report.surface``. Axis C is wired in M4;
-requesting it today returns a usage error.
-
-``shop-probe report`` (T6.5 — spec §7 M6) wires the four paper figures:
-
-1. Loads ``--cohort`` and reads one :class:`ProbeReport` per
-   :class:`Target` from ``<out>/reports/``. Prefers the consolidated
-   ``<safe(label)>.json`` written by :func:`aggregate-reruns`; falls
-   back to the max-N raw ``<safe(label)>__rerun<N>.json`` if no
-   consolidated report is present.
-2. Aggregates per-pair fidelity over the (sandbox, source) pairs and
-   the 6-real-shop reference population (sources + ``real_unpaired``)
-   into a closed :class:`CohortFidelity` (spec §5.7).
-3. Renders four artifacts under ``<out>/figures/``:
-
-   * ``fidelity_table.md``  — per-pair fidelity table (T6.1).
-   * ``radar.svg``           — per-category coverage radar (T6.2).
-   * ``surface.svg``         — per-metric surface bar chart (T6.3).
-   * ``turing.svg``          — pairwise-judge Turing chart (T6.4),
-     emitted only when axis-C judge calls are present (sandbox
-     reports carry experimental calls; ``real_unpaired`` reports
-     carry control calls).
-
-All four outputs render from versioned reports without manual editing
-(spec §7 M6 gate).
-
-When ``--baselines-dir`` is supplied (T7.5 — spec §5.9 / M7) the
-command additionally emits ``supplement_table.md``: a prior-work
-environment table (Mock Shop, WebShop, WebArena-Shopping) rendered
-alongside the primary outputs. The per-pair claims are not altered —
-baseline reports never enter the cohort fidelity computation.
+* ``shop-probe run <base_url> --name … --label {sandbox,real} --out OUT/``
+  produces one ``ProbeReport`` per ``(target, rerun)`` under
+  ``OUT/reports/<label>__<name>__rerun<N>.json``.
+* ``shop-probe aggregate-reruns --runs …`` consolidates an N-rerun group
+  into a single ``<label>__<name>.json``.
+* ``shop-probe report --benchmark benchmark.yaml --out OUT/`` aggregates the
+  per-shop reports into a group-vs-group :class:`BenchComparison` plus
+  paper figures under ``OUT/figures/``.
+* ``shop-probe eval --benchmark benchmark.yaml --out OUT/`` runs all of the
+  above end-to-end for every target in the benchmark.
+* ``shop-probe compare`` is reserved for stage-3 cherry-pick inspection;
+  the dispatch entry exists with a ``NotImplementedError`` stub.
 
 The module is import-safe: it performs no I/O at import time.
 """
@@ -108,20 +30,15 @@ from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
-from typing import Final
+from typing import Final, get_args
 from urllib.parse import urljoin
 
 from playwright.async_api import Page
 from pydantic import ValidationError
 
 from shop_probe import __version__
-from shop_probe.cohort import load_cohort
-from shop_probe.fidelity import (
-    CohortFidelity,
-    PairFidelity,
-    compute_cohort_fidelity,
-    compute_pair_fidelity,
-)
+from shop_probe.bench import load_bench
+from shop_probe.fidelity import BenchComparison, compute_bench_comparison
 from shop_probe.probes._runner import (
     PINNED_USER_AGENT,
     VIEWPORT_HEIGHT,
@@ -134,13 +51,12 @@ from shop_probe.probes._runner import (
 from shop_probe.report import (
     BrowserMeta,
     CategoryScore,
-    JudgeCall,
     ProbeReport,
     ProbeResult,
 )
 from shop_probe.report_writer import (
-    PairTuringData,
-    render_pair_fidelity_table,
+    render_group_comparison_table,
+    render_per_shop_table,
     render_prior_work_supplement_table,
     render_radar_chart_svg,
     render_surface_bar_chart_svg,
@@ -155,46 +71,34 @@ from shop_probe.stability import (
 )
 from shop_probe.surface import SurfaceMetrics
 from shop_probe.surface.crawler import SurfaceCrawler
-from shop_probe.targets import Cohort, Target
+from shop_probe.targets import Bench, Target, TargetLabel
 
 EXIT_OK: Final[int] = 0
-"""Successful run."""
-
 EXIT_USAGE: Final[int] = 2
-"""Usage error (matches argparse + ``shop_explore.cli`` convention)."""
 
 _PROBE_DOTTED_PREFIX: Final[str] = "probes."
-"""Prefix every rubric ``probe`` reference uses (spec §5.3 example)."""
-
 _MIN_PROBE_DOTS: Final[int] = 2
-"""Minimum dots in a valid ``probes.<module>.<fn>`` reference."""
 
 _PACKAGE_RUBRIC_DIR: Final[Path] = Path(__file__).resolve().parent / "rubric"
-"""Directory holding rubric YAML shipped with the package."""
-
 _DISCOVERY_PROBE_ID: Final[str] = "_discover"
-"""Internal probe-id used by sample-URL discovery; never lands in the report."""
-
-_LABEL_PATH_SEP: Final[str] = "__"
-"""Filename-safe replacement for ``/`` in :attr:`Target.label`."""
 
 _RERUN_SUFFIX_PREFIX: Final[str] = "__rerun"
-"""Suffix prefix for raw rerun JSON files: ``<safe(label)>__rerun<N>.json``."""
+"""Suffix prefix for raw rerun JSON files: ``<label>__<name>__rerun<N>.json``."""
 
 _DEFAULT_OUT_ROOT: Final[Path] = Path("outputs/shop_probe")
-"""Default ``--out`` run-root directory."""
 
 _REPORTS_SUBDIR: Final[str] = "reports"
 _EVIDENCE_SUBDIR: Final[str] = "evidence"
 _FIGURES_SUBDIR: Final[str] = "figures"
-"""Fixed subdirectory layout under the run-root ``--out`` directory."""
 
-_FIDELITY_TABLE_FILENAME: Final[str] = "fidelity_table.md"
+_GROUP_COMPARISON_FILENAME: Final[str] = "group_comparison.md"
+_PER_SHOP_TABLE_FILENAME: Final[str] = "per_shop_table.md"
 _RADAR_CHART_FILENAME: Final[str] = "radar.svg"
 _SURFACE_CHART_FILENAME: Final[str] = "surface.svg"
 _TURING_CHART_FILENAME: Final[str] = "turing.svg"
 _SUPPLEMENT_TABLE_FILENAME: Final[str] = "supplement_table.md"
-"""Filename for the T7.5 prior-work environment supplement table."""
+
+_TARGET_LABELS: Final[tuple[str, ...]] = get_args(TargetLabel)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -215,6 +119,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_report(args)
     if args.command == "aggregate-reruns":
         return _cmd_aggregate_reruns(args)
+    if args.command == "eval":
+        return _cmd_eval(args)
+    if args.command == "compare":
+        return _cmd_compare(args)
     parser.print_help()
     return EXIT_USAGE
 
@@ -230,9 +138,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("base_url", help="Storefront base URL.")
     run.add_argument(
+        "--name",
+        required=True,
+        help="Filename-friendly identifier for the target (e.g. 'shop_alpha').",
+    )
+    run.add_argument(
         "--label",
         required=True,
-        help="Human-readable target label (e.g. 'sandbox/1_run123').",
+        choices=_TARGET_LABELS,
+        help="Population this target belongs to.",
     )
     run.add_argument(
         "--out",
@@ -240,8 +154,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default=_DEFAULT_OUT_ROOT,
         help=(
             "Run-root directory. The ProbeReport JSON is written under "
-            "'<out>/reports/<safe(label)>__rerun<N>.json' and probe evidence "
-            "under '<out>/evidence/<safe(label)>__rerun<N>/'. "
+            "'<out>/reports/<label>__<name>__rerun<N>.json' and probe evidence "
+            "under '<out>/evidence/<label>__<name>__rerun<N>/'. "
             f"Defaults to '{_DEFAULT_OUT_ROOT}'."
         ),
     )
@@ -256,17 +170,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Comma-separated axes to run. Supported: 'A' (M1), 'A,B' (M2).",
     )
     run.add_argument(
-        "--kind",
-        choices=("sandbox", "source", "real_unpaired"),
-        default="sandbox",
-        help="Target kind (spec §5.2).",
-    )
-    run.add_argument(
-        "--pair-id",
-        default=None,
-        help="Pair identifier (required when --kind is sandbox or source).",
-    )
-    run.add_argument(
         "--notes",
         default=None,
         help="Optional free-form operator notes recorded on the Target.",
@@ -275,7 +178,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--rerun-index",
         type=int,
         default=1,
-        help="1-indexed run number within the N=3 rerun group (spec §5.8).",
+        help="1-indexed run number within the rerun group (spec §5.8).",
     )
     run.add_argument(
         "--include-auth",
@@ -283,7 +186,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=False,
         help=(
             "Include rubric entries flagged authenticated=true or transactional=true "
-            "(v1.1 auth + checkout slice; spec §5.9 / T7.4). Default: skip them."
+            "(v1.1 auth + checkout slice; spec §5.9). Default: skip them."
         ),
     )
     run.add_argument(
@@ -292,20 +195,20 @@ def _build_parser() -> argparse.ArgumentParser:
         default=False,
         help=(
             "Record a HAR capture per probe context under "
-            "'<out>/evidence/<safe(label)>__rerun<N>/<probe_id>/network.har' "
-            '(spec §5.8 — "Save HAR captures of every crawl"; T5.2 cohort run). Default: off.'
+            "'<out>/evidence/<label>__<name>__rerun<N>/<probe_id>/network.har' "
+            "(spec §5.8). Default: off."
         ),
     )
 
     report = sub.add_parser(
         "report",
-        help="Aggregate cohort reports into the four paper figures (spec §7 M6).",
+        help="Aggregate benchmark reports into the group comparison + paper figures.",
     )
     report.add_argument(
-        "--cohort",
+        "--benchmark",
         required=True,
         type=Path,
-        help="Path to a cohort YAML (spec §8.2).",
+        help="Path to a benchmark YAML (web_probe_patch.md).",
     )
     report.add_argument(
         "--out",
@@ -313,29 +216,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=_DEFAULT_OUT_ROOT,
         help=(
             "Run-root directory. ProbeReports are read from "
-            "'<out>/reports/' (the consolidated '<safe(label)>.json' is "
-            "preferred; the max-N raw '<safe(label)>__rerun<N>.json' is "
+            "'<out>/reports/' (the consolidated '<label>__<name>.json' is "
+            "preferred; the max-N raw '<label>__<name>__rerun<N>.json' is "
             "used as a fallback). Figures are written under "
             f"'<out>/figures/'. Defaults to '{_DEFAULT_OUT_ROOT}'."
         ),
-    )
-    report.add_argument(
-        "--epsilon",
-        type=float,
-        default=0.1,
-        help="Half-width of the Turing chart's |experimental - control| band (spec §5.7).",
-    )
-    report.add_argument(
-        "--bootstrap-iters",
-        type=int,
-        default=1000,
-        help="Bootstrap resample count for Turing chart 95%% CIs (spec §8.4 row 4).",
-    )
-    report.add_argument(
-        "--bootstrap-seed",
-        type=int,
-        default=0,
-        help="Seed for the Turing chart bootstrap resampler.",
     )
     report.add_argument(
         "--baselines-dir",
@@ -344,15 +229,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Optional directory of baseline ProbeReport JSONs (one per file). "
             "When provided, a prior-work supplement table is written alongside "
-            "the primary outputs without altering per-pair claims (T7.5 \u2014 spec \u00a75.9)."
+            "the primary outputs without altering bench-level claims."
         ),
     )
 
     aggregate = sub.add_parser(
         "aggregate-reruns",
         help=(
-            "Aggregate N=3 rerun reports for one target into a canonical "
-            "ProbeReport with flake_rate_per_probe populated (spec §5.8; T5.2)."
+            "Aggregate N rerun reports for one target into a canonical "
+            "ProbeReport with flake_rate_per_probe populated (spec §5.8)."
         ),
     )
     aggregate.add_argument(
@@ -368,7 +253,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=_DEFAULT_OUT_ROOT,
         help=(
             "Run-root directory. The consolidated ProbeReport is written "
-            "to '<out>/reports/<safe(label)>.json' (no rerun suffix). "
+            "to '<out>/reports/<label>__<name>.json' (no rerun suffix). "
             f"Defaults to '{_DEFAULT_OUT_ROOT}'."
         ),
     )
@@ -382,7 +267,104 @@ def _build_parser() -> argparse.ArgumentParser:
             "(spec §5.8 paper-claim threshold defaults to 1%%)."
         ),
     )
+
+    compare = sub.add_parser(
+        "compare",
+        help="Stage-3 cherry-pick inspection (reserved; not yet implemented).",
+    )
+    compare.add_argument(
+        "--benchmark",
+        required=True,
+        type=Path,
+        help="Path to a benchmark YAML.",
+    )
+    compare.add_argument(
+        "--shop",
+        required=True,
+        help="Name of the shop to inspect.",
+    )
+    compare.add_argument(
+        "--against",
+        default=None,
+        help="Comma-separated names of shops to compare against.",
+    )
+
+    eval_parser = sub.add_parser(
+        "eval",
+        help=(
+            "Run the full pipeline (probe each target -> consolidate reruns -> "
+            "render bench figures) for every target in a benchmark YAML."
+        ),
+    )
+    eval_parser.add_argument(
+        "--benchmark",
+        required=True,
+        type=Path,
+        help="Path to a benchmark YAML (web_probe_patch.md).",
+    )
+    eval_parser.add_argument(
+        "--out",
+        type=Path,
+        default=_DEFAULT_OUT_ROOT,
+        help=(
+            "Run-root directory. Reports are written under '<out>/reports/' "
+            "and figures under '<out>/figures/'. "
+            f"Defaults to '{_DEFAULT_OUT_ROOT}'."
+        ),
+    )
+    eval_parser.add_argument(
+        "--reruns",
+        type=int,
+        default=1,
+        help=(
+            "Number of probe reruns per target (>=1). When >=2, an "
+            "aggregate-reruns pass consolidates the rerun group into "
+            "'<out>/reports/<label>__<name>.json' before rendering."
+        ),
+    )
+    eval_parser.add_argument(
+        "--rubric",
+        default="v1",
+        help="Rubric name (resolved against packaged rubrics) or YAML path.",
+    )
+    eval_parser.add_argument(
+        "--axes",
+        default="A",
+        help="Comma-separated axes to run. Supported: 'A', 'A,B'.",
+    )
+    eval_parser.add_argument(
+        "--include-auth",
+        action="store_true",
+        default=False,
+        help="Include authenticated/transactional rubric entries (v1.1 slice).",
+    )
+    eval_parser.add_argument(
+        "--record-har",
+        action="store_true",
+        default=False,
+        help="Record HAR captures per probe under '<out>/evidence/.../network.har'.",
+    )
+    eval_parser.add_argument(
+        "--gate",
+        type=float,
+        default=None,
+        help=(
+            "Per-probe flake-rate gate forwarded to aggregate-reruns. Only "
+            "applied when --reruns >= 2."
+        ),
+    )
+    eval_parser.add_argument(
+        "--baselines-dir",
+        type=Path,
+        default=None,
+        help="Optional baselines directory forwarded to the report stage.",
+    )
     return parser
+
+
+# --------------------------------------------------------------------------- #
+# ``shop-probe run`` (stage 1).
+# --------------------------------------------------------------------------- #
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -391,7 +373,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if axes not in {("A",), ("A", "B")}:
         print(
             f"shop-probe: --axes={args.axes!r} not supported yet "
-            "(supported today: 'A' and 'A,B'; axis C lands in M4).",
+            "(supported today: 'A' and 'A,B'; axis C lands in a follow-on patch).",
             file=sys.stderr,
         )
         return EXIT_USAGE
@@ -406,10 +388,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     try:
         target = Target(
-            label=args.label,
+            name=args.name,
             base_url=args.base_url,
-            kind=args.kind,
-            pair_id=args.pair_id,
+            label=args.label,
             notes=args.notes,
         )
     except ValidationError as err:
@@ -417,7 +398,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     out_root: Path = args.out
-    rerun_stem = f"{_safe_label_stem(target.label)}{_RERUN_SUFFIX_PREFIX}{args.rerun_index}"
+    rerun_stem = f"{_target_stem(target)}{_RERUN_SUFFIX_PREFIX}{args.rerun_index}"
     out_path: Path = out_root / _REPORTS_SUBDIR / f"{rerun_stem}.json"
     evidence_root: Path = out_root / _EVIDENCE_SUBDIR / rerun_stem
 
@@ -456,11 +437,7 @@ def _parse_axes(raw: str) -> tuple[str, ...]:
 
 
 def _resolve_rubric_arg(name_or_path: str) -> Path:
-    """Resolve ``--rubric`` to a YAML file path.
-
-    A bare name like ``v1`` looks up ``shop_probe/rubric/v1.yaml``; any
-    other value is treated as a filesystem path.
-    """
+    """Resolve ``--rubric`` to a YAML file path."""
     candidate = Path(name_or_path)
     if candidate.is_file():
         return candidate
@@ -475,21 +452,7 @@ def _resolve_rubric_arg(name_or_path: str) -> Path:
 
 
 def _resolve_probe(dotted: str) -> ProbeFn:
-    """Resolve a rubric ``probe`` reference to a Python callable.
-
-    Args:
-        dotted: Reference of the form ``probes.<module>.<fn>`` (the
-            shape enforced by ``test_v1_probe_callables_use_dotted_module_form``).
-
-    Returns:
-        The callable matching :data:`shop_probe.probes._runner.ProbeFn`.
-
-    Raises:
-        ValueError: ``dotted`` does not start with ``probes.`` or is too
-            short to address ``module.fn``.
-        ModuleNotFoundError / AttributeError: The module/function does
-            not exist (propagated unchanged).
-    """
+    """Resolve a rubric ``probe`` reference to a Python callable."""
     if not dotted.startswith(_PROBE_DOTTED_PREFIX) or dotted.count(".") < _MIN_PROBE_DOTS:
         msg = f"invalid probe reference {dotted!r}: expected '{_PROBE_DOTTED_PREFIX}<module>.<fn>'"
         raise ValueError(msg)
@@ -503,12 +466,7 @@ def _resolve_probe(dotted: str) -> ProbeFn:
 async def _discover_sample_urls(
     runner: ProbeRunner, base_url: str
 ) -> tuple[str | None, str | None]:
-    """Walk the homepage to find sample collection + product URLs.
-
-    Returns ``(sample_collection_url, sample_product_url)``; either
-    component may be ``None`` if discovery fails — those probes then
-    return ``passed=None`` ("not_applicable") at runtime.
-    """
+    """Walk the homepage to find sample collection + product URLs."""
     discovered: dict[str, str | None] = {"collection": None, "product": None}
 
     async def _discover(page: Page, ctx: ProbeContext) -> ProbeOutcome:
@@ -610,13 +568,7 @@ async def _run(
 
 
 def _select_rubric_entries(rubric: Rubric, *, include_auth: bool) -> tuple[RubricEntry, ...]:
-    """Filter rubric entries by the ``--include-auth`` gate (T7.4 — spec §5.9).
-
-    With ``include_auth=False`` (default), entries flagged ``authenticated=true``
-    or ``transactional=true`` are dropped before any probe runs. With
-    ``include_auth=True`` the full rubric is returned. v1 has no auth or
-    transactional entries, so the gate is a no-op for the v1 rubric.
-    """
+    """Filter rubric entries by the ``--include-auth`` gate."""
     if include_auth:
         return rubric.entries
     return tuple(e for e in rubric.entries if not (e.authenticated or e.transactional))
@@ -625,11 +577,7 @@ def _select_rubric_entries(rubric: Rubric, *, include_auth: bool) -> tuple[Rubri
 def _aggregate_coverage(
     entries: tuple[RubricEntry, ...], results: list[ProbeResult]
 ) -> tuple[tuple[CategoryScore, ...], float, float, float, float]:
-    """Compute per-category + per-level + weighted coverage (spec §5.3).
-
-    ``passed=None`` rows are treated as "not_applicable" and excluded
-    from both numerator and denominator.
-    """
+    """Compute per-category + per-level + weighted coverage (spec §5.3)."""
     by_id = {r.id: r for r in results}
     by_category: dict[str, list[float]] = {}
     by_level: dict[str, list[float]] = {
@@ -688,55 +636,55 @@ def _safe_pkg_version(name: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# ``shop-probe report`` (T6.5 — spec §7 M6).
+# ``shop-probe report`` (stage 2).
 # --------------------------------------------------------------------------- #
 
 
-def _cmd_report(args: argparse.Namespace) -> int:
+def _cmd_report(args: argparse.Namespace) -> int:  # noqa: PLR0915
     """Handler for ``shop-probe report``."""
-    cohort_path: Path = args.cohort
+    bench_path: Path = args.benchmark
     out_root: Path = args.out
     reports_dir: Path = out_root / _REPORTS_SUBDIR
     out_dir: Path = out_root / _FIGURES_SUBDIR
-    epsilon: float = args.epsilon
-    bootstrap_iters: int = args.bootstrap_iters
-    bootstrap_seed: int = args.bootstrap_seed
     baselines_dir: Path | None = args.baselines_dir
 
     try:
-        cohort = load_cohort(cohort_path)
+        bench = load_bench(bench_path)
     except FileNotFoundError as err:
-        print(f"shop-probe: cohort not found: {err}", file=sys.stderr)
+        print(f"shop-probe: benchmark not found: {err}", file=sys.stderr)
         return EXIT_USAGE
     except ValueError as err:
         print(f"shop-probe: {err}", file=sys.stderr)
         return EXIT_USAGE
 
     try:
-        sandbox_reports, source_reports, real_unpaired_reports = _load_cohort_reports(
-            cohort, reports_dir
-        )
+        sandbox_reports, real_reports = _load_bench_reports(bench, reports_dir)
     except (FileNotFoundError, ValidationError, ValueError) as err:
         print(f"shop-probe: {err}", file=sys.stderr)
         return EXIT_USAGE
 
-    real_reports = (*source_reports, *real_unpaired_reports)
-    real_population = tuple(r.surface for r in real_reports if r.surface is not None)
-
-    cohort_fidelity = _build_cohort_fidelity(
-        cohort=cohort,
-        sandbox_reports=sandbox_reports,
-        source_reports=source_reports,
-        real_unpaired_reports=real_unpaired_reports,
-        real_population=real_population,
-    )
+    try:
+        comparison = _build_bench_comparison(
+            sandbox_reports=sandbox_reports,
+            real_reports=real_reports,
+        )
+    except ValueError as err:
+        print(f"shop-probe: {err}", file=sys.stderr)
+        return EXIT_USAGE
 
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
-    table_path = out_dir / _FIDELITY_TABLE_FILENAME
-    table_path.write_text(render_pair_fidelity_table(cohort_fidelity), encoding="utf-8")
+    table_path = out_dir / _GROUP_COMPARISON_FILENAME
+    table_path.write_text(render_group_comparison_table(comparison), encoding="utf-8")
     written.append(table_path)
+
+    per_shop_path = out_dir / _PER_SHOP_TABLE_FILENAME
+    per_shop_path.write_text(
+        render_per_shop_table(sandbox_reports, real_reports, comparison),
+        encoding="utf-8",
+    )
+    written.append(per_shop_path)
 
     radar_path = out_dir / _RADAR_CHART_FILENAME
     radar_path.write_text(
@@ -748,49 +696,32 @@ def _cmd_report(args: argparse.Namespace) -> int:
     )
     written.append(radar_path)
 
-    if not real_population:
+    real_with_surface = tuple(r for r in real_reports if r.surface is not None)
+    sandbox_with_surface = tuple(r for r in sandbox_reports if r.surface is not None)
+    if not real_with_surface:
         print(
             "shop-probe: surface chart skipped (no real-shop surface metrics; "
-            "re-run cohort with --axes A,B).",
+            "re-run bench with --axes A,B).",
             file=sys.stderr,
         )
     else:
         surface_path = out_dir / _SURFACE_CHART_FILENAME
         surface_path.write_text(
             render_surface_bar_chart_svg(
-                real_reports=real_reports,
-                sandbox_reports=sandbox_reports,
-                source_reports=source_reports,
+                real_reports=real_with_surface,
+                sandbox_reports=sandbox_with_surface,
             ),
             encoding="utf-8",
         )
         written.append(surface_path)
 
-    pairs_with_calls = tuple(
-        PairTuringData(pair_id=r.target.pair_id or "", judge_calls=r.judge_calls)
-        for r in sandbox_reports
-        if r.judge_calls
-    )
-    control_calls: tuple[JudgeCall, ...] = tuple(
-        call for r in real_unpaired_reports for call in r.judge_calls
-    )
-    if pairs_with_calls and control_calls and len(pairs_with_calls) == len(sandbox_reports):
+    if comparison.sandbox.judge_calls_total > 0 and comparison.real.judge_calls_total > 0:
         turing_path = out_dir / _TURING_CHART_FILENAME
-        turing_path.write_text(
-            render_turing_chart_svg(
-                pairs=pairs_with_calls,
-                control_calls=control_calls,
-                epsilon=epsilon,
-                bootstrap_iters=bootstrap_iters,
-                bootstrap_seed=bootstrap_seed,
-            ),
-            encoding="utf-8",
-        )
+        turing_path.write_text(render_turing_chart_svg(comparison), encoding="utf-8")
         written.append(turing_path)
     else:
         print(
-            "shop-probe: turing chart skipped (axis-C judge calls not yet "
-            "present on every sandbox + real_unpaired report; spec §7 M4/M5).",
+            "shop-probe: turing chart skipped (axis-C judge calls not yet present on both groups).",
             file=sys.stderr,
         )
 
@@ -805,12 +736,10 @@ def _cmd_report(args: argparse.Namespace) -> int:
 
 
 def _write_supplement_table(out_dir: Path, baselines_dir: Path) -> Path | int:
-    """Render the prior-work supplement table (T7.5 — spec §5.9).
+    """Render the prior-work supplement table.
 
     Returns the on-disk path on success, or :data:`EXIT_USAGE` when
-    ``baselines_dir`` is missing or contains an invalid report. Pulled
-    out of :func:`_cmd_report` to keep that function under the per-handler
-    statement budget.
+    ``baselines_dir`` is missing or contains an invalid report.
     """
     try:
         baseline_reports = _load_baseline_reports(baselines_dir)
@@ -825,31 +754,21 @@ def _write_supplement_table(out_dir: Path, baselines_dir: Path) -> Path | int:
     return supplement_path
 
 
-def _safe_label_stem(label: str) -> str:
-    """Map a :attr:`Target.label` to its filename-safe stem (no extension)."""
-    return label.replace("/", _LABEL_PATH_SEP)
+def _target_stem(target: Target) -> str:
+    """Filename stem for a target: ``<label>__<name>``."""
+    return f"{target.label}__{target.name}"
 
 
-def _resolve_report_path(reports_dir: Path, label: str) -> Path:
-    """Pick the on-disk :class:`ProbeReport` JSON for ``label``.
+def _resolve_report_path(reports_dir: Path, target: Target) -> Path:
+    """Pick the on-disk :class:`ProbeReport` JSON for ``target``.
 
-    Precedence (spec §5.8 + T5.2):
+    Precedence:
 
-    1. The consolidated ``<safe(label)>.json`` written by
+    1. The consolidated ``<label>__<name>.json`` written by
        ``shop-probe aggregate-reruns``.
-    2. The raw ``<safe(label)>__rerun<N>.json`` with the largest ``N``.
-
-    Args:
-        reports_dir: Directory to search.
-        label: Target label (``/`` will be rewritten to ``__``).
-
-    Returns:
-        Path to the chosen JSON file.
-
-    Raises:
-        FileNotFoundError: No matching report exists in ``reports_dir``.
+    2. The raw ``<label>__<name>__rerun<N>.json`` with the largest ``N``.
     """
-    stem = _safe_label_stem(label)
+    stem = _target_stem(target)
     consolidated = reports_dir / f"{stem}.json"
     if consolidated.is_file():
         return consolidated
@@ -862,7 +781,7 @@ def _resolve_report_path(reports_dir: Path, label: str) -> Path:
             continue
     if not candidates:
         msg = (
-            f"missing report for target {label!r}: expected "
+            f"missing report for target {target.name!r}: expected "
             f"'{stem}.json' or '{stem}{_RERUN_SUFFIX_PREFIX}<N>.json' in {reports_dir}"
         )
         raise FileNotFoundError(msg)
@@ -872,46 +791,32 @@ def _resolve_report_path(reports_dir: Path, label: str) -> Path:
 
 def _load_report(reports_dir: Path, target: Target) -> ProbeReport:
     """Load and validate one :class:`ProbeReport` for ``target``."""
-    path = _resolve_report_path(reports_dir, target.label)
+    path = _resolve_report_path(reports_dir, target)
     payload = json.loads(path.read_text(encoding="utf-8"))
     report = ProbeReport.model_validate(payload)
-    if report.target.label != target.label:
+    if report.target.name != target.name or report.target.label != target.label:
         msg = (
-            f"report at {path} has target.label={report.target.label!r}, expected {target.label!r}"
+            f"report at {path} has target=({report.target.label}, "
+            f"{report.target.name}), expected ({target.label}, {target.name})"
         )
         raise ValueError(msg)
     return report
 
 
-def _load_cohort_reports(
-    cohort: Cohort, reports_dir: Path
-) -> tuple[tuple[ProbeReport, ...], tuple[ProbeReport, ...], tuple[ProbeReport, ...]]:
-    """Load every cohort target's :class:`ProbeReport` from disk."""
+def _load_bench_reports(
+    bench: Bench, reports_dir: Path
+) -> tuple[tuple[ProbeReport, ...], tuple[ProbeReport, ...]]:
+    """Load every bench target's :class:`ProbeReport` from disk."""
     if not reports_dir.is_dir():
         msg = f"reports directory does not exist: {reports_dir}"
         raise FileNotFoundError(msg)
-    sandbox_reports = tuple(_load_report(reports_dir, p.sandbox) for p in cohort.pairs)
-    source_reports = tuple(_load_report(reports_dir, p.source) for p in cohort.pairs)
-    real_unpaired_reports = tuple(_load_report(reports_dir, t) for t in cohort.real_unpaired)
-    return sandbox_reports, source_reports, real_unpaired_reports
+    sandbox_reports = tuple(_load_report(reports_dir, t) for t in bench.sandboxes)
+    real_reports = tuple(_load_report(reports_dir, t) for t in bench.reals)
+    return sandbox_reports, real_reports
 
 
 def _load_baseline_reports(baselines_dir: Path) -> tuple[ProbeReport, ...]:
-    """Load every ``*.json`` :class:`ProbeReport` from a baseline directory.
-
-    Used by ``shop-probe report --baselines-dir`` (T7.5 — spec §5.9). The
-    directory holds one :class:`ProbeReport` per prior-work environment
-    (Mock Shop, WebShop, WebArena-Shopping). Files are loaded by sorted
-    filename so the in-memory tuple is deterministic; the supplement
-    renderer re-sorts by :attr:`Target.label` for the final byte-stable
-    output.
-
-    Raises:
-        FileNotFoundError: ``baselines_dir`` does not exist or is not a
-            directory.
-        pydantic.ValidationError: a JSON file does not validate as a
-            :class:`ProbeReport` (propagated unchanged).
-    """
+    """Load every ``*.json`` :class:`ProbeReport` from a baseline directory."""
     if not baselines_dir.is_dir():
         msg = f"baselines directory does not exist: {baselines_dir}"
         raise FileNotFoundError(msg)
@@ -923,50 +828,17 @@ def _load_baseline_reports(baselines_dir: Path) -> tuple[ProbeReport, ...]:
     return tuple(reports)
 
 
-def _build_cohort_fidelity(
+def _build_bench_comparison(
     *,
-    cohort: Cohort,
     sandbox_reports: tuple[ProbeReport, ...],
-    source_reports: tuple[ProbeReport, ...],
-    real_unpaired_reports: tuple[ProbeReport, ...],
-    real_population: tuple[SurfaceMetrics, ...],
-) -> CohortFidelity:
-    """Aggregate per-pair fidelity rows into a :class:`CohortFidelity`.
-
-    Per-pair experimental judge calls live on the sandbox
-    :class:`ProbeReport`; cohort-level control judge calls are aggregated
-    across the ``real_unpaired`` reports (spec §5.5 step 4 + step 7).
-    Pairs / cohorts whose reports carry no axis-C calls leave the
-    judge fields ``None`` (M3 pilot scenario).
-    """
-    pairs: list[PairFidelity] = []
-    for pair, sandbox_report, source_report in zip(
-        cohort.pairs, sandbox_reports, source_reports, strict=True
-    ):
-        experimental_calls: tuple[JudgeCall, ...] | None = (
-            sandbox_report.judge_calls if sandbox_report.judge_calls else None
-        )
-        pairs.append(
-            compute_pair_fidelity(
-                pair_id=pair.id,
-                sandbox_report=sandbox_report,
-                source_report=source_report,
-                real_population=real_population,
-                experimental_judge_calls=experimental_calls,
-            )
-        )
-    control_calls: tuple[JudgeCall, ...] = tuple(
-        call for r in real_unpaired_reports for call in r.judge_calls
-    )
-    return compute_cohort_fidelity(
-        pairs=pairs,
-        real_population=real_population,
-        control_judge_calls=control_calls if control_calls else None,
-    )
+    real_reports: tuple[ProbeReport, ...],
+) -> BenchComparison:
+    """Aggregate sandbox + real reports into a :class:`BenchComparison`."""
+    return compute_bench_comparison(sandbox_reports, real_reports)
 
 
 # --------------------------------------------------------------------------- #
-# ``shop-probe aggregate-reruns`` (T5.2 — spec §5.8).
+# ``shop-probe aggregate-reruns``.
 # --------------------------------------------------------------------------- #
 
 
@@ -1002,7 +874,7 @@ def _cmd_aggregate_reruns(args: argparse.Namespace) -> int:
         print(f"shop-probe: {err}", file=sys.stderr)
         return EXIT_USAGE
 
-    out_path = out_root / _REPORTS_SUBDIR / f"{_safe_label_stem(consolidated.target.label)}.json"
+    out_path = out_root / _REPORTS_SUBDIR / f"{_target_stem(consolidated.target)}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(consolidated.model_dump_json(indent=2), encoding="utf-8")
 
@@ -1010,7 +882,7 @@ def _cmd_aggregate_reruns(args: argparse.Namespace) -> int:
     flaked = tuple(probe_id for probe_id, rate in flake.items() if rate > 0.0)
     summary = (
         f"shop-probe: wrote {out_path} "
-        f"(target={consolidated.target.label!r}, n_runs={len(reports)}, "
+        f"(target={consolidated.target.name!r}, n_runs={len(reports)}, "
         f"flaked_probes={len(flaked)}/{len(flake)})"
     )
     print(summary)
@@ -1029,6 +901,100 @@ def _cmd_aggregate_reruns(args: argparse.Namespace) -> int:
             f"is {FLAKE_RATE_GATE:.0%})."
         )
     return EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
+# ``shop-probe compare`` (stage 3 — reserved).
+# --------------------------------------------------------------------------- #
+
+
+def _cmd_compare(args: argparse.Namespace) -> int:
+    """Handler for ``shop-probe compare`` (stage 3 — not yet implemented)."""
+    del args  # signature preserved for future implementation.
+    msg = (
+        "shop-probe compare is reserved for stage-3 cherry-pick inspection; "
+        "implementation lands in a follow-on patch."
+    )
+    raise NotImplementedError(msg)
+
+
+# --------------------------------------------------------------------------- #
+# ``shop-probe eval`` — end-to-end pipeline driver.
+# --------------------------------------------------------------------------- #
+
+
+def _cmd_eval(args: argparse.Namespace) -> int:
+    """Handler for ``shop-probe eval`` (end-to-end pipeline)."""
+    benchmark_path: Path = args.benchmark
+    out_root: Path = args.out
+    reruns: int = args.reruns
+
+    if reruns < 1:
+        print(
+            f"shop-probe: --reruns={reruns} must be >= 1.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    try:
+        bench = load_bench(benchmark_path)
+    except FileNotFoundError as err:
+        print(f"shop-probe: benchmark not found: {err}", file=sys.stderr)
+        return EXIT_USAGE
+    except ValueError as err:
+        print(f"shop-probe: {err}", file=sys.stderr)
+        return EXIT_USAGE
+
+    targets: tuple[Target, ...] = (*bench.sandboxes, *bench.reals)
+    print(f"shop-probe eval: benchmark={benchmark_path} targets={len(targets)} reruns={reruns}")
+
+    for target in targets:
+        for rerun_index in range(1, reruns + 1):
+            run_args = argparse.Namespace(
+                base_url=target.base_url,
+                name=target.name,
+                label=target.label,
+                notes=target.notes,
+                axes=args.axes,
+                rubric=args.rubric,
+                rerun_index=rerun_index,
+                include_auth=args.include_auth,
+                record_har=args.record_har,
+                out=out_root,
+            )
+            rc = _cmd_run(run_args)
+            if rc != EXIT_OK:
+                print(
+                    f"shop-probe eval: aborted on target={target.name!r} rerun={rerun_index}.",
+                    file=sys.stderr,
+                )
+                return rc
+
+        if reruns >= 2:  # noqa: PLR2004 — spec §5.8 mandates N >= 2 to compute flake.
+            stem = _target_stem(target)
+            run_paths = [
+                out_root / _REPORTS_SUBDIR / f"{stem}{_RERUN_SUFFIX_PREFIX}{i}.json"
+                for i in range(1, reruns + 1)
+            ]
+            agg_args = argparse.Namespace(
+                runs=run_paths,
+                out=out_root,
+                gate=args.gate,
+            )
+            rc = _cmd_aggregate_reruns(agg_args)
+            if rc != EXIT_OK:
+                print(
+                    f"shop-probe eval: aborted on target={target.name!r} during aggregate-reruns.",
+                    file=sys.stderr,
+                )
+                return rc
+
+    report_args = argparse.Namespace(
+        benchmark=benchmark_path,
+        out=out_root,
+        baselines_dir=args.baselines_dir,
+    )
+    return _cmd_report(report_args)
 
 
 if __name__ == "__main__":

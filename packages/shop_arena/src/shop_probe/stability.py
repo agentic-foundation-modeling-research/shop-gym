@@ -57,7 +57,7 @@ class RerunGroupError(ValueError):
     """Raised when a tuple of reports does not form a coherent rerun group.
 
     A coherent rerun group has identical
-    ``(target.label, rubric_version, rubric_hash, runner_version)``
+    ``(target.label, target.name, rubric_version, rubric_hash, runner_version)``
     across every report and is non-empty. The rationale is spec §5.8:
     the flake-rate aggregate is only meaningful across reruns of the
     *same* target under the *same* harness pin.
@@ -86,8 +86,8 @@ def aggregate_flake_rates(reports: Sequence[ProbeReport]) -> dict[str, float]:
 
     Raises:
         RerunGroupError: ``reports`` is empty or contains reports with
-            mismatched ``(target.label, rubric_version, rubric_hash,
-            runner_version)``.
+            mismatched ``(target.label, target.name, rubric_version,
+            rubric_hash, runner_version)``.
     """
     materialized = tuple(reports)
     _check_rerun_group(materialized)
@@ -174,6 +174,7 @@ def _check_rerun_group(reports: tuple[ProbeReport, ...]) -> None:
     head = reports[0]
     expected = (
         head.target.label,
+        head.target.name,
         head.rubric_version,
         head.rubric_hash,
         head.runner_version,
@@ -181,6 +182,7 @@ def _check_rerun_group(reports: tuple[ProbeReport, ...]) -> None:
     for report in reports[1:]:
         actual = (
             report.target.label,
+            report.target.name,
             report.rubric_version,
             report.rubric_hash,
             report.runner_version,
@@ -188,10 +190,12 @@ def _check_rerun_group(reports: tuple[ProbeReport, ...]) -> None:
         if actual != expected:
             msg = (
                 "rerun group mismatch: expected "
-                f"(label={expected[0]!r}, rubric={expected[1]!r}, "
-                f"rubric_hash={expected[2]!r}, runner={expected[3]!r}); "
-                f"got (label={actual[0]!r}, rubric={actual[1]!r}, "
-                f"rubric_hash={actual[2]!r}, runner={actual[3]!r})"
+                f"(label={expected[0]!r}, name={expected[1]!r}, "
+                f"rubric={expected[2]!r}, rubric_hash={expected[3]!r}, "
+                f"runner={expected[4]!r}); "
+                f"got (label={actual[0]!r}, name={actual[1]!r}, "
+                f"rubric={actual[2]!r}, rubric_hash={actual[3]!r}, "
+                f"runner={actual[4]!r})"
             )
             raise RerunGroupError(msg)
 

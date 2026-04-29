@@ -41,10 +41,9 @@ from shop_probe.targets import Target
 # --------------------------------------------------------------------------- #
 
 _SANDBOX_TARGET: Target = Target(
-    label="sandbox/1_run123",
+    name="shop_alpha",
     base_url="http://localhost:4000",
-    kind="sandbox",
-    pair_id="pair_1",
+    label="sandbox",
 )
 
 _STARTED_AT: datetime = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
@@ -235,8 +234,8 @@ def test_trajectory_step_rejects_unknown_field() -> None:
 
 def test_trajectory_rejects_unknown_field() -> None:
     payload = json.loads(_trajectory().model_dump_json())
-    payload["judge_pick"] = "A"  # belongs on JudgeCall
-    with pytest.raises(ValidationError, match="judge_pick"):
+    payload["predicted_label"] = "sandbox"  # belongs on JudgeCall
+    with pytest.raises(ValidationError, match="predicted_label"):
         Trajectory.model_validate(payload)
 
 

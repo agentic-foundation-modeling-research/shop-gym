@@ -1,21 +1,23 @@
-"""Axis-B surface bar chart (T6.3 — spec §8.4 row 3, §7 M6).
+"""Axis-B surface bar chart (T6.3 — spec §8.4 row 3, web_probe_patch.md).
 
 Renders the per-metric range-bar chart that visualizes the surface area
-of sandbox + source storefronts against the ``[min, max]`` envelope over
-the 6 real shops (spec §8.4 row 3). One row per
-:class:`~shop_probe.surface.metrics.SurfaceMetrics` field, with:
+of sandbox shops against the ``[min, max]`` envelope over the real-shop
+group. One row per :class:`~shop_probe.surface.metrics.SurfaceMetrics`
+field, with:
 
 * a shaded range bar marking the per-metric ``[min, max]`` over
   ``real_reports``;
 * one outlined-circle marker per sandbox value;
-* one filled-triangle marker per source value;
 * per-row scaling — each metric uses its own ``[0, max]`` x-axis since
   ``catalog_products`` and ``median_dom_kb_gz`` live on incompatible
   numeric scales.
 
+``web_probe_patch.md`` drops the prior pair-source triangle layer:
+real shops collectively form the envelope rectangle and sandboxes plot
+as dots.
+
 SVG output is fully deterministic from versioned
-:class:`~shop_probe.report.ProbeReport`\\ s — paper figures must be
-reproducible from the JSON on disk (T6.3 acceptance check). Calling
+:class:`~shop_probe.report.ProbeReport`\\ s. Calling
 :func:`render_surface_bar_chart_svg` twice with the same inputs returns
 byte-for-byte identical strings.
 
@@ -106,13 +108,10 @@ _SANDBOX_PALETTE: tuple[str, ...] = (
     "#ec4899",  # pink
     "#06b6d4",  # cyan
 )
-"""Cycled colors for sandbox + source markers (assigned by input order)."""
+"""Cycled colors for sandbox markers (assigned by input order)."""
 
 _SANDBOX_MARKER_RADIUS: float = 5.0
 """Outlined-circle radius for sandbox markers."""
-
-_SOURCE_MARKER_HALF: float = 5.0
-"""Half-side of the equilateral triangle used for source markers."""
 
 # --------------------------------------------------------------------------- #
 # Public API.
@@ -127,7 +126,6 @@ class _RowData:
     real_min: float
     real_max: float
     sandbox_values: tuple[float, ...]
-    source_values: tuple[float, ...]
     scale_max: float
 
 
@@ -135,26 +133,21 @@ def render_surface_bar_chart_svg(
     *,
     real_reports: Sequence[ProbeReport],
     sandbox_reports: Sequence[ProbeReport],
-    source_reports: Sequence[ProbeReport],
 ) -> str:
     """Render the axis-B surface bar chart as a deterministic SVG document.
 
     One row per :class:`SurfaceMetrics` field, in declaration order. Each
     row shows the ``[min, max]`` envelope across ``real_reports`` as a
-    shaded band, with sandbox values overlaid as outlined circles and
-    source values as filled triangles. Per-row scaling means each metric
-    uses its own ``[0, scale_max]`` x-axis.
+    shaded band, with sandbox values overlaid as outlined circles.
+    Per-row scaling means each metric uses its own ``[0, scale_max]``
+    x-axis.
 
     Args:
         real_reports: Real-shop reports that define the envelope. Must
             be non-empty and each must carry a populated
-            :attr:`~shop_probe.report.ProbeReport.surface`. Spec §5.2
-            specifies six real shops in the v1 cohort.
+            :attr:`~shop_probe.report.ProbeReport.surface`.
         sandbox_reports: Sandbox reports whose values are overlaid as
             circles. May be empty. Each must carry a populated
-            ``surface``.
-        source_reports: Source reports whose values are overlaid as
-            triangles. May be empty. Each must carry a populated
             ``surface``.
 
     Returns:
@@ -173,12 +166,9 @@ def render_surface_bar_chart_svg(
 
     real_surfaces = _surfaces_of("real", real_reports)
     sandbox_surfaces = _surfaces_of("sandbox", sandbox_reports)
-    source_surfaces = _surfaces_of("source", source_reports)
 
     metrics = tuple(SurfaceMetrics.model_fields.keys())
-    rows = tuple(
-        _row_data(metric, real_surfaces, sandbox_surfaces, source_surfaces) for metric in metrics
-    )
+    rows = tuple(_row_data(metric, real_surfaces, sandbox_surfaces) for metric in metrics)
 
     height = int(_HEADER_HEIGHT + _ROW_TOP_PADDING + _ROW_HEIGHT * len(rows) + _LEGEND_HEIGHT)
 
@@ -186,7 +176,7 @@ def render_surface_bar_chart_svg(
         _svg_open(height),
         _header(),
         *(_render_row(i, row) for i, row in enumerate(rows)),
-        _legend(height, sandbox_reports, source_reports),
+        _legend(height, sandbox_reports),
         "</svg>",
     ]
     return "\n".join(layers) + "\n"
@@ -204,7 +194,7 @@ def _surfaces_of(role: str, reports: Sequence[ProbeReport]) -> list[SurfaceMetri
         if report.surface is None:
             msg = (
                 f"render_surface_bar_chart_svg: {role} report "
-                f"{report.target.label!r} is missing surface metrics "
+                f"{report.target.name!r} is missing surface metrics "
                 "(re-run with --axes A,B)"
             )
             raise ValueError(msg)
@@ -216,16 +206,14 @@ def _row_data(
     metric: str,
     real_surfaces: Sequence[SurfaceMetrics],
     sandbox_surfaces: Sequence[SurfaceMetrics],
-    source_surfaces: Sequence[SurfaceMetrics],
 ) -> _RowData:
     """Compute envelope + overlay values + per-row scale for one metric."""
     real_values = [float(getattr(s, metric)) for s in real_surfaces]
     sandbox_values = tuple(float(getattr(s, metric)) for s in sandbox_surfaces)
-    source_values = tuple(float(getattr(s, metric)) for s in source_surfaces)
 
     real_min = min(real_values)
     real_max = max(real_values)
-    observed_max = max((real_max, *sandbox_values, *source_values))
+    observed_max = max((real_max, *sandbox_values))
     # Pad the row a bit so markers at the upper edge stay legible; clamp
     # to 1.0 so all-zero rows still render a visible empty axis.
     scale_max = max(observed_max * 1.1, 1.0)
@@ -234,7 +222,6 @@ def _row_data(
         real_min=real_min,
         real_max=real_max,
         sandbox_values=sandbox_values,
-        source_values=source_values,
         scale_max=scale_max,
     )
 
@@ -298,7 +285,7 @@ def _header() -> str:
         f'<text x="{_fmt(_LABEL_X)}" y="{_fmt(_HEADER_HEIGHT - 12.0)}" '
         f'font-size="{_LABEL_FONT_SIZE}" fill="{_LABEL_FILL}" '
         f'font-weight="bold">'
-        f"Surface metrics — sandbox + source vs. real-shop envelope"
+        f"Surface metrics — sandboxes vs. real-shop envelope"
         f"</text>"
         f"</g>"
     )
@@ -310,7 +297,6 @@ def _render_row(index: int, row: _RowData) -> str:
     parts.append(_row_baseline(index, row))
     parts.append(_row_envelope(index, row))
     parts.extend(_row_sandbox_markers(index, row))
-    parts.extend(_row_source_markers(index, row))
     parts.append(_row_scale_annotation(index, row))
     parts.append("</g>")
     return "\n".join(parts)
@@ -380,26 +366,6 @@ def _row_sandbox_markers(index: int, row: _RowData) -> list[str]:
     return parts
 
 
-def _row_source_markers(index: int, row: _RowData) -> list[str]:
-    """One filled triangle per source value (color cycled by input order)."""
-    parts: list[str] = []
-    cy = _row_center(index)
-    h = _SOURCE_MARKER_HALF
-    for i, value in enumerate(row.source_values):
-        cx = _value_to_x(value, row.scale_max)
-        color = _SANDBOX_PALETTE[i % len(_SANDBOX_PALETTE)]
-        # Equilateral triangle pointing up.
-        points = (
-            f"{_fmt(cx)},{_fmt(cy - h)} {_fmt(cx - h)},{_fmt(cy + h)} {_fmt(cx + h)},{_fmt(cy + h)}"
-        )
-        parts.append(
-            f'<polygon class="source" data-index="{i}" '
-            f'points="{points}" '
-            f'fill="{color}" stroke="{color}" stroke-width="1"/>'
-        )
-    return parts
-
-
 def _row_scale_annotation(index: int, row: _RowData) -> str:
     """Right-aligned ``max=…`` label printed at the row's right padding."""
     x = _BAR_RIGHT + 6.0
@@ -414,9 +380,8 @@ def _row_scale_annotation(index: int, row: _RowData) -> str:
 def _legend(
     height: int,
     sandbox_reports: Sequence[ProbeReport],
-    source_reports: Sequence[ProbeReport],
 ) -> str:
-    """Legend strip listing the envelope and per-pair marker colors."""
+    """Legend strip listing the envelope and per-sandbox marker colors."""
     parts: list[str] = ['<g class="legend">']
     base_y = float(height) - _LEGEND_HEIGHT + 18.0
     x = _LABEL_X
@@ -450,28 +415,7 @@ def _legend(
             f'<text x="{_fmt(cx + 12.0)}" y="{_fmt(base_y)}" '
             f'font-size="{_LEGEND_FONT_SIZE}" fill="{_LABEL_FILL}" '
             f'dominant-baseline="middle">'
-            f"sandbox: {_xml_escape(report.target.label)}</text>"
-        )
-        base_y += 16.0
-
-    # Source swatches.
-    cursor_x = x + 180.0
-    for i, report in enumerate(source_reports):
-        color = _SANDBOX_PALETTE[i % len(_SANDBOX_PALETTE)]
-        cx = cursor_x + 6.0
-        cy = base_y - 4.0
-        h = _SOURCE_MARKER_HALF
-        points = (
-            f"{_fmt(cx)},{_fmt(cy - h)} {_fmt(cx - h)},{_fmt(cy + h)} {_fmt(cx + h)},{_fmt(cy + h)}"
-        )
-        parts.append(
-            f'<polygon points="{points}" fill="{color}" stroke="{color}" stroke-width="1"/>'
-        )
-        parts.append(
-            f'<text x="{_fmt(cx + 12.0)}" y="{_fmt(base_y)}" '
-            f'font-size="{_LEGEND_FONT_SIZE}" fill="{_LABEL_FILL}" '
-            f'dominant-baseline="middle">'
-            f"source: {_xml_escape(report.target.label)}</text>"
+            f"sandbox: {_xml_escape(report.target.name)}</text>"
         )
         base_y += 16.0
 

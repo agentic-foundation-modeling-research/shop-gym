@@ -22,11 +22,7 @@ from shop_probe.rubric import compute_content_hash, load_rubric
 # --------------------------------------------------------------------------- #
 
 V1_1_PATH: Path = (
-    Path(__file__).resolve().parent.parent.parent
-    / "src"
-    / "shop_probe"
-    / "rubric"
-    / "v1.1.yaml"
+    Path(__file__).resolve().parent.parent.parent / "src" / "shop_probe" / "rubric" / "v1.1.yaml"
 )
 
 EXPECTED_V1_1_HASH: str = "83847a5520b5b77e2dcc0a32869124c42e91b77f89932dfd65ef0b07164b71dd"

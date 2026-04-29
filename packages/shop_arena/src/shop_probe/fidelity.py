@@ -1,370 +1,341 @@
-"""Per-pair and cohort-level fidelity aggregation for ShopProbe.
+"""Group-level fidelity aggregation for ShopProbe.
 
 Implements the typed contract documented in
-``docs/specs/shop_arena/web_probe.md`` §5.7. Two closed pydantic models
-plus pure helper functions that turn a ``(sandbox, source)`` pair of
-:class:`~shop_probe.report.ProbeReport`\\ s — and an optional 6-real-shop
-reference population — into the three numbers per pair (coverage gap,
-surface ratio, indistinguishability) the paper reports.
+``docs/specs/shop_arena/web_probe_patch.md``. Two closed pydantic models
+plus pure helper functions that turn two flat populations of
+:class:`~shop_probe.report.ProbeReport`\\ s — sandbox group and real
+group — into a single group-vs-group :class:`BenchComparison`.
 
-The module is import-safe: no I/O, no env reads. Judge-related fields
-default to ``None`` until the axis-C plumbing lands in M4 (spec §7 M4).
+The module is import-safe: no I/O, no env reads.
 
-Aggregation conventions (kept narrow on purpose; see spec §5.7):
+Aggregation conventions (kept narrow on purpose):
 
-* ``coverage_gap[category] = source.coverage - sandbox.coverage`` —
-  positive means the source is ahead of the sandbox. Both reports must
-  expose the **same** set of categories; mismatch is rejected loudly so
-  rubric drift between runs is not silently dropped.
-* ``coverage_gap_weighted = source.coverage_weighted - sandbox.coverage_weighted``,
-  in ``[-1, 1]``.
-* ``surface_ratio[name] = sandbox(name) / source(name)`` over every
-  field of :class:`~shop_probe.surface.metrics.SurfaceMetrics`. If both
-  sides are zero the ratio is ``1.0`` (parity); if the source is zero
-  but the sandbox is positive the ratio is undefined and we raise.
-* ``surface_ratio_geomean`` is the geometric mean of the per-metric
-  ratios. A single zero-valued ratio collapses the geomean to ``0.0``
-  (matches the standard definition).
-* ``sandbox_in_real_envelope[name]`` — ``True`` iff the sandbox metric
-  falls inside the ``[min, max]`` envelope of ``real_population`` for
-  that field. Empty when ``real_population`` is empty (M3 pilot
-  scenario; the full envelope ships in M5).
+* ``coverage_per_axis_mean`` — arithmetic mean of per-category coverage
+  across the group. Both groups must expose the **same** set of
+  categories; mismatch is rejected loudly.
+* ``coverage_weighted_mean`` — arithmetic mean of
+  :attr:`~shop_probe.report.ProbeReport.coverage_weighted` across the
+  group.
+* ``surface_metric_means[name]`` / ``surface_metric_envelope[name]`` —
+  per-metric mean and ``(min, max)`` envelope across the group's
+  populated :class:`~shop_probe.surface.metrics.SurfaceMetrics` rows.
+  Members that lack ``surface`` are skipped silently for those metrics.
+* ``judge_accuracy`` — fraction of the group's
+  :class:`~shop_probe.report.JudgeCall` rows whose
+  ``predicted_label == target.label``. ``None`` if the group has no
+  judge calls.
+* ``coverage_gap_weighted = real.coverage_weighted_mean -
+  sandbox.coverage_weighted_mean`` (single scalar; positive means the
+  real group is ahead of the sandbox group).
+* ``surface_ratio[name] = sandbox.mean / real.mean`` per metric. If the
+  real mean is ``0``, the entry is ``1.0`` when both means are ``0`` and
+  raises otherwise.
+* ``sandbox_in_real_envelope[name][metric]`` — for each sandbox shop,
+  whether its per-metric value falls inside the real-group envelope.
+  Sandboxes without surface metrics are excluded.
+* ``judge_indistinguishability = |real.judge_accuracy -
+  sandbox.judge_accuracy|`` — closer to ``0`` means the judge cannot
+  tell the two groups apart.
 """
 
 from __future__ import annotations
 
-import math
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from shop_probe.judge.scoring import JudgeAccuracy, score_judge_calls
-from shop_probe.report import JudgeCall, ProbeReport
+from shop_probe.report import ProbeReport
 from shop_probe.surface.metrics import SurfaceMetrics
+from shop_probe.targets import TargetLabel
 
 
-class PairFidelity(BaseModel):
-    """Per-pair fidelity rollup (spec §5.7).
-
-    Three independent numbers per ``(source, sandbox)`` pair —
-    :attr:`coverage_gap_weighted` (axis A), :attr:`surface_ratio_geomean`
-    (axis B), :attr:`judge_accuracy_experimental` (axis C) — plus the
-    per-category / per-metric breakdowns the paper figures consume.
-
-    Per spec §5.7 we deliberately do **not** collapse the three axes
-    into a single scalar; reviewers read the breakdown.
+class GroupSummary(BaseModel):
+    """Per-group rollup over a flat population of reports.
 
     Attributes:
-        pair_id: Pair identifier, e.g. ``"pair_1"``. Matches the
-            ``pair_id`` on both members of the underlying
-            :class:`~shop_probe.targets.Pair`.
-        coverage_gap: Per-category coverage gap, ``source - sandbox``.
-            Positive values mean the source is ahead of the sandbox on
-            that category.
-        coverage_gap_weighted: Weighted-mean coverage gap across
-            categories, ``∈ [-1, 1]``; ``0`` is parity.
-        surface_ratio: Per-metric surface ratio, ``sandbox / source``.
-            ``1.0`` is parity; defined for all 11 surface metrics.
-        surface_ratio_geomean: Geometric mean of :attr:`surface_ratio`
-            values, ``≥ 0``. Collapses to ``0`` if any individual
-            ratio is ``0``.
-        sandbox_in_real_envelope: Per-metric ``True`` iff the sandbox
-            value is inside the ``[min, max]`` envelope of the real-shop
-            reference population (spec §5.2). Empty until the population
-            is supplied (M3 pilot has no envelope yet; M5 closes this).
-        judge_accuracy_experimental: Fraction of ``(sandbox, source)``
-            judge calls picked correctly. ``None`` until M4.
-        judge_n_pairs: Total number of judge calls aggregated.
-            ``None`` until M4.
-        judge_dropped: Number of calls dropped (swap-inconsistent or
-            no-evidence per spec §5.5 step 6 + guardrails). ``None``
-            until M4.
+        label: Group identifier (``"sandbox"`` or ``"real"``).
+        n_shops: Number of reports in the group.
+        coverage_weighted_mean: Arithmetic mean of
+            :attr:`~shop_probe.report.ProbeReport.coverage_weighted`.
+        coverage_per_axis_mean: Per-category coverage mean across the
+            group.
+        surface_metric_means: Per-metric mean across populated
+            :class:`SurfaceMetrics` rows.
+        surface_metric_envelope: Per-metric ``(min, max)`` envelope
+            across populated :class:`SurfaceMetrics` rows.
+        judge_accuracy: Fraction of judge calls whose ``predicted_label``
+            matches the group label. ``None`` if the group has no judge
+            calls.
+        judge_calls_total: Total number of judge calls across the group.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    pair_id: str = Field(min_length=1)
-    coverage_gap: dict[str, float]
+    label: TargetLabel
+    n_shops: int = Field(ge=0)
+    coverage_weighted_mean: float = Field(ge=0.0, le=1.0)
+    coverage_per_axis_mean: dict[str, float]
+    surface_metric_means: dict[str, float]
+    surface_metric_envelope: dict[str, tuple[float, float]]
+    judge_accuracy: float | None = Field(default=None, ge=0.0, le=1.0)
+    judge_calls_total: int = Field(ge=0)
+
+
+class BenchComparison(BaseModel):
+    """Group-vs-group bench comparison.
+
+    Attributes:
+        sandbox: Sandbox-group rollup.
+        real: Real-group rollup.
+        coverage_gap_weighted: ``real.coverage_weighted_mean -
+            sandbox.coverage_weighted_mean``.
+        coverage_gap_per_axis: Per-category ``real.mean -
+            sandbox.mean`` (only categories present on both groups
+            appear).
+        surface_ratio: Per-metric ``sandbox.mean / real.mean``.
+        sandbox_in_real_envelope: Per-sandbox-name ``metric -> bool``
+            describing whether each sandbox metric falls inside the
+            real-group envelope.
+        judge_indistinguishability: ``|real.judge_accuracy -
+            sandbox.judge_accuracy|``. ``None`` if either group lacks
+            judge calls.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    sandbox: GroupSummary
+    real: GroupSummary
     coverage_gap_weighted: float = Field(ge=-1.0, le=1.0)
+    coverage_gap_per_axis: dict[str, float]
     surface_ratio: dict[str, float]
-    surface_ratio_geomean: float = Field(ge=0.0)
-    sandbox_in_real_envelope: dict[str, bool] = Field(default_factory=dict)
-    judge_accuracy_experimental: float | None = Field(default=None, ge=0.0, le=1.0)
-    judge_n_pairs: int | None = Field(default=None, ge=0)
-    judge_dropped: int | None = Field(default=None, ge=0)
+    sandbox_in_real_envelope: dict[str, dict[str, bool]]
+    judge_indistinguishability: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
-class CohortFidelity(BaseModel):
-    """Cohort-level fidelity rollup (spec §5.7).
+def compute_bench_comparison(
+    sandbox_reports: Sequence[ProbeReport],
+    real_reports: Sequence[ProbeReport],
+) -> BenchComparison:
+    """Aggregate two report populations into a :class:`BenchComparison`.
 
-    Aggregates the per-pair :class:`PairFidelity` rows and adds the
-    cohort-level intra-real noise floor (axis C control) plus the
-    real-shop reference population envelope (axes A/B).
-
-    Attributes:
-        pairs: Per-pair fidelity rows, one entry per
-            :class:`~shop_probe.targets.Pair` in the cohort.
-        judge_accuracy_control: Intra-real ``(real_a, real_b)`` judge
-            accuracy — the noise floor against which experimental
-            accuracy is interpreted. ``None`` until M4.
-        judge_indistinguishability_gap:
-            ``mean(experimental) - control``. ``0`` is the
-            indistinguishability target (spec §5.7). ``None`` until M4.
-        real_shop_population: Per-metric ``(min, max)`` envelope over
-            the real-shop reference population (3 paired sources +
-            3 unpaired = 6 shops in v1). Empty when no real population
-            was supplied.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    pairs: tuple[PairFidelity, ...] = ()
-    judge_accuracy_control: float | None = Field(default=None, ge=0.0, le=1.0)
-    judge_indistinguishability_gap: float | None = Field(default=None, ge=-1.0, le=1.0)
-    real_shop_population: dict[str, tuple[float, float]] = Field(default_factory=dict)
-
-
-# --------------------------------------------------------------------------- #
-# Pure aggregation helpers — operate on validated schema objects only.
-# --------------------------------------------------------------------------- #
-
-
-def compute_pair_fidelity(
-    *,
-    pair_id: str,
-    sandbox_report: ProbeReport,
-    source_report: ProbeReport,
-    real_population: Sequence[SurfaceMetrics] = (),
-    experimental_judge_calls: Sequence[JudgeCall] | None = None,
-) -> PairFidelity:
-    """Aggregate one ``(sandbox, source)`` pair into a :class:`PairFidelity`.
-
-    Both reports must be axis A+B runs (i.e. ``surface`` populated) and
-    must agree on the pair identity. Pass
-    ``experimental_judge_calls`` once axis-C calls have been recorded;
-    omitting them leaves the M5 judge fields ``None`` (M3 pilot).
+    Both groups must be non-empty and must agree on the set of category
+    names exposed in :attr:`ProbeReport.categories`. Reports without
+    ``surface`` populated contribute to coverage but are skipped silently
+    for surface aggregates.
 
     Args:
-        pair_id: The pair identifier both reports must carry.
-        sandbox_report: The sandbox-side :class:`ProbeReport`.
-        source_report: The source-side :class:`ProbeReport`.
-        real_population: Optional real-shop surface metrics used to
-            compute :attr:`PairFidelity.sandbox_in_real_envelope`.
-            Empty during the M3 pilot; the full 6-shop envelope ships
-            in M5.
-        experimental_judge_calls: Optional axis-C ``(sandbox, source)``
-            judge calls for this pair (spec §5.5 step 7). When supplied,
-            populates :attr:`PairFidelity.judge_accuracy_experimental`,
-            :attr:`PairFidelity.judge_n_pairs`, and
-            :attr:`PairFidelity.judge_dropped`. ``None`` keeps the M5
-            fields unset for axis-A+B-only runs.
+        sandbox_reports: Reports for sandbox shops. Every entry must
+            carry ``target.label == "sandbox"``.
+        real_reports: Reports for real shops. Every entry must carry
+            ``target.label == "real"``.
 
     Returns:
-        A validated :class:`PairFidelity`.
+        A validated :class:`BenchComparison`.
 
     Raises:
-        ValueError: The reports disagree on pair identity, either side
-            is missing surface metrics, the categories don't match, or
-            a surface metric has ``source == 0`` but ``sandbox > 0``.
+        ValueError: A group is empty, a target's ``label`` disagrees
+            with its group, the two groups expose different category
+            sets, or a per-metric ``sandbox / real`` ratio would divide
+            by zero with non-zero numerator.
     """
-    if sandbox_report.target.kind != "sandbox":
-        msg = f"sandbox_report.target.kind must be 'sandbox' (got {sandbox_report.target.kind!r})"
+    if not sandbox_reports:
+        msg = "compute_bench_comparison: sandbox_reports must be non-empty"
         raise ValueError(msg)
-    if source_report.target.kind != "source":
-        msg = f"source_report.target.kind must be 'source' (got {source_report.target.kind!r})"
+    if not real_reports:
+        msg = "compute_bench_comparison: real_reports must be non-empty"
         raise ValueError(msg)
-    if sandbox_report.target.pair_id != pair_id:
+
+    _check_labels(sandbox_reports, expected="sandbox")
+    _check_labels(real_reports, expected="real")
+
+    sandbox_summary = _summarize_group("sandbox", sandbox_reports)
+    real_summary = _summarize_group("real", real_reports)
+
+    if set(sandbox_summary.coverage_per_axis_mean) != set(real_summary.coverage_per_axis_mean):
         msg = (
-            f"sandbox_report.target.pair_id must equal pair_id={pair_id!r} "
-            f"(got {sandbox_report.target.pair_id!r})"
-        )
-        raise ValueError(msg)
-    if source_report.target.pair_id != pair_id:
-        msg = (
-            f"source_report.target.pair_id must equal pair_id={pair_id!r} "
-            f"(got {source_report.target.pair_id!r})"
-        )
-        raise ValueError(msg)
-    if sandbox_report.surface is None or source_report.surface is None:
-        msg = (
-            "compute_pair_fidelity requires both reports to have surface "
-            "metrics (run with --axes A,B)"
+            "compute_bench_comparison: category mismatch — "
+            f"sandbox has {sorted(sandbox_summary.coverage_per_axis_mean)}, "
+            f"real has {sorted(real_summary.coverage_per_axis_mean)}"
         )
         raise ValueError(msg)
 
-    coverage_gap = _compute_coverage_gap(sandbox_report, source_report)
-    coverage_gap_weighted = source_report.coverage_weighted - sandbox_report.coverage_weighted
-    surface_ratio = _compute_surface_ratio(
-        sandbox_report.surface,
-        source_report.surface,
-    )
-    surface_ratio_geomean = _geomean(surface_ratio.values())
-    sandbox_in_real_envelope = (
-        _compute_envelope(sandbox_report.surface, real_population) if real_population else {}
-    )
-
-    judge_accuracy: JudgeAccuracy | None = (
-        score_judge_calls(experimental_judge_calls)
-        if experimental_judge_calls is not None
-        else None
-    )
-
-    return PairFidelity(
-        pair_id=pair_id,
-        coverage_gap=coverage_gap,
-        coverage_gap_weighted=coverage_gap_weighted,
-        surface_ratio=surface_ratio,
-        surface_ratio_geomean=surface_ratio_geomean,
-        sandbox_in_real_envelope=sandbox_in_real_envelope,
-        judge_accuracy_experimental=(
-            judge_accuracy.accuracy if judge_accuracy is not None else None
-        ),
-        judge_n_pairs=(judge_accuracy.n_total if judge_accuracy is not None else None),
-        judge_dropped=(judge_accuracy.n_dropped if judge_accuracy is not None else None),
-    )
-
-
-def compute_cohort_fidelity(
-    *,
-    pairs: Sequence[PairFidelity],
-    real_population: Sequence[SurfaceMetrics] = (),
-    control_judge_calls: Sequence[JudgeCall] | None = None,
-) -> CohortFidelity:
-    """Aggregate per-pair fidelity rows into a :class:`CohortFidelity`.
-
-    Computes the per-metric ``(min, max)`` envelope over the real-shop
-    reference population. When ``control_judge_calls`` is supplied,
-    populates :attr:`CohortFidelity.judge_accuracy_control` and
-    :attr:`CohortFidelity.judge_indistinguishability_gap` per spec §5.5
-    step 7 + §5.7. The gap is
-    ``mean(experimental) - control`` over the pairs that themselves have
-    ``judge_accuracy_experimental`` set; if any pair is missing that
-    field the gap stays ``None``.
-
-    Args:
-        pairs: Per-pair fidelity rows, one per
-            :class:`~shop_probe.targets.Pair`.
-        real_population: Surface metrics for the real-shop reference
-            population. Spec §5.2 specifies 6 shops (3 paired sources +
-            3 unpaired) in v1; empty is allowed during M3 pilot work.
-        control_judge_calls: Optional axis-C ``(real_a, real_b)`` judge
-            calls aggregated across the cohort (spec §5.5 step 7). When
-            supplied, populates
-            :attr:`CohortFidelity.judge_accuracy_control` and
-            :attr:`CohortFidelity.judge_indistinguishability_gap`.
-
-    Returns:
-        A validated :class:`CohortFidelity`.
-    """
-    real_shop_population: dict[str, tuple[float, float]] = {}
-    if real_population:
-        for name in SurfaceMetrics.model_fields:
-            values = [float(getattr(m, name)) for m in real_population]
-            real_shop_population[name] = (min(values), max(values))
-
-    judge_accuracy_control: float | None = None
-    judge_indistinguishability_gap: float | None = None
-    if control_judge_calls is not None:
-        control = score_judge_calls(control_judge_calls)
-        judge_accuracy_control = control.accuracy
-        if judge_accuracy_control is not None:
-            experimental = tuple(
-                p.judge_accuracy_experimental
-                for p in pairs
-                if p.judge_accuracy_experimental is not None
-            )
-            if experimental and len(experimental) == len(pairs):
-                judge_indistinguishability_gap = (
-                    sum(experimental) / len(experimental) - judge_accuracy_control
-                )
-
-    return CohortFidelity(
-        pairs=tuple(pairs),
-        real_shop_population=real_shop_population,
-        judge_accuracy_control=judge_accuracy_control,
-        judge_indistinguishability_gap=judge_indistinguishability_gap,
-    )
-
-
-# --------------------------------------------------------------------------- #
-# Internals — kept separate so unit tests can exercise edge cases directly.
-# --------------------------------------------------------------------------- #
-
-
-def _compute_coverage_gap(
-    sandbox_report: ProbeReport,
-    source_report: ProbeReport,
-) -> dict[str, float]:
-    """Per-category ``source - sandbox`` coverage gap (spec §5.7)."""
-    sandbox_by_cat = {c.category: c.coverage for c in sandbox_report.categories}
-    source_by_cat = {c.category: c.coverage for c in source_report.categories}
-    if set(sandbox_by_cat) != set(source_by_cat):
-        msg = (
-            f"coverage_gap: category mismatch — sandbox has "
-            f"{sorted(sandbox_by_cat)}, source has {sorted(source_by_cat)}"
-        )
-        raise ValueError(msg)
-    return {
-        category: source_by_cat[category] - sandbox_by_cat[category]
-        for category in sorted(sandbox_by_cat)
+    coverage_gap_per_axis = {
+        category: real_summary.coverage_per_axis_mean[category]
+        - sandbox_summary.coverage_per_axis_mean[category]
+        for category in sorted(sandbox_summary.coverage_per_axis_mean)
     }
+    coverage_gap_weighted = (
+        real_summary.coverage_weighted_mean - sandbox_summary.coverage_weighted_mean
+    )
+
+    surface_ratio = _surface_ratio(
+        sandbox_summary.surface_metric_means,
+        real_summary.surface_metric_means,
+    )
+    sandbox_in_real_envelope = _sandbox_in_real_envelope(
+        sandbox_reports, real_summary.surface_metric_envelope
+    )
+
+    indistinguishability: float | None = None
+    if sandbox_summary.judge_accuracy is not None and real_summary.judge_accuracy is not None:
+        indistinguishability = abs(real_summary.judge_accuracy - sandbox_summary.judge_accuracy)
+
+    return BenchComparison(
+        sandbox=sandbox_summary,
+        real=real_summary,
+        coverage_gap_weighted=coverage_gap_weighted,
+        coverage_gap_per_axis=coverage_gap_per_axis,
+        surface_ratio=surface_ratio,
+        sandbox_in_real_envelope=sandbox_in_real_envelope,
+        judge_indistinguishability=indistinguishability,
+    )
 
 
-def _compute_surface_ratio(
-    sandbox: SurfaceMetrics,
-    source: SurfaceMetrics,
-) -> dict[str, float]:
-    """Per-metric ``sandbox / source`` surface ratio (spec §5.7).
+# --------------------------------------------------------------------------- #
+# Internals.
+# --------------------------------------------------------------------------- #
 
-    Both-zero is treated as parity (``1.0``); ``source == 0`` with
-    ``sandbox > 0`` is undefined and raises (the resulting ``inf`` would
-    not survive JSON round-trip and signals a defective source crawl).
+
+def _check_labels(reports: Sequence[ProbeReport], *, expected: TargetLabel) -> None:
+    """Reject reports whose ``target.label`` disagrees with the group."""
+    for report in reports:
+        if report.target.label != expected:
+            msg = (
+                f"compute_bench_comparison: report for {report.target.name!r} "
+                f"has label={report.target.label!r}; expected {expected!r}"
+            )
+            raise ValueError(msg)
+
+
+def _summarize_group(label: TargetLabel, reports: Sequence[ProbeReport]) -> GroupSummary:
+    """Reduce one group of reports into a :class:`GroupSummary`."""
+    n = len(reports)
+    coverage_weighted_mean = sum(r.coverage_weighted for r in reports) / n
+    coverage_per_axis_mean = _coverage_per_axis_mean(reports)
+    surfaces = tuple(r.surface for r in reports if r.surface is not None)
+    surface_metric_means, surface_metric_envelope = _surface_aggregates(surfaces)
+
+    judge_calls = tuple(call for r in reports for call in r.judge_calls)
+    judge_calls_total = len(judge_calls)
+    judge_accuracy: float | None
+    if judge_calls_total == 0:
+        judge_accuracy = None
+    else:
+        correct = sum(
+            1 for r in reports for call in r.judge_calls if call.predicted_label == r.target.label
+        )
+        judge_accuracy = correct / judge_calls_total
+
+    return GroupSummary(
+        label=label,
+        n_shops=n,
+        coverage_weighted_mean=coverage_weighted_mean,
+        coverage_per_axis_mean=coverage_per_axis_mean,
+        surface_metric_means=surface_metric_means,
+        surface_metric_envelope=surface_metric_envelope,
+        judge_accuracy=judge_accuracy,
+        judge_calls_total=judge_calls_total,
+    )
+
+
+def _coverage_per_axis_mean(reports: Sequence[ProbeReport]) -> dict[str, float]:
+    """Per-category coverage mean across the group.
+
+    Every report must expose the same category set; mismatch is rejected
+    loudly so rubric drift is not silently dropped.
     """
+    if not reports:
+        return {}
+    category_set: set[str] | None = None
+    for report in reports:
+        cats = {c.category for c in report.categories}
+        if category_set is None:
+            category_set = cats
+            continue
+        if cats != category_set:
+            msg = (
+                "_coverage_per_axis_mean: category mismatch within group — "
+                f"{report.target.name!r} has {sorted(cats)}, "
+                f"earlier reports had {sorted(category_set)}"
+            )
+            raise ValueError(msg)
+    if category_set is None:
+        return {}
     out: dict[str, float] = {}
+    for category in sorted(category_set):
+        values = [next(c.coverage for c in r.categories if c.category == category) for r in reports]
+        out[category] = sum(values) / len(values)
+    return out
+
+
+def _surface_aggregates(
+    surfaces: Sequence[SurfaceMetrics],
+) -> tuple[dict[str, float], dict[str, tuple[float, float]]]:
+    """Per-metric mean and ``(min, max)`` envelope over populated rows."""
+    means: dict[str, float] = {}
+    envelope: dict[str, tuple[float, float]] = {}
+    if not surfaces:
+        return means, envelope
     for name in SurfaceMetrics.model_fields:
-        sandbox_v = float(getattr(sandbox, name))
-        source_v = float(getattr(source, name))
-        if source_v == 0.0:
-            if sandbox_v == 0.0:
+        values = [float(getattr(s, name)) for s in surfaces]
+        means[name] = sum(values) / len(values)
+        envelope[name] = (min(values), max(values))
+    return means, envelope
+
+
+def _surface_ratio(
+    sandbox_means: dict[str, float],
+    real_means: dict[str, float],
+) -> dict[str, float]:
+    """Per-metric ``sandbox / real`` ratio.
+
+    ``real == 0`` with ``sandbox == 0`` is parity (``1.0``); ``real == 0``
+    with ``sandbox > 0`` is undefined and raises.
+    """
+    if not sandbox_means or not real_means:
+        return {}
+    if set(sandbox_means) != set(real_means):
+        msg = (
+            "_surface_ratio: metric set mismatch — "
+            f"sandbox has {sorted(sandbox_means)}, real has {sorted(real_means)}"
+        )
+        raise ValueError(msg)
+    out: dict[str, float] = {}
+    for name in sorted(sandbox_means):
+        s = sandbox_means[name]
+        r = real_means[name]
+        if r == 0.0:
+            if s == 0.0:
                 out[name] = 1.0
             else:
                 msg = (
-                    f"surface_ratio[{name!r}]: source is 0 but sandbox is "
-                    f"{sandbox_v}; ratio is undefined"
+                    f"surface_ratio[{name!r}]: real mean is 0 but sandbox mean is "
+                    f"{s}; ratio is undefined"
                 )
                 raise ValueError(msg)
         else:
-            out[name] = sandbox_v / source_v
+            out[name] = s / r
     return out
 
 
-def _compute_envelope(
-    sandbox: SurfaceMetrics,
-    real_population: Sequence[SurfaceMetrics],
-) -> dict[str, bool]:
-    """Per-metric ``sandbox in [min, max]`` over the real-shop population."""
-    out: dict[str, bool] = {}
-    for name in SurfaceMetrics.model_fields:
-        values = [float(getattr(m, name)) for m in real_population]
-        lo, hi = min(values), max(values)
-        sandbox_v = float(getattr(sandbox, name))
-        out[name] = lo <= sandbox_v <= hi
-    return out
+def _sandbox_in_real_envelope(
+    sandbox_reports: Sequence[ProbeReport],
+    real_envelope: dict[str, tuple[float, float]],
+) -> dict[str, dict[str, bool]]:
+    """For each sandbox shop, whether each metric is inside the real envelope.
 
-
-def _geomean(values: Iterable[float]) -> float:
-    """Geometric mean over ``values`` (spec §5.7).
-
-    A single ``0`` value collapses the geometric mean to ``0`` per the
-    standard definition. Negative values are rejected.
+    Sandboxes without surface metrics are excluded (no row). When the real
+    envelope is empty (no real shop carried surface metrics) every sandbox
+    yields an empty per-metric dict — the caller can decide whether to
+    treat that as missing or as ``True``.
     """
-    seq = list(values)
-    if not seq:
-        msg = "_geomean: cannot compute geometric mean of empty sequence"
-        raise ValueError(msg)
-    if any(v < 0 for v in seq):
-        msg = f"_geomean: negative values are not allowed (got {seq!r})"
-        raise ValueError(msg)
-    if any(v == 0 for v in seq):
-        return 0.0
-    return math.exp(sum(math.log(v) for v in seq) / len(seq))
+    out: dict[str, dict[str, bool]] = {}
+    for report in sandbox_reports:
+        if report.surface is None:
+            continue
+        metrics: dict[str, bool] = {}
+        for name, (lo, hi) in real_envelope.items():
+            value = float(getattr(report.surface, name))
+            metrics[name] = lo <= value <= hi
+        out[report.target.name] = metrics
+    return out

@@ -253,10 +253,9 @@ def test_run_judge_agent_persists_validated_trajectory(
 ) -> None:
     """End-to-end: drive the harness loop, persist a Trajectory, and re-validate."""
     target = Target(
-        label="sandbox/localhost_run1",
+        name="shop_localhost_1",
         base_url=sandbox_url,
-        kind="sandbox",
-        pair_id="pair_localhost",
+        label="sandbox",
     )
     task = _judge_task()
     runtime = _PlaywrightStubRuntime(base_url=sandbox_url)
@@ -322,10 +321,9 @@ def test_run_judge_agent_writes_evidence_under_run_dir(
 ) -> None:
     """Evidence paths are relative to ``run_dir`` so reports stay relocatable."""
     target = Target(
-        label="sandbox/localhost_run2",
+        name="shop_localhost_2",
         base_url=sandbox_url,
-        kind="sandbox",
-        pair_id="pair_localhost",
+        label="sandbox",
     )
     task = _judge_task()
     runtime = _PlaywrightStubRuntime(base_url=sandbox_url)

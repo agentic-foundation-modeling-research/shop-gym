@@ -83,14 +83,14 @@ def render_prior_work_supplement_table(reports: tuple[ProbeReport, ...]) -> str:
 
 
 def _sort_key(report: ProbeReport) -> str:
-    """Sort baseline rows by target label for byte-stable output."""
-    return report.target.label
+    """Sort baseline rows by target name for byte-stable output."""
+    return report.target.name
 
 
 def _render_row(report: ProbeReport) -> str:
     surface = report.surface
     cells: list[str] = [
-        report.target.label,
+        report.target.name,
         _fmt_coverage(report.coverage_core),
         _fmt_coverage(report.coverage_modern),
         _fmt_coverage(report.coverage_weighted),
