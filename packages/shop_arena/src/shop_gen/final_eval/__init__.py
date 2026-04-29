@@ -35,6 +35,11 @@ import.
 
 from __future__ import annotations
 
+from shop_gen.final_eval.dev_server import (
+    DevServerLifecycleError,
+    dev_server_lifecycle,
+    pnpm_dev_factory,
+)
 from shop_gen.final_eval.playwright_smoke import (
     DEFAULT_SMOKE_FLOW,
     DEFAULT_VIEWPORTS,
@@ -58,6 +63,7 @@ __all__ = [
     "DEFAULT_VIEWPORTS",
     "BrowserDriver",
     "DevServerFactory",
+    "DevServerLifecycleError",
     "FinalEvalStep",
     "Screenshot",
     "SmokeAction",
@@ -67,8 +73,10 @@ __all__ = [
     "SmokeRunner",
     "SmokeStep",
     "Viewport",
+    "dev_server_lifecycle",
     "load_quality_judge_prompt",
     "load_visual_sweep_prompt",
+    "pnpm_dev_factory",
     "resolve_smoke_flow",
     "run_final_eval",
     "run_playwright_smoke",

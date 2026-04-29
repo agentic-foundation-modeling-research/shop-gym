@@ -162,7 +162,7 @@ Lands the page-bucket `ThreadPoolExecutor` fan-out for both
 
 ### M6 · Production playwright wiring
 
-- [ ] **T6.1** — Real `DevServerFactory` (`pnpm dev` runner) replacing `_unconfigured_dev_server_factory` in `build/loop.py` and `final_eval/step.py`. Spec §5.2.1, §5.6. **Check:** integration test under a recorded cassette boots the server, waits for readiness, tears down on exit (incl. exception path).
+- [x] **T6.1** — Real `DevServerFactory` (`pnpm dev` runner) replacing `_unconfigured_dev_server_factory` in `build/loop.py` and `final_eval/step.py`. Spec §5.2.1, §5.6. **Check:** integration test under a recorded cassette boots the server, waits for readiness, tears down on exit (incl. exception path).
 
 - [ ] **T6.2** — End-to-end visual sub-iter against a real `pi` runtime: a fresh sub-workspace with no `AGENTS.md` / `plan.md` should complete cleanly (the `pi` adapter already supports this — same shape `shop_explore` and the `shop_gen` build executor use). **Check:** sub-iter completes; `iter/native.log` populated; playwright skill available; screenshots written; `verdict.json` parsed.
 

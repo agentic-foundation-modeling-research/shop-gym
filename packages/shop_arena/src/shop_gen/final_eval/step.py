@@ -44,12 +44,12 @@ import json
 import re
 import subprocess
 from collections.abc import Sequence
-from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, Final, Protocol, cast, runtime_checkable
 
 from harness.runtimes.base import AgentRuntime, LLMCompleter
 from shop_gen.build.verifiers._task_routes import SWEEP_CAPS, BucketCaps
+from shop_gen.final_eval.dev_server import pnpm_dev_factory
 from shop_gen.final_eval.playwright_smoke import (
     DEFAULT_VIEWPORTS,
     BrowserDriver,
@@ -230,9 +230,9 @@ class FinalEvalStep:
 
         Args:
             dev_server_factory: Boots the dev server the smoke flow walks.
-                Defaults to :func:`_unconfigured_dev_server_factory`,
-                which raises until the production playwright wiring lands
-                (M8). Tests inject a stub that yields a fake base URL.
+                Defaults to :data:`_default_dev_server_factory`
+                (production ``pnpm dev`` runner; impl plan T6.1).
+                Tests inject a stub that yields a fake base URL.
             browser_driver: Walks the smoke flow + writes screenshots.
                 Defaults to :func:`_unconfigured_browser_driver`, which
                 raises until the production playwright wiring lands.
@@ -269,7 +269,7 @@ class FinalEvalStep:
         self.version: int = _STEP_VERSION
 
         self._dev_server_factory: DevServerFactory = (
-            dev_server_factory or _unconfigured_dev_server_factory
+            dev_server_factory or _default_dev_server_factory
         )
         self._browser_driver: BrowserDriver = browser_driver or _unconfigured_browser_driver
         self._smoke_runner: SmokeRunner = smoke_runner or run_playwright_smoke
@@ -750,26 +750,18 @@ def _render_failures_table(rows: Sequence[dict[str, Any]]) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Defaults — placeholders until the production playwright wiring lands
+# Defaults
 # --------------------------------------------------------------------------- #
 
 
-def _unconfigured_dev_server_factory(
-    hydrogen_dir: Path,
-) -> AbstractContextManager[str]:  # pragma: no cover — production wiring deferred.
-    """Default :class:`DevServerFactory` — refuses to boot.
+_default_dev_server_factory: DevServerFactory = pnpm_dev_factory()
+"""Production :class:`DevServerFactory` — :func:`pnpm_dev_factory`.
 
-    The production ``pnpm dev`` driver is deferred (spec §5.5.5 +
-    impl plan T6.x); v0.1 ships the step with seams so callers / tests
-    inject a working factory. A run that hits this default lands an
-    ``error`` verdict in :data:`final_eval.json` rather than crashing
-    the pipeline (advisory contract).
-    """
-    del hydrogen_dir
-    raise NotImplementedError(
-        "default final_eval dev_server_factory is unconfigured; "
-        "inject a `dev_server_factory` via the FinalEvalStep constructor.",
-    )
+Boots the post-build hydrogen tree via ``pnpm dev`` on a free TCP
+port, polls ``/health``, and tears the subprocess down on exit.
+Replaces the v0.1 ``_unconfigured_dev_server_factory`` placeholder
+(impl plan T6.1).
+"""
 
 
 def _unconfigured_browser_driver(

@@ -99,6 +99,7 @@ from shop_gen.config import (
     ShopGenConfig,
 )
 from shop_gen.data_validation.hosting_check import find_shop_backend_cli
+from shop_gen.final_eval.dev_server import pnpm_dev_factory
 from shop_gen.final_eval.playwright_smoke import DevServerFactory
 from shop_gen.steps.base import FileInput, InputRef, StepContext, StepInput
 
@@ -564,24 +565,16 @@ def _default_sidecar_factory(
     return sidecar_lifecycle(argv=argv, port=port)
 
 
-def _unconfigured_dev_server_factory(
-    hydrogen_dir: Path,
-) -> AbstractContextManager[str]:  # pragma: no cover — production wiring deferred.
-    """Default :class:`DevServerFactory` for ``visual_judge`` — refuses to boot.
+_default_dev_server_factory: DevServerFactory = pnpm_dev_factory()
+"""Production :class:`DevServerFactory` — :func:`pnpm_dev_factory`.
 
-    The production ``pnpm dev`` driver is deferred to impl plan T6.1;
-    until then the build-loop default factory injects this placeholder.
-    Tests inject a working factory through the
-    :func:`default_verifiers_factory` ``dev_server_factory`` seam, and
-    callers that omit it never reach this code because the visual-judge
-    verifier is itself gated behind the playwright skill probe.
-    """
-    del hydrogen_dir
-    raise NotImplementedError(
-        "default visual_judge dev_server_factory is unconfigured; "
-        "inject a `dev_server_factory` via `default_verifiers_factory` (T6.1).",
-    )
-
+Boots the freshly built hydrogen tree via ``pnpm dev`` on a free TCP
+port, polls ``/health``, and tears the subprocess down on exit. Tests
+still inject a stub through the :func:`default_verifiers_factory`
+``dev_server_factory`` seam; production callers get this default.
+Replaces the v0.1 ``_unconfigured_dev_server_factory`` placeholder
+(impl plan T6.1).
+"""
 
 def default_verifiers_factory(
     *,
@@ -622,8 +615,8 @@ def default_verifiers_factory(
             :data:`~shop_gen.config.DEFAULT_JUDGES`.
         dev_server_factory: :class:`DevServerFactory` that boots the
             hydrogen dev server for the visual-judge sub-iteration.
-            Defaults to :func:`_unconfigured_dev_server_factory`; the
-            production ``pnpm dev`` runner replaces it under T6.1.
+            Defaults to :data:`_default_dev_server_factory`
+            (production ``pnpm dev`` runner; impl plan T6.1).
         visual_retry_budget: Per-task cap on consecutive ``visual_judge``
             FAILs before the verifier downgrades to ADVISORY (spec §5.4).
             ``0`` disables the budget. Forwarded to the verifier ctor.
@@ -639,7 +632,7 @@ def default_verifiers_factory(
         spec table; harness dispatch is independent of order, so it is
         chosen for readability in ``feedback.md``.
     """
-    factory: DevServerFactory = dev_server_factory or _unconfigured_dev_server_factory
+    factory: DevServerFactory = dev_server_factory or _default_dev_server_factory
     verifiers: list[Verifier] = [
         TscVerifier(),
         BuildVerifier(),
