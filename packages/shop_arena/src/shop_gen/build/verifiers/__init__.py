@@ -22,6 +22,9 @@ The v0.1 verifier set lives here:
 * :class:`NoBrandLeakVerifier` — runs the §5.6 allowlist scanner over
   ``hydrogen/app/**/*.{tsx,ts,css,md}``. Applies to every ``gen_*``
   task.
+* :class:`Routes200Verifier` — boots a transient dev server and
+  asserts every route resolved by the §5.3 bucket axis returns HTTP
+  2xx. Applies to every ``gen_*`` task.
 
 LLM-based verifiers (``quality_judge``, ``cross_task_consistency``)
 land alongside this set under T5.5.
@@ -43,6 +46,7 @@ from shop_gen.build.verifiers.data_in_use import (
 from shop_gen.build.verifiers.nav_coverage import NavCoverageVerifier
 from shop_gen.build.verifiers.no_brand_leak import NoBrandLeakVerifier
 from shop_gen.build.verifiers.quality_judge import QualityJudgeVerifier
+from shop_gen.build.verifiers.routes_200 import Routes200Verifier
 from shop_gen.build.verifiers.tsc import TscVerifier
 from shop_gen.build.verifiers.visual_judge import VisualJudgeVerifier
 
@@ -55,6 +59,7 @@ __all__ = [
     "NavCoverageVerifier",
     "NoBrandLeakVerifier",
     "QualityJudgeVerifier",
+    "Routes200Verifier",
     "SchemaIntrospection",
     "TscVerifier",
     "VisualJudgeVerifier",

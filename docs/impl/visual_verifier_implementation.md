@@ -126,7 +126,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 The 2-layer model was already landed in T1.3 (M1 prereq). M4 wires it
 into the second consumer.
 
-- [ ] **T4.1** — Re-introduce `src/shop_gen/build/verifiers/routes_200.py`. The original was pruned in commit `e54c98f`; rebuild against the new bucket axis. Constructor takes `data_dir: Path` + `dev_server_factory`. `applies_to` matches every `gen_*` task. `run()` calls `routes_for_buckets(buckets_for_task(task_id), data_dir)`, hits each route via the dev server, asserts HTTP 2xx. Spec §5.3, §5.8. **Check:** `routes_200` passes against a healthy fixture; FAILs on a 404 route; consumes the same `_task_routes.py` module as `visual_judge`; `gen_homepage_redo_3` resolves to the same routes as `gen_homepage`.
+- [x] **T4.1** — Re-introduce `src/shop_gen/build/verifiers/routes_200.py`. The original was pruned in commit `e54c98f`; rebuild against the new bucket axis. Constructor takes `data_dir: Path` + `dev_server_factory`. `applies_to` matches every `gen_*` task. `run()` calls `routes_for_buckets(buckets_for_task(task_id), data_dir)`, hits each route via the dev server, asserts HTTP 2xx. Spec §5.3, §5.8. **Check:** `routes_200` passes against a healthy fixture; FAILs on a 404 route; consumes the same `_task_routes.py` module as `visual_judge`; `gen_homepage_redo_3` resolves to the same routes as `gen_homepage`.
 
 - [ ] **T4.2** — Sample-token resolution for `cart_search`: pick the first product title's first noun-token as the `q=` value. Deterministic per dataset. Spec §9.1. **Check:** unit test against a fixture `products.json` returns a stable token across reruns.
 
