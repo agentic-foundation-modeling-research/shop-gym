@@ -43,6 +43,7 @@ from typing import Final
 from playwright.async_api import Browser, Page, async_playwright
 
 from shop_probe import __version__ as _shop_probe_version
+from shop_probe.agent.config import AgentRuntimeConfig
 from shop_probe.report import EvidenceRef
 
 PINNED_USER_AGENT: Final[str] = (
@@ -119,6 +120,11 @@ class ProbeContext:
             return ``passed=None``).
         sample_collection_url: URL of a representative collection, if
             known. Same ``None`` semantics as ``sample_product_url``.
+        agent_config: Optional v1.3 agent-driven runtime configuration.
+            ``None`` for deterministic probes; carried by the runner so
+            ``run_agent_task`` can resolve runtime / model / budget
+            without threading separate parameters through the dispatch
+            path (spec ``web_probe_v1_3_agent_driven.md`` §Desired Status).
     """
 
     page: Page
@@ -127,6 +133,7 @@ class ProbeContext:
     evidence_root: Path
     sample_product_url: str | None = None
     sample_collection_url: str | None = None
+    agent_config: AgentRuntimeConfig | None = None
 
     async def screenshot(self, name: str, *, selector: str | None = None) -> EvidenceRef:
         """Capture a viewport screenshot to disk and return its EvidenceRef.

@@ -143,7 +143,7 @@ all green; no source code under `agent/` beyond the dataclass + exports.
 trajectory, returns a fixed-true `ProbeOutcome`. End-to-end wired so M3
 only swaps the post-condition.
 
-- [ ] **T2.1** — `packages/shop_arena/src/shop_probe/agent/runner.py`:
+- [x] **T2.1** — `packages/shop_arena/src/shop_probe/agent/runner.py`:
   define `run_agent_task(page, ctx, task) -> ProbeOutcome`. Pattern source:
   `shop_probe/judge/agent.py:103-202`. Steps:
   1. Resolve `cfg = ctx.agent_config or AgentRuntimeConfig()`.
@@ -163,11 +163,11 @@ only swaps the post-condition.
   7. Return `ProbeOutcome(passed=True, evidence=(before_shot, after_shot,
      <harness run_dir>))`. M3 replaces the `True`.
   **Check:** strict pyright passes; module imports without side effects.
-- [ ] **T2.2** — `packages/shop_arena/src/shop_probe/probes/_runner.py`:
+- [x] **T2.2** — `packages/shop_arena/src/shop_probe/probes/_runner.py`:
   add `agent_config: AgentRuntimeConfig | None = None` to `ProbeContext`.
   No dispatch routing yet (lands in M4). **Check:** pyright clean;
   existing probe tests still green.
-- [ ] **T2.3** — `packages/shop_arena/tests/agent/test_runner.py`:
+- [x] **T2.3** — `packages/shop_arena/tests/agent/test_runner.py`:
   hermetic test cases (mirror `tests/judge/test_agent.py` pattern):
   - Stub harness loop writes a fake trajectory with two ScreenshotSteps;
     `run_agent_task` picks the second as `after_shot`.

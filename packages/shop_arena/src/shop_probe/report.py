@@ -35,13 +35,18 @@ from pydantic import BaseModel, ConfigDict, Field
 from shop_probe.surface.metrics import SurfaceMetrics
 from shop_probe.targets import Target
 
-EvidenceKind = Literal["screenshot", "dom_snapshot", "a11y_snapshot", "har"]
+EvidenceKind = Literal["screenshot", "dom_snapshot", "a11y_snapshot", "har", "harness_run"]
 """Captured artifact type (spec §5.3, §5.5, §5.8).
 
 * ``screenshot`` — PNG capture of the viewport.
 * ``dom_snapshot`` — serialized DOM (HTML or structural fingerprint).
 * ``a11y_snapshot`` — accessibility-tree snapshot.
 * ``har`` — full HAR network capture for the crawl/probe run.
+* ``harness_run`` — root directory of a harness ``run_plan_exec_loop``
+  invocation (v1.3 agent-driven probes; spec ``web_probe_v1_3_agent_driven.md``).
+  Path is the directory the harness owns (relative to the report's
+  evidence root); contents include ``plan.md``, ``iters/``, ``run.json``,
+  etc.
 """
 
 JudgePrediction = Literal["sandbox", "real", "abstain"]

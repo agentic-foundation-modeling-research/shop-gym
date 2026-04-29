@@ -14,8 +14,10 @@ This module is import-safe: it performs no I/O at import time.
 from __future__ import annotations
 
 from shop_probe.agent.config import AgentRuntimeConfig, AgentRuntimeName
+from shop_probe.agent.runner import run_agent_task
 
 __all__ = [
     "AgentRuntimeConfig",
     "AgentRuntimeName",
+    "run_agent_task",
 ]
