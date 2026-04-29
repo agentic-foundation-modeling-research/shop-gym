@@ -105,7 +105,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 - [x] **T3.3** — Thread `judges` through `build/loop.py::run_build_loop` and the step that wraps it. **Check:** library callers can pass `judges={"visual_judge"}` and observe the right tuple.
 
-- [ ] **T3.4** — CLI flag `--judges <comma-list|all|none>` on `cli.py`. Parse `none` → empty set, `all` → full default set, comma-separated → set of tokens. Reject unknown tokens with a CLI-level error. Spec §5.5 + §5.9. **Check:** integration test exercises `--judges visual_judge,quality_judge`, `--judges none`, `--judges all`, `--judges bogus` (rejected).
+- [x] **T3.4** — CLI flag `--judges <comma-list|all|none>` on `cli.py`. Parse `none` → empty set, `all` → full default set, comma-separated → set of tokens. Reject unknown tokens with a CLI-level error. Spec §5.5 + §5.9. **Check:** integration test exercises `--judges visual_judge,quality_judge`, `--judges none`, `--judges all`, `--judges bogus` (rejected).
 
 - [ ] **T3.5** — Tests: SC5 — `--judges visual_judge,quality_judge` registers exactly those two LLM judges (when skill present); `cross_task_consistency` is absent. `--judges none` registers zero LLM judges. **Check:** assert `len(verifier_runs) by name` per case.
 

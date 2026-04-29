@@ -32,9 +32,11 @@ from shop_gen import cli as cli_mod
 from shop_gen.cli import EXIT_CONFIG, EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, main
 from shop_gen.config import (
     DEFAULT_IMAGE_BACKEND,
+    DEFAULT_JUDGES,
     DEFAULT_MAX_ITERS,
     DEFAULT_RUNTIME,
     DEFAULT_VISUAL_RETRY_BUDGET,
+    KNOWN_JUDGES,
     ShopGenConfig,
     default_model_for,
 )
@@ -682,3 +684,95 @@ def test_only_surfaces_invalid_build_plan(
 
     assert rc == EXIT_RUNTIME
     assert "cannot parse" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# --judges plumbing (impl plan T3.4, spec §5.5 + §5.9)
+# --------------------------------------------------------------------------- #
+
+
+def test_judges_default_is_full_known_set(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Omitting ``--judges`` keeps the :data:`DEFAULT_JUDGES` default."""
+    seed = _make_seed(tmp_path)
+    rc = main([str(seed), "--out-dir", str(tmp_path / "out")])
+    assert rc == EXIT_OK
+    assert captured_run["config"].judges == DEFAULT_JUDGES
+
+
+def test_judges_comma_list_propagates_to_config(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Impl plan T3.4: ``--judges visual_judge,quality_judge`` selects exactly those two."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--judges",
+            "visual_judge,quality_judge",
+        ]
+    )
+    assert rc == EXIT_OK
+    assert captured_run["config"].judges == frozenset({"visual_judge", "quality_judge"})
+
+
+def test_judges_none_selects_empty_set(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Impl plan T3.4: ``--judges none`` disables every LLM judge."""
+    seed = _make_seed(tmp_path)
+    rc = main([str(seed), "--out-dir", str(tmp_path / "out"), "--judges", "none"])
+    assert rc == EXIT_OK
+    assert captured_run["config"].judges == frozenset()
+
+
+def test_judges_all_selects_full_default_set(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Impl plan T3.4: ``--judges all`` selects :data:`DEFAULT_JUDGES`."""
+    seed = _make_seed(tmp_path)
+    rc = main([str(seed), "--out-dir", str(tmp_path / "out"), "--judges", "all"])
+    assert rc == EXIT_OK
+    assert captured_run["config"].judges == DEFAULT_JUDGES
+    assert captured_run["config"].judges == KNOWN_JUDGES
+
+
+def test_judges_rejects_unknown_token(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Impl plan T3.4: unknown judge tokens exit ``EXIT_USAGE`` with the offending name."""
+    seed = _make_seed(tmp_path)
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(seed), "--out-dir", str(tmp_path / "out"), "--judges", "bogus"])
+    assert excinfo.value.code == EXIT_USAGE
+    err = capsys.readouterr().err
+    assert "bogus" in err
+
+
+def test_judges_rejects_partial_unknown_token(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A comma list mixing known + unknown still rejects the unknown one."""
+    seed = _make_seed(tmp_path)
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(seed),
+                "--out-dir",
+                str(tmp_path / "out"),
+                "--judges",
+                "visual_judge,bogus",
+            ]
+        )
+    assert excinfo.value.code == EXIT_USAGE
+    err = capsys.readouterr().err
+    assert "bogus" in err

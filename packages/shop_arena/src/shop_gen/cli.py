@@ -34,10 +34,12 @@ from harness.plan.parser import InvalidPlanError
 from shop_gen.build.redo import RedoError, append_redo_task
 from shop_gen.config import (
     DEFAULT_IMAGE_BACKEND,
+    DEFAULT_JUDGES,
     DEFAULT_MAX_ITERS,
     DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_RUNTIME,
     DEFAULT_VISUAL_RETRY_BUDGET,
+    KNOWN_JUDGES,
     CatalogConfig,
     ImageBackend,
     RuntimeName,
@@ -198,6 +200,19 @@ def _build_parser() -> argparse.ArgumentParser:
             "Per-task cap on consecutive ``visual_judge`` FAILs before the verifier "
             "downgrades to ADVISORY (spec \u00a75.4). ``0`` disables the budget. "
             f"Default: {DEFAULT_VISUAL_RETRY_BUDGET}."
+        ),
+    )
+    parser.add_argument(
+        "--judges",
+        type=_parse_judges_arg,
+        default=None,
+        metavar="LIST",
+        help=(
+            "LLM judges to run (spec \u00a75.5). Accepts a comma-separated list of "
+            f"known judge names ({', '.join(sorted(KNOWN_JUDGES))}), the literal "
+            "``all`` (every known judge), or ``none`` (disable every LLM judge; "
+            "rule verifiers always run). Unknown tokens are rejected as a usage "
+            "error. Default: every known judge."
         ),
     )
 
@@ -363,6 +378,8 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
 
     image_backend: ImageBackend = args.image_backend
 
+    judges: frozenset[str] = DEFAULT_JUDGES if args.judges is None else args.judges
+
     return ShopGenConfig(
         seeds=tuple(args.seeds),
         out_dir=args.out_dir,
@@ -373,7 +390,55 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
         max_iters=args.max_iters,
         image_backend=image_backend,
         visual_retry_budget=args.visual_retry_budget,
+        judges=judges,
     )
+
+
+def _parse_judges_arg(raw: str) -> frozenset[str]:
+    """Parse the ``--judges`` flag value (impl plan T3.4, spec §5.5 + §5.9).
+
+    Accepts:
+
+    * ``none`` — the empty set (disable every LLM judge).
+    * ``all`` — :data:`DEFAULT_JUDGES` (every known LLM judge).
+    * Comma-separated list of known judge names.
+
+    Unknown tokens raise :class:`argparse.ArgumentTypeError`, which
+    argparse renders as a usage error and exits with
+    :data:`EXIT_USAGE`.
+
+    Args:
+        raw: Raw flag value as supplied on the command line.
+
+    Returns:
+        Selected judge set as a ``frozenset[str]``.
+
+    Raises:
+        argparse.ArgumentTypeError: ``raw`` is empty, contains only
+            whitespace, or names a token outside :data:`KNOWN_JUDGES`.
+    """
+    sentinel = raw.strip().lower()
+    if sentinel == "none":
+        return frozenset()
+    if sentinel == "all":
+        return DEFAULT_JUDGES
+
+    parts = tuple(p.strip() for p in raw.split(","))
+    tokens = tuple(p for p in parts if p)
+    if not tokens:
+        raise argparse.ArgumentTypeError(
+            "--judges expects a comma-separated list, ``all``, or ``none``"
+        )
+    selected = frozenset(tokens)
+    unknown = selected - KNOWN_JUDGES
+    if unknown:
+        offending = ", ".join(sorted(unknown))
+        known = ", ".join(sorted(KNOWN_JUDGES))
+        raise argparse.ArgumentTypeError(
+            f"--judges: unknown judge name(s): {offending}; "
+            f"known judges are {known} (or ``all`` / ``none``)"
+        )
+    return selected
 
 
 _BUILD_LOOP_STEP_ID = "run_build_harness_loop"
