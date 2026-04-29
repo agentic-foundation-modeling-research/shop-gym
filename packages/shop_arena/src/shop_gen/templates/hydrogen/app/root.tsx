@@ -13,6 +13,7 @@ import {
 import type {Route} from './+types/root';
 import favicon from '~/assets/favicon.svg';
 import {FOOTER_QUERY, HEADER_QUERY} from '~/lib/fragments';
+import type {FooterQuery} from 'storefrontapi.generated';
 import resetStyles from '~/styles/reset.css?url';
 import appStyles from '~/styles/app.css?url';
 import {PageLayout} from './components/PageLayout';
@@ -115,30 +116,76 @@ async function loadCriticalData({context}: Route.LoaderArgs) {
 }
 
 /**
+ * Default footer menu handle used when `env.PUBLIC_FOOTER_MENU_HANDLES` is
+ * unset or empty. Matches the single-handle behavior the loader shipped with
+ * before T3.2.
+ */
+const DEFAULT_FOOTER_MENU_HANDLE = 'footer';
+
+/**
+ * Parses the comma-separated `PUBLIC_FOOTER_MENU_HANDLES` env var into a
+ * deduplicated list of handles. Falls back to `[DEFAULT_FOOTER_MENU_HANDLE]`
+ * when the var is missing, empty, or all-whitespace so existing artifacts
+ * continue to render their single-column footer.
+ */
+function parseFooterMenuHandles(raw: string | undefined): string[] {
+  if (!raw) return [DEFAULT_FOOTER_MENU_HANDLE];
+  const handles = raw
+    .split(',')
+    .map((handle) => handle.trim())
+    .filter((handle) => handle.length > 0);
+  if (handles.length === 0) return [DEFAULT_FOOTER_MENU_HANDLE];
+  // Deduplicate while preserving first-occurrence order.
+  return Array.from(new Set(handles));
+}
+
+/**
  * Load data for rendering content below the fold. This data is deferred and will be
  * fetched after the initial page load. If it's unavailable, the page should still 200.
  * Make sure to not throw any errors here, as it will cause the page to 500.
  */
 function loadDeferredData({context}: Route.LoaderArgs) {
-  const {storefront, customerAccount, cart} = context;
+  const {storefront, customerAccount, cart, env} = context;
 
-  // defer the footer query (below the fold)
-  const footer = storefront
-    .query(FOOTER_QUERY, {
-      cache: storefront.CacheLong(),
-      variables: {
-        footerMenuHandle: 'footer', // Adjust to your footer menu handle
-      },
-    })
-    .catch((error: Error) => {
-      // Log query errors, but don't throw them so the page can still render
-      console.error(error);
-      return null;
-    });
+  const footerMenuHandles = parseFooterMenuHandles(
+    env.PUBLIC_FOOTER_MENU_HANDLES,
+  );
+
+  // Fan out one parallel query per handle. We intentionally call the
+  // single-handle `FOOTER_QUERY` N times rather than aliasing handles into a
+  // single GraphQL operation: the codegen pipeline keys off the static query
+  // string, so a fixed shape keeps the generated `FooterQuery` type stable
+  // across shops while N varies at runtime.
+  const footers: Promise<Array<FooterQuery | null>> = Promise.all(
+    footerMenuHandles.map((handle) =>
+      storefront
+        .query(FOOTER_QUERY, {
+          cache: storefront.CacheLong(),
+          variables: {
+            footerMenuHandle: handle,
+          },
+        })
+        .catch((error: Error) => {
+          // Log query errors, but don't throw them so the page can still render
+          console.error(error);
+          return null;
+        }),
+    ),
+  );
+
+  // Back-compat: emit a single-menu `footer` derived from the first handle so
+  // existing `<PageLayout>` / `<Footer>` consumers (which still expect
+  // `footer: Promise<FooterQuery | null>`) keep compiling until T3.4 migrates
+  // them onto the array shape.
+  const footer: Promise<FooterQuery | null> = footers.then(
+    (results) => results[0] ?? null,
+  );
+
   return {
     cart: cart.get(),
     isLoggedIn: customerAccount.isLoggedIn(),
     footer,
+    footers,
   };
 }
 
