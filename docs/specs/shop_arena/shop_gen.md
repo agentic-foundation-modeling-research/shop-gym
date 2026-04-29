@@ -487,6 +487,7 @@ the harness via `PlanExecLoopConfig.verifiers`.
 | `data_in_use`         | rule | every `gen_*` task                      | The agent's GraphQL queries match shop_backend's schema (introspection diff). |
 | `nav_coverage`        | rule | post `gen_navigation`                   | Every collection in `data/collections.json` is reachable from the nav.  |
 | `quality_judge`       | LLM  | post `gen_homepage`, `gen_product`, `gen_cart_search`, `visual_polish`, `consolidate` | Render the page; LLM judges quality against `capabilities.json` keys. **Quality-only**, not a cross-compare with seeds. |
+| `visual_judge`        | LLM  | post `gen_homepage`, `gen_product`, `gen_cart_search`, `visual_polish`, `consolidate` | Boots a transient dev server and drives the playwright skill against the task's routes; LLM judges the **rendered** storefront against the bucket-filtered `capabilities.json` slice. Per-task retry budget; page-bucket fan-out for `consolidate`. See [`visual_verifier.md`](visual_verifier.md). |
 | `cross_task_consistency` | LLM | post `consolidate`             | Whole-app sweep: are all generated components mutually consistent (shared design tokens, shared types, no orphan imports, navigation matches collections)? |
 
 The set is pluggable via the library API: callers can append custom
