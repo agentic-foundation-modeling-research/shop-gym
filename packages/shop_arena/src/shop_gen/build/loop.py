@@ -44,6 +44,7 @@ Module is import-safe: no I/O, no env reads, no side effects at import.
 
 from __future__ import annotations
 
+import logging
 import shutil
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
@@ -82,7 +83,9 @@ from shop_gen.build.verifiers import (
     QualityJudgeVerifier,
     SchemaIntrospection,
     TscVerifier,
+    VisualJudgeVerifier,
 )
+from shop_gen.build.verifiers._skills import is_playwright_skill_available
 from shop_gen.build.verifiers._subprocess import (
     SubprocessRunner,
     default_subprocess_runner,
@@ -90,7 +93,11 @@ from shop_gen.build.verifiers._subprocess import (
 )
 from shop_gen.config import ShopGenConfig
 from shop_gen.data_validation.hosting_check import find_shop_backend_cli
+from shop_gen.final_eval.playwright_smoke import DevServerFactory
 from shop_gen.steps.base import FileInput, InputRef, StepContext, StepInput
+
+_log = logging.getLogger(__name__)
+
 
 _PHASE: Final[str] = "build"
 _STEP_ID: Final[str] = "run_build_harness_loop"
@@ -540,10 +547,30 @@ def _default_sidecar_factory(
     return sidecar_lifecycle(argv=argv, port=port)
 
 
+def _unconfigured_dev_server_factory(
+    hydrogen_dir: Path,
+) -> AbstractContextManager[str]:  # pragma: no cover — production wiring deferred.
+    """Default :class:`DevServerFactory` for ``visual_judge`` — refuses to boot.
+
+    The production ``pnpm dev`` driver is deferred to impl plan T6.1;
+    until then the build-loop default factory injects this placeholder.
+    Tests inject a working factory through the
+    :func:`default_verifiers_factory` ``dev_server_factory`` seam, and
+    callers that omit it never reach this code because the visual-judge
+    verifier is itself gated behind the playwright skill probe.
+    """
+    del hydrogen_dir
+    raise NotImplementedError(
+        "default visual_judge dev_server_factory is unconfigured; "
+        "inject a `dev_server_factory` via `default_verifiers_factory` (T6.1).",
+    )
+
+
 def default_verifiers_factory(
     *,
     out_dir: Path,
     sidecar: SidecarHandle,
+    dev_server_factory: DevServerFactory | None = None,
 ) -> tuple[Verifier, ...]:
     """Build the v0.1 verifier set documented in spec §5.5.3 + §5.5.4.
 
@@ -551,11 +578,22 @@ def default_verifiers_factory(
     default uses the production wiring (real ``pnpm`` invocations, the
     live sidecar's introspection endpoint, the shipped allowlist).
 
+    The ``visual_judge`` LLM verifier (spec §5.2) is gated behind the
+    :func:`~shop_gen.build.verifiers._skills.is_playwright_skill_available`
+    probe (impl plan T1.5): when the ``pi-playwright`` skill is missing
+    the verifier is omitted from the tuple and a single warning is
+    logged with the install hint. Rule verifiers are always present.
+
     Args:
         out_dir: Run workspace. Used by ``nav_coverage`` to locate
-            ``data/collections.json``.
+            ``data/collections.json`` and by ``visual_judge`` to locate
+            ``data/{collections,products,pages}.json``.
         sidecar: Live :class:`SidecarHandle`. Used by ``data_in_use`` to
             point at the introspection endpoint.
+        dev_server_factory: :class:`DevServerFactory` that boots the
+            hydrogen dev server for the visual-judge sub-iteration.
+            Defaults to :func:`_unconfigured_dev_server_factory`; the
+            production ``pnpm dev`` runner replaces it under T6.1.
 
     Returns:
         Ordered verifier tuple suitable for
@@ -563,7 +601,8 @@ def default_verifiers_factory(
         spec table; harness dispatch is independent of order, so it is
         chosen for readability in ``feedback.md``.
     """
-    return (
+    factory: DevServerFactory = dev_server_factory or _unconfigured_dev_server_factory
+    verifiers: list[Verifier] = [
         TscVerifier(),
         BuildVerifier(),
         DataInUseVerifier(
@@ -572,8 +611,21 @@ def default_verifiers_factory(
         NavCoverageVerifier(data_dir=out_dir / _DATA_DIR),
         # NoBrandLeakVerifier(),  # temporarily disabled — broken; re-add import + line to revive.
         QualityJudgeVerifier(),
-        CrossTaskConsistencyVerifier(),
-    )
+    ]
+    if is_playwright_skill_available():
+        verifiers.append(
+            VisualJudgeVerifier(
+                data_dir=out_dir / _DATA_DIR,
+                dev_server_factory=factory,
+            ),
+        )
+    else:
+        _log.warning(
+            "`visual_judge` skipped: pi-playwright skill not found. "
+            "Install with `pnpm add -g pi-playwright` (or `npm i -g pi-playwright`) to enable.",
+        )
+    verifiers.append(CrossTaskConsistencyVerifier())
+    return tuple(verifiers)
 
 
 # --------------------------------------------------------------------------- #

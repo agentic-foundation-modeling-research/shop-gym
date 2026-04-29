@@ -84,6 +84,7 @@ from shop_gen.build.verifiers import (
     QualityJudgeVerifier,
     SchemaIntrospection,
     TscVerifier,
+    VisualJudgeVerifier,
 )
 
 __all__ = [
@@ -111,6 +112,7 @@ __all__ = [
     "StartSidecarStep",
     "TscVerifier",
     "VerifiersFactory",
+    "VisualJudgeVerifier",
     "WriteEnvFileStep",
     "append_redo_task",
     "default_verifiers_factory",

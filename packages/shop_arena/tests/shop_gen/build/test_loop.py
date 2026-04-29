@@ -63,6 +63,7 @@ from shop_gen.build.verifiers import (
     NavCoverageVerifier,
     QualityJudgeVerifier,
     TscVerifier,
+    VisualJudgeVerifier,
 )
 from shop_gen.build.verifiers._subprocess import CompletedSubprocess
 from shop_gen.config import ShopGenConfig
@@ -626,8 +627,11 @@ def test_step_run_drives_real_harness_with_replay_runtime(tmp_path: Path) -> Non
 # --------------------------------------------------------------------------- #
 
 
-def test_default_verifiers_factory_returns_v01_set(tmp_path: Path) -> None:
-    """Spec §5.5.3: the v0.1 factory wires the verifier table verbatim.
+def test_default_verifiers_factory_returns_v01_set_when_skill_missing(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Spec §5.5.3 + impl plan T1.5: skill missing → visual_judge omitted with one warning.
 
     ``NoBrandLeakVerifier`` is deliberately omitted: commit ``e54c98f``
     disabled it in the factory because the allowlist tokenizer flagged
@@ -635,13 +639,21 @@ def test_default_verifiers_factory_returns_v01_set(tmp_path: Path) -> None:
     (``Route``, ``LoaderArgs``, ``Money``, ``CartForm``, …) and produced
     thousands of false positives the agent could not fix. The brand-
     safety contract is now carried by the AGENTS.md "Don'ts" bullet.
+
+    SC7 (skill-probe failure path): the factory drops ``visual_judge``
+    from the tuple and emits exactly one ``WARNING`` with the install
+    hint; rule verifiers are still present.
     """
     out_dir = tmp_path / "out"
     out_dir.mkdir()
     _materialise_workspace(out_dir)
 
     sidecar = _stub_handle()
-    verifiers = default_verifiers_factory(out_dir=out_dir, sidecar=sidecar)
+    with (
+        patch("shop_gen.build.loop.is_playwright_skill_available", return_value=False),
+        caplog.at_level("WARNING", logger="shop_gen.build.loop"),
+    ):
+        verifiers = default_verifiers_factory(out_dir=out_dir, sidecar=sidecar)
 
     types = [type(v) for v in verifiers]
     assert types == [
@@ -651,6 +663,48 @@ def test_default_verifiers_factory_returns_v01_set(tmp_path: Path) -> None:
         NavCoverageVerifier,
         QualityJudgeVerifier,
         CrossTaskConsistencyVerifier,
+    ]
+
+    visual_warnings = [
+        record
+        for record in caplog.records
+        if record.levelname == "WARNING" and "visual_judge" in record.getMessage()
+    ]
+    assert len(visual_warnings) == 1
+    assert "pi-playwright" in visual_warnings[0].getMessage()
+
+
+def test_default_verifiers_factory_includes_visual_judge_when_skill_present(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Impl plan T1.5: skill present → visual_judge slots between quality_judge and cross_task."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with (
+        patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True),
+        caplog.at_level("WARNING", logger="shop_gen.build.loop"),
+    ):
+        verifiers = default_verifiers_factory(out_dir=out_dir, sidecar=sidecar)
+
+    types = [type(v) for v in verifiers]
+    assert types == [
+        TscVerifier,
+        BuildVerifier,
+        DataInUseVerifier,
+        NavCoverageVerifier,
+        QualityJudgeVerifier,
+        VisualJudgeVerifier,
+        CrossTaskConsistencyVerifier,
+    ]
+    # No skill-probe warning when the skill is present.
+    assert not [
+        record
+        for record in caplog.records
+        if record.levelname == "WARNING" and "visual_judge" in record.getMessage()
     ]
 
 

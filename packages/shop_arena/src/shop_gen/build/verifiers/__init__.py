@@ -44,6 +44,7 @@ from shop_gen.build.verifiers.nav_coverage import NavCoverageVerifier
 from shop_gen.build.verifiers.no_brand_leak import NoBrandLeakVerifier
 from shop_gen.build.verifiers.quality_judge import QualityJudgeVerifier
 from shop_gen.build.verifiers.tsc import TscVerifier
+from shop_gen.build.verifiers.visual_judge import VisualJudgeVerifier
 
 __all__ = [
     "BuildVerifier",
@@ -56,4 +57,5 @@ __all__ = [
     "QualityJudgeVerifier",
     "SchemaIntrospection",
     "TscVerifier",
+    "VisualJudgeVerifier",
 ]
