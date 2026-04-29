@@ -182,16 +182,20 @@ def _build_ctx(
     *,
     max_iters: int = 5,
     visual_retry_budget: int = 3,
+    judges: frozenset[str] | None = None,
 ) -> StepContext:
     """Construct a :class:`StepContext` rooted at ``out_dir``."""
     seed = out_dir.parent / "seed"
     seed.mkdir(exist_ok=True)
-    cfg = ShopGenConfig(
-        seeds=(seed,),
-        out_dir=out_dir,
-        max_iters=max_iters,
-        visual_retry_budget=visual_retry_budget,
-    )
+    kwargs: dict[str, object] = {
+        "seeds": (seed,),
+        "out_dir": out_dir,
+        "max_iters": max_iters,
+        "visual_retry_budget": visual_retry_budget,
+    }
+    if judges is not None:
+        kwargs["judges"] = judges
+    cfg = ShopGenConfig(**kwargs)  # type: ignore[arg-type]
     return StepContext(config=cfg, out_dir=out_dir)
 
 
@@ -208,10 +212,11 @@ def _empty_verifiers_factory(
     *,
     out_dir: Path,
     sidecar: SidecarHandle,
+    judges: frozenset[str] = frozenset(),
     visual_retry_budget: int = 3,
 ) -> tuple[Verifier, ...]:
     """Return an empty verifier tuple; reused across tests that don't care about dispatch."""
-    del out_dir, sidecar, visual_retry_budget
+    del out_dir, sidecar, judges, visual_retry_budget
     return ()
 
 
@@ -289,9 +294,10 @@ def test_step_forwards_visual_retry_budget_to_verifiers_factory(
         *,
         out_dir: Path,
         sidecar: SidecarHandle,
+        judges: frozenset[str] = frozenset(),
         visual_retry_budget: int = 3,
     ) -> tuple[Verifier, ...]:
-        del out_dir, sidecar
+        del out_dir, sidecar, judges
         captured_budgets.append(visual_retry_budget)
         return ()
 
@@ -324,6 +330,59 @@ def test_step_forwards_visual_retry_budget_to_verifiers_factory(
         step.run(_build_ctx(out_dir, visual_retry_budget=0))
 
     assert captured_budgets == [0]
+
+
+def test_step_forwards_judges_to_verifiers_factory(
+    tmp_path: Path,
+) -> None:
+    """Impl plan T3.3: ``ctx.config.judges`` reaches the verifiers factory."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    captured_judges: list[frozenset[str]] = []
+
+    def _verifiers_factory(
+        *,
+        out_dir: Path,
+        sidecar: SidecarHandle,
+        judges: frozenset[str] = frozenset(),
+        visual_retry_budget: int = 3,
+    ) -> tuple[Verifier, ...]:
+        del out_dir, sidecar, visual_retry_budget
+        captured_judges.append(judges)
+        return ()
+
+    def _loop_runner(
+        config: PlanExecLoopConfig,
+        runtime: AgentRuntime,
+        *,
+        force: bool,
+    ) -> PlanExecLoopResult:
+        del runtime, force
+        return PlanExecLoopResult(
+            run_dir=config.run_dir,
+            final_status=FinalStatus.COMPLETED,
+            plan_iter_count=0,
+            exec_iter_count=0,
+        )
+
+    step = RunBuildHarnessLoopStep(
+        loop_runner=_loop_runner,
+        runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
+        sidecar_factory=_stub_sidecar_factory,
+        verifiers_factory=_verifiers_factory,
+        install_runner=_stub_install_runner,
+    )
+
+    selected = frozenset({"visual_judge"})
+    with patch(
+        "shop_gen.build.loop.find_shop_backend_cli",
+        return_value=_shop_backend_cli_stub(),
+    ):
+        step.run(_build_ctx(out_dir, judges=selected))
+
+    assert captured_judges == [selected]
 
 
 # --------------------------------------------------------------------------- #
@@ -368,9 +427,10 @@ def test_step_run_passes_expected_loop_config_to_harness(tmp_path: Path) -> None
         *,
         out_dir: Path,
         sidecar: SidecarHandle,
+        judges: frozenset[str] = frozenset(),
         visual_retry_budget: int = 3,
     ) -> tuple[Verifier, ...]:
-        del out_dir, visual_retry_budget
+        del out_dir, judges, visual_retry_budget
         captured_handles.append(sidecar)
         return (sentinel,)
 

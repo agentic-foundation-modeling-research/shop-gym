@@ -269,9 +269,10 @@ def _build_verifiers_factory(*, data_dir: Path) -> VerifiersFactory:
         *,
         out_dir: Path,
         sidecar: SidecarHandle,
+        judges: frozenset[str] = frozenset(),
         visual_retry_budget: int = 3,
     ) -> tuple[Verifier, ...]:
-        del out_dir, sidecar, visual_retry_budget
+        del out_dir, sidecar, judges, visual_retry_budget
         return (
             TscVerifier(runner=_passing_subprocess_runner),
             BuildVerifier(runner=_passing_subprocess_runner),

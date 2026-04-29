@@ -382,6 +382,7 @@ class RunBuildHarnessLoopStep:
             verifiers = self._verifiers_factory(
                 out_dir=out_dir,
                 sidecar=sidecar,
+                judges=ctx.config.judges,
                 visual_retry_budget=ctx.config.visual_retry_budget,
             )
             loop_config = harness_config.model_copy(update={"verifiers": verifiers})

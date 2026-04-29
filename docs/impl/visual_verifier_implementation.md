@@ -103,7 +103,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 - [x] **T3.2** — `default_verifiers_factory(*, out_dir, sidecar, judges, ...) -> tuple[Verifier, ...]`: gate each LLM-judge constructor behind a membership check on `judges`. Rule verifiers always included. The `visual_judge` branch also gates on `is_playwright_skill_available()` (T1.5). Spec §5.5, §5.5.1. **Check:** `judges=frozenset()` returns only the rule verifiers; `judges={"visual_judge"}` includes exactly one LLM judge (when skill present); `judges={"visual_judge"}` + skill missing returns rule verifiers only with one warning.
 
-- [ ] **T3.3** — Thread `judges` through `build/loop.py::run_build_loop` and the step that wraps it. **Check:** library callers can pass `judges={"visual_judge"}` and observe the right tuple.
+- [x] **T3.3** — Thread `judges` through `build/loop.py::run_build_loop` and the step that wraps it. **Check:** library callers can pass `judges={"visual_judge"}` and observe the right tuple.
 
 - [ ] **T3.4** — CLI flag `--judges <comma-list|all|none>` on `cli.py`. Parse `none` → empty set, `all` → full default set, comma-separated → set of tokens. Reject unknown tokens with a CLI-level error. Spec §5.5 + §5.9. **Check:** integration test exercises `--judges visual_judge,quality_judge`, `--judges none`, `--judges all`, `--judges bogus` (rejected).
 
