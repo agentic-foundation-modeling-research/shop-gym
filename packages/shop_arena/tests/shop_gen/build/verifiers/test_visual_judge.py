@@ -274,6 +274,11 @@ def test_run_returns_pass_when_agent_emits_clean_verdict(
     assert result.details["buckets_run"] == ["homepage"]
     assert result.details["routes"] == ["/"]
     assert result.details["score"] == 8.5  # noqa: PLR2004 -- mirrors fixture
+    assert result.details["category_scores"] == {
+        "structure": 8,
+        "components": 7,
+        "visual_tone": 9,
+    }
     assert result.details["pages_judged"] == 2  # noqa: PLR2004 -- mirrors fixture
     assert result.details["retry_budget_exhausted"] is False
     assert result.details["prior_fails"] == 0
@@ -416,6 +421,42 @@ def test_run_coerces_pass_to_fail_on_critical_issue(
     assert result.verdict is Verdict.FAIL
     assert result.details["coercion_reason"] == "critical-severity issue forces fail"
     assert result.details["issue_count"] == 1
+
+
+def test_run_threshold_lowered_lets_marginal_pass_through(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """Impl plan T3.6: a lowered threshold survives a `score=6.0` pass.
+
+    Demonstrates the knob is observable end-to-end: with the default
+    threshold of 7.0 a `score=6.0` `pass` would coerce to FAIL
+    (covered above); with `pass_threshold=5.0` the same body survives
+    coercion and the verifier emits PASS.
+    """
+    runtime = _RecordingRuntime(verdict_body=_pass_body(score=6.0))
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=_StubDevServer(),
+        pass_threshold=5.0,
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="gen_homepage")
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.PASS
+    assert result.details["coercion_reason"] is None
+    assert result.details["score"] == 6.0  # noqa: PLR2004 -- mirrors fixture
+
+
+def test_init_stores_max_concurrency() -> None:
+    """Impl plan T3.6: page-bucket fan-out worker count is stored on the verifier."""
+    verifier = VisualJudgeVerifier(
+        data_dir=Path("/tmp"),
+        dev_server_factory=_StubDevServer(),
+        max_concurrency=5,
+    )
+    assert verifier._max_concurrency == 5  # noqa: PLR2004 -- mirrors fixture
 
 
 # --------------------------------------------------------------------------- #
@@ -751,7 +792,6 @@ def test_run_ignores_retry_budget_when_zero(
     assert len(runtime.calls) == 1
 
 
-
 # --------------------------------------------------------------------------- #
 # SC3 — full-dispatch retry-budget downgrade (T2.5 — spec §5.4)
 # --------------------------------------------------------------------------- #
@@ -827,6 +867,7 @@ def test_sc3_dispatch_records_advisory_downgrade_after_three_fails(
     assert payload["details"]["retry_budget"] == 3  # noqa: PLR2004 -- mirrors ctor arg
     assert "retry budget" in payload["feedback"]
     del tmp_path  # unused; artifact_dir already lives under tmp_path
+
 
 # --------------------------------------------------------------------------- #
 # Default fixture seeding

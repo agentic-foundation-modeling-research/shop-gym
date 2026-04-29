@@ -50,6 +50,8 @@ _EXPECTED_COLLECTIONS = 3
 _EXPECTED_PRODUCTS_PER_COLLECTION = 4
 _EXPECTED_IMAGES_PER_PRODUCT = 5
 _EXPECTED_VISUAL_RETRY_BUDGET = 5
+_EXPECTED_VISUAL_JUDGE_PASS_THRESHOLD = 6.5
+_EXPECTED_VISUAL_JUDGE_MAX_CONCURRENCY = 8
 
 
 # --------------------------------------------------------------------------- #
@@ -306,6 +308,87 @@ def test_visual_retry_budget_negative_is_config_error(
             str(tmp_path / "out"),
             "--visual-retry-budget",
             "-1",
+        ]
+    )
+    assert rc == EXIT_CONFIG
+    assert "invalid configuration" in capsys.readouterr().err
+
+
+def test_visual_judge_pass_threshold_flag_propagates_to_config(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Impl plan T3.6: ``--visual-judge-pass-threshold`` threads into ``ShopGenConfig``."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--visual-judge-pass-threshold",
+            str(_EXPECTED_VISUAL_JUDGE_PASS_THRESHOLD),
+        ]
+    )
+    assert rc == EXIT_OK
+    assert (
+        captured_run["config"].visual_judge_pass_threshold == _EXPECTED_VISUAL_JUDGE_PASS_THRESHOLD
+    )
+
+
+def test_visual_judge_pass_threshold_negative_is_config_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Impl plan T3.6: pydantic ``ge=0`` rejects negative thresholds."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--visual-judge-pass-threshold",
+            "-1.0",
+        ]
+    )
+    assert rc == EXIT_CONFIG
+    assert "invalid configuration" in capsys.readouterr().err
+
+
+def test_visual_judge_max_concurrency_flag_propagates_to_config(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Impl plan T3.6: ``--visual-judge-max-concurrency`` threads into ``ShopGenConfig``."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--visual-judge-max-concurrency",
+            str(_EXPECTED_VISUAL_JUDGE_MAX_CONCURRENCY),
+        ]
+    )
+    assert rc == EXIT_OK
+    assert (
+        captured_run["config"].visual_judge_max_concurrency
+        == _EXPECTED_VISUAL_JUDGE_MAX_CONCURRENCY
+    )
+
+
+def test_visual_judge_max_concurrency_zero_is_config_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Impl plan T3.6: ``0`` worker count is rejected (must be strictly positive)."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--visual-judge-max-concurrency",
+            "0",
         ]
     )
     assert rc == EXIT_CONFIG

@@ -109,7 +109,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 - [x] **T3.5** — Tests: SC5 — `--judges visual_judge,quality_judge` registers exactly those two LLM judges (when skill present); `cross_task_consistency` is absent. `--judges none` registers zero LLM judges. **Check:** assert `len(verifier_runs) by name` per case.
 
-- [ ] **T3.6** — Score + concurrency knobs (delta 1 + delta 2):
+- [x] **T3.6** — Score + concurrency knobs (delta 1 + delta 2):
   - `ShopGenConfig.visual_judge_pass_threshold: float = 7.0` (§9.3 score-coercion threshold)
   - `ShopGenConfig.visual_judge_max_concurrency: int = 3` (§5.2.1 step 5, §5.6 fan-out worker count)
   - CLI: `--visual-judge-pass-threshold <float>`, `--visual-judge-max-concurrency <int>`

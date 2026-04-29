@@ -28,6 +28,8 @@ from shop_gen.config import (
     DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_PRODUCTS_PER_COLLECTION,
     DEFAULT_RUNTIME,
+    DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
+    DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
     DEFAULT_VISUAL_RETRY_BUDGET,
     KNOWN_JUDGES,
     CatalogConfig,
@@ -96,6 +98,8 @@ def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
     assert cfg.catalog == CatalogConfig()
     assert cfg.visual_retry_budget == DEFAULT_VISUAL_RETRY_BUDGET
     assert cfg.judges == DEFAULT_JUDGES
+    assert cfg.visual_judge_pass_threshold == DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD
+    assert cfg.visual_judge_max_concurrency == DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY
 
 
 def test_default_model_for_returns_per_runtime_pinned_opus() -> None:
@@ -265,6 +269,50 @@ def test_shop_gen_config_accepts_non_negative_visual_retry_budget(
     seed = _seed(tmp_path)
     cfg = ShopGenConfig(seeds=[seed], visual_retry_budget=good)
     assert cfg.visual_retry_budget == good
+
+
+@pytest.mark.parametrize("bad", [-0.1, -1.0, -42.0])
+def test_shop_gen_config_rejects_negative_visual_judge_pass_threshold(
+    tmp_path: Path,
+    bad: float,
+) -> None:
+    """Impl plan T3.6 / spec §9.3: pass threshold must be non-negative."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], visual_judge_pass_threshold=bad)
+
+
+@pytest.mark.parametrize("good", [0.0, 5.5, 7.0, 9.9, 10.0])
+def test_shop_gen_config_accepts_non_negative_visual_judge_pass_threshold(
+    tmp_path: Path,
+    good: float,
+) -> None:
+    """Impl plan T3.6: any non-negative score floor round-trips."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], visual_judge_pass_threshold=good)
+    assert cfg.visual_judge_pass_threshold == good
+
+
+@pytest.mark.parametrize("bad", [0, -1, -3])
+def test_shop_gen_config_rejects_non_positive_visual_judge_max_concurrency(
+    tmp_path: Path,
+    bad: int,
+) -> None:
+    """Impl plan T3.6 / spec §5.6: fan-out worker count must be strictly positive."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], visual_judge_max_concurrency=bad)
+
+
+@pytest.mark.parametrize("good", [1, 3, 6, 16])
+def test_shop_gen_config_accepts_positive_visual_judge_max_concurrency(
+    tmp_path: Path,
+    good: int,
+) -> None:
+    """Impl plan T3.6: positive worker counts round-trip."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], visual_judge_max_concurrency=good)
+    assert cfg.visual_judge_max_concurrency == good
 
 
 # --------------------------------------------------------------------------- #

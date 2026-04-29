@@ -78,6 +78,14 @@ _DEFAULT_RETRY_BUDGET: Final[int] = 3
 _DEFAULT_PASS_THRESHOLD: Final[float] = 7.0
 """Score floor below which an emitted ``pass`` is coerced to ``fail`` (spec §9.3)."""
 
+_DEFAULT_MAX_CONCURRENCY: Final[int] = 3
+"""Default page-bucket fan-out worker count (spec §5.2.1 step 5, §5.6).
+
+Caps the ``ThreadPoolExecutor`` width used by the M5 ``consolidate``
+fan-out (T5.7). M1 only ever invokes a single bucket at a time, so the
+knob is stored on the verifier but not yet consumed inside ``run()``.
+"""
+
 _HYDROGEN_DIRNAME: Final[str] = "hydrogen"
 """Subdir of ``ctx.artifact_dir`` the dev-server factory is rooted at."""
 
@@ -148,6 +156,7 @@ class VisualJudgeVerifier:
         retry_budget: int = _DEFAULT_RETRY_BUDGET,
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         pass_threshold: float = _DEFAULT_PASS_THRESHOLD,
+        max_concurrency: int = _DEFAULT_MAX_CONCURRENCY,
         applicable_tasks: Iterable[str] | None = None,
     ) -> None:
         """Build the verifier with optional injection seams.
@@ -169,6 +178,10 @@ class VisualJudgeVerifier:
                 iteration. Defaults to :data:`_DEFAULT_TIMEOUT_S`.
             pass_threshold: Score floor for the §9.3 coercion rule.
                 Defaults to :data:`_DEFAULT_PASS_THRESHOLD`.
+            max_concurrency: Page-bucket fan-out worker count (spec
+                §5.2.1 step 5, §5.6). Defaults to
+                :data:`_DEFAULT_MAX_CONCURRENCY`. Stored for the M5
+                fan-out arm; M1 invokes a single bucket per call.
             applicable_tasks: Override the default applicability set.
                 Defaults to :data:`_DEFAULT_TASKS` (M1 scope, minus
                 ``consolidate``).
@@ -178,6 +191,7 @@ class VisualJudgeVerifier:
         self._retry_budget = retry_budget
         self._timeout_s = timeout_s
         self._pass_threshold = pass_threshold
+        self._max_concurrency = max_concurrency
         self._applicable_tasks: frozenset[str] = (
             _DEFAULT_TASKS if applicable_tasks is None else frozenset(applicable_tasks)
         )

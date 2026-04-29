@@ -38,6 +38,8 @@ from shop_gen.config import (
     DEFAULT_MAX_ITERS,
     DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_RUNTIME,
+    DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
+    DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
     DEFAULT_VISUAL_RETRY_BUDGET,
     KNOWN_JUDGES,
     CatalogConfig,
@@ -200,6 +202,28 @@ def _build_parser() -> argparse.ArgumentParser:
             "Per-task cap on consecutive ``visual_judge`` FAILs before the verifier "
             "downgrades to ADVISORY (spec \u00a75.4). ``0`` disables the budget. "
             f"Default: {DEFAULT_VISUAL_RETRY_BUDGET}."
+        ),
+    )
+    parser.add_argument(
+        "--visual-judge-pass-threshold",
+        type=float,
+        default=DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
+        metavar="FLOAT",
+        help=(
+            "Score floor (0-10) below which an agent-emitted ``visual_judge`` "
+            "``pass`` verdict is coerced to ``fail`` (spec \u00a79.3). "
+            f"Default: {DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD}."
+        ),
+    )
+    parser.add_argument(
+        "--visual-judge-max-concurrency",
+        type=int,
+        default=DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
+        metavar="N",
+        help=(
+            "Page-bucket fan-out worker count for the ``consolidate`` task and the "
+            "final-eval visual sweep (spec \u00a75.2.1 step 5, \u00a75.6). Strictly positive. "
+            f"Default: {DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY}."
         ),
     )
     parser.add_argument(
@@ -390,6 +414,8 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
         max_iters=args.max_iters,
         image_backend=image_backend,
         visual_retry_budget=args.visual_retry_budget,
+        visual_judge_pass_threshold=args.visual_judge_pass_threshold,
+        visual_judge_max_concurrency=args.visual_judge_max_concurrency,
         judges=judges,
     )
 

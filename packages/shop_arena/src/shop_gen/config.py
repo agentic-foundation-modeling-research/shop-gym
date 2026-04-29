@@ -111,6 +111,22 @@ tolerates against the same task before downgrading to ADVISORY. ``0``
 disables the budget entirely.
 """
 
+DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD: Final[float] = 7.0
+"""Default ``visual_judge`` score-coercion floor (spec §9.3).
+
+An agent-emitted ``pass`` verdict is coerced to ``fail`` when the
+overall ``score`` is strictly below this threshold. The default of
+``7.0`` matches the spec table entry in §4.1.
+"""
+
+DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY: Final[int] = 3
+"""Default page-bucket fan-out worker count (spec §5.2.1 step 5, §5.6).
+
+Caps the ``ThreadPoolExecutor`` width used by the ``consolidate``
+page-bucket fan-out and the final-eval visual sweep. Values must
+be strictly positive.
+"""
+
 KNOWN_JUDGES: Final[frozenset[str]] = frozenset(
     {"visual_judge", "quality_judge", "cross_task_consistency"},
 )
@@ -186,6 +202,16 @@ class ShopGenConfig(BaseModel):
             known judge). Unknown tokens raise ``ValidationError`` at
             config-construction time. Pass ``frozenset()`` to disable
             every LLM judge; rule verifiers always run.
+        visual_judge_pass_threshold: Score floor below which an agent-
+            emitted ``visual_judge`` ``pass`` verdict is coerced to
+            ``fail`` (spec §9.3). Defaults to
+            :data:`DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD`. Must be
+            non-negative.
+        visual_judge_max_concurrency: Page-bucket fan-out worker count
+            for the ``consolidate`` task and the final-eval visual sweep
+            (spec §5.2.1 step 5, §5.6). Defaults to
+            :data:`DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY`. Strictly
+            positive.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -200,6 +226,14 @@ class ShopGenConfig(BaseModel):
     image_backend: ImageBackend = DEFAULT_IMAGE_BACKEND
     visual_retry_budget: int = Field(default=DEFAULT_VISUAL_RETRY_BUDGET, ge=0)
     judges: frozenset[str] = Field(default=DEFAULT_JUDGES)
+    visual_judge_pass_threshold: float = Field(
+        default=DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
+        ge=0,
+    )
+    visual_judge_max_concurrency: int = Field(
+        default=DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
+        gt=0,
+    )
 
     @field_validator("seeds", mode="before")
     @classmethod

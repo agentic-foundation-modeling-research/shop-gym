@@ -271,8 +271,11 @@ def _build_verifiers_factory(*, data_dir: Path) -> VerifiersFactory:
         sidecar: SidecarHandle,
         judges: frozenset[str] = frozenset(),
         visual_retry_budget: int = 3,
+        visual_judge_pass_threshold: float = 7.0,
+        visual_judge_max_concurrency: int = 3,
     ) -> tuple[Verifier, ...]:
         del out_dir, sidecar, judges, visual_retry_budget
+        del visual_judge_pass_threshold, visual_judge_max_concurrency
         return (
             TscVerifier(runner=_passing_subprocess_runner),
             BuildVerifier(runner=_passing_subprocess_runner),

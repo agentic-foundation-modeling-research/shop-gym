@@ -91,7 +91,13 @@ from shop_gen.build.verifiers._subprocess import (
     default_subprocess_runner,
     truncate_stream,
 )
-from shop_gen.config import DEFAULT_JUDGES, DEFAULT_VISUAL_RETRY_BUDGET, ShopGenConfig
+from shop_gen.config import (
+    DEFAULT_JUDGES,
+    DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
+    DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
+    DEFAULT_VISUAL_RETRY_BUDGET,
+    ShopGenConfig,
+)
 from shop_gen.data_validation.hosting_check import find_shop_backend_cli
 from shop_gen.final_eval.playwright_smoke import DevServerFactory
 from shop_gen.steps.base import FileInput, InputRef, StepContext, StepInput
@@ -216,6 +222,8 @@ class VerifiersFactory(Protocol):
         sidecar: SidecarHandle,
         judges: frozenset[str] = ...,
         visual_retry_budget: int = ...,
+        visual_judge_pass_threshold: float = ...,
+        visual_judge_max_concurrency: int = ...,
     ) -> tuple[Verifier, ...]:
         """Return the verifier tuple the harness should dispatch."""
         ...
@@ -384,6 +392,8 @@ class RunBuildHarnessLoopStep:
                 sidecar=sidecar,
                 judges=ctx.config.judges,
                 visual_retry_budget=ctx.config.visual_retry_budget,
+                visual_judge_pass_threshold=ctx.config.visual_judge_pass_threshold,
+                visual_judge_max_concurrency=ctx.config.visual_judge_max_concurrency,
             )
             loop_config = harness_config.model_copy(update={"verifiers": verifiers})
             result = self._loop_runner(loop_config, runtime, force=force)
@@ -580,6 +590,8 @@ def default_verifiers_factory(
     judges: frozenset[str] = DEFAULT_JUDGES,
     dev_server_factory: DevServerFactory | None = None,
     visual_retry_budget: int = DEFAULT_VISUAL_RETRY_BUDGET,
+    visual_judge_pass_threshold: float = DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
+    visual_judge_max_concurrency: int = DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
 ) -> tuple[Verifier, ...]:
     """Build the v0.1 verifier set documented in spec §5.5.3 + §5.5.4.
 
@@ -615,6 +627,11 @@ def default_verifiers_factory(
         visual_retry_budget: Per-task cap on consecutive ``visual_judge``
             FAILs before the verifier downgrades to ADVISORY (spec §5.4).
             ``0`` disables the budget. Forwarded to the verifier ctor.
+        visual_judge_pass_threshold: Score floor for the §9.3 pass→fail
+            coercion rule. Forwarded to the verifier ctor.
+        visual_judge_max_concurrency: Page-bucket fan-out worker count
+            (spec §5.2.1 step 5, §5.6). Forwarded to the verifier ctor;
+            consumed by the M5 fan-out arm.
 
     Returns:
         Ordered verifier tuple suitable for
@@ -641,6 +658,8 @@ def default_verifiers_factory(
                     data_dir=out_dir / _DATA_DIR,
                     dev_server_factory=factory,
                     retry_budget=visual_retry_budget,
+                    pass_threshold=visual_judge_pass_threshold,
+                    max_concurrency=visual_judge_max_concurrency,
                 ),
             )
         else:

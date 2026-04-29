@@ -66,7 +66,12 @@ from shop_gen.build.verifiers import (
     VisualJudgeVerifier,
 )
 from shop_gen.build.verifiers._subprocess import CompletedSubprocess
-from shop_gen.config import DEFAULT_VISUAL_RETRY_BUDGET, ShopGenConfig
+from shop_gen.config import (
+    DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
+    DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
+    DEFAULT_VISUAL_RETRY_BUDGET,
+    ShopGenConfig,
+)
 from shop_gen.pipeline import list_steps
 from shop_gen.steps.base import FileInput, Step, StepContext, StepInput
 
@@ -182,6 +187,8 @@ def _build_ctx(
     *,
     max_iters: int = 5,
     visual_retry_budget: int = 3,
+    visual_judge_pass_threshold: float | None = None,
+    visual_judge_max_concurrency: int | None = None,
     judges: frozenset[str] | None = None,
 ) -> StepContext:
     """Construct a :class:`StepContext` rooted at ``out_dir``."""
@@ -195,6 +202,10 @@ def _build_ctx(
     }
     if judges is not None:
         kwargs["judges"] = judges
+    if visual_judge_pass_threshold is not None:
+        kwargs["visual_judge_pass_threshold"] = visual_judge_pass_threshold
+    if visual_judge_max_concurrency is not None:
+        kwargs["visual_judge_max_concurrency"] = visual_judge_max_concurrency
     cfg = ShopGenConfig(**kwargs)  # type: ignore[arg-type]
     return StepContext(config=cfg, out_dir=out_dir)
 
@@ -214,9 +225,12 @@ def _empty_verifiers_factory(
     sidecar: SidecarHandle,
     judges: frozenset[str] = frozenset(),
     visual_retry_budget: int = 3,
+    visual_judge_pass_threshold: float = 7.0,
+    visual_judge_max_concurrency: int = 3,
 ) -> tuple[Verifier, ...]:
     """Return an empty verifier tuple; reused across tests that don't care about dispatch."""
     del out_dir, sidecar, judges, visual_retry_budget
+    del visual_judge_pass_threshold, visual_judge_max_concurrency
     return ()
 
 
@@ -296,8 +310,11 @@ def test_step_forwards_visual_retry_budget_to_verifiers_factory(
         sidecar: SidecarHandle,
         judges: frozenset[str] = frozenset(),
         visual_retry_budget: int = 3,
+        visual_judge_pass_threshold: float = 7.0,
+        visual_judge_max_concurrency: int = 3,
     ) -> tuple[Verifier, ...]:
         del out_dir, sidecar, judges
+        del visual_judge_pass_threshold, visual_judge_max_concurrency
         captured_budgets.append(visual_retry_budget)
         return ()
 
@@ -332,6 +349,68 @@ def test_step_forwards_visual_retry_budget_to_verifiers_factory(
     assert captured_budgets == [0]
 
 
+def test_step_forwards_visual_judge_score_and_concurrency_to_verifiers_factory(
+    tmp_path: Path,
+) -> None:
+    """Impl plan T3.6: pass-threshold + max-concurrency reach the factory."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    captured: list[tuple[float, int]] = []
+
+    def _verifiers_factory(
+        *,
+        out_dir: Path,
+        sidecar: SidecarHandle,
+        judges: frozenset[str] = frozenset(),
+        visual_retry_budget: int = 3,
+        visual_judge_pass_threshold: float = 7.0,
+        visual_judge_max_concurrency: int = 3,
+    ) -> tuple[Verifier, ...]:
+        del out_dir, sidecar, judges, visual_retry_budget
+        captured.append(
+            (visual_judge_pass_threshold, visual_judge_max_concurrency),
+        )
+        return ()
+
+    def _loop_runner(
+        config: PlanExecLoopConfig,
+        runtime: AgentRuntime,
+        *,
+        force: bool,
+    ) -> PlanExecLoopResult:
+        del runtime, force
+        return PlanExecLoopResult(
+            run_dir=config.run_dir,
+            final_status=FinalStatus.COMPLETED,
+            plan_iter_count=0,
+            exec_iter_count=0,
+        )
+
+    step = RunBuildHarnessLoopStep(
+        loop_runner=_loop_runner,
+        runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
+        sidecar_factory=_stub_sidecar_factory,
+        verifiers_factory=_verifiers_factory,
+        install_runner=_stub_install_runner,
+    )
+
+    with patch(
+        "shop_gen.build.loop.find_shop_backend_cli",
+        return_value=_shop_backend_cli_stub(),
+    ):
+        step.run(
+            _build_ctx(
+                out_dir,
+                visual_judge_pass_threshold=8.5,
+                visual_judge_max_concurrency=6,
+            ),
+        )
+
+    assert captured == [(8.5, 6)]
+
+
 def test_step_forwards_judges_to_verifiers_factory(
     tmp_path: Path,
 ) -> None:
@@ -348,8 +427,11 @@ def test_step_forwards_judges_to_verifiers_factory(
         sidecar: SidecarHandle,
         judges: frozenset[str] = frozenset(),
         visual_retry_budget: int = 3,
+        visual_judge_pass_threshold: float = 7.0,
+        visual_judge_max_concurrency: int = 3,
     ) -> tuple[Verifier, ...]:
         del out_dir, sidecar, visual_retry_budget
+        del visual_judge_pass_threshold, visual_judge_max_concurrency
         captured_judges.append(judges)
         return ()
 
@@ -429,8 +511,11 @@ def test_step_run_passes_expected_loop_config_to_harness(tmp_path: Path) -> None
         sidecar: SidecarHandle,
         judges: frozenset[str] = frozenset(),
         visual_retry_budget: int = 3,
+        visual_judge_pass_threshold: float = 7.0,
+        visual_judge_max_concurrency: int = 3,
     ) -> tuple[Verifier, ...]:
         del out_dir, judges, visual_retry_budget
+        del visual_judge_pass_threshold, visual_judge_max_concurrency
         captured_handles.append(sidecar)
         return (sentinel,)
 
@@ -865,6 +950,48 @@ def test_default_verifiers_factory_uses_default_visual_retry_budget(
 
     visual = next(v for v in verifiers if isinstance(v, VisualJudgeVerifier))
     assert visual._retry_budget == DEFAULT_VISUAL_RETRY_BUDGET
+    assert visual._pass_threshold == DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD
+    assert visual._max_concurrency == DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY
+
+
+def test_default_verifiers_factory_threads_visual_judge_pass_threshold(
+    tmp_path: Path,
+) -> None:
+    """Impl plan T3.6: ``visual_judge_pass_threshold`` is forwarded to the verifier."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            visual_judge_pass_threshold=8.5,
+        )
+
+    visual = next(v for v in verifiers if isinstance(v, VisualJudgeVerifier))
+    assert visual._pass_threshold == 8.5  # noqa: PLR2004 -- mirrors fixture
+
+
+def test_default_verifiers_factory_threads_visual_judge_max_concurrency(
+    tmp_path: Path,
+) -> None:
+    """Impl plan T3.6: ``visual_judge_max_concurrency`` is forwarded to the verifier."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            visual_judge_max_concurrency=6,
+        )
+
+    visual = next(v for v in verifiers if isinstance(v, VisualJudgeVerifier))
+    assert visual._max_concurrency == 6  # noqa: PLR2004 -- mirrors fixture
 
 
 def test_default_verifiers_factory_judges_empty_returns_only_rule_verifiers(
@@ -966,7 +1093,6 @@ def test_default_verifiers_factory_judges_visual_only_skill_missing_warns(
     assert "pi-playwright" in visual_warnings[0].getMessage()
 
 
-
 # --------------------------------------------------------------------------- #
 # SC5 — judges subset registration (impl plan T3.5, spec §5.5 + §5.9)
 # --------------------------------------------------------------------------- #
@@ -1044,6 +1170,7 @@ def test_default_verifiers_factory_sc5_judges_none_registers_zero_llm_judges(
     # Rule verifiers still register exactly once each.
     for rule_name in ("tsc", "build", "data_in_use", "nav_coverage"):
         assert names.count(rule_name) == 1, f"missing rule verifier: {rule_name}"
+
 
 # --------------------------------------------------------------------------- #
 # Default introspector wiring
