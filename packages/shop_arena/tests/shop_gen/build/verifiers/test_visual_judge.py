@@ -319,6 +319,49 @@ def test_run_returns_fail_when_agent_emits_fail(
 
 
 # --------------------------------------------------------------------------- #
+# Redo prefix-match coverage (SC8)
+# --------------------------------------------------------------------------- #
+
+
+def test_run_resolves_same_scope_for_redo_task(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """`gen_homepage_redo_3` resolves to the same routes + slice as `gen_homepage`.
+
+    Spec §5.3 layer 1 (B1 prefix match): the trailing ``_redo_<n>`` is
+    stripped before bucket lookup, so the redo flow inherits its
+    parent task's scope automatically.
+    """
+    base_runtime = _RecordingRuntime(verdict_body=_pass_body())
+    base_verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=_StubDevServer(),
+    )
+    base_ctx = make_visual_ctx(runtime=base_runtime, selected_task_id="gen_homepage")
+    base_result = base_verifier.run(base_ctx)
+
+    redo_runtime = _RecordingRuntime(verdict_body=_pass_body())
+    redo_verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=_StubDevServer(),
+        applicable_tasks={"gen_homepage_redo_3"},  # bypass the applies_to gate
+    )
+    redo_ctx = make_visual_ctx(
+        runtime=redo_runtime,
+        selected_task_id="gen_homepage_redo_3",
+    )
+    redo_result = redo_verifier.run(redo_ctx)
+
+    assert base_result.details["buckets_run"] == redo_result.details["buckets_run"]
+    assert base_result.details["routes"] == redo_result.details["routes"]
+
+    base_slice = _extract_capabilities_block(str(base_runtime.calls[0]["prompt"]))
+    redo_slice = _extract_capabilities_block(str(redo_runtime.calls[0]["prompt"]))
+    assert base_slice == redo_slice
+
+
+# --------------------------------------------------------------------------- #
 # Score / severity coercion (§9.3)
 # --------------------------------------------------------------------------- #
 

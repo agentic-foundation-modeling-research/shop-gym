@@ -67,7 +67,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 - [x] **T1.5** — Wire `VisualJudgeVerifier` into `default_verifiers_factory` (still hardcoded; M3 makes the set configurable). **Gate construction behind `is_playwright_skill_available()`** (T1.0): on probe failure, log a single WARNING with the install hint (`pnpm add -g pi-playwright`) and **omit** the verifier from the tuple. Insert order: between `quality_judge` and `cross_task_consistency`. Spec §5.2, §5.5, §5.5.1. **Check:** SC7 — request `visual_judge` with skill missing → tuple does not include verifier, exactly one WARNING is emitted; with skill present → verifier appears in the expected slot; rule verifiers always present.
 
-- [ ] **T1.6** — Tests with stub `AgentRuntime` writing a deterministic `verdict.json`:
+- [x] **T1.6** — Tests with stub `AgentRuntime` writing a deterministic `verdict.json`:
   - **SC1** — PASS leaves `[x]` intact.
   - **SC2** — FAIL rewrites `[x]` → `[~]`.
   - **SC7** — skill-probe failure path (factory omits verifier, one warning logged, loop completes).
