@@ -26,7 +26,8 @@ fixture_build_loop/
 │   ├── trajectory.json
 │   └── workspace_after/
 │       ├── plan.md                     # gen_theme + gen_navigation [x]
-│       └── artifact/hydrogen/app/components/Header.tsx
+│       ├── artifact/hydrogen/app/components/Header.tsx
+│       └── artifact/hydrogen/app/components/Footer.tsx
 ├── exec-0003/                          # selects gen_homepage
 │   ├── trajectory.json
 │   └── workspace_after/
@@ -46,10 +47,15 @@ executor's `select_next` ordering so the cassette and the harness agree
 on which task is in flight every iteration.
 
 The hydrogen mutations under `artifact/hydrogen/` are intentionally
-trivial — the cassette demonstrates that the executor's writes survive
-the overlay copy and accumulate across iterations, not that the
-emitted code is meaningful. End-to-end behavioural coverage (build /
-tsc / verifiers passing) lands with T5.10.
+minimal — the cassette demonstrates that the executor's writes survive
+the overlay copy and accumulate across iterations. The `Header.tsx`
+and `Footer.tsx` deltas additionally exercise the M2/M3 navigation
+primitives contract (`<HeaderShell>` + `<NavMenu>` and
+`<FooterColumns>` imports respectively) so
+`navigation_primitive_usage` (per
+`docs/specs/shop_arena/template_navigation_primitives.md` §"Acceptance")
+would PASS against the post-build artifact. End-to-end behavioural
+coverage (build / tsc / verifiers passing) lands with T5.10.
 
 ## Provenance
 

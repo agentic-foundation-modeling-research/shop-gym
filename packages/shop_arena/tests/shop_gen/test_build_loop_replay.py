@@ -51,6 +51,7 @@ _EXPECTED_TASK_ORDER: Final[tuple[str, ...]] = (
 _EXPECTED_HYDROGEN_FILES: Final[tuple[str, ...]] = (
     "app/styles/theme.css",
     "app/components/Header.tsx",
+    "app/components/Footer.tsx",
     "app/routes/_index.tsx",
     "CONSOLIDATE.md",
 )
@@ -292,3 +293,54 @@ def test_build_loop_replay_records_selected_task_per_iteration(
         selected_per_iter.append(metadata["selected_task_id"])
 
     assert tuple(selected_per_iter) == _EXPECTED_TASK_ORDER
+
+
+def test_build_loop_replay_post_build_artifact_imports_navigation_primitives(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-`gen_navigation` `Header.tsx` + `Footer.tsx` adopt the M2/M3 primitives.
+
+    Per
+    ``docs/specs/shop_arena/template_navigation_primitives.md`` §"Acceptance"
+    and the M2 cassette-regeneration check in
+    ``docs/impl/template_navigation_primitives_implementation.md`` T2.8: a
+    post-build ``Header.tsx`` must import ``<NavMenu>`` and
+    ``<HeaderShell>``, and a post-build ``Footer.tsx`` must import
+    ``<FooterColumns>``. This test is the concrete gate — a future
+    cassette regeneration that drops the imports lights up here, and
+    ``navigation_primitive_usage`` (T4.1, advisory in M4 → hard-fail in
+    M5) gates the same contract on every live build loop.
+    """
+    monkeypatch.setattr(
+        "shop_gen.build.loop.find_shop_backend_cli",
+        _shop_backend_cli_stub,
+    )
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    runtime = ReplayRuntime(scenario_dir=_CASSETTE_DIR)
+    step = RunBuildHarnessLoopStep(
+        runtime_factory=_runtime_factory_for(runtime),
+        sidecar_factory=_stub_sidecar_factory,
+        verifiers_factory=_empty_verifiers_factory,
+        install_runner=_stub_install_runner,
+    )
+
+    step.run(_build_ctx(out_dir, max_iters=len(_EXPECTED_TASK_ORDER) + 1))
+
+    artifact = out_dir / "runs" / "build" / "artifact" / "hydrogen"
+    header_src = (artifact / "app" / "components" / "Header.tsx").read_text(encoding="utf-8")
+    footer_src = (artifact / "app" / "components" / "Footer.tsx").read_text(encoding="utf-8")
+
+    assert "from \"~/components/NavMenu\"" in header_src or "from '~/components/NavMenu'" in header_src, (
+        "Header.tsx must import <NavMenu> (template_navigation_primitives M2)"
+    )
+    assert "from \"~/components/HeaderShell\"" in header_src or "from '~/components/HeaderShell'" in header_src, (
+        "Header.tsx must import <HeaderShell> (template_navigation_primitives M2)"
+    )
+    assert "from \"~/components/FooterColumns\"" in footer_src or "from '~/components/FooterColumns'" in footer_src, (
+        "Footer.tsx must import <FooterColumns> (template_navigation_primitives M3)"
+    )

@@ -20,10 +20,24 @@
       "arguments": {"path": "artifact/hydrogen/app/components/Header.tsx"}
     },
     {
-      "timestamp": "2026-04-25T10:42:10.000000+00:00",
+      "timestamp": "2026-04-25T10:42:08.000000+00:00",
       "kind": "tool_result",
       "call_id": "exec2-write-header",
-      "output": "Wrote Header.tsx wired to data/navigation.json.",
+      "output": "Wrote Header.tsx wired to <HeaderShell> + <NavMenu>.",
+      "is_error": false
+    },
+    {
+      "timestamp": "2026-04-25T10:42:12.000000+00:00",
+      "kind": "tool_call",
+      "call_id": "exec2-write-footer",
+      "tool": "write",
+      "arguments": {"path": "artifact/hydrogen/app/components/Footer.tsx"}
+    },
+    {
+      "timestamp": "2026-04-25T10:42:15.000000+00:00",
+      "kind": "tool_result",
+      "call_id": "exec2-write-footer",
+      "output": "Wrote Footer.tsx wired to <FooterColumns>.",
       "is_error": false
     },
     {
@@ -44,7 +58,7 @@
       "timestamp": "2026-04-25T10:42:30.000000+00:00",
       "kind": "message",
       "role": "assistant",
-      "text": "gen_navigation: header wired; gen_navigation [x]."
+      "text": "gen_navigation: header + footer wired to navigation primitives; gen_navigation [x]."
     }
   ]
 }
