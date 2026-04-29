@@ -34,6 +34,7 @@ _EXPECTED_ENV_KEYS: tuple[str, ...] = (
     "SESSION_SECRET",
     "PUBLIC_STOREFRONT_API_TOKEN",
     "PUBLIC_STOREFRONT_ID",
+    "PUBLIC_FOOTER_MENU_HANDLES",
 )
 
 
@@ -222,6 +223,102 @@ def test_write_env_file_raises_when_hydrogen_dir_missing(tmp_path: Path) -> None
 
     with pytest.raises(FileNotFoundError, match="hydrogen tree not found"):
         WriteEnvFileStep().run(ctx)
+
+
+# --------------------------------------------------------------------------- #
+# WriteEnvFileStep — footer_menu_handles (T3.5)
+# --------------------------------------------------------------------------- #
+
+
+def _read_footer_handles_line(env_path: Path) -> str:
+    """Return the ``PUBLIC_FOOTER_MENU_HANDLES=...`` line value."""
+    contents = env_path.read_text(encoding="utf-8").splitlines()
+    line = next(line for line in contents if line.startswith("PUBLIC_FOOTER_MENU_HANDLES="))
+    return line.split("=", 1)[1]
+
+
+def test_write_env_file_emits_default_footer_handle_when_unset(tmp_path: Path) -> None:
+    """Existing callers (no kwarg) get the legacy single-handle fallback."""
+    ctx = _make_ctx(tmp_path)
+    CloneTemplateStep().run(ctx)
+
+    WriteEnvFileStep().run(ctx)
+
+    env_path = ctx.out_dir / "hydrogen" / ".env"
+    assert _read_footer_handles_line(env_path) == "footer"
+
+
+def test_write_env_file_emits_default_footer_handle_when_none(tmp_path: Path) -> None:
+    """Explicit ``None`` kwarg matches the no-kwarg behavior."""
+    ctx = _make_ctx(tmp_path)
+    CloneTemplateStep().run(ctx)
+
+    WriteEnvFileStep(footer_menu_handles=None).run(ctx)
+
+    env_path = ctx.out_dir / "hydrogen" / ".env"
+    assert _read_footer_handles_line(env_path) == "footer"
+
+
+def test_write_env_file_emits_default_footer_handle_when_empty_list(tmp_path: Path) -> None:
+    """An empty list normalizes to the ``footer`` fallback (matches the loader)."""
+    ctx = _make_ctx(tmp_path)
+    CloneTemplateStep().run(ctx)
+
+    WriteEnvFileStep(footer_menu_handles=[]).run(ctx)
+
+    env_path = ctx.out_dir / "hydrogen" / ".env"
+    assert _read_footer_handles_line(env_path) == "footer"
+
+
+def test_write_env_file_emits_csv_when_handles_provided(tmp_path: Path) -> None:
+    """Multiple handles serialize as a comma-separated list (no spaces)."""
+    ctx = _make_ctx(tmp_path)
+    CloneTemplateStep().run(ctx)
+
+    WriteEnvFileStep(
+        footer_menu_handles=["footer-shop", "footer-trust", "footer-legal"],
+    ).run(ctx)
+
+    env_path = ctx.out_dir / "hydrogen" / ".env"
+    assert _read_footer_handles_line(env_path) == "footer-shop,footer-trust,footer-legal"
+
+
+def test_write_env_file_normalizes_handles_to_match_loader(tmp_path: Path) -> None:
+    """Whitespace is trimmed; empties and duplicates are dropped (loader parity)."""
+    ctx = _make_ctx(tmp_path)
+    CloneTemplateStep().run(ctx)
+
+    WriteEnvFileStep(
+        footer_menu_handles=["  footer  ", "", " trust ", "footer", "   "],
+    ).run(ctx)
+
+    env_path = ctx.out_dir / "hydrogen" / ".env"
+    # Expected: trimmed, empties dropped, duplicates de-duped (first wins).
+    assert _read_footer_handles_line(env_path) == "footer,trust"
+
+
+def test_write_env_file_falls_back_when_input_is_all_whitespace(tmp_path: Path) -> None:
+    """All-whitespace input degrades to the ``footer`` fallback."""
+    ctx = _make_ctx(tmp_path)
+    CloneTemplateStep().run(ctx)
+
+    WriteEnvFileStep(footer_menu_handles=["   ", "\t", ""]).run(ctx)
+
+    env_path = ctx.out_dir / "hydrogen" / ".env"
+    assert _read_footer_handles_line(env_path) == "footer"
+
+
+def test_write_env_file_step_contract_unchanged_with_footer_kwarg() -> None:
+    """Passing ``footer_menu_handles`` does not perturb the Step Protocol surface."""
+    step = WriteEnvFileStep(footer_menu_handles=["footer-a", "footer-b"])
+
+    assert isinstance(step, Step)
+    assert step.id == "write_env_file"
+    assert step.phase == "build"
+    assert step.inputs == [StepInput(step_id="clone_template")]
+    assert step.outputs == [Path("hydrogen") / ".env"]
+    assert step.depends_on == ["clone_template"]
+    assert step.version == 1
 
 
 # --------------------------------------------------------------------------- #

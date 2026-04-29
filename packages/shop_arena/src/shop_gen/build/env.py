@@ -76,6 +76,15 @@ _MOCK_SESSION_SECRET: Final[str] = "shop-gen-mock-secret"
 _MOCK_STOREFRONT_API_TOKEN: Final[str] = "shop-gen-mock-token"
 _MOCK_STOREFRONT_ID: Final[str] = "shop-gen-mock"
 
+_DEFAULT_FOOTER_MENU_HANDLE: Final[str] = "footer"
+"""Fallback handle written to ``PUBLIC_FOOTER_MENU_HANDLES`` when the
+caller does not supply ``footer_menu_handles`` (T3.5 / spec §N5).
+
+Mirrors the ``DEFAULT_FOOTER_MENU_HANDLE`` constant the template's
+``app/root.tsx`` loader uses (T3.2) so the env-file writer and the
+Hydrogen runtime agree on the single-menu fallback without coupling.
+"""
+
 
 class CloneTemplateStep:
     """Phase 4 ``clone_template`` step (spec §5.5.1).
@@ -149,6 +158,13 @@ class WriteEnvFileStep:
     race window exists between selection and the sidecar's listen,
     which matches the existing ``validate_hosting`` pattern (spec §5.4).
 
+    Also emits ``PUBLIC_FOOTER_MENU_HANDLES`` as a CSV the template's
+    ``app/root.tsx`` loader (T3.2) parses to fan out per-handle footer
+    menu queries. When ``footer_menu_handles`` is left unset (or
+    normalizes to empty after trimming), the line falls back to
+    ``PUBLIC_FOOTER_MENU_HANDLES=footer`` so existing single-menu
+    artifacts keep rendering their single-column footer (spec §N5).
+
     Attributes:
         id: Step id (``write_env_file``).
         phase: ``build``.
@@ -160,8 +176,21 @@ class WriteEnvFileStep:
         version: Bumped when the env-file schema changes (spec §5.7.1).
     """
 
-    def __init__(self) -> None:
-        """Build the step bound to the ``clone_template`` upstream."""
+    def __init__(self, *, footer_menu_handles: list[str] | None = None) -> None:
+        """Build the step bound to the ``clone_template`` upstream.
+
+        Args:
+            footer_menu_handles: Optional list of footer menu handles
+                to emit as ``PUBLIC_FOOTER_MENU_HANDLES``. Each entry
+                is whitespace-trimmed and deduplicated (preserving
+                first-occurrence order) to match the loader's parser
+                in ``app/root.tsx``. ``None`` or an all-empty input
+                falls back to ``["footer"]`` so legacy single-menu
+                artifacts keep working.
+        """
+        self._footer_menu_handles: tuple[str, ...] = _normalize_footer_handles(
+            footer_menu_handles,
+        )
         self.id: str = _WRITE_ENV_STEP_ID
         self.phase: str = _PHASE
         self.inputs: list[InputRef] = [StepInput(step_id=_CLONE_STEP_ID)]
@@ -187,10 +216,13 @@ class WriteEnvFileStep:
             )
         port = _allocate_free_port()
         env_path = ctx.out_dir / _ENV_FILE
-        env_path.write_text(_render_env_file(port), encoding="utf-8")
+        env_path.write_text(
+            _render_env_file(port, self._footer_menu_handles),
+            encoding="utf-8",
+        )
 
 
-def _render_env_file(port: int) -> str:
+def _render_env_file(port: int, footer_menu_handles: tuple[str, ...]) -> str:
     """Render the ``.env`` body for a sidecar listening on ``port``.
 
     The leading comment matches the placeholder ``.env`` shipped in
@@ -199,6 +231,11 @@ def _render_env_file(port: int) -> str:
 
     Args:
         port: TCP port the sidecar will bind to.
+        footer_menu_handles: Already-normalized footer menu handles to
+            emit as a CSV value for ``PUBLIC_FOOTER_MENU_HANDLES``.
+            Must be non-empty; the caller is expected to apply
+            :func:`_normalize_footer_handles` (which guarantees the
+            ``footer`` fallback) before passing the tuple in.
 
     Returns:
         Contents of the ``.env`` file, terminated by a newline.
@@ -209,6 +246,7 @@ def _render_env_file(port: int) -> str:
         f"SESSION_SECRET={_MOCK_SESSION_SECRET}",
         f"PUBLIC_STOREFRONT_API_TOKEN={_MOCK_STOREFRONT_API_TOKEN}",
         f"PUBLIC_STOREFRONT_ID={_MOCK_STOREFRONT_ID}",
+        f"PUBLIC_FOOTER_MENU_HANDLES={','.join(footer_menu_handles)}",
     )
     return "\n".join(lines) + "\n"
 
@@ -225,6 +263,36 @@ def _allocate_free_port() -> int:
     with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         sock.bind(("127.0.0.1", 0))
         return cast("int", sock.getsockname()[1])
+
+
+def _normalize_footer_handles(raw: list[str] | None) -> tuple[str, ...]:
+    """Trim, drop empties, and deduplicate footer menu handles.
+
+    Mirrors the parser in ``templates/hydrogen/app/root.tsx`` (T3.2)
+    so the env file the writer emits round-trips byte-identically
+    through the Hydrogen loader's ``parseFooterMenuHandles`` helper.
+
+    Args:
+        raw: Caller-supplied list of handles, or ``None``.
+
+    Returns:
+        Normalized tuple of handles. Falls back to
+        ``(_DEFAULT_FOOTER_MENU_HANDLE,)`` when ``raw`` is ``None``
+        or every entry is empty / whitespace-only.
+    """
+    if not raw:
+        return (_DEFAULT_FOOTER_MENU_HANDLE,)
+    seen: set[str] = set()
+    handles: list[str] = []
+    for entry in raw:
+        handle = entry.strip()
+        if not handle or handle in seen:
+            continue
+        seen.add(handle)
+        handles.append(handle)
+    if not handles:
+        return (_DEFAULT_FOOTER_MENU_HANDLE,)
+    return tuple(handles)
 
 
 __all__ = [
