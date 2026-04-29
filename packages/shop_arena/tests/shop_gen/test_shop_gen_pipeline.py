@@ -34,6 +34,7 @@ import pytest
 
 from harness.runtimes import LLMCompleter
 from shop_gen import pipeline
+from shop_gen.build.verifiers._task_routes import BucketCaps
 from shop_gen.config import ShopGenConfig
 from shop_gen.pipeline import (
     PHASES,
@@ -292,7 +293,7 @@ def test_run_creates_out_dir_and_returns_artifact_paths(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         result = run(config)
 
@@ -318,7 +319,7 @@ def test_run_with_no_registered_steps_writes_no_state(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(ShopGenConfig(seeds=[seed], out_dir=out_dir))
     assert not state_path(out_dir).exists()
@@ -339,7 +340,7 @@ def test_run_drives_registered_step_to_completion(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config)
 
@@ -366,7 +367,7 @@ def test_run_default_out_dir_for_single_seed(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         result = run(ShopGenConfig(seeds=[seed]))
 
@@ -397,7 +398,7 @@ def test_run_uses_explicit_name_for_default_out_dir(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         result = run(ShopGenConfig(seeds=seeds, name="acme"))
 
@@ -426,7 +427,7 @@ def test_run_is_idempotent_on_second_invocation(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config)
         _do_run()
@@ -473,7 +474,7 @@ def test_run_stop_at_only_executes_target_and_ancestors(tmp_path: Path) -> None:
         ),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config, stop_at="beta")
 
@@ -496,7 +497,7 @@ def test_run_stop_at_unknown_step_raises_value_error(tmp_path: Path) -> None:
         ),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
         pytest.raises(ValueError, match="ghost"),
     ):
         run(config, stop_at="ghost")
@@ -518,7 +519,7 @@ def test_run_stop_at_rejects_force_id_outside_cone(tmp_path: Path) -> None:
         ),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
         pytest.raises(ValueError, match="upstream cone"),
     ):
         run(config, force_ids=frozenset({"gamma"}), stop_at="alpha")
@@ -568,7 +569,7 @@ def test_run_resolves_runtime_from_config_when_omitted(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config)
 
@@ -595,7 +596,7 @@ def test_run_drops_model_kwarg_when_config_model_is_none(tmp_path: Path) -> None
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config)
 
@@ -623,7 +624,7 @@ def test_run_accepts_explicit_runtime_override(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config, runtime=cast("LLMCompleter", explicit))
 
@@ -655,7 +656,7 @@ def test_run_logs_start_and_end_summary(
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config, runtime=cast("LLMCompleter", _StubCompleter("x")))
 
@@ -685,7 +686,7 @@ def test_run_includes_stop_at_in_start_log(
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
         patch.object(pipeline, "_register_build", lambda reg: None),
-        patch.object(pipeline, "_register_final_eval", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(
             config,
@@ -759,6 +760,48 @@ def test_status_projects_every_persisted_record(tmp_path: Path) -> None:
         ),
     )
 
+
+# --------------------------------------------------------------------------- #
+# _register_final_eval — config threading (impl plan T5.4)
+# --------------------------------------------------------------------------- #
+
+
+_T54_MAX_COLLECTIONS = 2
+_T54_PRODUCTS_PER_COLLECTION = 3
+_T54_MAX_PAGES = 4
+_T54_VISUAL_TIMEOUT_S = 42.0
+_T54_MAX_CONCURRENCY = 5
+_T54_PASS_THRESHOLD = 6.5
+
+
+def test_register_final_eval_threads_config_caps_into_step(tmp_path: Path) -> None:
+    """Impl plan T5.4: ``ShopGenConfig.final_eval_*`` flow into ``FinalEvalStep``."""
+    [seed] = _make_seeds(tmp_path, 1)
+    config = ShopGenConfig(
+        seeds=[seed],
+        out_dir=tmp_path / "shop",
+        final_eval_max_collections=_T54_MAX_COLLECTIONS,
+        final_eval_products_per_collection=_T54_PRODUCTS_PER_COLLECTION,
+        final_eval_max_pages=_T54_MAX_PAGES,
+        final_eval_visual_timeout_s=_T54_VISUAL_TIMEOUT_S,
+        visual_judge_max_concurrency=_T54_MAX_CONCURRENCY,
+        visual_judge_pass_threshold=_T54_PASS_THRESHOLD,
+    )
+    registry = Registry()
+
+    pipeline._register_final_eval(registry, config=config)
+
+    step = registry.get("final_eval")
+    assert step is not None
+    expected_caps = BucketCaps(
+        max_collections=_T54_MAX_COLLECTIONS,
+        products_per_collection=_T54_PRODUCTS_PER_COLLECTION,
+        max_pages=_T54_MAX_PAGES,
+    )
+    assert step._visual_caps == expected_caps  # type: ignore[attr-defined]
+    assert step._visual_timeout_s == _T54_VISUAL_TIMEOUT_S  # type: ignore[attr-defined]
+    assert step._visual_max_concurrency == _T54_MAX_CONCURRENCY  # type: ignore[attr-defined]
+    assert step._visual_pass_threshold == _T54_PASS_THRESHOLD  # type: ignore[attr-defined]
 
 # --------------------------------------------------------------------------- #
 # Internals

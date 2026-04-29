@@ -52,6 +52,7 @@ _EXPECTED_IMAGES_PER_PRODUCT = 5
 _EXPECTED_VISUAL_RETRY_BUDGET = 5
 _EXPECTED_VISUAL_JUDGE_PASS_THRESHOLD = 6.5
 _EXPECTED_VISUAL_JUDGE_MAX_CONCURRENCY = 8
+_EXPECTED_FINAL_EVAL_VISUAL_TIMEOUT_S = 120.0
 
 
 # --------------------------------------------------------------------------- #
@@ -388,6 +389,47 @@ def test_visual_judge_max_concurrency_zero_is_config_error(
             "--out-dir",
             str(tmp_path / "out"),
             "--visual-judge-max-concurrency",
+            "0",
+        ]
+    )
+    assert rc == EXIT_CONFIG
+    assert "invalid configuration" in capsys.readouterr().err
+
+
+def test_final_eval_visual_timeout_flag_propagates_to_config(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """Impl plan T5.4: ``--final-eval-visual-timeout`` threads into ``ShopGenConfig``."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--final-eval-visual-timeout",
+            str(_EXPECTED_FINAL_EVAL_VISUAL_TIMEOUT_S),
+        ]
+    )
+    assert rc == EXIT_OK
+    assert (
+        captured_run["config"].final_eval_visual_timeout_s
+        == _EXPECTED_FINAL_EVAL_VISUAL_TIMEOUT_S
+    )
+
+
+def test_final_eval_visual_timeout_zero_is_config_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Impl plan T5.4: ``0`` timeout is rejected (must be strictly positive)."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--final-eval-visual-timeout",
             "0",
         ]
     )

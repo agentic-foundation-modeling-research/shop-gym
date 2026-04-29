@@ -33,6 +33,7 @@ from harness.plan import TaskStatus, parse
 from harness.plan.parser import InvalidPlanError
 from shop_gen.build.redo import RedoError, append_redo_task
 from shop_gen.config import (
+    DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_JUDGES,
     DEFAULT_MAX_ITERS,
@@ -227,6 +228,17 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--final-eval-visual-timeout",
+        type=float,
+        default=DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
+        metavar="SECONDS",
+        help=(
+            "Per-bucket wall-clock budget for the final-eval visual sweep's nested "
+            "``runtime.run_iteration`` calls (spec \u00a75.6). Strictly positive. "
+            f"Default: {DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S}."
+        ),
+    )
+    parser.add_argument(
         "--judges",
         type=_parse_judges_arg,
         default=None,
@@ -416,6 +428,7 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
         visual_retry_budget=args.visual_retry_budget,
         visual_judge_pass_threshold=args.visual_judge_pass_threshold,
         visual_judge_max_concurrency=args.visual_judge_max_concurrency,
+        final_eval_visual_timeout_s=args.final_eval_visual_timeout,
         judges=judges,
     )
 

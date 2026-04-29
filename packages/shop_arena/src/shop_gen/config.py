@@ -127,6 +127,32 @@ page-bucket fan-out and the final-eval visual sweep. Values must
 be strictly positive.
 """
 
+DEFAULT_FINAL_EVAL_MAX_COLLECTIONS: Final[int] = 8
+"""Default cap on collections sampled by the final-eval visual sweep (spec §5.6.1).
+
+Drives the ``/collections/<handle>`` route count. Must be strictly positive.
+"""
+
+DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION: Final[int] = 1
+"""Default cap on products sampled per collection (spec §5.6.1).
+
+Drives the ``/products/<handle>`` route count. Must be strictly positive.
+"""
+
+DEFAULT_FINAL_EVAL_MAX_PAGES: Final[int] = 6
+"""Default cap on info pages sampled by the final-eval visual sweep (spec §5.6.1).
+
+Drives the ``/pages/<handle>`` route count. Must be strictly positive.
+"""
+
+DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S: Final[float] = 900.0
+"""Default per-bucket wall-clock budget for the final-eval visual sweep (spec §5.6).
+
+Caps each ``runtime.run_iteration`` call inside the page-bucket fan-out;
+the sweep wall-clock therefore scales with the longest bucket, not the sum.
+Must be strictly positive.
+"""
+
 KNOWN_JUDGES: Final[frozenset[str]] = frozenset(
     {"visual_judge", "quality_judge", "cross_task_consistency"},
 )
@@ -212,6 +238,23 @@ class ShopGenConfig(BaseModel):
             (spec §5.2.1 step 5, §5.6). Defaults to
             :data:`DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY`. Strictly
             positive.
+        final_eval_max_collections: Per-bucket cap on collections sampled by
+            the final-eval visual sweep (spec §5.6.1). Drives the
+            ``/collections/<handle>`` route count. Defaults to
+            :data:`DEFAULT_FINAL_EVAL_MAX_COLLECTIONS`. Strictly positive.
+        final_eval_products_per_collection: Per-bucket cap on products
+            sampled per collection by the final-eval visual sweep (spec
+            §5.6.1). Defaults to
+            :data:`DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION`. Strictly
+            positive.
+        final_eval_max_pages: Per-bucket cap on info pages sampled by the
+            final-eval visual sweep (spec §5.6.1). Defaults to
+            :data:`DEFAULT_FINAL_EVAL_MAX_PAGES`. Strictly positive.
+        final_eval_visual_timeout_s: Per-bucket wall-clock budget for the
+            final-eval visual sweep's nested ``runtime.run_iteration``
+            calls (spec §5.6). Defaults to
+            :data:`DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S`. Strictly
+            positive.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -232,6 +275,22 @@ class ShopGenConfig(BaseModel):
     )
     visual_judge_max_concurrency: int = Field(
         default=DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
+        gt=0,
+    )
+    final_eval_max_collections: int = Field(
+        default=DEFAULT_FINAL_EVAL_MAX_COLLECTIONS,
+        gt=0,
+    )
+    final_eval_products_per_collection: int = Field(
+        default=DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION,
+        gt=0,
+    )
+    final_eval_max_pages: int = Field(
+        default=DEFAULT_FINAL_EVAL_MAX_PAGES,
+        gt=0,
+    )
+    final_eval_visual_timeout_s: float = Field(
+        default=DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
         gt=0,
     )
 

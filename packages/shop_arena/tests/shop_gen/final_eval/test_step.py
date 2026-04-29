@@ -27,6 +27,7 @@ from typing import Any, Final
 
 from harness.runtimes.base import RuntimeIterationResult
 from harness.trajectory import Trajectory
+from shop_gen.build.verifiers._task_routes import BucketCaps
 from shop_gen.config import ShopGenConfig
 from shop_gen.final_eval.playwright_smoke import (
     Screenshot,
@@ -157,6 +158,7 @@ def _stub_visual_sweep_runner(
     timeout_s: float,
     max_concurrency: int,
     pass_threshold: float,
+    caps: Any,
 ) -> dict[str, Any]:
     """Stub :class:`VisualSweepRunner` that fabricates a clean per-bucket payload."""
     del (
@@ -169,6 +171,7 @@ def _stub_visual_sweep_runner(
         timeout_s,
         max_concurrency,
         pass_threshold,
+        caps,
     )
     visual_eval = out_dir / "visual_eval"
     (visual_eval / "screenshots" / "homepage" / "home").mkdir(parents=True)
@@ -529,6 +532,67 @@ def test_final_eval_step_writes_visual_subtree_on_pass(tmp_path: Path) -> None:
     # The advisory artifacts are on disk where reviewers expect them.
     assert (out_dir / "visual_eval" / "report.md").is_file()
     assert (out_dir / "visual_eval" / "screenshots" / "homepage" / "home" / "desktop.png").is_file()
+
+
+def test_final_eval_step_threads_visual_caps_into_sweep_runner(tmp_path: Path) -> None:
+    """Impl plan T5.4: ``visual_caps`` flow through to the sweep runner."""
+    captured: dict[str, Any] = {}
+
+    def capturing_sweep_runner(
+        *,
+        out_dir: Path,
+        data_dir: Path,
+        hydrogen_dir: Path,
+        runtime: Any,
+        dev_server_factory: Any,
+        capabilities: Any,
+        prompt_template: str,
+        timeout_s: float,
+        max_concurrency: int,
+        pass_threshold: float,
+        caps: BucketCaps,
+    ) -> dict[str, Any]:
+        del (
+            data_dir,
+            hydrogen_dir,
+            runtime,
+            dev_server_factory,
+            capabilities,
+            prompt_template,
+        )
+        captured["timeout_s"] = timeout_s
+        captured["max_concurrency"] = max_concurrency
+        captured["pass_threshold"] = pass_threshold
+        captured["caps"] = caps
+        return _stub_visual_sweep_runner(
+            out_dir=out_dir,
+            data_dir=Path("."),
+            hydrogen_dir=Path("."),
+            runtime=None,
+            dev_server_factory=None,
+            capabilities=None,
+            prompt_template="",
+            timeout_s=timeout_s,
+            max_concurrency=max_concurrency,
+            pass_threshold=pass_threshold,
+            caps=caps,
+        )
+
+    out_dir = _materialise_workspace(tmp_path / "out")
+    runtime = _StubFullRuntime(_PASS_RESPONSE)
+    custom_caps = BucketCaps(max_collections=2, products_per_collection=3, max_pages=4)
+    step = FinalEvalStep(
+        dev_server_factory=_stub_dev_server_factory,
+        browser_driver=_stub_browser_driver,
+        visual_sweep_runner=capturing_sweep_runner,
+        visual_caps=custom_caps,
+        visual_timeout_s=42.0,
+    )
+
+    step.run(_build_ctx(out_dir, runtime=runtime))
+
+    assert captured["caps"] == custom_caps
+    assert captured["timeout_s"] == 42.0  # noqa: PLR2004 -- explicit override
 
 
 def test_final_eval_step_writes_visual_error_when_runtime_lacks_agent_runtime(

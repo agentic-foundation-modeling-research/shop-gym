@@ -21,6 +21,10 @@ from pydantic import ValidationError
 
 from shop_gen.config import (
     DEFAULT_COLLECTIONS,
+    DEFAULT_FINAL_EVAL_MAX_COLLECTIONS,
+    DEFAULT_FINAL_EVAL_MAX_PAGES,
+    DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION,
+    DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_IMAGES_PER_PRODUCT,
     DEFAULT_JUDGES,
@@ -100,6 +104,10 @@ def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
     assert cfg.judges == DEFAULT_JUDGES
     assert cfg.visual_judge_pass_threshold == DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD
     assert cfg.visual_judge_max_concurrency == DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY
+    assert cfg.final_eval_max_collections == DEFAULT_FINAL_EVAL_MAX_COLLECTIONS
+    assert cfg.final_eval_products_per_collection == DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION
+    assert cfg.final_eval_max_pages == DEFAULT_FINAL_EVAL_MAX_PAGES
+    assert cfg.final_eval_visual_timeout_s == DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S
 
 
 def test_default_model_for_returns_per_runtime_pinned_opus() -> None:
@@ -314,6 +322,73 @@ def test_shop_gen_config_accepts_positive_visual_judge_max_concurrency(
     cfg = ShopGenConfig(seeds=[seed], visual_judge_max_concurrency=good)
     assert cfg.visual_judge_max_concurrency == good
 
+
+
+# --------------------------------------------------------------------------- #
+# ShopGenConfig — final-eval visual sweep caps (impl plan T5.4, spec §5.6.1)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "final_eval_max_collections",
+        "final_eval_products_per_collection",
+        "final_eval_max_pages",
+    ],
+)
+@pytest.mark.parametrize("bad", [0, -1, -42])
+def test_shop_gen_config_rejects_non_positive_final_eval_caps(
+    tmp_path: Path,
+    field: str,
+    bad: int,
+) -> None:
+    """Impl plan T5.4 / spec §5.6.1: per-bucket caps must be strictly positive."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], **{field: bad})  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "final_eval_max_collections",
+        "final_eval_products_per_collection",
+        "final_eval_max_pages",
+    ],
+)
+@pytest.mark.parametrize("good", [1, 3, 8, 64])
+def test_shop_gen_config_accepts_positive_final_eval_caps(
+    tmp_path: Path,
+    field: str,
+    good: int,
+) -> None:
+    """Impl plan T5.4: positive cap values round-trip."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], **{field: good})  # type: ignore[arg-type]
+    assert getattr(cfg, field) == good
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.1, -42.0])
+def test_shop_gen_config_rejects_non_positive_final_eval_visual_timeout(
+    tmp_path: Path,
+    bad: float,
+) -> None:
+    """Impl plan T5.4 / spec §5.6: per-bucket timeout must be strictly positive."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], final_eval_visual_timeout_s=bad)
+
+
+@pytest.mark.parametrize("good", [0.5, 60.0, 900.0, 3600.0])
+def test_shop_gen_config_accepts_positive_final_eval_visual_timeout(
+    tmp_path: Path,
+    good: float,
+) -> None:
+    """Impl plan T5.4: positive timeouts round-trip."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], final_eval_visual_timeout_s=good)
+    assert cfg.final_eval_visual_timeout_s == good
 
 # --------------------------------------------------------------------------- #
 # ShopGenConfig — judges validation (impl plan T3.1, spec §5.5)

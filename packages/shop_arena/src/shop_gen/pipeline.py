@@ -45,6 +45,7 @@ from shop_gen.build import (
     StartSidecarStep,
     WriteEnvFileStep,
 )
+from shop_gen.build.verifiers._task_routes import BucketCaps
 from shop_gen.config import ShopGenConfig, ShopGenResult
 from shop_gen.data_synth import (
     AssembleDataStep,
@@ -406,7 +407,7 @@ def _build_registry_from_branch(
     )
     _register_data_validation(registry)
     _register_build(registry)
-    _register_final_eval(registry)
+    _register_final_eval(registry, config=config)
     return registry
 
 
@@ -547,7 +548,7 @@ def _register_build(registry: Registry) -> None:
     registry.register(RunBuildHarnessLoopStep())
 
 
-def _register_final_eval(registry: Registry) -> None:
+def _register_final_eval(registry: Registry, *, config: ShopGenConfig | None = None) -> None:
     """Register Phase 5 final-eval steps.
 
     Registers the advisory ``final_eval`` step from impl plan T6.3:
@@ -556,7 +557,22 @@ def _register_final_eval(registry: Registry) -> None:
     advisory per spec §5.5.5 — verdict failures and transport errors
     are recorded into the verdict file rather than re-raised.
     """
-    registry.register(FinalEvalStep())
+    if config is not None:
+        caps = BucketCaps(
+            max_collections=config.final_eval_max_collections,
+            products_per_collection=config.final_eval_products_per_collection,
+            max_pages=config.final_eval_max_pages,
+        )
+        registry.register(
+            FinalEvalStep(
+                visual_caps=caps,
+                visual_timeout_s=config.final_eval_visual_timeout_s,
+                visual_max_concurrency=config.visual_judge_max_concurrency,
+                visual_pass_threshold=config.visual_judge_pass_threshold,
+            ),
+        )
+    else:
+        registry.register(FinalEvalStep())
 
 
 # --------------------------------------------------------------------------- #

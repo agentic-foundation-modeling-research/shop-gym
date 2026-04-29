@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any, Final, Protocol, cast, runtime_checkable
 
 from harness.runtimes.base import AgentRuntime, LLMCompleter
+from shop_gen.build.verifiers._task_routes import SWEEP_CAPS, BucketCaps
 from shop_gen.final_eval.playwright_smoke import (
     DEFAULT_VIEWPORTS,
     BrowserDriver,
@@ -181,6 +182,7 @@ class VisualSweepRunner(Protocol):
         timeout_s: float,
         max_concurrency: int,
         pass_threshold: float,
+        caps: BucketCaps,
     ) -> dict[str, Any]:
         """Walk every page bucket and return the per-bucket payload."""
         ...
@@ -221,6 +223,7 @@ class FinalEvalStep:
         visual_timeout_s: float = _DEFAULT_VISUAL_TIMEOUT_S,
         visual_max_concurrency: int = _DEFAULT_VISUAL_MAX_CONCURRENCY,
         visual_pass_threshold: float = _DEFAULT_VISUAL_PASS_THRESHOLD,
+        visual_caps: BucketCaps = SWEEP_CAPS,
     ) -> None:
         """Build the step with optional injection seams.
 
@@ -251,6 +254,8 @@ class FinalEvalStep:
             visual_pass_threshold: Score floor for the per-bucket §9.3
                 coercion rule. Defaults to
                 :data:`_DEFAULT_VISUAL_PASS_THRESHOLD`.
+            visual_caps: Per-bucket sampling caps for the visual sweep
+                (spec §5.6.1). Defaults to :data:`SWEEP_CAPS`.
         """
         self.id: str = _STEP_ID
         self.phase: str = _PHASE
@@ -273,6 +278,7 @@ class FinalEvalStep:
         self._visual_timeout_s: float = visual_timeout_s
         self._visual_max_concurrency: int = visual_max_concurrency
         self._visual_pass_threshold: float = visual_pass_threshold
+        self._visual_caps: BucketCaps = visual_caps
 
     def run(self, ctx: StepContext) -> None:
         """Walk the smoke flow, ask the LLM judge, write ``final_eval.json``.
@@ -302,6 +308,7 @@ class FinalEvalStep:
             visual_timeout_s=self._visual_timeout_s,
             visual_max_concurrency=self._visual_max_concurrency,
             visual_pass_threshold=self._visual_pass_threshold,
+            visual_caps=self._visual_caps,
         )
         out_path = ctx.out_dir / _OUT_REPORT
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -329,6 +336,7 @@ def run_final_eval(
     visual_timeout_s: float = _DEFAULT_VISUAL_TIMEOUT_S,
     visual_max_concurrency: int = _DEFAULT_VISUAL_MAX_CONCURRENCY,
     visual_pass_threshold: float = _DEFAULT_VISUAL_PASS_THRESHOLD,
+    visual_caps: BucketCaps = SWEEP_CAPS,
 ) -> dict[str, Any]:
     """Drive the smoke flow + LLM judge and return the advisory verdict body.
 
@@ -359,6 +367,8 @@ def run_final_eval(
         visual_max_concurrency: Page-bucket fan-out worker count.
         visual_pass_threshold: Per-bucket score floor for the §9.3
             coercion rule applied inside the sweep.
+        visual_caps: Per-bucket sampling caps for the visual sweep
+            (spec §5.6.1).
 
     Returns:
         JSON-serialisable mapping with keys:
@@ -407,6 +417,7 @@ def run_final_eval(
         timeout_s=visual_timeout_s,
         max_concurrency=visual_max_concurrency,
         pass_threshold=visual_pass_threshold,
+        caps=visual_caps,
     )
 
     # The ``visual`` subtree is **advisory** (spec §5.6, §5.5.5): a
@@ -517,6 +528,7 @@ def _run_visual_sweep(
     timeout_s: float,
     max_concurrency: int,
     pass_threshold: float,
+    caps: BucketCaps,
 ) -> dict[str, Any]:
     """Drive the all-pages visual sweep and project it onto the ``visual`` subtree.
 
@@ -553,6 +565,7 @@ def _run_visual_sweep(
             timeout_s=timeout_s,
             max_concurrency=max_concurrency,
             pass_threshold=pass_threshold,
+            caps=caps,
         )
     except Exception as exc:
         return _visual_error(f"visual sweep raised {type(exc).__name__}: {exc}")

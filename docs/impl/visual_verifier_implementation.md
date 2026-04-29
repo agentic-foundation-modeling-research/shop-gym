@@ -148,7 +148,7 @@ Lands the page-bucket `ThreadPoolExecutor` fan-out for both
 
 - [x] **T5.3** — `final_eval/step.py` integration: extend `run_final_eval` to run the visual sweep alongside the existing 5-step smoke. Merge per-bucket results: weighted overall via `PAGE_WEIGHTS` (§9.5), averaged `category_scores`, severity-sorted concatenated issues. Write into `final_eval.json` under the `visual` subtree (§4.1) — `verdict`, `score`, `category_scores`, `pages_judged`, `feedback`, `report_path`. Smoke + judge subtrees stay unchanged. Failures (probe miss, runtime crash, parse error) collapse to `visual.error`. Spec §5.6. **Check:** SC6 — `final_eval.json` carries the full `visual.{ok, verdict, score, category_scores, pages_judged, feedback, report_path}` subtree; `<out_dir>/visual_eval/{screenshots,report.md}` exists.
 
-- [ ] **T5.4** — Config knobs: `ShopGenConfig.final_eval_max_collections / .final_eval_products_per_collection / .final_eval_max_pages / .final_eval_visual_timeout_s`. CLI flag `--final-eval-visual-timeout`. These flow into `SWEEP_CAPS: BucketCaps` (T1.3). Spec §5.6.1, §5.9. **Check:** library + CLI round-trip; cap changes observable in resolved sweep route count.
+- [x] **T5.4** — Config knobs: `ShopGenConfig.final_eval_max_collections / .final_eval_products_per_collection / .final_eval_max_pages / .final_eval_visual_timeout_s`. CLI flag `--final-eval-visual-timeout`. These flow into `SWEEP_CAPS: BucketCaps` (T1.3). Spec §5.6.1, §5.9. **Check:** library + CLI round-trip; cap changes observable in resolved sweep route count.
 
 - [ ] **T5.5** — Tests: SC6 (full visual subtree present); SC7 sweep arm (skill probe failure → ERROR captured, `<out_dir>/visual_eval/` not created, run completes). **Check:** both pass under stub runtime.
 
