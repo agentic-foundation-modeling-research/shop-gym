@@ -329,7 +329,7 @@ stubs; outer timeout doesn't cut the inner harness loop.
 **Goal:** `shop-probe run --rubric v1.3 --agent-runtime …` works end-to-end;
 report records per-probe agent + judge cost.
 
-- [ ] **T6.1** — `packages/shop_arena/src/shop_probe/cli.py`: add five
+- [x] **T6.1** — `packages/shop_arena/src/shop_probe/cli.py`: add five
   flags to both the `run` and `eval` subcommands (defaults match
   `AgentRuntimeConfig`):
   ```

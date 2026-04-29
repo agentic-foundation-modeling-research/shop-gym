@@ -37,6 +37,7 @@ from playwright.async_api import Page
 from pydantic import ValidationError
 
 from shop_probe import __version__
+from shop_probe.agent.config import AgentRuntimeConfig
 from shop_probe.bench import load_bench
 from shop_probe.fidelity import BenchComparison, compute_bench_comparison
 from shop_probe.probes._runner import (
@@ -99,6 +100,11 @@ _TURING_CHART_FILENAME: Final[str] = "turing.svg"
 _SUPPLEMENT_TABLE_FILENAME: Final[str] = "supplement_table.md"
 
 _TARGET_LABELS: Final[tuple[str, ...]] = get_args(TargetLabel)
+
+_DEFAULT_AGENT_CONFIG: Final[AgentRuntimeConfig] = AgentRuntimeConfig()
+"""Source of truth for ``--agent-*`` flag defaults (impl plan T6.1)."""
+
+_AGENT_RUNTIME_CHOICES: Final[tuple[str, ...]] = ("claude_code", "pi")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -199,6 +205,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "(spec §5.8). Default: off."
         ),
     )
+    _add_agent_flags(run)
 
     report = sub.add_parser(
         "report",
@@ -359,7 +366,75 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional baselines directory forwarded to the report stage.",
     )
+    _add_agent_flags(eval_parser)
     return parser
+
+
+def _add_agent_flags(subparser: argparse.ArgumentParser) -> None:
+    """Add the v1.3 ``--agent-*`` flags to a subcommand (impl plan T6.1).
+
+    Defaults are sourced from :data:`_DEFAULT_AGENT_CONFIG` so the dataclass
+    remains the single source of truth. Flags are silently inert when the
+    selected rubric has no ``level: agent_driven`` entries (e.g. ``v1.1``):
+    no Anthropic calls are issued because ``run_agent_task`` is never
+    invoked.
+    """
+    subparser.add_argument(
+        "--agent-runtime",
+        choices=_AGENT_RUNTIME_CHOICES,
+        default=_DEFAULT_AGENT_CONFIG.runtime,
+        help=(
+            "Harness runtime back-end for v1.3 agent-driven probes "
+            f"(default: {_DEFAULT_AGENT_CONFIG.runtime})."
+        ),
+    )
+    subparser.add_argument(
+        "--agent-model",
+        default=_DEFAULT_AGENT_CONFIG.model,
+        help=(
+            "Model id passed to the agent runtime for plan/exec turns "
+            f"(default: {_DEFAULT_AGENT_CONFIG.model})."
+        ),
+    )
+    subparser.add_argument(
+        "--agent-step-budget",
+        type=int,
+        default=_DEFAULT_AGENT_CONFIG.step_budget,
+        help=(
+            "Default max iterations for the harness plan/exec loop; per-task "
+            "`AgentTaskInline.step_budget` overrides take precedence "
+            f"(default: {_DEFAULT_AGENT_CONFIG.step_budget})."
+        ),
+    )
+    subparser.add_argument(
+        "--agent-timeout-s",
+        type=int,
+        default=_DEFAULT_AGENT_CONFIG.timeout_s,
+        help=(
+            "Default wall-clock budget (seconds) for one agent task run; "
+            "per-task `AgentTaskInline.timeout_s` overrides take precedence "
+            f"(default: {_DEFAULT_AGENT_CONFIG.timeout_s})."
+        ),
+    )
+    subparser.add_argument(
+        "--agent-judge-model",
+        default=_DEFAULT_AGENT_CONFIG.judge_model,
+        help=(
+            "Model id used for the vision completion judge "
+            f"(default: {_DEFAULT_AGENT_CONFIG.judge_model})."
+        ),
+    )
+
+
+def _build_agent_config(args: argparse.Namespace) -> AgentRuntimeConfig:
+    """Materialise an :class:`AgentRuntimeConfig` from parsed CLI flags."""
+    return AgentRuntimeConfig(
+        runtime=args.agent_runtime,
+        model=args.agent_model,
+        step_budget=args.agent_step_budget,
+        timeout_s=args.agent_timeout_s,
+        judge_model=args.agent_judge_model,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -412,6 +487,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             run_axis_b="B" in axes,
             include_auth=args.include_auth,
             record_har=args.record_har,
+            agent_config=_build_agent_config(args),
         )
     )
 
@@ -499,6 +575,7 @@ async def _run(
     run_axis_b: bool,
     include_auth: bool = False,
     record_har: bool = False,
+    agent_config: AgentRuntimeConfig | None = None,
 ) -> ProbeReport:
     """Run the requested axes and assemble the closed :class:`ProbeReport`."""
     started = datetime.now(UTC)
@@ -525,6 +602,7 @@ async def _run(
                         base_url=target.base_url,
                         sample_product_url=sample_product_url,
                         sample_collection_url=sample_collection_url,
+                        agent_config=agent_config,
                     )
                 else:
                     # Deterministic entries always carry a ``probe`` ref;
@@ -980,6 +1058,11 @@ def _cmd_eval(args: argparse.Namespace) -> int:
                 include_auth=args.include_auth,
                 record_har=args.record_har,
                 out=out_root,
+                agent_runtime=args.agent_runtime,
+                agent_model=args.agent_model,
+                agent_step_budget=args.agent_step_budget,
+                agent_timeout_s=args.agent_timeout_s,
+                agent_judge_model=args.agent_judge_model,
             )
             rc = _cmd_run(run_args)
             if rc != EXIT_OK:

@@ -14,10 +14,16 @@ This module is import-safe: it performs no I/O at import time.
 from __future__ import annotations
 
 from shop_probe.agent.config import AgentRuntimeConfig, AgentRuntimeName
-from shop_probe.agent.runner import run_agent_task
+
+# Note: ``run_agent_task`` is intentionally not re-exported here. The runner
+# module imports ``ProbeContext`` / ``ProbeOutcome`` from
+# ``shop_probe.probes._runner``, which in turn imports ``AgentRuntimeConfig``
+# from ``shop_probe.agent.config`` — eagerly importing the runner at package
+# init time would form a circular import. Callers should import it directly
+# via ``from shop_probe.agent.runner import run_agent_task`` (impl plan T1.2
+# only specified re-exporting ``AgentRuntimeConfig``).
 
 __all__ = [
     "AgentRuntimeConfig",
     "AgentRuntimeName",
-    "run_agent_task",
 ]
