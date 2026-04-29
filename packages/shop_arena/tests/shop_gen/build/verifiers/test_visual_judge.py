@@ -19,9 +19,11 @@ from pathlib import Path
 
 import pytest
 
+from harness.plan.tasks import TaskList
 from harness.runtimes.base import RuntimeIterationResult
 from harness.trajectory import Trajectory
 from harness.verifiers import Verdict, VerifierContext
+from harness.verifiers.dispatch import dispatch_verifiers
 from shop_gen.build.verifiers.visual_judge import VisualJudgeVerifier
 
 # --------------------------------------------------------------------------- #
@@ -748,6 +750,83 @@ def test_run_ignores_retry_budget_when_zero(
     assert result.details["prior_fails"] == 10  # noqa: PLR2004 -- mirrors fixture
     assert len(runtime.calls) == 1
 
+
+
+# --------------------------------------------------------------------------- #
+# SC3 — full-dispatch retry-budget downgrade (T2.5 — spec §5.4)
+# --------------------------------------------------------------------------- #
+
+
+def test_sc3_dispatch_records_advisory_downgrade_after_three_fails(
+    artifact_dir: Path,
+    data_dir: Path,
+    tmp_path: Path,
+) -> None:
+    """SC3: 4th invocation against ``gen_homepage`` after 3 sibling FAILs
+    is recorded as ADVISORY in the dispatch-written ``visual_judge.json``.
+
+    The earlier ``test_run_downgrades_to_advisory_when_retry_budget_met``
+    pins the verifier-level return value; this test goes through
+    :func:`harness.verifiers.dispatch.dispatch_verifiers` so the
+    spec's on-disk contract — ``runs/build/iters/exec-0004/checks/
+    verifiers/visual_judge.json`` records the downgrade — is observable.
+    """
+    run_dir = artifact_dir.parent  # matches make_ctx convention
+    iter_id = "exec-0004"
+    iter_dir = run_dir / "iters" / iter_id
+    iter_dir.mkdir(parents=True)
+    # Seed 3 sibling FAIL records against ``gen_homepage``.
+    for i in range(1, 4):
+        _write_visual_judge_record(
+            run_dir=run_dir,
+            iter_id=f"exec-{i:04d}",
+            task_id="gen_homepage",
+            verdict="fail",
+        )
+
+    runtime = _RecordingRuntime(verdict_body=_pass_body())
+    server = _StubDevServer()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=server,
+        retry_budget=3,
+    )
+
+    outcome = dispatch_verifiers(
+        verifiers=[verifier],
+        iter_dir=iter_dir,
+        iter_id=iter_id,
+        run_dir=run_dir,
+        selected_task_id="gen_homepage",
+        plan=TaskList(tasks=()),
+        artifact_dir=artifact_dir,
+        runtime=runtime,
+        feedback_max_chars=4000,
+    )
+
+    # The verifier short-circuits before booting the dev server or
+    # invoking the runtime.
+    assert server.enters == 0
+    assert server.exits == 0
+    assert runtime.calls == []
+
+    # ADVISORY is non-blocking, so no plan rewrite is triggered.
+    assert outcome.blocking is False
+    assert len(outcome.runs) == 1
+    assert outcome.runs[0].verdict is Verdict.ADVISORY
+
+    # The on-disk record carries the downgrade telemetry.
+    record_path = iter_dir / "checks" / "verifiers" / "visual_judge.json"
+    assert record_path.is_file()
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+    assert payload["verdict"] == "advisory"
+    assert payload["task_id"] == "gen_homepage"
+    assert payload["iter_id"] == iter_id
+    assert payload["details"]["retry_budget_exhausted"] is True
+    assert payload["details"]["prior_fails"] == 3  # noqa: PLR2004 -- mirrors fixture
+    assert payload["details"]["retry_budget"] == 3  # noqa: PLR2004 -- mirrors ctor arg
+    assert "retry budget" in payload["feedback"]
+    del tmp_path  # unused; artifact_dir already lives under tmp_path
 
 # --------------------------------------------------------------------------- #
 # Default fixture seeding

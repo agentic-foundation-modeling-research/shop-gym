@@ -91,7 +91,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 - [x] **T2.4** — CLI flag `--visual-retry-budget <int>` on `cli.py`. Spec §5.9. **Check:** `shop-gen --visual-retry-budget 5 ...` propagates to `VisualJudgeVerifier`.
 
-- [ ] **T2.5** — Tests: SC3 — 4 consecutive FAILs against `gen_homepage` with budget 3 → 4th invocation is ADVISORY with `details.retry_budget_exhausted = true`. **Check:** test green; `runs/build/iters/exec-0004/checks/verifiers/visual_judge.json` records the downgrade.
+- [x] **T2.5** — Tests: SC3 — 4 consecutive FAILs against `gen_homepage` with budget 3 → 4th invocation is ADVISORY with `details.retry_budget_exhausted = true`. **Check:** test green; `runs/build/iters/exec-0004/checks/verifiers/visual_judge.json` records the downgrade.
 
 **M2 acceptance:** SC3 covered; budget knob exposed on CLI + library.
 
