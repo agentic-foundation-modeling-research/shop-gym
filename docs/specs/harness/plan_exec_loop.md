@@ -1,6 +1,6 @@
 # Plan + Exec Harness (`packages/harness`)
 
-Status: **Spec (proposed)** · Version: **0.1**
+Status: **Implemented** · Version: **0.1**
 Owners: ShopGym
 
 > A self-contained, runtime-agnostic engine for orchestrating LLM agents
@@ -24,7 +24,7 @@ Two design choices define the harness:
 - **Filesystem-as-memory.** Every iteration starts with zero context
   and reads its memory from a small, fixed set of files under `run_dir/`.
 
-The harness is initially used by `shop_explore` and `shop_gen` but is
+The harness is initially used by `shop_arena.explore` and `shop_arena.gen` but is
 coupled to neither. Its tests run against arbitrary toy tasks.
 
 ---
@@ -55,10 +55,23 @@ coupled to neither. Its tests run against arbitrary toy tasks.
 
 ## 3. Current Status
 
-- `packages/harness` does not exist.
-- No shared orchestration layer exists in the repo. Each new agentic
-  pipeline today re-implements its own planner/loop glue,
-  log parser, and inter-iteration state management.
+- `packages/harness` is implemented and published in the repo workspace.
+  The package exposes `run_plan_exec_loop`, `PlanExecLoopConfig`,
+  `Prompts`, `PlanExecLoopResult`, `get_runtime`, runtime adapters for
+  `pi`, Claude Code, and replay, and normalized trajectory / run-summary
+  telemetry.
+- The base v0.1 loop is now extended by sibling specs:
+  - [`seed_immutability.md`](seed_immutability.md) adds the persisted
+    seed manifest and post-iteration seed checks.
+  - [`resume.md`](resume.md) adds `Workspace.open`, planner-skip resume,
+    partial-iteration quarantine, and `resume_history`.
+  - [`verifiers.md`](verifiers.md) adds caller-owned verifier dispatch
+    and `{{verifier_feedback}}`.
+  - [`protocol_violation_recovery.md`](protocol_violation_recovery.md)
+    adds executor-phase BLOCKED-and-continue recovery.
+- The current Python implementation remains the shipping harness. The
+  proposed TypeScript vNext contract is tracked separately in
+  [`plan_exec_loop_vnext.md`](plan_exec_loop_vnext.md).
 
 ---
 
@@ -215,7 +228,10 @@ have full access and decide what to read or write. Memory is
 per-run; `plan.md` starts empty each run.
 Callers do not write inside `run_dir` after the run starts. If initial
 artifacts are needed, the caller passes `artifact_seed_dir`; the harness
-copies it into `run_dir/artifact/` before `plan()`.
+copies it into `run_dir/artifact/` before `plan()`. The seeded subtree is
+treated as stable for the duration of the run and is enforced by a
+deterministic post-iteration check — see
+[seed_immutability.md](seed_immutability.md).
 
 ### 5.5 Plan file protocol (`plan.md`)
 
@@ -329,16 +345,16 @@ result, and the secret-free config snapshot. Rewritten atomically
 validator reconstructs state from append-only files under `iters/` plus
 the current `plan.md`.
 
-### 5.8 Executor self-check and protocol checks
+### 5.8 Executor self-check, verifiers, and protocol checks
 
-v0.1 has no independent verification API. It does not ship `Verifier`,
-`Verdict`, `RuleVerifier`, `LLMVerifier`, verifier scopes, verifier
-telemetry, `verdicts.md`, or verifier-driven task injection. Those
-concepts are deferred entirely.
-
-Instead, the executor is responsible for self-checking its selected task
-before it marks that task `[x]` or `[!]`. This keeps the core loop to one
-planner phase and one executor phase type.
+The base v0.1 contract relied on executor self-checking: the executor
+was responsible for checking its selected task before marking that task
+`[x]` or `[!]`. The shipping package now also includes the additive
+verifier extension described in
+[`verifiers.md`](verifiers.md): callers may pass `Verifier`
+implementations that run after each executor iteration, persist
+per-verifier telemetry, rewrite failed tasks to `[~]`, and feed bounded
+feedback into the next executor prompt.
 
 The harness may still run deterministic protocol checks after each
 executor iteration. These checks enforce the harness contract, for
@@ -349,12 +365,14 @@ example:
 - `[x]` tasks are not resurrected.
 - the selected task is the only task newly marked `[x]` or `[!]`.
 - new tasks are PENDING.
+- the seeded subtree under `run_dir/artifact/` is unchanged
+  ([seed_immutability.md](seed_immutability.md)).
 
 Protocol checks are not domain-quality grading and do not produce
 advisory verdicts. They are harness-owned guardrails and write their
-result to `iters/<exec_id>/checks/protocol.json`. Domain-specific quality
-checks belong in the executor self-check instructions for v0.1.
-Independent evaluator phases are a future extension (§8.2).
+result to `iters/<exec_id>/checks/protocol.json`. Domain-specific
+quality checks either stay in executor self-check instructions or live
+behind caller-owned verifiers.
 
 ---
 
