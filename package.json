@@ -13,7 +13,8 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "shop:host": "./scripts/run-shop.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

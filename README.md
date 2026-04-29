@@ -53,6 +53,31 @@ pnpm lint                        # biome lint
 pnpm format                      # biome format
 ```
 
+## Hosting a generated shop
+
+`pnpm shop:host` (alias for [`scripts/run-shop.sh`](scripts/run-shop.sh)) brings
+up a generated shop end-to-end: the `shop_backend` GraphQL server pointed at
+`outputs/shops/<name>/data/` plus the Hydrogen storefront wired to it. Both
+processes run detached; logs live under `.run/shops/`.
+
+Hydrogen runs on `<port>`, `shop_backend` on `<port>+1000`.
+
+```bash
+pnpm shop:host start mock_hardware 8000
+# → shop_backend on http://localhost:9000, Hydrogen on http://localhost:8000
+
+pnpm shop:host list -a                      # all shops, running + available
+pnpm shop:host logs mock_hardware api       # tail shop_backend log
+pnpm shop:host logs mock_hardware hydrogen  # tail Hydrogen log
+pnpm shop:host stop mock_hardware           # or `stop all`
+pnpm shop:host restart mock_hardware
+```
+
+The script picks the Hydrogen tree in this order: `HYDROGEN_DIR` env override
+→ `outputs/shops/<name>/hydrogen/` (if `node_modules` exists) →
+`outputs/shops/<name>/runs/build/artifact/hydrogen/` (the build-loop output,
+where deps live by default).
+
 ## Repository layout
 
 ```
