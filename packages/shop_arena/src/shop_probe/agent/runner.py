@@ -31,6 +31,7 @@ This module performs no I/O at import time.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
@@ -43,9 +44,10 @@ from harness import (
     run_plan_exec_loop,
 )
 from harness.runtimes import AgentRuntime, get_runtime
-from harness.trajectory import ScreenshotStep
+from harness.trajectory import ScreenshotStep, ToolCallStep
 from harness.trajectory import Trajectory as HarnessTrajectory
 from shop_probe.agent.config import AgentRuntimeConfig
+from shop_probe.agent.judge import JudgeVerdict, run_completion_judge
 from shop_probe.probes._runner import ProbeContext, ProbeOutcome
 from shop_probe.report import EvidenceRef
 from shop_probe.rubric.schema import AgentTaskInline
@@ -82,6 +84,9 @@ _AGENTS_MD: Final[str] = (
 The body encodes the project-level ``playwright-browser`` skill conventions
 captured in ``CLAUDE.md`` so every runtime sees them up front.
 """
+
+_ARG_TRUNCATE: Final[int] = 80
+"""Per-argument character cap for the judge trajectory rendering."""
 
 
 def _build_runtime(cfg: AgentRuntimeConfig) -> AgentRuntime:
@@ -149,6 +154,72 @@ def _last_screenshot_path(*, run_dir: Path, result: PlanExecLoopResult) -> Path 
                 if absolute.is_file():
                     return absolute
     return None
+
+
+def _project_trajectory(*, run_dir: Path, result: PlanExecLoopResult) -> str:
+    """Render the harness trajectories under ``run_dir`` as compact judge text.
+
+    The output is a per-iteration block listing each :class:`ToolCallStep`
+    (tool name + a short argument summary) and the last navigated URL
+    observed in the iteration's ``goto``-flavoured tool calls. Other step
+    kinds (thoughts, messages, screenshots, errors) are intentionally
+    skipped so the judge prompt stays compact: it sees what the agent
+    *did*, not what it said.
+
+    Args:
+        run_dir: Root of the harness workspace.
+        result: Return value of :func:`harness.run_plan_exec_loop`.
+
+    Returns:
+        Compact multi-line text rendering. Empty string when no
+        trajectories were persisted (defensive — the judge prompt
+        renders this inside a fenced code block either way).
+    """
+    blocks: list[str] = []
+    for relpath in result.trajectory_paths:
+        traj_path = run_dir / relpath
+        if not traj_path.is_file():
+            continue
+        traj = HarnessTrajectory.model_validate_json(
+            traj_path.read_text(encoding="utf-8"),
+        )
+        lines: list[str] = [f"# iter {traj.iter_id} (runtime={traj.runtime})"]
+        last_url: str | None = None
+        for step in traj.steps:
+            if not isinstance(step, ToolCallStep):
+                continue
+            args_preview = _summarise_tool_args(step.arguments)
+            lines.append(f"- {step.tool}({args_preview})")
+            url = step.arguments.get("url")
+            if isinstance(url, str) and url:
+                last_url = url
+        if last_url is not None:
+            lines.append(f"final_url: {last_url}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def _summarise_tool_args(arguments: Mapping[str, object]) -> str:
+    """Render ``arguments`` as a compact ``key=value`` comma-joined string.
+
+    Long string values are truncated to 80 characters so a single noisy
+    payload (e.g. a base64 screenshot in a tool argument) cannot bloat
+    the judge prompt.
+
+    Args:
+        arguments: The :attr:`ToolCallStep.arguments` mapping.
+
+    Returns:
+        Compact ``key=value, key=value`` rendering, or ``""`` when the
+        mapping is empty.
+    """
+    parts: list[str] = []
+    for key, value in arguments.items():
+        text = repr(value) if not isinstance(value, str) else value
+        if len(text) > _ARG_TRUNCATE:
+            text = text[: _ARG_TRUNCATE - 1] + "…"
+        parts.append(f"{key}={text}")
+    return ", ".join(parts)
 
 
 async def run_agent_task(
@@ -221,14 +292,31 @@ async def run_agent_task(
     if after_path is not None:
         after_rel = after_path.relative_to(ctx.evidence_root)
         after_shot = EvidenceRef(kind="screenshot", path=after_rel.as_posix())
+        after_absolute = after_path
     else:
         after_shot = before_shot
+        after_absolute = ctx.evidence_root / before_shot.path
 
     harness_ref = EvidenceRef(
         kind="harness_run",
         path=run_dir.relative_to(ctx.evidence_root).as_posix(),
     )
+
+    before_absolute = ctx.evidence_root / before_shot.path
+    trajectory_text = _project_trajectory(run_dir=run_dir, result=result)
+    verdict: JudgeVerdict = await run_completion_judge(
+        before_absolute,
+        after_absolute,
+        trajectory_text,
+        judge_prompt=task.judge_prompt,
+        model=cfg.judge_model,
+    )
     return ProbeOutcome(
-        passed=True,
+        passed=verdict.passed,
         evidence=(before_shot, after_shot, harness_ref),
+        notes=None if verdict.passed else verdict.reasoning,
+        extra={
+            "judge_cost_usd": verdict.cost_usd,
+            "judge_model": verdict.model_id,
+        },
     )

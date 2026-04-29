@@ -41,6 +41,7 @@ from harness.trajectory import (
 from harness.trajectory import Trajectory as HarnessTrajectory
 from shop_probe.agent import runner as runner_module
 from shop_probe.agent.config import AgentRuntimeConfig
+from shop_probe.agent.judge import JudgeVerdict
 from shop_probe.agent.runner import run_agent_task
 from shop_probe.probes._runner import ProbeContext
 from shop_probe.rubric.schema import AgentTaskInline
@@ -177,6 +178,47 @@ def _stub_run_plan_exec_loop_factory(
         )
 
     return _stub
+    return _stub
+
+
+def _install_judge_stub(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    passed: bool = True,
+    reasoning: str = "ok",
+    cost_usd: float = 0.0123,
+    model_id: str = "claude-opus-4-7",
+) -> list[dict[str, Any]]:
+    """Replace ``run_completion_judge`` with a stub recording its call args."""
+    captured: list[dict[str, Any]] = []
+
+    async def _stub(
+        before_shot: Path,
+        after_shot: Path,
+        trajectory_text: str,
+        judge_prompt: str,
+        *,
+        model: str = "claude-opus-4-7",
+        client: Any | None = None,
+    ) -> JudgeVerdict:
+        captured.append(
+            {
+                "before_shot": before_shot,
+                "after_shot": after_shot,
+                "trajectory_text": trajectory_text,
+                "judge_prompt": judge_prompt,
+                "model": model,
+            }
+        )
+        return JudgeVerdict(
+            passed=passed,
+            reasoning=reasoning,
+            cost_usd=cost_usd,
+            model_id=model_id,
+        )
+
+    monkeypatch.setattr(runner_module, "run_completion_judge", _stub)
+    return captured
 
 
 # --------------------------------------------------------------------------- #
@@ -206,6 +248,7 @@ def test_runner_picks_last_screenshot_as_after(
         ),
     )
     monkeypatch.setattr(runner_module, "_build_runtime", lambda cfg: object())
+    judge_calls = _install_judge_stub(monkeypatch)
 
     outcome = asyncio.run(run_agent_task(page=page, ctx=ctx, task=_agent_task()))  # type: ignore[arg-type]
 
@@ -224,6 +267,14 @@ def test_runner_picks_last_screenshot_as_after(
     assert after.path.endswith("exec-0002/screenshots/final.png")
     assert harness.kind == "harness_run"
     assert harness.path == f"{ctx.probe_id}/harness"
+    # Judge received the AFTER screenshot the runner picked + the inline prompt.
+    assert len(judge_calls) == 1
+    call = judge_calls[0]
+    assert call["after_shot"].as_posix().endswith("exec-0002/screenshots/final.png")
+    assert call["judge_prompt"] == "Did the visible product set narrow?"
+    # Cost surfaces on ProbeOutcome.extra (T3.2).
+    assert outcome.extra.get("judge_cost_usd") == pytest.approx(0.0123)
+    assert outcome.extra.get("judge_model") == "claude-opus-4-7"
 
 
 def test_runner_skips_when_precondition_url_unset(
@@ -299,6 +350,7 @@ def test_runner_renders_goal_into_prompts(
         return instance
 
     monkeypatch.setattr(runner_module, "_build_runtime", _factory)
+    _install_judge_stub(monkeypatch)
 
     goal = "Type 'red' into search and verify predictive results appear."
     asyncio.run(

@@ -34,8 +34,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
 from typing import Final
@@ -85,12 +85,17 @@ class ProbeOutcome:
         notes: Optional free-form note (failure reason, observed value).
         duration_ms: Wall-clock duration of the probe call in
             milliseconds. Populated by the runner; probes leave at 0.
+        extra: Free-form mapping for non-evidence side-channel values
+            the runner forwards onto the report (e.g. v1.3 agent-driven
+            ``judge_cost_usd`` / ``judge_model``). Deterministic probes
+            leave this empty.
     """
 
     passed: bool | None
     evidence: tuple[EvidenceRef, ...] = ()
     notes: str | None = None
     duration_ms: int = 0
+    extra: Mapping[str, str | float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -379,4 +384,5 @@ class ProbeRunner:
             evidence=evidence,
             notes=outcome.notes,
             duration_ms=duration_ms,
+            extra=outcome.extra,
         )

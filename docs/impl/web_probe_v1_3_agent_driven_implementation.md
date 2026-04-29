@@ -208,7 +208,7 @@ call and returns a structured `JudgeVerdict`.
     `"passed:\s*(true|false)"` and surface a `notes`-friendly reasoning.
   **Check:** strict pyright; module import-safe (no client construction
   at import time).
-- [ ] **T3.2** — `packages/shop_arena/src/shop_probe/agent/runner.py`:
+- [x] **T3.2** — `packages/shop_arena/src/shop_probe/agent/runner.py`:
   replace the M2 stub `passed=True` with:
   ```python
   verdict = await run_completion_judge(
