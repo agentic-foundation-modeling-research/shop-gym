@@ -12,7 +12,7 @@ an LLM client and never load runtime config.
 
 from __future__ import annotations
 
-from shop_gen.final_eval import load_quality_judge_prompt
+from shop_gen.final_eval import load_quality_judge_prompt, load_visual_sweep_prompt
 
 
 def test_quality_judge_prompt_is_non_empty() -> None:
@@ -99,5 +99,107 @@ def test_load_quality_judge_prompt_is_cached() -> None:
     second = load_quality_judge_prompt()
     assert first is second, (
         "load_quality_judge_prompt: loader is not cached — "
+        "expected identical object identity across calls."
+    )
+
+
+def test_visual_sweep_prompt_is_non_empty() -> None:
+    """The ``visual_sweep.md`` body must be present and non-empty."""
+    body = load_visual_sweep_prompt()
+    assert body.strip(), "visual_sweep.md: prompt file is empty"
+
+
+def test_visual_sweep_prompt_carries_required_format_slots() -> None:
+    """The visual-sweep template must accept the six T5.2 slots.
+
+    Spec §9.4 mirrors §9.2 with the bucket axis: the driver renders
+    ``base_url`` / ``bucket`` / ``capabilities_slice`` / ``route_list`` /
+    ``verdict_schema`` / ``prior_feedback_or_empty`` per bucket. A
+    missing placeholder would crash ``str.format`` at the first
+    dispatch; a stray literal ``{`` would crash with a different
+    error. Exercise the format call directly with placeholder values.
+    """
+    body = load_visual_sweep_prompt()
+    rendered = body.format(
+        base_url="http://localhost:3000",
+        bucket="homepage",
+        capabilities_slice="{}",
+        route_list="- /",
+        verdict_schema="{}",
+        prior_feedback_or_empty="",
+    )
+    assert "http://localhost:3000" in rendered
+    assert "homepage" in rendered
+    assert "- /" in rendered
+
+
+def test_visual_sweep_prompt_describes_advisory_contract() -> None:
+    """The visual-sweep prompt must orient the reviewer to the advisory contract.
+
+    Spec §9.4 distinguishes the sweep from the gating ``visual_judge``
+    prompt: the verdict is recorded into ``final_eval.json`` for human
+    review and never gates the run. The exact wording can drift; this
+    test asserts the *intent* survives, not the verbatim quote.
+    """
+    body = load_visual_sweep_prompt().lower()
+    assert "advisory" in body, (
+        "visual_sweep.md must orient the reviewer to the advisory "
+        "contract (spec §9.4)."
+    )
+    assert "human review" in body, (
+        "visual_sweep.md must surface the human-review framing "
+        "distinct from the gating visual_judge prompt (spec §9.4)."
+    )
+
+
+def test_visual_sweep_prompt_calls_out_per_bucket_scope() -> None:
+    """The visual-sweep prompt must tell the agent it is scoped to one bucket.
+
+    Spec §9.4 + §5.6: the driver fans one nested iteration out per
+    page bucket, so the prompt must scope the agent to its bucket's
+    routes only and call out that the capabilities slice has been
+    pre-filtered.
+    """
+    body = load_visual_sweep_prompt()
+    flat = " ".join(body.split()).lower()
+    assert "pre-filtered" in flat, (
+        "visual_sweep.md must call out that the capabilities slice has "
+        "been pre-filtered for this bucket (spec §9.4)."
+    )
+    assert "bucket" in flat, (
+        "visual_sweep.md must reference the page-bucket axis so the "
+        "agent understands why the slice is narrow (spec §9.4)."
+    )
+
+
+def test_visual_sweep_prompt_emits_structured_verdict_schema_slot() -> None:
+    """The visual-sweep prompt must keep the §9.3 structured-score schema.
+
+    Spec §9.4 uses the same ``verdict.json`` schema as the build-loop
+    ``visual_judge`` so the merged report can compare buckets on a
+    common scale. The template references ``score`` / ``severity`` /
+    ``pages_judged`` so the reviewer sees the contract before the
+    schema block; the schema body itself flows in via the
+    ``{verdict_schema}`` slot.
+    """
+    body = load_visual_sweep_prompt()
+    assert "{verdict_schema}" in body, (
+        "visual_sweep.md must include the {verdict_schema} slot so the "
+        "§9.3 schema body lands in the rendered prompt."
+    )
+    flat = body.lower()
+    for token in ("score", "severity", "pages_judged"):
+        assert token in flat, (
+            f"visual_sweep.md must reference `{token}` from the structured "
+            "verdict contract (spec §9.3 + §9.4)."
+        )
+
+
+def test_load_visual_sweep_prompt_is_cached() -> None:
+    """Repeated loader calls must return the same string identity (cache)."""
+    first = load_visual_sweep_prompt()
+    second = load_visual_sweep_prompt()
+    assert first is second, (
+        "load_visual_sweep_prompt: loader is not cached — "
         "expected identical object identity across calls."
     )

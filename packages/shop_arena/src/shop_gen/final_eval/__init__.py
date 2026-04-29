@@ -17,7 +17,11 @@ modules behind the impl plan T6.x tasks:
   returns the ``str.format()`` template the post-build LLM judge
   consumes (T6.2). The template carries the slots T6.3 fills in:
   ``{base_url}``, ``{capabilities}``, ``{screenshots_table}``,
-  ``{failures_table}``.
+  ``{failures_table}``. :func:`load_visual_sweep_prompt` returns the
+  per-bucket template the all-pages visual sweep renders (T5.2, spec
+  §9.4); slots: ``{base_url}``, ``{bucket}``,
+  ``{capabilities_slice}``, ``{route_list}``, ``{verdict_schema}``,
+  ``{prior_feedback_or_empty}``.
 * :mod:`shop_gen.final_eval.step` — :class:`FinalEvalStep` /
   :func:`run_final_eval` (T6.3) wire the smoke runner + LLM judge
   into one DAG step that writes ``<out_dir>/final_eval.json``. The
@@ -46,7 +50,7 @@ from shop_gen.final_eval.playwright_smoke import (
     resolve_smoke_flow,
     run_playwright_smoke,
 )
-from shop_gen.final_eval.prompts import load_quality_judge_prompt
+from shop_gen.final_eval.prompts import load_quality_judge_prompt, load_visual_sweep_prompt
 from shop_gen.final_eval.step import FinalEvalStep, SmokeRunner, run_final_eval
 
 __all__ = [
@@ -64,6 +68,7 @@ __all__ = [
     "SmokeStep",
     "Viewport",
     "load_quality_judge_prompt",
+    "load_visual_sweep_prompt",
     "resolve_smoke_flow",
     "run_final_eval",
     "run_playwright_smoke",
