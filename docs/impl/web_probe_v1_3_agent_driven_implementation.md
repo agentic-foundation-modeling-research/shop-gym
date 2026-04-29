@@ -349,7 +349,7 @@ report records per-probe agent + judge cost.
   (`total_judge_cost_usd`, `total_agent_cost_usd`). **Check:** existing
   report tests still green; new test asserts cost fields populate from
   `ProbeOutcome.extra`.
-- [ ] **T6.3** — `packages/shop_arena/src/shop_probe/README.md`: new
+- [x] **T6.3** — `packages/shop_arena/src/shop_probe/README.md`: new
   "v1.3 agent-driven tier" section under "Run probes against one
   storefront". Rubric description, flags table, cost expectation
   (~$72/cohort default Opus, ~$15 with Sonnet via `--agent-model

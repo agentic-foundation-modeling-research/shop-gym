@@ -141,11 +141,13 @@ Notable flags:
 - `--name` — filename-friendly identifier; unique within the benchmark.
 - `--label` — `sandbox` or `real`.
 - `--axes` — `A` or `A,B` today; axis C lands in a follow-on patch.
-- `--rubric` — `v1` / `v1.1` / `v1.2` (packaged) or a path to a custom YAML.
+- `--rubric` — `v1` / `v1.1` / `v1.2` / `v1.3` (packaged) or a path to a custom YAML.
   `v1.2` adds an 8-probe `level: advanced` behavioral tier on top of v1.1
   that drives interactions (sort, filter, pagination, variant swap, qty
   spinner, predictive search, cart-count badge update) and asserts the page
-  state actually changes.
+  state actually changes via deterministic Playwright selectors. `v1.3`
+  replaces that 8-probe tier with `level: agent_driven` entries scored by
+  an LLM agent + LLM judge — see [v1.3 agent-driven tier](#v13-agent-driven-tier).
 - `--include-auth` — opt into the v1.1 authenticated/transactional slice
   (default: skipped). The 8 v1.2 advanced probes are unauthenticated and
   ship without this gate.
@@ -153,6 +155,56 @@ Notable flags:
   `<out>/evidence/<label>__<name>__rerun<N>/<probe_id>/network.har`.
 - `--rerun-index` — 1-indexed slot in a rerun group, consumed by
   `aggregate-reruns`.
+
+### v1.3 agent-driven tier
+
+`--rubric v1.3` resolves a 74-entry rubric (66 v1.1 entries verbatim + 8
+agent-driven entries replacing the v1.2 advanced tier). Each agent-driven
+entry carries an inline `agent_task:` block (`goal`, `judge_prompt`,
+`precondition_url_attr`, optional `step_budget` / `timeout_s`) that drives
+one run of `harness.run_plan_exec_loop` against the `playwright-browser`
+skill. Before/after screenshots plus the projected trajectory are then
+passed to a vision Anthropic Messages API judge that returns a structured
+pass/fail verdict; the verdict and its reasoning land on the emitted
+`ProbeOutcome`, and per-probe agent + judge cost is recorded on the
+report. Adding a 9th task is one YAML edit — no Python wrapper needed.
+
+Five `--agent-*` flags are accepted by both `run` and `eval` (`eval`
+forwards them verbatim into each spawned `run` invocation). They are inert
+when the selected rubric has no `level: agent_driven` entries (e.g. `v1`,
+`v1.1`, `v1.2`):
+
+| Flag                          | Default            | Purpose                                                                                  |
+| ----------------------------- | ------------------ | ---------------------------------------------------------------------------------------- |
+| `--agent-runtime`             | `claude_code`      | Harness runtime back-end for v1.3 agent-driven probes (`claude_code` or `pi`).           |
+| `--agent-model`               | `claude-opus-4-7`  | Model id passed to the agent runtime for plan/exec turns.                                |
+| `--agent-step-budget`         | `15`               | Default max iterations for the harness plan/exec loop; per-task overrides win.           |
+| `--agent-timeout-s`           | `180`              | Default wall-clock budget (seconds) for one agent task run; per-task overrides win.      |
+| `--agent-judge-model`         | `claude-opus-4-7`  | Model id used for the vision completion judge.                                           |
+
+```bash
+uv run shop-probe run https://shop-alpha.example.invalid \
+    --name shop_alpha --label sandbox \
+    --rubric v1.3 --reruns 1 \
+    --out outputs/shop_probe
+```
+
+Each agent-driven probe persists its harness trajectory under
+`<out>/evidence/<label>__<name>__rerun<N>/<probe_id>/harness/` (plan,
+iteration screenshots, `trajectory.json`). Per-probe `judge_cost_usd` and
+`agent_cost_usd` are recorded on the `ProbeResult`; `ProbeReport` exposes
+`total_judge_cost_usd` and `total_agent_cost_usd`.
+
+**Cost expectation** (defaults; one cohort = 7 shops × 8 probes × 4 reruns
+= 224 agent runs + 224 judge calls):
+
+| Configuration                              | Cohort cost |
+| ------------------------------------------ | ----------- |
+| Default (`--agent-model claude-opus-4-7`)  | ~$72        |
+| Sonnet (`--agent-model claude-sonnet-4-6`) | ~$15        |
+
+`v1` / `v1.1` / `v1.2` cohorts are unaffected — they issue zero Anthropic
+calls regardless of the `--agent-*` flag values.
 
 ### Consolidate reruns
 
