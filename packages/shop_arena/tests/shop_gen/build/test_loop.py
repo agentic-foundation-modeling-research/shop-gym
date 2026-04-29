@@ -997,15 +997,17 @@ def test_default_verifiers_factory_threads_visual_judge_max_concurrency(
     assert visual._max_concurrency == 6  # noqa: PLR2004 -- mirrors fixture
 
 
-def test_default_verifiers_factory_registers_navigation_primitive_usage_as_advisory(
+def test_default_verifiers_factory_registers_navigation_primitive_usage_as_hard_fail(
     tmp_path: Path,
 ) -> None:
-    """Impl plan T4.2: ``navigation_primitive_usage`` registers as ADVISORY in M4.
+    """Impl plan T5.1: ``navigation_primitive_usage`` is HARD-FAIL in M5.
 
     The verifier slots between the rule verifiers and the LLM judges, and is
-    constructed with ``advisory=True`` so a failing scan surfaces feedback
-    without rewriting the selected task's marker back to ``[~]``. M5 (T5.1)
-    flips this to hard-fail by dropping the kwarg.
+    constructed without the ``advisory=True`` kwarg so a failing scan blocks
+    the iteration (rewriting the selected task's marker back to ``[~]``).
+    Promoted from advisory (M4 / T4.2) once the post-M2 cassette validated the
+    primitive contract end-to-end via
+    ``test_build_loop_replay_post_build_artifact_imports_navigation_primitives``.
     """
     out_dir = tmp_path / "out"
     out_dir.mkdir()
@@ -1018,7 +1020,7 @@ def test_default_verifiers_factory_registers_navigation_primitive_usage_as_advis
     matches = [v for v in verifiers if isinstance(v, NavigationPrimitiveUsageVerifier)]
     assert len(matches) == 1, "`navigation_primitive_usage` registers exactly once"
     assert matches[0].name == "navigation_primitive_usage"
-    assert matches[0]._advisory is True
+    assert matches[0]._advisory is False
 
 
 def test_default_verifiers_factory_judges_empty_returns_only_rule_verifiers(

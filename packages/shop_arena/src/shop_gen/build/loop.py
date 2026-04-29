@@ -642,11 +642,12 @@ def default_verifiers_factory(
             introspect=_GraphqlIntrospector(base_url=sidecar.base_url),
         ),
         NavCoverageVerifier(data_dir=out_dir / _DATA_DIR),
-        # `navigation_primitive_usage` registers as ADVISORY in M4 (impl plan T4.2):
-        # the verifier surfaces feedback for `gen_navigation` outputs that bypass the
-        # navigation primitives without blocking the iteration. M5 (T5.1) flips this
-        # to hard-fail by dropping the `advisory=True` kwarg.
-        NavigationPrimitiveUsageVerifier(advisory=True),
+        # `navigation_primitive_usage` registers as HARD-FAIL in M5 (impl plan T5.1):
+        # the verifier blocks the iteration when `gen_navigation` outputs bypass the
+        # navigation primitives, locking in the contract validated end-to-end by the post-M2
+        # cassette (`test_build_loop_replay_post_build_artifact_imports_navigation_primitives`).
+        # Was advisory in M4 (T4.2); promotion drops the `advisory=True` kwarg.
+        NavigationPrimitiveUsageVerifier(),
         # NoBrandLeakVerifier(),  # temporarily disabled — broken; re-add import + line to revive.
     ]
     if "quality_judge" in judges:
