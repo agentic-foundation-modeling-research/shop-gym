@@ -228,7 +228,7 @@ call and returns a structured `JudgeVerdict`.
   final URL) suitable for the judge prompt context.
   **Check:** runner test from T2.3 needs an updated stub-judge expectation;
   add a test that asserts the `extra` dict carries `judge_cost_usd`.
-- [ ] **T3.3** — `packages/shop_arena/tests/agent/test_judge.py`: stub
+- [x] **T3.3** — `packages/shop_arena/tests/agent/test_judge.py`: stub
   `AsyncAnthropic` client + cases:
   - Request includes both image blobs (base64 length > 0) + the
     `judge_prompt` verbatim.
