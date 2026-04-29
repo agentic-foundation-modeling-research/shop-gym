@@ -88,6 +88,69 @@ def test_template_smoke_m1_navmenu_exports_navmenu() -> None:
 
 
 # ---------------------------------------------------------------------------
+# M2 — drawer + announcement + breadcrumbs + header shell + active-state hook
+# ---------------------------------------------------------------------------
+
+_M2_FILES: Final[tuple[str, ...]] = (
+    "app/components/HeaderShell.tsx",
+    "app/components/MobileNavDrawer.tsx",
+    "app/components/AnnouncementBar.tsx",
+    "app/components/Breadcrumbs.tsx",
+    "app/lib/use-nav-active.ts",
+)
+"""Files M2 of the navigation-primitives plan must add to the template tree."""
+
+_M2_NAMED_EXPORTS: Final[tuple[tuple[str, str], ...]] = (
+    ("app/components/HeaderShell.tsx", "export function HeaderShell("),
+    ("app/components/MobileNavDrawer.tsx", "export function MobileNavDrawer("),
+    ("app/components/AnnouncementBar.tsx", "export function AnnouncementBar("),
+    ("app/lib/use-nav-active.ts", "export function useNavActive("),
+)
+"""M2 components / hooks whose named export is a single ``export function`` line.
+
+``Breadcrumbs`` is dual-mode (``Breadcrumbs.FromCollections`` /
+``Breadcrumbs.FromMatches``) and is asserted separately below.
+"""
+
+
+@pytest.mark.parametrize("relpath", _M2_FILES)
+def test_template_smoke_m2_files_exist(relpath: str) -> None:
+    """Each M2 primitive file is present in the template tree."""
+    path = _HYDROGEN_DIR / relpath
+    assert path.is_file(), f"expected primitive file at {path}, got nothing"
+
+
+@pytest.mark.parametrize(("relpath", "needle"), _M2_NAMED_EXPORTS)
+def test_template_smoke_m2_named_exports(relpath: str, needle: str) -> None:
+    """Each M2 primitive file declares its canonical named export."""
+    source = (_HYDROGEN_DIR / relpath).read_text(encoding="utf-8")
+    assert needle in source, f"{relpath} must declare a named export matching `{needle}`"
+
+
+def test_template_smoke_m2_breadcrumbs_dual_mode_exports() -> None:
+    """``Breadcrumbs.tsx`` exposes ``Breadcrumbs.FromCollections`` and
+    ``Breadcrumbs.FromMatches`` via a frozen object-literal export.
+
+    The component intentionally ships as ``export const Breadcrumbs = {
+    FromCollections, FromMatches} as const`` (per T2.4's status note) rather
+    than two top-level named functions, so the canonical call site stays
+    ``<Breadcrumbs.FromCollections ... />``. Asserts both the wrapper export
+    and that each mode is wired into the literal.
+    """
+    source = (_HYDROGEN_DIR / "app/components/Breadcrumbs.tsx").read_text(encoding="utf-8")
+    assert "export const Breadcrumbs = {" in source, (
+        "Breadcrumbs.tsx must export `Breadcrumbs` as a frozen object literal"
+    )
+    for name in ("FromCollections", "FromMatches"):
+        assert f"function {name}(" in source, (
+            f"Breadcrumbs.tsx must declare an internal `{name}` component"
+        )
+        assert name in source.split("export const Breadcrumbs = {", 1)[1], (
+            f"Breadcrumbs.{name} must be wired into the exported `Breadcrumbs` object"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Shared — ``pnpm tsc --noEmit`` against the template
 # ---------------------------------------------------------------------------
 
