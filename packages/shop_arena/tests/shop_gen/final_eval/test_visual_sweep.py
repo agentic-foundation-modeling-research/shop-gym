@@ -24,7 +24,7 @@ import pytest
 from harness.runtimes.base import RuntimeIterationResult
 from harness.trajectory import Trajectory
 from shop_gen.build.verifiers._task_routes import TASK_BUCKETS, BucketCaps
-from shop_gen.final_eval.visual_sweep import run_visual_sweep
+from shop_gen.final_eval.visual_sweep import PlaywrightSkillUnavailableError, run_visual_sweep
 
 # --------------------------------------------------------------------------- #
 # Fixtures + stubs
@@ -197,6 +197,20 @@ def data_dir(tmp_path: Path) -> Path:
     target = tmp_path / "data"
     _seed_data_dir(target)
     return target
+
+
+@pytest.fixture(autouse=True)
+def _stub_skill_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default the playwright skill probe to ``True`` for the unit suite.
+
+    The real probe shells out to ``pnpm root -g`` / ``npm root -g`` which
+    is slow and depends on the host. Tests that exercise the probe-failure
+    path opt back into the False branch via their own monkeypatch.
+    """
+    monkeypatch.setattr(
+        "shop_gen.final_eval.visual_sweep.is_playwright_skill_available",
+        lambda: True,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -536,3 +550,45 @@ def test_run_visual_sweep_caps_override_observable(
     # tight caps → exactly 1 collection route under `/collections/<handle>`
     # plus the `/collections` index, so 2 routes total.
     assert len(by_bucket["collections"]["routes"]) == 2  # noqa: PLR2004 -- /collections + 1 handle
+
+
+# --------------------------------------------------------------------------- #
+# Skill probe (T5.6, spec §5.5.1)
+# --------------------------------------------------------------------------- #
+
+
+def test_run_visual_sweep_raises_when_skill_unavailable(
+    out_dir: Path,
+    hydrogen_dir: Path,
+    data_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Probe failure raises `PlaywrightSkillUnavailableError` before any I/O."""
+    monkeypatch.setattr(
+        "shop_gen.final_eval.visual_sweep.is_playwright_skill_available",
+        lambda: False,
+    )
+    runtime = _RecordingRuntime(body_factory=lambda b: _pass_body(bucket=b))
+
+    with (
+        caplog.at_level("WARNING", logger="shop_gen.final_eval.visual_sweep"),
+        pytest.raises(PlaywrightSkillUnavailableError, match="playwright skill not available"),
+    ):
+        run_visual_sweep(
+            out_dir=out_dir,
+            data_dir=data_dir,
+            hydrogen_dir=hydrogen_dir,
+            runtime=runtime,
+            dev_server_factory=_stub_dev_server_factory,
+            capabilities=_MINIMAL_CAPABILITIES,
+            prompt_template=_STUB_PROMPT,
+        )
+
+    # Single warning emitted with the install hint.
+    skill_warnings = [rec for rec in caplog.records if "pi-playwright" in rec.getMessage()]
+    assert len(skill_warnings) == 1
+    # No on-disk artifacts created on probe failure.
+    assert not (out_dir / "visual_eval").exists()
+    # Runtime never invoked.
+    assert runtime.calls == []

@@ -55,6 +55,7 @@ from shop_gen.build.verifiers._runtime_call import (
     parse_visual_verdict,
     stage_sub_workspace,
 )
+from shop_gen.build.verifiers._skills import is_playwright_skill_available
 from shop_gen.build.verifiers._task_routes import (
     BUCKET_CAPABILITY_KEYS,
     PAGE_WEIGHTS,
@@ -92,6 +93,9 @@ _DEFAULT_PASS_THRESHOLD: Final[float] = 7.0
 _CONSOLIDATE_TASK_ID: Final[str] = "consolidate"
 """Source key in :data:`TASK_BUCKETS` for the all-pages bucket set."""
 
+_SKILL_UNAVAILABLE_ERROR: Final[str] = "playwright skill not available"
+"""Diagnostic written into ``visual.error`` when the skill probe fails (spec §5.5.1)."""
+
 _VERDICT_SCHEMA_BLOCK: Final[str] = """\
 {
   "verdict": "pass | fail",                  // required; lowercase (advisory only)
@@ -116,6 +120,19 @@ _VERDICT_SCHEMA_BLOCK: Final[str] = """\
 }\
 """
 """§9.3 schema body shared with the build-loop ``visual_judge`` prompt."""
+
+
+class PlaywrightSkillUnavailableError(RuntimeError):
+    """Raised when the playwright skill is not installed (spec §5.5.1).
+
+    The visual sweep depends on the ``pi-playwright`` skill to render
+    each page bucket. When the skill probe
+    (:func:`shop_gen.build.verifiers._skills.is_playwright_skill_available`)
+    fails, :func:`run_visual_sweep` raises this exception **before** any
+    on-disk artifact is created so callers can record a clean
+    ``visual.error`` entry without leaving an empty ``visual_eval/``
+    directory behind.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,7 +219,20 @@ def run_visual_sweep(
           buckets that emitted a usable verdict.
         * ``report_path`` — POSIX path (relative to ``out_dir``) of the
           markdown summary.
+
+    Raises:
+        PlaywrightSkillUnavailableError: The ``pi-playwright`` skill probe
+            failed (spec §5.5.1). Raised before any on-disk artifact
+            is created so the caller can record ``visual.error`` and
+            leave the run free of empty ``visual_eval/`` directories.
     """
+    if not is_playwright_skill_available():
+        _log.warning(
+            "visual sweep skipped: pi-playwright skill not found. "
+            "Install with `pnpm add -g pi-playwright` (or "
+            "`npm i -g pi-playwright`) to enable.",
+        )
+        raise PlaywrightSkillUnavailableError(_SKILL_UNAVAILABLE_ERROR)
     visual_eval_dir = out_dir / _VISUAL_EVAL_DIRNAME
     work_root = visual_eval_dir / _WORK_DIRNAME
     screenshots_root = visual_eval_dir / _SCREENSHOTS_DIRNAME
@@ -692,6 +722,7 @@ def _render_error_summary(errored: list[Mapping[str, Any]]) -> str:
 __all__ = [
     "BUCKET_CAPABILITY_KEYS",
     "BucketResult",
+    "PlaywrightSkillUnavailableError",
     "merge_sweep_to_visual_subtree",
     "run_visual_sweep",
 ]

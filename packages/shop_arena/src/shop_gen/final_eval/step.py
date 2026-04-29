@@ -64,6 +64,7 @@ from shop_gen.final_eval.playwright_smoke import (
 )
 from shop_gen.final_eval.prompts import load_quality_judge_prompt, load_visual_sweep_prompt
 from shop_gen.final_eval.visual_sweep import (
+    PlaywrightSkillUnavailableError,
     merge_sweep_to_visual_subtree,
     run_visual_sweep,
 )
@@ -518,7 +519,7 @@ def _relative_or_str(path: Path, *, base: Path) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _run_visual_sweep(
+def _run_visual_sweep(  # noqa: PLR0911 -- one early-return per recoverable failure mode.
     *,
     out_dir: Path,
     hydrogen_dir: Path,
@@ -567,6 +568,8 @@ def _run_visual_sweep(
             pass_threshold=pass_threshold,
             caps=caps,
         )
+    except PlaywrightSkillUnavailableError as exc:
+        return _visual_error(str(exc))
     except Exception as exc:
         return _visual_error(f"visual sweep raised {type(exc).__name__}: {exc}")
     return merge_sweep_to_visual_subtree(sweep_report)

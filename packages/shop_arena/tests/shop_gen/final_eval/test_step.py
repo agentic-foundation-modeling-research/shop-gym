@@ -595,6 +595,41 @@ def test_final_eval_step_threads_visual_caps_into_sweep_runner(tmp_path: Path) -
     assert captured["timeout_s"] == 42.0  # noqa: PLR2004 -- explicit override
 
 
+def test_final_eval_step_visual_error_when_skill_unavailable(
+    tmp_path: Path,
+    monkeypatch: Any,
+    caplog: Any,
+) -> None:
+    """SC7 sweep arm: skill probe failure collapses to ``visual.error``, run completes."""
+    monkeypatch.setattr(
+        "shop_gen.final_eval.visual_sweep.is_playwright_skill_available",
+        lambda: False,
+    )
+    out_dir = _materialise_workspace(tmp_path / "out")
+    runtime = _StubFullRuntime(_PASS_RESPONSE)
+    # No ``visual_sweep_runner`` override — exercises the default
+    # ``run_visual_sweep`` path so the skill probe at the entry actually fires.
+    step = FinalEvalStep(
+        dev_server_factory=_stub_dev_server_factory,
+        browser_driver=_stub_browser_driver,
+    )
+
+    with caplog.at_level("WARNING", logger="shop_gen.final_eval.visual_sweep"):
+        step.run(_build_ctx(out_dir, runtime=runtime))
+
+    report = _read_report(out_dir)
+    visual = report["visual"]
+    assert visual["verdict"] == "error"
+    assert visual["error"] == "playwright skill not available"
+    # ``visual_eval/`` is *not* created on probe failure (spec §5.5.1).
+    assert not (out_dir / "visual_eval").exists()
+    # Exactly one warning emitted with the install hint.
+    skill_warnings = [rec for rec in caplog.records if "pi-playwright" in rec.getMessage()]
+    assert len(skill_warnings) == 1
+    # Top-level ``ok`` unaffected — the visual sweep is advisory.
+    assert report["ok"] is True
+
+
 def test_final_eval_step_writes_visual_error_when_runtime_lacks_agent_runtime(
     tmp_path: Path,
 ) -> None:
