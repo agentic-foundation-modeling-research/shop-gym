@@ -191,7 +191,7 @@ ProbeOutcome shape; trajectory persisted under `evidence_dir/`.
 **Goal:** `run_completion_judge` issues the vision Anthropic Messages API
 call and returns a structured `JudgeVerdict`.
 
-- [ ] **T3.1** — `packages/shop_arena/src/shop_probe/agent/judge.py`:
+- [x] **T3.1** — `packages/shop_arena/src/shop_probe/agent/judge.py`:
   - Frozen dataclass `JudgeVerdict(passed: bool, reasoning: str,
     cost_usd: float, model_id: str)`.
   - `async def run_completion_judge(before_shot: Path, after_shot: Path,
