@@ -224,7 +224,7 @@ def test_name_matches_spec(data_dir: Path) -> None:
 
 
 def test_applies_to_default_set(data_dir: Path) -> None:
-    """Default applicability set per spec §5.2 (consolidate excluded in M1)."""
+    """Default applicability set per spec §5.2 (consolidate added back in T5.7)."""
     verifier = VisualJudgeVerifier(
         data_dir=data_dir,
         dev_server_factory=_StubDevServer(),
@@ -237,17 +237,18 @@ def test_applies_to_default_set(data_dir: Path) -> None:
         "gen_cart_search",
         "gen_info_pages",
         "visual_polish",
+        "consolidate",
     ):
         assert verifier.applies_to(task_id) is True, f"missing {task_id}"
 
 
-def test_consolidate_excluded_in_m1(data_dir: Path) -> None:
-    """``consolidate`` is added back in T5.7 alongside the fan-out."""
+def test_consolidate_included_after_t5_7(data_dir: Path) -> None:
+    """T5.7 wires multi-bucket fan-out, so ``consolidate`` is back in the default set."""
     verifier = VisualJudgeVerifier(
         data_dir=data_dir,
         dev_server_factory=_StubDevServer(),
     )
-    assert verifier.applies_to("consolidate") is False
+    assert verifier.applies_to("consolidate") is True
 
 
 # --------------------------------------------------------------------------- #
@@ -893,3 +894,285 @@ def _autoseed_capabilities(
     if not skip_seed and not (artifact_dir / "capabilities.json").exists():
         _seed_capabilities(artifact_dir)
     yield
+
+
+# --------------------------------------------------------------------------- #
+# SC4 - ``consolidate`` page-bucket fan-out (T5.7 - spec §5.2.1 step 5-6)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class _PerBucketRuntime:
+    """Stub runtime that writes per-bucket verdict bodies during a fan-out.
+
+    The verifier stages each bucket under
+    ``<parent_dir>/<bucket>/work/``; the runtime infers the bucket name
+    from ``run_dir.parent.name`` so the test can drive different per-bucket
+    outcomes through a single runtime instance.
+    """
+
+    bodies: dict[str, str]
+    default_body: str | None = None
+    calls: list[Path] = field(default_factory=list)
+
+    def run_iteration(
+        self,
+        *,
+        run_dir: Path,
+        iter_dir: Path,
+        prompt: str,
+        timeout: float,
+    ) -> RuntimeIterationResult:
+        del iter_dir, timeout
+        self.calls.append(run_dir)
+        bucket = run_dir.parent.name
+        body = self.bodies.get(bucket, self.default_body)
+        if body is not None:
+            (run_dir / "verdict.json").write_text(body, encoding="utf-8")
+        # Sanity: the per-bucket prompt only mentions its own bucket's routes.
+        del prompt
+        now = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+        return RuntimeIterationResult(
+            trajectory=Trajectory(
+                iter_id="visual-stub",
+                runtime="stub",
+                started_at=now,
+                ended_at=now,
+                exit_code=0,
+                prompt_sha256="0" * 64,
+            ),
+        )
+
+
+_CONSOLIDATE_ACTIVE_BUCKETS: tuple[str, ...] = (
+    "cart_search",
+    "collections",
+    "homepage",
+    "info_pages",
+    "navigation",
+)
+"""Buckets that resolve to non-empty routes against an empty ``data_dir``.
+
+The ``product`` bucket is empty without a seeded ``collections.json`` (no
+product handles to draw from), so the fan-out drops it from the merge
+per spec §9.5 rather than failing the whole verdict.
+"""
+
+
+def test_consolidate_fanout_walks_every_active_bucket(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+    artifact_dir: Path,
+) -> None:
+    """SC4: ``consolidate`` invocation fans out one ``run_iteration`` per bucket."""
+    runtime = _PerBucketRuntime(
+        bodies={bucket: _pass_body(score=8.0) for bucket in _CONSOLIDATE_ACTIVE_BUCKETS},
+    )
+    server = _StubDevServer()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=server,
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+
+    result = verifier.run(ctx)
+
+    # Every active bucket received exactly one runtime call; ``product``
+    # was skipped (no routes against an empty data_dir).
+    assert len(runtime.calls) == len(_CONSOLIDATE_ACTIVE_BUCKETS)
+    called_buckets = sorted(call.parent.name for call in runtime.calls)
+    assert called_buckets == sorted(_CONSOLIDATE_ACTIVE_BUCKETS)
+    # Dev server boots once across the fan-out (single shared server).
+    assert server.enters == 1
+    assert server.exits == 1
+    # Per-bucket sub-iters exist on disk so reviewers can browse evidence.
+    parent_dir = ctx.run_dir / "iters" / ctx.iter_id / "checks" / "verifiers" / verifier.name
+    for bucket in _CONSOLIDATE_ACTIVE_BUCKETS:
+        assert (parent_dir / bucket / "work" / "verdict.json").is_file(), bucket
+    # Merged verdict.json carries the rolled-up numbers (spec §9.5).
+    merged_path = parent_dir / "verdict.json"
+    assert merged_path.is_file()
+    merged_payload = json.loads(merged_path.read_text(encoding="utf-8"))
+    assert merged_payload["verdict"] == "pass"
+    assert merged_payload["score"] == pytest.approx(8.0)
+    # Verifier-level result mirrors the merged payload.
+    assert result.verdict is Verdict.PASS
+    assert sorted(result.details["buckets_run"]) == sorted(
+        {"homepage", "navigation", "collections", "product", "cart_search", "info_pages"},
+    )
+    assert result.details["score"] == pytest.approx(8.0)
+    assert result.details["coercion_reason"] is None
+    per_bucket = {entry["bucket"]: entry for entry in result.details["per_bucket"]}
+    assert per_bucket["product"]["verdict"] is None
+    assert per_bucket["product"]["error"] == "no routes resolved for bucket"
+    for bucket in _CONSOLIDATE_ACTIVE_BUCKETS:
+        assert per_bucket[bucket]["verdict"] == "pass"
+        assert per_bucket[bucket]["score"] == pytest.approx(8.0)
+    del artifact_dir  # unused; capabilities.json already seeded by autouse fixture
+
+
+def test_consolidate_fanout_weighted_score_uses_page_weights(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """Per-bucket scores are merged by :data:`PAGE_WEIGHTS` (spec §9.5)."""
+    # Differentiated scores so the weighted average is observable; every
+    # per-bucket score stays at or above the default pass_threshold so
+    # individual buckets do not coerce to FAIL (§9.3) before the merge.
+    bodies = {
+        "homepage": _pass_body(score=10.0),
+        "navigation": _pass_body(score=7.0),
+        "collections": _pass_body(score=8.0),
+        "cart_search": _pass_body(score=9.0),
+        "info_pages": _pass_body(score=7.5),
+    }
+    runtime = _PerBucketRuntime(bodies=bodies)
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=_StubDevServer(),
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+
+    result = verifier.run(ctx)
+
+    # Hand-computed weighted average over the active (usable) buckets.
+    # PAGE_WEIGHTS: homepage=0.25, navigation=0.20, collections=0.20,
+    # cart_search=0.08, info_pages=0.07. ``product`` drops out (no routes).
+    expected_num = 0.25 * 10.0 + 0.20 * 7.0 + 0.20 * 8.0 + 0.08 * 9.0 + 0.07 * 7.5
+    expected_den = 0.25 + 0.20 + 0.20 + 0.08 + 0.07
+    expected_score = round(expected_num / expected_den, 2)
+    assert result.details["score"] == pytest.approx(expected_score)
+    assert result.verdict is Verdict.PASS
+
+
+def test_consolidate_fanout_bucket_fail_propagates_to_merged_verdict(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """SC4: a single bucket FAIL flips the merged verdict to FAIL."""
+    bodies = {bucket: _pass_body(score=8.0) for bucket in _CONSOLIDATE_ACTIVE_BUCKETS}
+    bodies["navigation"] = _fail_body(score=3.0)
+    runtime = _PerBucketRuntime(bodies=bodies)
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=_StubDevServer(),
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.FAIL
+    assert "navigation" in result.feedback
+    per_bucket = {entry["bucket"]: entry for entry in result.details["per_bucket"]}
+    assert per_bucket["navigation"]["verdict"] == "fail"
+    # Other buckets still emit pass; the per-bucket trace stays intact.
+    assert per_bucket["homepage"]["verdict"] == "pass"
+
+
+def test_consolidate_fanout_runtime_error_collapses_to_fail(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """A bucket whose runtime crashes is recorded as errored, merged → FAIL."""
+
+    @dataclass
+    class _OneBucketRaises:
+        bodies: dict[str, str]
+        raise_on_bucket: str
+        calls: list[Path] = field(default_factory=list)
+
+        def run_iteration(
+            self,
+            *,
+            run_dir: Path,
+            iter_dir: Path,
+            prompt: str,
+            timeout: float,
+        ) -> RuntimeIterationResult:
+            del iter_dir, prompt, timeout
+            self.calls.append(run_dir)
+            bucket = run_dir.parent.name
+            if bucket == self.raise_on_bucket:
+                raise RuntimeError(f"bucket {bucket} exploded")
+            body = self.bodies.get(bucket)
+            if body is not None:
+                (run_dir / "verdict.json").write_text(body, encoding="utf-8")
+            now = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+            return RuntimeIterationResult(
+                trajectory=Trajectory(
+                    iter_id="visual-stub",
+                    runtime="stub",
+                    started_at=now,
+                    ended_at=now,
+                    exit_code=0,
+                    prompt_sha256="0" * 64,
+                ),
+            )
+
+    bodies = {bucket: _pass_body(score=8.0) for bucket in _CONSOLIDATE_ACTIVE_BUCKETS}
+    runtime = _OneBucketRaises(bodies=bodies, raise_on_bucket="homepage")
+    server = _StubDevServer()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=server,
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+
+    result = verifier.run(ctx)
+
+    # The error is recorded; the dev-server context still tears down cleanly.
+    assert server.exits == 1
+    assert result.verdict is Verdict.FAIL
+    per_bucket = {entry["bucket"]: entry for entry in result.details["per_bucket"]}
+    assert per_bucket["homepage"]["verdict"] is None
+    assert "runtime raised RuntimeError" in (per_bucket["homepage"]["error"] or "")
+
+
+def test_consolidate_fanout_per_bucket_capability_slice_isolated(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """Each bucket's prompt only carries its own capability slice (spec §5.3.1)."""
+    captured: dict[str, str] = {}
+
+    @dataclass
+    class _CapturingRuntime:
+        def run_iteration(
+            self,
+            *,
+            run_dir: Path,
+            iter_dir: Path,
+            prompt: str,
+            timeout: float,
+        ) -> RuntimeIterationResult:
+            del iter_dir, timeout
+            bucket = run_dir.parent.name
+            captured[bucket] = prompt
+            (run_dir / "verdict.json").write_text(_pass_body(score=8.0), encoding="utf-8")
+            now = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+            return RuntimeIterationResult(
+                trajectory=Trajectory(
+                    iter_id="visual-stub",
+                    runtime="stub",
+                    started_at=now,
+                    ended_at=now,
+                    exit_code=0,
+                    prompt_sha256="0" * 64,
+                ),
+            )
+
+    runtime = _CapturingRuntime()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=_StubDevServer(),
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+
+    verifier.run(ctx)
+
+    homepage_slice = _extract_capabilities_block(captured["homepage"])
+    cart_slice = _extract_capabilities_block(captured["cart_search"])
+    # Homepage prompt sees ``home.hero`` but not search keys; cart_search inverse.
+    assert "home.hero" in homepage_slice
+    assert "search" not in homepage_slice
+    assert "home.hero" not in cart_slice
