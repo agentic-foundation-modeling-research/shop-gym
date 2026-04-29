@@ -116,7 +116,7 @@ entry with an inline `agent_task:` block; v1.1 / v1.2 rubrics still load.
     `timeout_s: int = 180`, `judge_model: str = "claude-opus-4-7"`.
   Also create `packages/shop_arena/tests/agent/__init__.py` (empty).
   **Check:** module imports without I/O; pyright strict-clean.
-- [ ] **T1.3** — Add `packages/shop_arena/tests/test_rubric_schema_agent.py`
+- [x] **T1.3** — Add `packages/shop_arena/tests/test_rubric_schema_agent.py`
   with cases:
   - agent_driven entry with inline block parses
   - agent_driven entry missing `agent_task` raises ValidationError
