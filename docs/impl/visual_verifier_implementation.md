@@ -37,7 +37,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
   Plus a `BucketCaps` dataclass for the per-iteration vs. sweep cap differentiation (§5.6.1). Spec §5.3, §9.1, §5.6.1. **Check:** SC8 fixture: `buckets_for_task("gen_homepage")` returns `frozenset({"homepage"})`; `buckets_for_task("gen_homepage_redo_3")` returns the same; multi-bucket route unions are sorted; unknown task id → empty bucket set; cap differentiation observable.
 
-- [ ] **T1.4** — `src/shop_gen/build/verifiers/visual_judge.py`: `VisualJudgeVerifier` class. Constructor:
+- [x] **T1.4** — `src/shop_gen/build/verifiers/visual_judge.py`: `VisualJudgeVerifier` class. Constructor:
 
   ```python
   def __init__(
