@@ -124,8 +124,9 @@ _RUN_SUMMARY: Final[Path] = _RUN_DIR / "run.json"
 _ARTIFACT_DIRNAME: Final[str] = "artifact"
 """Top-level subdir the harness owns under ``run_dir``."""
 
-_DEFAULT_ITER_TIMEOUT_S: Final[float] = 600.0
-"""Default per-iteration wall-clock budget. Conservative for cold caches."""
+_DEFAULT_ITER_TIMEOUT_S: Final[float] = 3600.0
+"""Default per-iteration wall-clock budget (1 hour). Conservative for cold
+caches and long executor iterations that fan out into many tool calls."""
 
 _INSTALL_TIMEOUT_S: Final[float] = 300.0
 """Wall-clock budget for the per-run ``pnpm install`` inside the artifact tree.
