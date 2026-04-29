@@ -752,7 +752,12 @@ def _aggregate_coverage(
         cat = by_category.setdefault(entry.category, [0.0, 0.0])
         cat[0] += passed
         cat[1] += weight
-        lv = by_level[entry.level]
+        # v1.3 ``agent_driven`` entries replace the v1.2 deterministic
+        # ``advanced`` tier and roll up into ``coverage_advanced`` so the
+        # M7 success criterion (sandbox vs. real ``coverage_advanced`` gap)
+        # is measured on the same axis as v1.2.
+        level_bucket = "advanced" if entry.level == "agent_driven" else entry.level
+        lv = by_level[level_bucket]
         lv[0] += passed
         lv[1] += weight
         total_passed += passed

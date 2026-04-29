@@ -355,7 +355,7 @@ report records per-probe agent + judge cost.
   (~$72/cohort default Opus, ~$15 with Sonnet via `--agent-model
   claude-sonnet-4-6`). **Check:** README renders; flags table matches
   T6.1 verbatim.
-- [ ] **T6.4** — `packages/shop_arena/tests/shop_probe/test_cli_agent_flags.py`:
+- [x] **T6.4** — `packages/shop_arena/tests/shop_probe/test_cli_agent_flags.py`:
   - v1.1 rubric + default flags → no Anthropic calls (assert via stub).
   - v1.3 rubric + stub runner/judge → flags forwarded into
     `ProbeContext.agent_config`.
