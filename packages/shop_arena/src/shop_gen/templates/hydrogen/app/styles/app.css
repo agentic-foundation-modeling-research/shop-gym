@@ -236,6 +236,19 @@ button.reset:hover:not(:has(> *)) {
   z-index: 1;
 }
 
+.header-left {
+  align-items: center;
+  display: flex;
+  /*
+   * Single source of truth for the brand→primary-nav seam. The
+   * `--space-6` token lands with `template_baseline_fixes` P1; the
+   * fallback keeps the layout sensible until that token is defined,
+   * so this primitive can be adopted by `gen_navigation` without
+   * waiting on the baseline-fixes plan.
+   */
+  gap: var(--space-6, 1.5rem);
+}
+
 .header-menu-mobile-toggle {
   @media (min-width: 48em) {
     display: none;
