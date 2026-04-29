@@ -150,7 +150,7 @@ Lands the page-bucket `ThreadPoolExecutor` fan-out for both
 
 - [x] **T5.4** — Config knobs: `ShopGenConfig.final_eval_max_collections / .final_eval_products_per_collection / .final_eval_max_pages / .final_eval_visual_timeout_s`. CLI flag `--final-eval-visual-timeout`. These flow into `SWEEP_CAPS: BucketCaps` (T1.3). Spec §5.6.1, §5.9. **Check:** library + CLI round-trip; cap changes observable in resolved sweep route count.
 
-- [ ] **T5.5** — Tests: SC6 (full visual subtree present); SC7 sweep arm (skill probe failure → ERROR captured, `<out_dir>/visual_eval/` not created, run completes). **Check:** both pass under stub runtime.
+- [x] **T5.5** — Tests: SC6 (full visual subtree present); SC7 sweep arm (skill probe failure → ERROR captured, `<out_dir>/visual_eval/` not created, run completes). **Check:** both pass under stub runtime.
 
 - [x] **T5.6** — **Skill probe at sweep entry**. Reuse `is_playwright_skill_available` from T1.0 in `final_eval/visual_sweep.py`. On failure: log single warning, write `visual.error = "playwright skill not available"` into `final_eval.json`, do not create `<out_dir>/visual_eval/`. Spec §5.5.1, §5.6. **Check:** SC7 sweep arm — probe-failure path emits one warning, no empty dirs, run completes.
 
