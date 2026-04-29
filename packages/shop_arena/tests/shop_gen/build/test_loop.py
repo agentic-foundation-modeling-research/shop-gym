@@ -61,7 +61,6 @@ from shop_gen.build.verifiers import (
     CrossTaskConsistencyVerifier,
     DataInUseVerifier,
     NavCoverageVerifier,
-    NoBrandLeakVerifier,
     QualityJudgeVerifier,
     TscVerifier,
 )
@@ -628,7 +627,15 @@ def test_step_run_drives_real_harness_with_replay_runtime(tmp_path: Path) -> Non
 
 
 def test_default_verifiers_factory_returns_v01_set(tmp_path: Path) -> None:
-    """Spec §5.5.3: the v0.1 factory wires the verifier table verbatim."""
+    """Spec §5.5.3: the v0.1 factory wires the verifier table verbatim.
+
+    ``NoBrandLeakVerifier`` is deliberately omitted: commit ``e54c98f``
+    disabled it in the factory because the allowlist tokenizer flagged
+    React / Hydrogen / TS identifiers the template legitimately imports
+    (``Route``, ``LoaderArgs``, ``Money``, ``CartForm``, …) and produced
+    thousands of false positives the agent could not fix. The brand-
+    safety contract is now carried by the AGENTS.md "Don'ts" bullet.
+    """
     out_dir = tmp_path / "out"
     out_dir.mkdir()
     _materialise_workspace(out_dir)
@@ -642,7 +649,6 @@ def test_default_verifiers_factory_returns_v01_set(tmp_path: Path) -> None:
         BuildVerifier,
         DataInUseVerifier,
         NavCoverageVerifier,
-        NoBrandLeakVerifier,
         QualityJudgeVerifier,
         CrossTaskConsistencyVerifier,
     ]

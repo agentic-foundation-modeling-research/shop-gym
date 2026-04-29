@@ -6,7 +6,7 @@ Externalises the markdown bodies that
 body + executor bodies for the gen tasks and the consolidate task. Spec
 §5.5.2 + §5.5.4.
 
-Four files live next to this module under
+Six files live next to this module under
 :mod:`shop_gen.build.prompts` (the package directory):
 
 * ``agents.md`` — the shared constitution rendered into
@@ -21,10 +21,15 @@ Four files live next to this module under
   §5.5.4). Carries the same ``{{verifier_feedback}}`` slot so the
   consolidation pass can react to its own verifier failures across
   iterations.
+* ``quality_judge.md`` / ``cross_task_consistency.md`` — the
+  ``str.format()`` templates the verifier dispatcher renders (T5.5).
 
-The four files are checked into the repo and considered API: changes
-flow through prompt-engineering review, not silent edits to the loop
-driver.
+The files are checked into the repo and considered API: changes flow
+through prompt-engineering review, not silent edits to the loop driver.
+The two executor bodies are intentionally kept as standalone files even
+though their retry-budget and verifier-feedback sections are nearly
+identical — prompt-engineering review prefers reading each role
+top-to-bottom over chasing template indirection.
 
 Lookups are cached so repeated calls are free; the disk read happens
 lazily on first use, keeping the parent package import-safe (no I/O at

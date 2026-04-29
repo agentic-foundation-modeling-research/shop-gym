@@ -150,30 +150,24 @@ def test_consolidate_prompt_describes_cross_task_cleanup() -> None:
     )
 
 
-def test_agents_md_documents_brand_safety_allowlist() -> None:
-    """The build constitution must describe the fake-brand allowlist contract.
+def test_agents_md_warns_against_real_world_brand_tokens() -> None:
+    """The build constitution must still warn the agent away from real-world brands.
 
-    Spec §5.6 makes the allowlist (Vendarena, AisleArena, Shopliseum,
-    CartColiseum, StockyardArena, AgoraDome, AgoraCage, AgoraPit) the
-    only proper nouns the build agent may emit. The constitution is the
-    only place every iteration reads, so the rules + the eight tokens
-    must live there.
+    The fake-brand allowlist (spec §5.6) is enforced by the data-synth
+    pipeline over ``data/*.json`` — not by the build agent — and the
+    ``no_brand_leak`` verifier is disabled (commit ``e54c98f``: too many
+    false positives on Hydrogen / React / TypeScript identifiers). The
+    residual contract for the build agent is a single "Don'ts" bullet:
+    "no real-world brand tokens, real domains, real emails, or
+    trademarked names" anywhere in the hydrogen tree. This test pins
+    that bullet so we don't lose the rule when the section is reshuffled.
     """
-    body = load_agents_md()
-    expected_tokens = (
-        "Vendarena",
-        "AisleArena",
-        "Shopliseum",
-        "CartColiseum",
-        "StockyardArena",
-        "AgoraDome",
-        "AgoraCage",
-        "AgoraPit",
-    )
-    missing = [token for token in expected_tokens if token not in body]
-    assert not missing, (
-        f"agents.md must enumerate the v0.1 fake-brand allowlist tokens "
-        f"(spec §5.6). Missing: {missing}."
+    body = load_agents_md().lower()
+    flat = " ".join(body.split())
+    assert "real-world brand" in flat or "real-world brands" in flat, (
+        "agents.md must warn the build agent against real-world brand "
+        "tokens in the 'Don'ts' section (commit e54c98f kept this rule "
+        "after dropping the explicit allowlist)."
     )
 
 

@@ -41,6 +41,40 @@ Common feedback shapes you should know how to react to:
   describes the gap. Treat it as the most recent product / design
   review.
 
+### Retry budget — 3 max retries
+
+The harness rewrites your task's `[x]` → `[~]` whenever any verifier
+returned FAIL, and re-selects the same task next iteration. To prevent
+an unfixable task from burning the whole run's iteration budget,
+every task has a **3-retry cap** that you track yourself in the
+task's note field as a `(retry N/3)` annotation.
+
+Before doing any work, read your selected task's current line
+in `plan.md` and act on the note as follows:
+
+1. **Note ends with `(retry 3/3)`.** You have already used all 3
+   retries and the last one still FAILed. **Do not attempt a fourth
+   fix.** Flip the marker to `[!] retry_exhausted: <last failing
+   verifier name from the feedback above>` and exit. The task is
+   permanently retired for this run.
+2. **Note ends with `(retry N/3)` for N < 3.** You are entering retry
+   attempt N+1. When you exit, update the annotation to `(retry N+1/3)`.
+3. **Note has no `(retry …)` annotation but the verifier feedback above
+   is non-empty.** You are entering retry attempt 1. When you exit, add
+   `(retry 1/3)` to the note.
+4. **No annotation and feedback is empty.** Fresh first attempt — no
+   retry tracking needed yet.
+
+Annotation format: append `(retry N/3)` to the existing brief,
+separated by a single space. Keep the existing brief intact.
+
+- before: `- [~] gen_homepage — render homepage hero + featured grid`
+- after:  `- [~] gen_homepage — render homepage hero + featured grid (retry 2/3)`
+
+The harness preserves the note across its own `[x]` → `[~]` rewrites,
+so once you have written `(retry N/3)` it stays on the line until you
+update it.
+
 ---
 
 ## 1. Selecting your task
@@ -119,9 +153,24 @@ specifics live in the task brief; the contract below is what every
    `pnpm --filter hydrogen build`. The harness verifier set will rerun
    them — but catching errors before exit saves a retry cycle.
 
-4. **Mark `plan.md`.** Flip your task line to `[x]` on success or
-   `[!] <one-line reason>` if blocked / partial. Edit only your line.
-   Leaving it `[ ]` aborts the run.
+4. **Mark `plan.md`.** Edit only your task's line. Choose one marker:
+
+   - `[x]` — your fix is complete and your self-check (§5) passes. The
+     harness still re-runs the verifier set; if any FAIL it rewrites
+     your `[x]` back to `[~]` and the next iteration retries (subject
+     to the 3-retry cap above).
+   - `[!] retry_exhausted: <verifier>` — only when the inbound note
+     already showed `(retry 3/3)`. Permanently retires the task.
+   - `[!] needs cross-task fix in <slice>` — the issue cannot be
+     solved within your owned slice. `consolidate` will pick it up.
+
+   Never mark `[x]` while the verifier feedback above describes an
+   unresolved failure unless your edits in this iteration positively
+   addressed that exact failure. The harness will catch wrong `[x]`
+   marks (rewrite to `[~]`) but you will burn a retry needlessly.
+
+   When you mark `[x]`, also update the note's `(retry N/3)`
+   annotation per the retry-budget rules above.
 
 ---
 
@@ -153,5 +202,10 @@ tight:
 - No real-world brand, store name, or domain is hard-coded anywhere in
   your diff (see AGENTS.md §6). Render dataset values via the Storefront
   API rather than hard-coding.
-- `plan.md` shows your selected task as `[x]` (or `[!] <reason>`); no
-  other task's checkbox changed.
+- `plan.md` shows your selected task as one of `[x]`,
+  `[!] retry_exhausted: <verifier>`, or
+  `[!] needs cross-task fix in <slice>`; no other task's checkbox
+  changed.
+- If you entered this iteration with non-empty verifier feedback, your
+  task's note ends with the correct `(retry N/3)` annotation reflecting
+  this attempt — or you have flipped to `[!] retry_exhausted` per §3.4.

@@ -34,6 +34,40 @@ a hard error description from the previous consolidation iteration:
   This is the verifier closest to your job; the named drift is exactly
   what consolidation must repair. Read the full body before editing.
 
+### Retry budget — 3 max retries
+
+The harness rewrites your task's `[x]` → `[~]` whenever any verifier
+returned FAIL, and re-selects the same task next iteration. To prevent
+an unfixable task from burning the whole run's iteration budget,
+`consolidate` has a **3-retry cap** that you track yourself in the
+task's note field as a `(retry N/3)` annotation.
+
+Before doing any work, read the `consolidate` line
+in `plan.md` and act on the note as follows:
+
+1. **Note ends with `(retry 3/3)`.** You have already used all 3
+   retries and the last one still FAILed. **Do not attempt a fourth
+   fix.** Flip the marker to `[!] retry_exhausted: <last failing
+   verifier name from the feedback above>` and exit. The task is
+   permanently retired for this run.
+2. **Note ends with `(retry N/3)` for N < 3.** You are entering retry
+   attempt N+1. When you exit, update the annotation to `(retry N+1/3)`.
+3. **Note has no `(retry …)` annotation but the verifier feedback above
+   is non-empty.** You are entering retry attempt 1. When you exit, add
+   `(retry 1/3)` to the note.
+4. **No annotation and feedback is empty.** Fresh first attempt — no
+   retry tracking needed yet.
+
+Annotation format: append `(retry N/3)` to the existing brief,
+separated by a single space. Keep the existing brief intact.
+
+- before: `- [~] gen_homepage — render homepage hero + featured grid`
+- after:  `- [~] gen_homepage — render homepage hero + featured grid (retry 2/3)`
+
+The harness preserves the note across its own `[x]` → `[~]` rewrites,
+so once you have written `(retry N/3)` it stays on the line until you
+update it.
+
 ---
 
 ## 1. Selecting your task
@@ -143,7 +177,13 @@ Consolidation is read-heavy. Keep iteration count down:
 - Every modified file lives under `artifact/hydrogen/`.
 - `pnpm --filter hydrogen tsc --noEmit` passes.
 - `pnpm --filter hydrogen build` succeeds.
-- `plan.md` shows `consolidate` as `[x]` (or `[!] <reason>` if you ran
-  out of budget on a specific seam); no other task's checkbox changed.
+- `plan.md` shows `consolidate` as `[x]` or
+  `[!] retry_exhausted: <verifier>`; no other task's checkbox changed
+  (apart from `[!]` `gen_*` deferrals you legitimately resolved — see
+  next bullet).
+- If you entered this iteration with non-empty verifier feedback, the
+  `consolidate` note ends with the correct `(retry N/3)` annotation
+  reflecting this attempt — or you have flipped to
+  `[!] retry_exhausted` per the retry-budget rules above.
 - For any deferred `[!]` `gen_*` task whose reason you fixed, the line
   is updated to drop the deferral marker.
