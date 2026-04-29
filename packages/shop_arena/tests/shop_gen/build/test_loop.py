@@ -966,6 +966,85 @@ def test_default_verifiers_factory_judges_visual_only_skill_missing_warns(
     assert "pi-playwright" in visual_warnings[0].getMessage()
 
 
+
+# --------------------------------------------------------------------------- #
+# SC5 — judges subset registration (impl plan T3.5, spec §5.5 + §5.9)
+# --------------------------------------------------------------------------- #
+
+
+def test_default_verifiers_factory_sc5_judges_visual_and_quality_excludes_cross_task(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """SC5 (case 1): ``--judges visual_judge,quality_judge`` registers exactly those two LLM judges.
+
+    Skill present → ``visual_judge`` is included; ``cross_task_consistency`` is absent.
+    Asserts ``verifier_runs by name``: each LLM-judge name appears exactly once,
+    ``cross_task_consistency`` does not appear at all, and the rule verifiers
+    are still present.
+    """
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with (
+        patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True),
+        caplog.at_level("WARNING", logger="shop_gen.build.loop"),
+    ):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            judges=frozenset({"visual_judge", "quality_judge"}),
+        )
+
+    names_by_count: dict[str, int] = {}
+    for v in verifiers:
+        names_by_count[v.name] = names_by_count.get(v.name, 0) + 1
+
+    # Both selected LLM judges register exactly once.
+    assert names_by_count.get("visual_judge") == 1
+    assert names_by_count.get("quality_judge") == 1
+    # The unselected LLM judge is absent.
+    assert "cross_task_consistency" not in names_by_count
+    # Rule verifiers are unaffected by ``judges``.
+    for rule_name in ("tsc", "build", "data_in_use", "nav_coverage"):
+        assert names_by_count.get(rule_name) == 1, f"missing rule verifier: {rule_name}"
+    # Skill present → no probe-failure warning.
+    assert not [
+        record
+        for record in caplog.records
+        if record.levelname == "WARNING" and "visual_judge" in record.getMessage()
+    ]
+
+
+def test_default_verifiers_factory_sc5_judges_none_registers_zero_llm_judges(
+    tmp_path: Path,
+) -> None:
+    """SC5 (case 2): ``--judges none`` registers zero LLM judges.
+
+    Asserts ``verifier_runs by name``: none of the three known LLM-judge
+    names appear in the resolved tuple; only the rule verifiers do.
+    """
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            judges=frozenset(),
+        )
+
+    names = [v.name for v in verifiers]
+    llm_judges = {"visual_judge", "quality_judge", "cross_task_consistency"}
+    assert llm_judges.isdisjoint(names)
+    # Rule verifiers still register exactly once each.
+    for rule_name in ("tsc", "build", "data_in_use", "nav_coverage"):
+        assert names.count(rule_name) == 1, f"missing rule verifier: {rule_name}"
+
 # --------------------------------------------------------------------------- #
 # Default introspector wiring
 # --------------------------------------------------------------------------- #

@@ -107,7 +107,7 @@ milestones extend it: **M2** adds the retry budget; **M5** adds the
 
 - [x] **T3.4** — CLI flag `--judges <comma-list|all|none>` on `cli.py`. Parse `none` → empty set, `all` → full default set, comma-separated → set of tokens. Reject unknown tokens with a CLI-level error. Spec §5.5 + §5.9. **Check:** integration test exercises `--judges visual_judge,quality_judge`, `--judges none`, `--judges all`, `--judges bogus` (rejected).
 
-- [ ] **T3.5** — Tests: SC5 — `--judges visual_judge,quality_judge` registers exactly those two LLM judges (when skill present); `cross_task_consistency` is absent. `--judges none` registers zero LLM judges. **Check:** assert `len(verifier_runs) by name` per case.
+- [x] **T3.5** — Tests: SC5 — `--judges visual_judge,quality_judge` registers exactly those two LLM judges (when skill present); `cross_task_consistency` is absent. `--judges none` registers zero LLM judges. **Check:** assert `len(verifier_runs) by name` per case.
 
 - [ ] **T3.6** — Score + concurrency knobs (delta 1 + delta 2):
   - `ShopGenConfig.visual_judge_pass_threshold: float = 7.0` (§9.3 score-coercion threshold)
