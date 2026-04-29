@@ -237,14 +237,27 @@ verifier failure under the same `navigation_primitive_usage` rule.
   into `<NavMenu>`'s `linkClassName` / `triggerClassName` builders to
   highlight the current route and its ancestors without duplicating
   `useMatches()` plumbing in every consumer.
+- **`<FooterColumns>`** (`app/components/FooterColumns.tsx`) — multi-
+  column footer renderer. Takes the loader's `footers: Array<FooterQuery
+  | null>` (one entry per handle in `env.PUBLIC_FOOTER_MENU_HANDLES`,
+  CSV-parsed; defaults to a single `'footer'` menu when the var is
+  unset) plus `headerShop` for primary-domain stripping, and emits one
+  `<nav className="footer-column">` per non-null menu. Use it in place
+  of the deprecated single-menu `<Footer>` (which is now a thin
+  back-compat wrapper) so the footer scales to whatever `footer-*`
+  handles the data layer emits. Null entries are skipped silently so a
+  partial outage on one handle still renders the surviving columns.
 
 Re-deriving these — for example an inline `setTimeout`-based hover-
 intent on a `<button>`, local `font: inherit` / `line-height:
 inherit` resets on a nav trigger, a hand-rolled `<header>` wrapper
 that re-implements `<HeaderShell>`'s slot contract, a custom
 `<details>`-accordion mobile drawer that lets two sections stay open
-at once, or a per-shop announcement bar with its own dismissal-
-persistence logic — is a verifier failure (the
+at once, a per-shop announcement bar with its own dismissal-
+persistence logic, or a hand-rolled multi-column `<footer>` that loops
+over `env.PUBLIC_FOOTER_MENU_HANDLES` inline instead of rendering
+`<FooterColumns>` against the loader's `footers` array — is a verifier
+failure (the
 `navigation_primitive_usage` verifier flags both the missing import
 and the re-derived anti-patterns). Compose the primitives instead.
 
