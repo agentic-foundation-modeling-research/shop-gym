@@ -100,6 +100,13 @@ class Floating(_Section):
     has_newsletter_popup: bool | None = None
 
 
+class Intl(_Section):
+    """Internationalization controls (spec §5.5 ``intl``)."""
+
+    has_locale_switcher: bool | None = None
+    has_currency_switcher: bool | None = None
+
+
 class Capabilities(BaseModel):
     """Closed v0.1 capabilities schema for a storefront.
 
@@ -122,4 +129,5 @@ class Capabilities(BaseModel):
     cart: Cart = Field(default_factory=Cart)
     search: Search = Field(default_factory=Search)
     floating: Floating = Field(default_factory=Floating)
+    intl: Intl = Field(default_factory=Intl)
     info_pages_present: list[str] = Field(default_factory=list)

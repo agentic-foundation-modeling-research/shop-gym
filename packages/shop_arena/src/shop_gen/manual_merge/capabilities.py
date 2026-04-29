@@ -114,6 +114,9 @@ _RULES: Final[dict[str, str]] = {
     "floating.has_age_gate": _RULE_BOOL_UNION,
     "floating.has_cookie_banner": _RULE_BOOL_UNION,
     "floating.has_newsletter_popup": _RULE_BOOL_UNION,
+    # intl
+    "intl.has_locale_switcher": _RULE_BOOL_UNION,
+    "intl.has_currency_switcher": _RULE_BOOL_UNION,
     # top-level
     "info_pages_present": _RULE_LIST_UNION,
 }
