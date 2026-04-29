@@ -80,6 +80,7 @@ from shop_gen.build.verifiers import (
     CrossTaskConsistencyVerifier,
     DataInUseVerifier,
     NavCoverageVerifier,
+    NavigationPrimitiveUsageVerifier,
     QualityJudgeVerifier,
     SchemaIntrospection,
     TscVerifier,
@@ -576,6 +577,7 @@ Replaces the v0.1 ``_unconfigured_dev_server_factory`` placeholder
 (impl plan T6.1).
 """
 
+
 def default_verifiers_factory(
     *,
     out_dir: Path,
@@ -640,6 +642,11 @@ def default_verifiers_factory(
             introspect=_GraphqlIntrospector(base_url=sidecar.base_url),
         ),
         NavCoverageVerifier(data_dir=out_dir / _DATA_DIR),
+        # `navigation_primitive_usage` registers as ADVISORY in M4 (impl plan T4.2):
+        # the verifier surfaces feedback for `gen_navigation` outputs that bypass the
+        # navigation primitives without blocking the iteration. M5 (T5.1) flips this
+        # to hard-fail by dropping the `advisory=True` kwarg.
+        NavigationPrimitiveUsageVerifier(advisory=True),
         # NoBrandLeakVerifier(),  # temporarily disabled — broken; re-add import + line to revive.
     ]
     if "quality_judge" in judges:

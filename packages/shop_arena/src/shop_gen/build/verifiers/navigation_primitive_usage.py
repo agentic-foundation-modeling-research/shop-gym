@@ -173,6 +173,20 @@ _STYLES_ANTI_PATTERNS: Final[tuple[_AntiPattern, ...]] = (
 class NavigationPrimitiveUsageVerifier:
     """Asserts ``gen_navigation`` outputs adopt the navigation primitives.
 
+    Args:
+        advisory: When ``True``, every verdict that would otherwise be
+            :attr:`~harness.verifiers.Verdict.FAIL` is downgraded to
+            :attr:`~harness.verifiers.Verdict.ADVISORY`. The harness
+            still surfaces the markdown feedback to the next iteration
+            (per :class:`~harness.verifiers.dispatch`'s ``FAIL`` /
+            ``ADVISORY`` parity), but the selected task's ``[x]`` /
+            ``[!]`` marker is left intact instead of being rewritten
+            back to ``[~]``. Used by :func:`default_verifiers_factory`
+            in M4 (impl plan T4.2) so the verifier warns without
+            blocking landings retroactively while the M2 cassette
+            migration completes; M5 (T5.1) flips this to ``False``
+            to promote the rule to hard-fail.
+
     Attributes:
         name: ``"navigation_primitive_usage"`` — used as the per-verifier
             telemetry filename and the markdown section heading in
@@ -180,6 +194,9 @@ class NavigationPrimitiveUsageVerifier:
     """
 
     name: str = _NAME
+
+    def __init__(self, *, advisory: bool = False) -> None:
+        self._advisory = advisory
 
     def applies_to(self, task_id: str) -> bool:
         """Match only ``gen_navigation`` (impl plan T4.1).
@@ -214,7 +231,7 @@ class NavigationPrimitiveUsageVerifier:
         header_path = hydrogen_dir / _HEADER_REL
         if not header_path.is_file():
             return VerifierResult(
-                verdict=Verdict.FAIL,
+                verdict=self._fail_verdict(),
                 feedback=(
                     f"`{_NAME}` could not read `{_HYDROGEN_DIR}/{_HEADER_REL}`. "
                     "Did `gen_navigation` finish writing the header?\n\n"
@@ -246,7 +263,7 @@ class NavigationPrimitiveUsageVerifier:
 
         triggered_ids = [rule.rule_id for rule in triggered]
         return VerifierResult(
-            verdict=Verdict.FAIL,
+            verdict=self._fail_verdict(),
             feedback=_render_failure_markdown(
                 missing_imports=missing_imports,
                 triggered=triggered,
@@ -256,8 +273,18 @@ class NavigationPrimitiveUsageVerifier:
                 "missing_imports": missing_imports,
                 "rules_triggered": len(triggered),
                 "triggered_rule_ids": triggered_ids,
+                "advisory": self._advisory,
             },
         )
+
+    def _fail_verdict(self) -> Verdict:
+        """Return the verdict to emit on a failing scan.
+
+        Honours the ``advisory`` constructor flag: when set, ``FAIL`` is
+        downgraded to ``ADVISORY`` so the harness surfaces the feedback
+        without rewriting the task marker back to ``[~]``.
+        """
+        return Verdict.ADVISORY if self._advisory else Verdict.FAIL
 
 
 # --------------------------------------------------------------------------- #

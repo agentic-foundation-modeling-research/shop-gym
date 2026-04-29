@@ -314,3 +314,78 @@ def test_reports_multiple_anti_patterns_at_once(
     triggered = sorted(result.details["triggered_rule_ids"])
     assert triggered == ["hover_intent_inline", "legacy_header_menu_margin"]
     assert result.details["rules_triggered"] == len(triggered)
+
+
+# --------------------------------------------------------------------------- #
+# Advisory mode (impl plan T4.2) — FAIL is downgraded to ADVISORY when the
+# verifier is constructed with ``advisory=True``. The harness still surfaces
+# the markdown feedback, but the selected task's marker is left intact.
+# --------------------------------------------------------------------------- #
+
+
+def test_advisory_mode_downgrades_missing_imports_to_advisory(
+    make_ctx: Callable[..., VerifierContext],
+    write_app_file: Callable[[str, str], Path],
+) -> None:
+    """With ``advisory=True``, a missing-import failure surfaces as ADVISORY."""
+    _write(write_app_file, _HEADER_NO_PRIMITIVES, _CLEAN_CSS)
+
+    result = NavigationPrimitiveUsageVerifier(advisory=True).run(
+        make_ctx(selected_task_id="gen_navigation"),
+    )
+
+    assert result.verdict is Verdict.ADVISORY
+    assert result.details["missing_imports"] is True
+    assert result.details["advisory"] is True
+    # Feedback body is unchanged — only the verdict is downgraded.
+    assert "Missing primitive import" in result.feedback
+
+
+def test_advisory_mode_downgrades_anti_pattern_to_advisory(
+    make_ctx: Callable[..., VerifierContext],
+    write_app_file: Callable[[str, str], Path],
+) -> None:
+    """With ``advisory=True``, an anti-pattern hit surfaces as ADVISORY."""
+    _write(write_app_file, _HEADER_INLINE_HOVER, _CLEAN_CSS)
+
+    result = NavigationPrimitiveUsageVerifier(advisory=True).run(
+        make_ctx(selected_task_id="gen_navigation"),
+    )
+
+    assert result.verdict is Verdict.ADVISORY
+    assert "hover_intent_inline" in result.details["triggered_rule_ids"]
+
+
+def test_advisory_mode_downgrades_missing_header_to_advisory(
+    make_ctx: Callable[..., VerifierContext],
+) -> None:
+    """With ``advisory=True``, a missing ``Header.tsx`` surfaces as ADVISORY."""
+    result = NavigationPrimitiveUsageVerifier(advisory=True).run(
+        make_ctx(selected_task_id="gen_navigation"),
+    )
+
+    assert result.verdict is Verdict.ADVISORY
+    assert result.details["exists"] is False
+
+
+def test_advisory_mode_does_not_downgrade_pass(
+    make_ctx: Callable[..., VerifierContext],
+    write_app_file: Callable[[str, str], Path],
+) -> None:
+    """PASS is unaffected by ``advisory=True`` — only FAIL is downgraded."""
+    _write(write_app_file, _HEADER_PASSING, _CLEAN_CSS)
+
+    result = NavigationPrimitiveUsageVerifier(advisory=True).run(
+        make_ctx(selected_task_id="gen_navigation"),
+    )
+
+    assert result.verdict is Verdict.PASS
+
+
+def test_default_mode_still_fails_hard() -> None:
+    """Default ``advisory=False`` preserves the M4-pre hard-fail behaviour."""
+    verifier = NavigationPrimitiveUsageVerifier()
+    # Internal probe: the default constructor stores ``False`` so future M5
+    # promotion (impl plan T5.1) only has to drop the ``advisory=True`` kwarg
+    # in ``default_verifiers_factory``.
+    assert verifier._advisory is False

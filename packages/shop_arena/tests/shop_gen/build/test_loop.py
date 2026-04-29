@@ -61,6 +61,7 @@ from shop_gen.build.verifiers import (
     CrossTaskConsistencyVerifier,
     DataInUseVerifier,
     NavCoverageVerifier,
+    NavigationPrimitiveUsageVerifier,
     QualityJudgeVerifier,
     TscVerifier,
     VisualJudgeVerifier,
@@ -869,6 +870,7 @@ def test_default_verifiers_factory_returns_v01_set_when_skill_missing(
         BuildVerifier,
         DataInUseVerifier,
         NavCoverageVerifier,
+        NavigationPrimitiveUsageVerifier,
         QualityJudgeVerifier,
         CrossTaskConsistencyVerifier,
     ]
@@ -904,6 +906,7 @@ def test_default_verifiers_factory_includes_visual_judge_when_skill_present(
         BuildVerifier,
         DataInUseVerifier,
         NavCoverageVerifier,
+        NavigationPrimitiveUsageVerifier,
         QualityJudgeVerifier,
         VisualJudgeVerifier,
         CrossTaskConsistencyVerifier,
@@ -994,6 +997,30 @@ def test_default_verifiers_factory_threads_visual_judge_max_concurrency(
     assert visual._max_concurrency == 6  # noqa: PLR2004 -- mirrors fixture
 
 
+def test_default_verifiers_factory_registers_navigation_primitive_usage_as_advisory(
+    tmp_path: Path,
+) -> None:
+    """Impl plan T4.2: ``navigation_primitive_usage`` registers as ADVISORY in M4.
+
+    The verifier slots between the rule verifiers and the LLM judges, and is
+    constructed with ``advisory=True`` so a failing scan surfaces feedback
+    without rewriting the selected task's marker back to ``[~]``. M5 (T5.1)
+    flips this to hard-fail by dropping the kwarg.
+    """
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with patch("shop_gen.build.loop.is_playwright_skill_available", return_value=True):
+        verifiers = default_verifiers_factory(out_dir=out_dir, sidecar=sidecar)
+
+    matches = [v for v in verifiers if isinstance(v, NavigationPrimitiveUsageVerifier)]
+    assert len(matches) == 1, "`navigation_primitive_usage` registers exactly once"
+    assert matches[0].name == "navigation_primitive_usage"
+    assert matches[0]._advisory is True
+
+
 def test_default_verifiers_factory_judges_empty_returns_only_rule_verifiers(
     tmp_path: Path,
 ) -> None:
@@ -1016,6 +1043,7 @@ def test_default_verifiers_factory_judges_empty_returns_only_rule_verifiers(
         BuildVerifier,
         DataInUseVerifier,
         NavCoverageVerifier,
+        NavigationPrimitiveUsageVerifier,
     ]
 
 
@@ -1045,6 +1073,7 @@ def test_default_verifiers_factory_judges_visual_only_when_skill_present(
         BuildVerifier,
         DataInUseVerifier,
         NavCoverageVerifier,
+        NavigationPrimitiveUsageVerifier,
         VisualJudgeVerifier,
     ]
     assert not [
@@ -1083,6 +1112,7 @@ def test_default_verifiers_factory_judges_visual_only_skill_missing_warns(
         BuildVerifier,
         DataInUseVerifier,
         NavCoverageVerifier,
+        NavigationPrimitiveUsageVerifier,
     ]
     visual_warnings = [
         record
@@ -1134,7 +1164,7 @@ def test_default_verifiers_factory_sc5_judges_visual_and_quality_excludes_cross_
     # The unselected LLM judge is absent.
     assert "cross_task_consistency" not in names_by_count
     # Rule verifiers are unaffected by ``judges``.
-    for rule_name in ("tsc", "build", "data_in_use", "nav_coverage"):
+    for rule_name in ("tsc", "build", "data_in_use", "nav_coverage", "navigation_primitive_usage"):
         assert names_by_count.get(rule_name) == 1, f"missing rule verifier: {rule_name}"
     # Skill present → no probe-failure warning.
     assert not [
@@ -1168,7 +1198,7 @@ def test_default_verifiers_factory_sc5_judges_none_registers_zero_llm_judges(
     llm_judges = {"visual_judge", "quality_judge", "cross_task_consistency"}
     assert llm_judges.isdisjoint(names)
     # Rule verifiers still register exactly once each.
-    for rule_name in ("tsc", "build", "data_in_use", "nav_coverage"):
+    for rule_name in ("tsc", "build", "data_in_use", "nav_coverage", "navigation_primitive_usage"):
         assert names.count(rule_name) == 1, f"missing rule verifier: {rule_name}"
 
 
