@@ -1,14 +1,12 @@
 """Group-level fidelity aggregation for ShopProbe.
 
-Implements the typed contract documented in
-``docs/specs/shop_arena/web_probe_patch.md``. Two closed pydantic models
-plus pure helper functions that turn two flat populations of
-:class:`~shop_probe.report.ProbeReport`\\ s — sandbox group and real
-group — into a single group-vs-group :class:`BenchComparison`.
+Two closed pydantic models plus pure helper functions that turn two flat
+populations of :class:`~shop_probe.report.ProbeReport` — sandbox group
+and real group — into a single group-vs-group :class:`BenchComparison`.
 
 The module is import-safe: no I/O, no env reads.
 
-Aggregation conventions (kept narrow on purpose):
+Aggregation conventions:
 
 * ``coverage_per_axis_mean`` — arithmetic mean of per-category coverage
   across the group. Both groups must expose the **same** set of
@@ -19,23 +17,11 @@ Aggregation conventions (kept narrow on purpose):
 * ``surface_metric_means[name]`` / ``surface_metric_envelope[name]`` —
   per-metric mean and ``(min, max)`` envelope across the group's
   populated :class:`~shop_probe.surface.metrics.SurfaceMetrics` rows.
-  Members that lack ``surface`` are skipped silently for those metrics.
-* ``judge_accuracy`` — fraction of the group's
-  :class:`~shop_probe.report.JudgeCall` rows whose
-  ``predicted_label == target.label``. ``None`` if the group has no
-  judge calls.
 * ``coverage_gap_weighted = real.coverage_weighted_mean -
-  sandbox.coverage_weighted_mean`` (single scalar; positive means the
-  real group is ahead of the sandbox group).
-* ``surface_ratio[name] = sandbox.mean / real.mean`` per metric. If the
-  real mean is ``0``, the entry is ``1.0`` when both means are ``0`` and
-  raises otherwise.
+  sandbox.coverage_weighted_mean``.
+* ``surface_ratio[name] = sandbox.mean / real.mean`` per metric.
 * ``sandbox_in_real_envelope[name][metric]`` — for each sandbox shop,
   whether its per-metric value falls inside the real-group envelope.
-  Sandboxes without surface metrics are excluded.
-* ``judge_indistinguishability = |real.judge_accuracy -
-  sandbox.judge_accuracy|`` — closer to ``0`` means the judge cannot
-  tell the two groups apart.
 """
 
 from __future__ import annotations
@@ -63,10 +49,6 @@ class GroupSummary(BaseModel):
             :class:`SurfaceMetrics` rows.
         surface_metric_envelope: Per-metric ``(min, max)`` envelope
             across populated :class:`SurfaceMetrics` rows.
-        judge_accuracy: Fraction of judge calls whose ``predicted_label``
-            matches the group label. ``None`` if the group has no judge
-            calls.
-        judge_calls_total: Total number of judge calls across the group.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -77,8 +59,6 @@ class GroupSummary(BaseModel):
     coverage_per_axis_mean: dict[str, float]
     surface_metric_means: dict[str, float]
     surface_metric_envelope: dict[str, tuple[float, float]]
-    judge_accuracy: float | None = Field(default=None, ge=0.0, le=1.0)
-    judge_calls_total: int = Field(ge=0)
 
 
 class BenchComparison(BaseModel):
@@ -90,15 +70,11 @@ class BenchComparison(BaseModel):
         coverage_gap_weighted: ``real.coverage_weighted_mean -
             sandbox.coverage_weighted_mean``.
         coverage_gap_per_axis: Per-category ``real.mean -
-            sandbox.mean`` (only categories present on both groups
-            appear).
+            sandbox.mean``.
         surface_ratio: Per-metric ``sandbox.mean / real.mean``.
         sandbox_in_real_envelope: Per-sandbox-name ``metric -> bool``
             describing whether each sandbox metric falls inside the
             real-group envelope.
-        judge_indistinguishability: ``|real.judge_accuracy -
-            sandbox.judge_accuracy|``. ``None`` if either group lacks
-            judge calls.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -109,7 +85,6 @@ class BenchComparison(BaseModel):
     coverage_gap_per_axis: dict[str, float]
     surface_ratio: dict[str, float]
     sandbox_in_real_envelope: dict[str, dict[str, bool]]
-    judge_indistinguishability: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 def compute_bench_comparison(
@@ -176,10 +151,6 @@ def compute_bench_comparison(
         sandbox_reports, real_summary.surface_metric_envelope
     )
 
-    indistinguishability: float | None = None
-    if sandbox_summary.judge_accuracy is not None and real_summary.judge_accuracy is not None:
-        indistinguishability = abs(real_summary.judge_accuracy - sandbox_summary.judge_accuracy)
-
     return BenchComparison(
         sandbox=sandbox_summary,
         real=real_summary,
@@ -187,7 +158,6 @@ def compute_bench_comparison(
         coverage_gap_per_axis=coverage_gap_per_axis,
         surface_ratio=surface_ratio,
         sandbox_in_real_envelope=sandbox_in_real_envelope,
-        judge_indistinguishability=indistinguishability,
     )
 
 
@@ -215,17 +185,6 @@ def _summarize_group(label: TargetLabel, reports: Sequence[ProbeReport]) -> Grou
     surfaces = tuple(r.surface for r in reports if r.surface is not None)
     surface_metric_means, surface_metric_envelope = _surface_aggregates(surfaces)
 
-    judge_calls = tuple(call for r in reports for call in r.judge_calls)
-    judge_calls_total = len(judge_calls)
-    judge_accuracy: float | None
-    if judge_calls_total == 0:
-        judge_accuracy = None
-    else:
-        correct = sum(
-            1 for r in reports for call in r.judge_calls if call.predicted_label == r.target.label
-        )
-        judge_accuracy = correct / judge_calls_total
-
     return GroupSummary(
         label=label,
         n_shops=n,
@@ -233,8 +192,6 @@ def _summarize_group(label: TargetLabel, reports: Sequence[ProbeReport]) -> Grou
         coverage_per_axis_mean=coverage_per_axis_mean,
         surface_metric_means=surface_metric_means,
         surface_metric_envelope=surface_metric_envelope,
-        judge_accuracy=judge_accuracy,
-        judge_calls_total=judge_calls_total,
     )
 
 
@@ -324,10 +281,7 @@ def _sandbox_in_real_envelope(
 ) -> dict[str, dict[str, bool]]:
     """For each sandbox shop, whether each metric is inside the real envelope.
 
-    Sandboxes without surface metrics are excluded (no row). When the real
-    envelope is empty (no real shop carried surface metrics) every sandbox
-    yields an empty per-metric dict — the caller can decide whether to
-    treat that as missing or as ``True``.
+    Sandboxes without surface metrics are excluded.
     """
     out: dict[str, dict[str, bool]] = {}
     for report in sandbox_reports:

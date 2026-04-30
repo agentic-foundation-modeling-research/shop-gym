@@ -43,9 +43,7 @@ from typing import Final
 from playwright.async_api import Browser, Page, async_playwright
 
 from shop_probe import __version__ as _shop_probe_version
-from shop_probe.agent.config import AgentRuntimeConfig
 from shop_probe.report import EvidenceRef
-from shop_probe.rubric.schema import RubricEntry
 
 PINNED_USER_AGENT: Final[str] = (
     f"Mozilla/5.0 (compatible; ShopProbe/{_shop_probe_version}; "
@@ -67,18 +65,6 @@ VIEWPORT_HEIGHT: Final[int] = 800
 DEFAULT_PROBE_TIMEOUT_S: Final[float] = 10.0
 """Hard per-probe timeout in seconds (spec §5.3)."""
 
-DEFAULT_AGENT_TIMEOUT_S: Final[float] = 180.0
-"""Default per-task timeout for agent-driven probes (impl plan T4.1)."""
-
-AGENT_BUFFER_S: Final[float] = 30.0
-"""Outer-wait buffer added on top of the agent task budget (impl plan T4.1).
-
-The harness loop already enforces ``task.timeout_s`` (or
-``cfg.timeout_s``) internally. The dispatcher's outer ``asyncio.wait_for``
-must therefore be strictly larger than the inner timeout so the harness
-gets to clean up its workspace before the wrapper cancels the task.
-"""
-
 
 @dataclass(frozen=True, slots=True)
 class ProbeOutcome:
@@ -98,10 +84,9 @@ class ProbeOutcome:
         notes: Optional free-form note (failure reason, observed value).
         duration_ms: Wall-clock duration of the probe call in
             milliseconds. Populated by the runner; probes leave at 0.
-        extra: Free-form mapping for non-evidence side-channel values
-            the runner forwards onto the report (e.g. v1.3 agent-driven
-            ``judge_cost_usd`` / ``judge_model``). Deterministic probes
-            leave this empty.
+        extra: Free-form mapping for capture-judge side-channel values
+            the runner forwards onto the report (``judge_cost_usd``,
+            ``judge_model``). Deterministic probes leave this empty.
     """
 
     passed: bool | None
@@ -138,11 +123,6 @@ class ProbeContext:
             return ``passed=None``).
         sample_collection_url: URL of a representative collection, if
             known. Same ``None`` semantics as ``sample_product_url``.
-        agent_config: Optional v1.3 agent-driven runtime configuration.
-            ``None`` for deterministic probes; carried by the runner so
-            ``run_agent_task`` can resolve runtime / model / budget
-            without threading separate parameters through the dispatch
-            path (spec ``web_probe_v1_3_agent_driven.md`` §Desired Status).
     """
 
     page: Page
@@ -151,7 +131,6 @@ class ProbeContext:
     evidence_root: Path
     sample_product_url: str | None = None
     sample_collection_url: str | None = None
-    agent_config: AgentRuntimeConfig | None = None
 
     async def screenshot(self, name: str, *, selector: str | None = None) -> EvidenceRef:
         """Capture a viewport screenshot to disk and return its EvidenceRef.
@@ -317,7 +296,6 @@ class ProbeRunner:
         sample_product_url: str | None = None,
         sample_collection_url: str | None = None,
         timeout_s: float | None = None,
-        agent_config: AgentRuntimeConfig | None = None,
     ) -> ProbeOutcome:
         """Run one probe in a fresh isolated browser context.
 
@@ -336,10 +314,6 @@ class ProbeRunner:
                 collection URL.
             timeout_s: Override the runner's default timeout for this
                 call only. ``None`` uses :attr:`timeout_s`.
-            agent_config: Optional v1.3 agent-driven runtime config to
-                attach to :attr:`ProbeContext.agent_config`. Carried by
-                deterministic probes too (they ignore it); ``run_agent_task``
-                consumes it on the agent-driven path.
 
         Returns:
             The :class:`ProbeOutcome` returned by the probe with
@@ -374,7 +348,6 @@ class ProbeRunner:
                 evidence_root=self.evidence_root,
                 sample_product_url=sample_product_url,
                 sample_collection_url=sample_collection_url,
-                agent_config=agent_config,
             )
             try:
                 outcome = await asyncio.wait_for(probe(page, ctx), timeout=budget)
@@ -406,69 +379,3 @@ class ProbeRunner:
             extra=outcome.extra,
         )
 
-    async def run_agent_entry(
-        self,
-        entry: RubricEntry,
-        *,
-        base_url: str,
-        sample_product_url: str | None = None,
-        sample_collection_url: str | None = None,
-        agent_config: AgentRuntimeConfig | None = None,
-    ) -> ProbeOutcome:
-        """Dispatch one ``level: agent_driven`` rubric entry (impl plan T4.1).
-
-        Wraps ``shop_probe.agent.runner.run_agent_task`` in a
-        :data:`ProbeFn`-shaped closure and delegates to :meth:`run` so the
-        agent task inherits the same isolated-context / pinned-UA /
-        evidence-root / ``duration_ms`` plumbing as deterministic probes,
-        but with a different outer timeout (``task.timeout_s`` plus a
-        buffer) and the inline rubric ``task`` threaded through.
-
-        The outer timeout intentionally exceeds the harness's own
-        ``task.timeout_s`` (or :data:`DEFAULT_AGENT_TIMEOUT_S`) by
-        :data:`AGENT_BUFFER_S` so the harness gets to finalise its
-        workspace before the wrapper cancels.
-
-        Args:
-            entry: Rubric entry. Must have ``level == "agent_driven"`` and
-                a non-``None`` :class:`AgentTaskInline` block.
-            base_url: Storefront URL passed through on :class:`ProbeContext`.
-            sample_product_url: Optional pre-resolved sample PDP URL.
-            sample_collection_url: Optional pre-resolved sample collection URL.
-            agent_config: Resolved per-cohort runtime config; forwarded onto
-                ``ProbeContext.agent_config`` so ``run_agent_task`` can read
-                runtime / model / budget defaults.
-
-        Returns:
-            The :class:`ProbeOutcome` produced by the agent task, with
-            ``duration_ms`` populated by :meth:`run`.
-
-        Raises:
-            ValueError: If ``entry`` is not an agent-driven entry.
-        """
-        if entry.level != "agent_driven" or entry.agent_task is None:
-            msg = (
-                f"rubric entry {entry.id!r}: run_agent_entry expects "
-                f"level='agent_driven' with an inline agent_task block; "
-                f"got level={entry.level!r}"
-            )
-            raise ValueError(msg)
-        task = entry.agent_task
-        agent_timeout = (task.timeout_s or DEFAULT_AGENT_TIMEOUT_S) + AGENT_BUFFER_S
-        # Lazy import: ``shop_probe.agent.runner`` imports
-        # ``ProbeContext`` / ``ProbeOutcome`` from this module, so a
-        # top-level import would form a cycle.
-        from shop_probe.agent.runner import run_agent_task  # noqa: PLC0415
-
-        async def _agent_probe(page: Page, ctx: ProbeContext) -> ProbeOutcome:
-            return await run_agent_task(page, ctx, task=task)
-
-        return await self.run(
-            _agent_probe,
-            base_url=base_url,
-            probe_id=entry.id,
-            sample_product_url=sample_product_url,
-            sample_collection_url=sample_collection_url,
-            timeout_s=agent_timeout,
-            agent_config=agent_config,
-        )

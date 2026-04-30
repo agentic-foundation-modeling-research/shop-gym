@@ -1,29 +1,19 @@
-"""Axis A — v1.3 agent-driven advanced tier.
+"""Capture-judge support: one Anthropic Messages call per rubric entry.
 
-Replaces the deterministic v1.2 ``advanced`` probes with a generic
-agent + judge runner driven by inline ``agent_task`` blocks on
-``level: agent_driven`` rubric entries.
-
-See ``docs/specs/shop_arena/web_probe_v1_3_agent_driven.md`` for the
-spec; ``docs/impl/web_probe_v1_3_agent_driven_implementation.md`` for
-the implementation plan.
+The capture-judge tier is an axis-A extension that handles affordances
+deterministic Playwright probes can't decide (e.g. "does this page expose
+a sort dropdown?"). For each ``level: capture_judge`` rubric entry the
+dispatcher hands the bundle slice + rubric question to
+:func:`shop_probe.agent.judge.run_capture_judge`.
 
 This module is import-safe: it performs no I/O at import time.
 """
 
 from __future__ import annotations
 
-from shop_probe.agent.config import AgentRuntimeConfig, AgentRuntimeName
-
-# Note: ``run_agent_task`` is intentionally not re-exported here. The runner
-# module imports ``ProbeContext`` / ``ProbeOutcome`` from
-# ``shop_probe.probes._runner``, which in turn imports ``AgentRuntimeConfig``
-# from ``shop_probe.agent.config`` — eagerly importing the runner at package
-# init time would form a circular import. Callers should import it directly
-# via ``from shop_probe.agent.runner import run_agent_task`` (impl plan T1.2
-# only specified re-exporting ``AgentRuntimeConfig``).
+from shop_probe.agent.judge import JudgeVerdict, run_capture_judge
 
 __all__ = [
-    "AgentRuntimeConfig",
-    "AgentRuntimeName",
+    "JudgeVerdict",
+    "run_capture_judge",
 ]

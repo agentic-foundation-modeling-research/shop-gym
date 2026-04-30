@@ -1,50 +1,34 @@
-"""Tests for ``shop-probe eval`` (end-to-end pipeline driver).
+"""Tests for ``shop-probe eval`` (the single user-facing subcommand).
 
-The probe + aggregate stages are stubbed so the test runs without launching
-Playwright; the test asserts ``eval`` orchestrates them in the right order
-and then renders the bench-level figures via the real ``_cmd_report``
-handler.
+Stubs the per-target probe runner so the test runs without launching
+Playwright or hitting the Anthropic proxy. Asserts that ``eval``:
+
+* writes one report per target into ``<out>/reports/``;
+* skips a target when ``<out>/reports/<label>__<name>.json`` is present
+  with a matching ``rubric_hash`` (cache hit);
+* recomputes a target whose cached report has a stale ``rubric_hash``;
+* recomputes everything when ``--force`` is passed;
+* renders the two cohort tables under ``<out>/figures/``.
 """
 
 from __future__ import annotations
 
-import argparse
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from shop_probe import cli
 from shop_probe.cli import EXIT_OK, EXIT_USAGE, main
 from shop_probe.report import BrowserMeta, CategoryScore, ProbeReport
-from shop_probe.surface import SurfaceMetrics
 from shop_probe.targets import Target, TargetLabel
 
-_CATEGORY_NAMES: tuple[str, ...] = ("cart", "product", "site_shell")
-_TIMESTAMP: datetime = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+_TIMESTAMP = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
-def _surface() -> SurfaceMetrics:
-    return SurfaceMetrics.model_validate(
-        {
-            "distinct_templates": 5,
-            "routes_crawled": 50,
-            "interactables_per_template_median": 30.0,
-            "interactables_per_template_p95": 90.0,
-            "forms_total": 4,
-            "form_fields_total": 20,
-            "catalog_products": 100,
-            "catalog_collections": 12,
-            "catalog_variants": 250,
-            "filter_x_sort_state_space": 64,
-            "median_dom_kb_gz": 80.0,
-            "accessibility_nodes_per_template_median": 400.0,
-        }
-    )
-
-
-def _stub_report(name: str, label: TargetLabel) -> ProbeReport:
-    runtime = BrowserMeta(
+def _runtime() -> BrowserMeta:
+    return BrowserMeta(
         python_version="3.11.9",
         playwright_version="1.48.0",
         chromium_version="129.0.6668.58",
@@ -52,29 +36,29 @@ def _stub_report(name: str, label: TargetLabel) -> ProbeReport:
         viewport=(1280, 800),
         headless=True,
     )
+
+
+def _stub_report(target: Target, *, rubric_hash: str) -> ProbeReport:
     cov = 0.7
-    categories = tuple(
-        CategoryScore(category=c, weight_passed=cov * 10.0, weight_total=10.0, coverage=cov)
-        for c in _CATEGORY_NAMES
+    categories = (
+        CategoryScore(category="product", weight_passed=cov * 10, weight_total=10, coverage=cov),
     )
     return ProbeReport(
-        target=Target(name=name, base_url="http://localhost:4000", label=label),
-        rubric_version="v1",
-        rubric_hash="a" * 64,
+        target=target,
+        rubric_version="v2",
+        rubric_hash=rubric_hash,
         runner_version="0.0.0",
-        runtime=runtime,
+        runtime=_runtime(),
         timestamp=_TIMESTAMP,
         categories=categories,
         coverage_core=cov,
         coverage_modern=0.0,
         coverage_advanced=0.0,
         coverage_weighted=cov,
-        surface=_surface(),
-        rerun_index=1,
     )
 
 
-def _write_benchmark_yaml(path: Path) -> None:
+def _write_benchmark(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
@@ -92,135 +76,147 @@ def _write_benchmark_yaml(path: Path) -> None:
     )
 
 
-def _stub_cmd_run_factory() -> object:
-    """Return a callable that records args and writes a synthetic ProbeReport."""
-    calls: list[argparse.Namespace] = []
+def _stub_run_factory() -> tuple[list[Target], Any]:
+    """Patch ``cli._run`` to record targets and return synthetic reports."""
+    seen: list[Target] = []
 
-    def stub(args: argparse.Namespace) -> int:
-        calls.append(args)
-        report = _stub_report(args.name, args.label)
-        out_path = (
-            Path(args.out) / "reports" / f"{args.label}__{args.name}__rerun{args.rerun_index}.json"
-        )
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
-        return EXIT_OK
+    async def stub(
+        *,
+        target: Target,
+        rubric: Any,
+        evidence_root: Path,  # noqa: ARG001
+        run_axis_a: bool,  # noqa: ARG001
+        run_axis_b: bool,  # noqa: ARG001
+        include_auth: bool,  # noqa: ARG001
+        capture_judge_model: str,  # noqa: ARG001
+    ) -> ProbeReport:
+        seen.append(target)
+        return _stub_report(target, rubric_hash=rubric.content_hash)
 
-    stub.calls = calls  # type: ignore[attr-defined]
-    return stub
-
-
-def _eval_args(benchmark_yaml: Path, out_root: Path, *, reruns: int = 1) -> list[str]:
-    return [
-        "eval",
-        "--benchmark",
-        str(benchmark_yaml),
-        "--out",
-        str(out_root),
-        "--reruns",
-        str(reruns),
-    ]
+    return seen, stub
 
 
-def test_cli_eval_invokes_run_per_target_then_renders_figures(
+def _eval_args(benchmark: Path, out: Path, *extra: str) -> list[str]:
+    return ["eval", "--benchmark", str(benchmark), "--out", str(out), *extra]
+
+
+def test_cli_eval_runs_every_target_and_renders_figures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    out_root = tmp_path / "out"
-    benchmark_yaml = tmp_path / "benchmark.yaml"
-    _write_benchmark_yaml(benchmark_yaml)
+    benchmark = tmp_path / "benchmark.yaml"
+    out = tmp_path / "out"
+    _write_benchmark(benchmark)
+    seen, stub = _stub_run_factory()
+    monkeypatch.setattr(cli, "_run", stub)
 
-    stub_run = _stub_cmd_run_factory()
-    monkeypatch.setattr(cli, "_cmd_run", stub_run)
-
-    rc = main(_eval_args(benchmark_yaml, out_root))
+    rc = main(_eval_args(benchmark, out))
     assert rc == EXIT_OK
 
-    # Bench has 2 sandboxes + 2 reals; reruns=1 → 4 probe calls, no aggregate.
-    calls = list(stub_run.calls)  # type: ignore[attr-defined]
-    seen = [(vars(c)["label"], vars(c)["name"], vars(c)["rerun_index"]) for c in calls]
-    assert seen == [
-        ("sandbox", "shop_alpha", 1),
-        ("sandbox", "shop_beta", 1),
-        ("real", "real_a", 1),
-        ("real", "real_b", 1),
+    names = [(t.label, t.name) for t in seen]
+    assert names == [
+        ("sandbox", "shop_alpha"),
+        ("sandbox", "shop_beta"),
+        ("real", "real_a"),
+        ("real", "real_b"),
     ]
 
-    figures_dir = out_root / "figures"
+    reports_dir = out / "reports"
+    assert (reports_dir / "sandbox__shop_alpha.json").is_file()
+    assert (reports_dir / "real__real_a.json").is_file()
+
+    figures_dir = out / "figures"
     assert (figures_dir / "group_comparison.md").is_file()
     assert (figures_dir / "per_shop_table.md").is_file()
-    assert (figures_dir / "radar.svg").is_file()
-    assert (figures_dir / "surface.svg").is_file()
 
 
-def test_cli_eval_runs_aggregate_when_reruns_at_least_two(
+def test_cli_eval_cache_hit_skips_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    out_root = tmp_path / "out"
-    benchmark_yaml = tmp_path / "benchmark.yaml"
-    _write_benchmark_yaml(benchmark_yaml)
+    benchmark = tmp_path / "benchmark.yaml"
+    out = tmp_path / "out"
+    _write_benchmark(benchmark)
+    seen, stub = _stub_run_factory()
+    monkeypatch.setattr(cli, "_run", stub)
 
-    stub_run = _stub_cmd_run_factory()
-    monkeypatch.setattr(cli, "_cmd_run", stub_run)
+    # First run populates the cache.
+    assert main(_eval_args(benchmark, out)) == EXIT_OK
+    assert len(seen) == 4  # noqa: PLR2004
+    seen.clear()
 
-    aggregate_calls: list[argparse.Namespace] = []
-
-    def stub_aggregate(args: argparse.Namespace) -> int:
-        aggregate_calls.append(args)
-        # Pick rerun 1 as canonical; eval expects '<label>__<name>.json' to exist
-        # after aggregate so _cmd_report can find it.
-        first_run: Path = args.runs[0]
-        consolidated = first_run.with_name(first_run.name.split("__rerun")[0] + ".json")
-        consolidated.write_text(first_run.read_text(encoding="utf-8"), encoding="utf-8")
-        return EXIT_OK
-
-    monkeypatch.setattr(cli, "_cmd_aggregate_reruns", stub_aggregate)
-
-    rc = main(_eval_args(benchmark_yaml, out_root, reruns=2))
-    assert rc == EXIT_OK
-
-    # 4 targets x 2 reruns = 8 probe calls, plus 4 aggregate calls.
-    assert len(stub_run.calls) == 8  # type: ignore[attr-defined]  # noqa: PLR2004
-    assert len(aggregate_calls) == 4  # noqa: PLR2004
-    # Every aggregate call passes both rerun paths in order.
-    for call in aggregate_calls:
-        assert len(call.runs) == 2  # noqa: PLR2004
-        assert "__rerun1.json" in call.runs[0].name
-        assert "__rerun2.json" in call.runs[1].name
+    # Second run with the same rubric should hit the cache for every target.
+    assert main(_eval_args(benchmark, out)) == EXIT_OK
+    assert seen == []
 
 
-def test_cli_eval_aborts_on_probe_failure(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
+def test_cli_eval_force_bypasses_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    out_root = tmp_path / "out"
-    benchmark_yaml = tmp_path / "benchmark.yaml"
-    _write_benchmark_yaml(benchmark_yaml)
+    benchmark = tmp_path / "benchmark.yaml"
+    out = tmp_path / "out"
+    _write_benchmark(benchmark)
+    seen, stub = _stub_run_factory()
+    monkeypatch.setattr(cli, "_run", stub)
 
-    def stub_run(args: argparse.Namespace) -> int:
-        del args
-        return EXIT_USAGE  # simulate an unrecoverable probe failure
+    assert main(_eval_args(benchmark, out)) == EXIT_OK
+    seen.clear()
 
-    monkeypatch.setattr(cli, "_cmd_run", stub_run)
-
-    rc = main(_eval_args(benchmark_yaml, out_root))
-    assert rc == EXIT_USAGE
-    captured = capsys.readouterr()
-    assert "aborted on target='shop_alpha'" in captured.err
-    # No figures should have been written when probing aborts.
-    assert not (out_root / "figures").exists()
+    assert main(_eval_args(benchmark, out, "--force")) == EXIT_OK
+    assert len(seen) == 4  # noqa: PLR2004
 
 
-def test_cli_eval_rejects_non_positive_reruns(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_cli_eval_recomputes_on_stale_rubric_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    benchmark_yaml = tmp_path / "benchmark.yaml"
-    _write_benchmark_yaml(benchmark_yaml)
+    benchmark = tmp_path / "benchmark.yaml"
+    out = tmp_path / "out"
+    _write_benchmark(benchmark)
+    seen, stub = _stub_run_factory()
+    monkeypatch.setattr(cli, "_run", stub)
 
-    rc = main(_eval_args(benchmark_yaml, tmp_path / "out", reruns=0))
-    assert rc == EXIT_USAGE
-    captured = capsys.readouterr()
-    assert "must be >= 1" in captured.err
+    reports_dir = out / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    target = Target(name="shop_alpha", base_url="http://localhost:4000", label="sandbox")
+    stale = _stub_report(target, rubric_hash="0" * 64)
+    (reports_dir / "sandbox__shop_alpha.json").write_text(
+        stale.model_dump_json(indent=2), encoding="utf-8"
+    )
+
+    assert main(_eval_args(benchmark, out)) == EXIT_OK
+    # All four targets re-run because the cached report has a stale hash.
+    assert any(t.name == "shop_alpha" for t in seen)
+
+
+def test_cli_eval_appends_new_target_without_reprocessing_existing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    benchmark = tmp_path / "benchmark.yaml"
+    out = tmp_path / "out"
+    _write_benchmark(benchmark)
+    seen, stub = _stub_run_factory()
+    monkeypatch.setattr(cli, "_run", stub)
+
+    assert main(_eval_args(benchmark, out)) == EXIT_OK
+    seen.clear()
+
+    # Add a new sandbox to the YAML and re-run.
+    benchmark.write_text(
+        "\n".join(
+            [
+                'version: "0.1"',
+                "sandboxes:",
+                "  - { name: shop_alpha, base_url: http://localhost:4000, label: sandbox }",
+                "  - { name: shop_beta, base_url: http://localhost:4001, label: sandbox }",
+                "  - { name: shop_gamma, base_url: http://localhost:4002, label: sandbox }",
+                "reals:",
+                "  - { name: real_a, base_url: https://real-a.example.invalid, label: real }",
+                "  - { name: real_b, base_url: https://real-b.example.invalid, label: real }",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert main(_eval_args(benchmark, out)) == EXIT_OK
+    assert [t.name for t in seen] == ["shop_gamma"]
 
 
 def test_cli_eval_missing_benchmark_yaml(
@@ -228,5 +224,14 @@ def test_cli_eval_missing_benchmark_yaml(
 ) -> None:
     rc = main(_eval_args(tmp_path / "nope.yaml", tmp_path / "out"))
     assert rc == EXIT_USAGE
-    captured = capsys.readouterr()
-    assert "benchmark not found" in captured.err
+    assert "benchmark not found" in capsys.readouterr().err
+
+
+def test_cli_eval_rejects_unknown_axes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    benchmark = tmp_path / "benchmark.yaml"
+    _write_benchmark(benchmark)
+    rc = main(_eval_args(benchmark, tmp_path / "out", "--axes", "C"))
+    assert rc == EXIT_USAGE
+    assert "not supported" in capsys.readouterr().err

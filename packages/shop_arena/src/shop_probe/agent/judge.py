@@ -1,22 +1,17 @@
-"""Vision completion judge for the v1.3 agent-driven advanced tier (T3.1).
+"""Capture-judge call: one Anthropic Messages API request over a page bundle.
 
-Issues a single Anthropic Messages API request that combines two screenshots
-(BEFORE / AFTER labels), the harness trajectory rendered as compact text,
-and the inline ``judge_prompt`` from a ``level: agent_driven`` rubric entry.
-The model is asked to return JSON ``{"passed": bool, "reasoning": str}``;
-malformed output falls back to a ``passed:\\s*(true|false)`` regex match so
-a single sloppy response cannot crash a cohort run.
+For each ``level: capture_judge`` rubric entry the dispatcher slices the
+per-shop bundle by :attr:`CaptureJudgeTask.pages`, attaches the screenshot
++ accessibility-tree JSON for every applicable :class:`PageCapture`, and
+asks the model the rubric's structural-affordance question. The model is
+asked to return ``{"passed": bool, "reasoning": str}``; malformed output
+falls back to a regex match so a single sloppy response cannot crash a
+cohort run.
 
-Cost computation mirrors :mod:`shop_probe.judge.run` (``ClassifierResult``
-exposes the same ``cost_usd`` / ``model_id`` fields the report aggregates).
-The Anthropic ``Message.usage`` object reports
-``usage.input_tokens`` / ``usage.output_tokens``; we multiply by a per-model
-rate table to project a USD figure.
-
-The module is import-safe: ``anthropic`` is imported lazily inside
-:func:`run_completion_judge` so importing this module does not create an
-:class:`~anthropic.AsyncAnthropic` client (which reads ``ANTHROPIC_API_KEY``
-from the environment) at import time.
+Cost computation projects ``usage.input_tokens`` / ``usage.output_tokens``
+to USD via a per-model rate table. The module is import-safe:
+``anthropic`` is imported lazily inside :func:`run_capture_judge` so
+importing this module does not create an :class:`AsyncAnthropic` client.
 """
 
 from __future__ import annotations
@@ -42,10 +37,9 @@ from shop_probe.agent.env import load_agent_env, require_anthropic_credentials
 from shop_probe.capture.bundle import PageCapture
 
 _RATE_TABLE: Final[dict[str, tuple[float, float]]] = {
-    # USD per million tokens: (input, output). Source: Anthropic public
-    # pricing for the models referenced by the v1.3 implementation plan.
     "claude-opus-4-7": (15.0, 75.0),
     "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
 }
 """Per-model rate table (USD per million tokens, ``(input, output)``)."""
 
@@ -56,64 +50,36 @@ _PASSED_FALLBACK_RE: Final[re.Pattern[str]] = re.compile(
     r'"?passed"?\s*[:=]\s*(true|false)',
     re.IGNORECASE,
 )
-"""Regex used when the model returns prose instead of valid JSON.
-
-Matches both bare (``passed: true``) and JSON-style (``"passed": false``)
-forms. Case-insensitive so ``True`` / ``False`` literals also parse.
-"""
 
 _JSON_BLOCK_RE: Final[re.Pattern[str]] = re.compile(
     r"\{[^{}]*\}",
     re.DOTALL,
 )
-"""Best-effort match for a single brace-delimited JSON object in the body.
-
-The judge prompt instructs the model to emit a one-line JSON object, but
-fenced code blocks and stray prose are common; this pattern lets us
-recover from both without a full JSON-aware parser.
-"""
 
 _MAX_OUTPUT_TOKENS: Final[int] = 512
-"""Cap on judge response length.
+"""Cap on judge response length."""
 
-The verdict shape is two short fields (``passed`` + one-sentence
-``reasoning``); 512 tokens is well above the expected envelope and below
-any per-request rate limit we care about.
-"""
+_RETRY_MAX_ATTEMPTS: Final[int] = 8
+"""Cap on Messages-API retry attempts before giving up."""
 
-_RETRY_MAX_ATTEMPTS: Final[int] = 6
-"""Cap on Messages-API retry attempts before giving up.
-
-With :data:`_RETRY_BASE_DELAY_S` = 1.0 and :data:`_RETRY_MAX_DELAY_S` = 60,
-six attempts span ``1 + 2 + 4 + 8 + 16 + 32 ≈ 63 s`` worst-case wall time
-(plus jitter), well inside the per-call wait budget while still leaving
-upstream proxy quotas time to reset.
-"""
-
-_RETRY_BASE_DELAY_S: Final[float] = 1.0
-"""Initial backoff in seconds; doubled on each subsequent retry."""
-
-_RETRY_MAX_DELAY_S: Final[float] = 60.0
-"""Backoff cap in seconds — keeps the worst-case wait bounded."""
+_RETRY_BASE_DELAY_S: Final[float] = 2.0
+_RETRY_MAX_DELAY_S: Final[float] = 120.0
 
 
 @dataclass(frozen=True, slots=True)
 class JudgeVerdict:
-    """Closed return type for the vision completion judge.
+    """Closed return type for the capture-judge call.
 
     Attributes:
-        passed: ``True`` iff the agent completed the rubric task as judged
-            from the BEFORE / AFTER screenshots and the trajectory.
-        reasoning: One-sentence explanation. When the parser fell back from
-            JSON to a regex match, the string is prefixed with
-            ``"[fallback parse]"`` so callers can surface the degradation
-            in their notes.
-        cost_usd: Estimated USD cost of the underlying Messages API call,
-            derived from ``usage.input_tokens`` / ``usage.output_tokens``
-            via :data:`_RATE_TABLE`.
-        model_id: Pinned model identifier the judge ran against. Echoed
-            verbatim into ``ProbeOutcome.extra`` so the report can group
-            costs by model.
+        passed: ``True`` iff the storefront exposes the affordance the
+            rubric asked about.
+        reasoning: One-sentence explanation. When the parser fell back
+            from JSON to regex, the string is prefixed with
+            ``"[fallback parse]"`` so callers can surface the
+            degradation in their notes.
+        cost_usd: Estimated USD cost of the underlying Messages API
+            call.
+        model_id: Pinned model identifier the judge ran against.
     """
 
     passed: bool
@@ -123,17 +89,6 @@ class JudgeVerdict:
 
 
 def _retry_after_seconds(exc: BaseException) -> float | None:
-    """Extract a ``retry-after`` header (in seconds) from an Anthropic error.
-
-    The Messages API surfaces upstream rate-limit hints via the standard
-    ``Retry-After`` HTTP header (seconds, integer). Our bundled judges
-    fan out 8 calls in tight succession — when the proxy responds with a
-    cooldown, honour it instead of layering exponential backoff on top.
-
-    Returns:
-        Seconds to wait when the response carries a parseable
-        ``retry-after`` header; ``None`` otherwise.
-    """
     response = getattr(exc, "response", None)
     headers = getattr(response, "headers", None)
     if headers is None:
@@ -148,15 +103,6 @@ def _retry_after_seconds(exc: BaseException) -> float | None:
 
 
 def _retry_backoff(attempt: int) -> float:
-    """Compute exponential backoff with ±50% jitter for ``attempt``.
-
-    Args:
-        attempt: 0-indexed retry number. ``0`` returns the base delay,
-            ``n`` returns ``base * 2**n`` capped at the maximum.
-
-    Returns:
-        Seconds to sleep before the next attempt.
-    """
     base = min(_RETRY_BASE_DELAY_S * (2**attempt), _RETRY_MAX_DELAY_S)
     return base * (0.5 + random.random())
 
@@ -170,31 +116,8 @@ async def _messages_create_with_retry(
 ) -> object:
     """Call ``client.messages.create`` with bounded exponential-backoff retry.
 
-    Retries on:
-
-    * :class:`anthropic.RateLimitError` (HTTP 429) — honours
-      ``Retry-After`` when set, falls back to exponential backoff.
-    * :class:`anthropic.APIConnectionError` and
-      :class:`anthropic.APITimeoutError` — transient transport failures.
-    * :class:`anthropic.APIStatusError` with ``status_code >= 500`` —
-      upstream gateway / model-server failures.
-
-    Other 4xx errors (auth, bad-request, forbidden) propagate
-    immediately so we don't paper over real misconfiguration.
-
-    Args:
-        client: The :class:`AsyncAnthropic` client.
-        model: Pinned model id forwarded to ``messages.create``.
-        max_tokens: Cap on the response length.
-        messages: The user-message content list.
-
-    Returns:
-        The Anthropic :class:`Message` returned by the underlying call.
-
-    Raises:
-        anthropic.AnthropicError: When every attempt is exhausted; the
-            most recent retryable exception is re-raised so the caller
-            sees the actual error from the proxy.
+    Retries on 429 / transient transport errors / 5xx; other 4xx errors
+    propagate immediately so we don't paper over real misconfiguration.
     """
     last_exc: BaseException | None = None
     for attempt in range(_RETRY_MAX_ATTEMPTS):
@@ -223,15 +146,6 @@ async def _messages_create_with_retry(
 
 
 def _encode_image(path: Path) -> dict[str, object]:
-    """Render ``path`` as an Anthropic ``image`` content block.
-
-    Args:
-        path: PNG screenshot the runner persisted under ``ctx.evidence_root``.
-
-    Returns:
-        A content-block dict with a base64-encoded ``image/png`` source,
-        ready to drop into a :class:`MessageParam` content list.
-    """
     data = base64.b64encode(path.read_bytes()).decode("ascii")
     return {
         "type": "image",
@@ -244,36 +158,11 @@ def _encode_image(path: Path) -> dict[str, object]:
 
 
 def _compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Project ``(input_tokens, output_tokens)`` to USD via :data:`_RATE_TABLE`.
-
-    Args:
-        model: Anthropic model id (e.g. ``"claude-opus-4-7"``).
-        input_tokens: ``usage.input_tokens`` from the Messages response.
-        output_tokens: ``usage.output_tokens`` from the Messages response.
-
-    Returns:
-        Estimated USD cost. Models outside :data:`_RATE_TABLE` fall back to
-        Opus rates so a misconfigured ``--agent-judge-model`` flag never
-        underreports cost.
-    """
     in_rate, out_rate = _RATE_TABLE.get(model, _DEFAULT_RATE)
     return (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000.0
 
 
 def _extract_text(message: object) -> str:
-    """Concatenate the text blocks on an Anthropic :class:`Message`.
-
-    The Messages API returns ``content`` as a list of typed blocks; only
-    ``type == "text"`` blocks carry the verdict body. We walk them
-    defensively (``getattr``) so a stub ``Message`` shape in tests doesn't
-    have to mirror every Anthropic SDK attribute.
-
-    Args:
-        message: The :class:`anthropic.types.Message` (or test stub).
-
-    Returns:
-        Concatenated text, stripped of leading / trailing whitespace.
-    """
     raw_blocks: object = getattr(message, "content", None) or []
     out: list[str] = []
     if not isinstance(raw_blocks, list):
@@ -290,22 +179,7 @@ def _extract_text(message: object) -> str:
 
 
 def _parse_verdict(text: str) -> tuple[bool, str, bool]:
-    """Parse the judge response body into ``(passed, reasoning, fallback)``.
-
-    Tries strict JSON first (the prompt asks for a one-line object); on
-    failure scans for an embedded ``{...}`` block; on failure runs the
-    :data:`_PASSED_FALLBACK_RE` regex over the raw text. The third tuple
-    element flags whether the regex fallback fired so callers can surface
-    the degradation in ``reasoning``.
-
-    Args:
-        text: Concatenated text blocks from the Messages response.
-
-    Returns:
-        ``(passed, reasoning, fallback_used)``. When neither parser
-        recovers a verdict, ``passed`` is ``False`` and ``reasoning``
-        carries the raw body so the operator can debug.
-    """
+    """Parse the judge response body into ``(passed, reasoning, fallback)``."""
     candidates: list[str] = [text]
     for match in _JSON_BLOCK_RE.findall(text):
         candidates.append(match)
@@ -327,151 +201,7 @@ def _parse_verdict(text: str) -> tuple[bool, str, bool]:
     return False, f"[unparseable judge response] {text.strip()}", True
 
 
-def _build_user_content(
-    *,
-    before_shot: Path,
-    after_shot: Path,
-    trajectory_text: str,
-    judge_prompt: str,
-) -> list[dict[str, object]]:
-    """Assemble the user-message content list for the judge call.
-
-    Layout (order matters — the model reads top-to-bottom):
-
-    1. Text label ``BEFORE``.
-    2. Base64 ``image/png`` block — pre-action state.
-    3. Text label ``AFTER``.
-    4. Base64 ``image/png`` block — post-action state.
-    5. Compact trajectory rendering inside a fenced code block.
-    6. The rubric entry's ``judge_prompt`` verbatim.
-    7. Closing instruction asking for ``{"passed": bool, "reasoning": str}``.
-    """
-    return [
-        {
-            "type": "text",
-            "text": "BEFORE screenshot — storefront state before the agent acted:",
-        },
-        _encode_image(before_shot),
-        {
-            "type": "text",
-            "text": "AFTER screenshot — storefront state after the agent acted:",
-        },
-        _encode_image(after_shot),
-        {
-            "type": "text",
-            "text": (f"Agent trajectory (compact text rendering):\n```\n{trajectory_text}\n```"),
-        },
-        {
-            "type": "text",
-            "text": (
-                f"Rubric question:\n{judge_prompt}\n\n"
-                "Decide whether the agent completed the task. Respond with a "
-                "single-line JSON object exactly of the form "
-                '{"passed": <true|false>, "reasoning": "<one short sentence>"}. '
-                "Do not wrap the response in Markdown."
-            ),
-        },
-    ]
-
-
-async def run_completion_judge(
-    before_shot: Path,
-    after_shot: Path,
-    trajectory_text: str,
-    judge_prompt: str,
-    *,
-    model: str = "claude-opus-4-7",
-    client: AsyncAnthropic | None = None,
-) -> JudgeVerdict:
-    """Run the vision completion judge for one agent-driven probe.
-
-    Issues a single Anthropic Messages API call combining both screenshots,
-    the trajectory text, and the rubric ``judge_prompt``; parses the model
-    response into a closed :class:`JudgeVerdict` with cost projected from
-    ``usage.input_tokens`` / ``usage.output_tokens``.
-
-    Args:
-        before_shot: Absolute path to the BEFORE PNG captured before the
-            agent acted.
-        after_shot: Absolute path to the AFTER PNG; usually the last
-            :class:`harness.trajectory.ScreenshotStep` in the harness run,
-            falling back to ``before_shot`` when the agent emitted none.
-        trajectory_text: Compact text rendering of the harness trajectory
-            (per-iteration goals + tool calls + final URLs).
-        judge_prompt: The rubric entry's ``agent_task.judge_prompt``,
-            embedded verbatim so the judge sees the same question the
-            rubric author wrote.
-        model: Anthropic model id. Defaults to ``"claude-opus-4-7"``;
-            ``--agent-judge-model`` (M6) feeds an alternate value.
-        client: Optional pre-built :class:`AsyncAnthropic` client. Tests
-            inject a stub here; production callers leave it ``None`` so we
-            construct a fresh client lazily (which reads
-            ``ANTHROPIC_API_KEY`` from the environment).
-
-    Returns:
-        A :class:`JudgeVerdict`. ``passed`` reflects the model's decision
-        (or the regex fallback when the response is malformed);
-        ``cost_usd`` is the per-call USD estimate.
-    """
-    if client is None:
-        # Lazy construction keeps this module import-safe (the ``AsyncAnthropic``
-        # constructor reads ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_BASE_URL`` from
-        # the environment). Source them from a project ``.env`` first so
-        # operators don't have to ``export`` on every invocation, then
-        # fail fast with an actionable message if no credential is reachable.
-        load_agent_env()
-        require_anthropic_credentials()
-        client = AsyncAnthropic()
-
-    content = _build_user_content(
-        before_shot=before_shot,
-        after_shot=after_shot,
-        trajectory_text=trajectory_text,
-        judge_prompt=judge_prompt,
-    )
-    response = await _messages_create_with_retry(
-        client,
-        model=model,
-        max_tokens=_MAX_OUTPUT_TOKENS,
-        messages=[{"role": "user", "content": content}],
-    )
-
-    raw = _extract_text(response)
-    passed, reasoning, _fallback = _parse_verdict(raw)
-
-    usage = getattr(response, "usage", None)
-    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-    cost_usd = _compute_cost(model, input_tokens, output_tokens)
-
-    return JudgeVerdict(
-        passed=passed,
-        reasoning=reasoning,
-        cost_usd=cost_usd,
-        model_id=model,
-    )
-
-
-# --------------------------------------------------------------------------- #
-# v2 capture-judge — one Messages-API call over a screenshot + a11y bundle.
-# --------------------------------------------------------------------------- #
-
-
 def _read_a11y_text(path: Path) -> str:
-    """Read a per-page a11y JSON file and return it as a UTF-8 string.
-
-    The bundle writes ``{"aria_snapshot": "<yaml text>"}`` JSON; we hand
-    the file contents to the judge verbatim so the model sees the same
-    bytes the bundle persisted.
-
-    Args:
-        path: Absolute path to the bundle's ``a11y.json``.
-
-    Returns:
-        The file contents as a UTF-8 string. Empty when the file is
-        missing or unreadable — the caller decides whether to drop the
-        capture or proceed with a placeholder.
-    """
     try:
         return path.read_text(encoding="utf-8")
     except OSError:
@@ -483,33 +213,7 @@ def _build_capture_judge_content(
     bundle_root: Path,
     judge_prompt: str,
 ) -> list[dict[str, object]]:
-    """Assemble the Messages-API content list for one capture-judge call.
-
-    Layout (top-to-bottom — order matters because the model reads in
-    sequence; spec §Appendix 8.4):
-
-    1. For each :class:`PageCapture` in ``captures`` (already filtered
-       to ``applicable=True``):
-       a. Text label ``"<page> (<url>) — screenshot:"``.
-       b. Base64 ``image/png`` block from
-          ``bundle_root / capture.screenshot_rel``.
-       c. Text label ``"<page> accessibility tree:\\n```json\\n…\\n```"``
-          carrying the bundle's ``a11y.json`` payload verbatim.
-    2. Closing block: the rubric question + structural-affordance
-       framing + closing JSON-shape instruction.
-
-    Args:
-        captures: All applicable captures (the dispatcher filters
-            ``applicable=False`` out before calling).
-        bundle_root: Directory under which the bundle's per-page files
-            live. ``capture.screenshot_rel`` / ``capture.accessibility_rel``
-            are joined onto this root.
-        judge_prompt: The rubric entry's ``capture_judge.judge_prompt``
-            embedded verbatim.
-
-    Returns:
-        A typed content list ready for ``messages.create``.
-    """
+    """Assemble the Messages-API content list for one capture-judge call."""
     content: list[dict[str, object]] = []
     for capture in captures:
         if capture.screenshot_rel is None or capture.accessibility_rel is None:
@@ -567,9 +271,6 @@ async def run_capture_judge(
     the function short-circuits with
     ``JudgeVerdict(passed=False, reasoning="bundle pages unavailable",
     cost_usd=0.0, model_id=model)`` — **no Anthropic call is issued**.
-    The dispatcher already prefers ``passed=None`` ("not applicable")
-    in that branch and never invokes us, but we belt-and-brace here so
-    the function is safe to call directly from tests / scripts.
 
     Args:
         captures: Bundle slice the rubric entry asked for, in
@@ -586,10 +287,7 @@ async def run_capture_judge(
             the module stays import-safe.
 
     Returns:
-        A populated :class:`JudgeVerdict`. ``passed`` reflects the
-        model's parsed decision (or the regex fallback when the
-        response is malformed); ``cost_usd`` projects ``usage`` via
-        :data:`_RATE_TABLE`.
+        A populated :class:`JudgeVerdict`.
     """
     applicable = tuple(c for c in captures if c.applicable)
     if not applicable:
@@ -601,11 +299,6 @@ async def run_capture_judge(
         )
 
     if client is None:
-        # Lazy construction keeps this module import-safe — the
-        # ``AsyncAnthropic`` constructor reads ``ANTHROPIC_API_KEY`` /
-        # ``ANTHROPIC_BASE_URL`` from the environment. Source them from
-        # a project ``.env`` first, then fail fast with an actionable
-        # message if no credential is reachable.
         load_agent_env()
         require_anthropic_credentials()
         client = AsyncAnthropic()

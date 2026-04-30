@@ -1,13 +1,12 @@
-"""Tests for `shop_probe.report` (web_probe_patch.md).
+"""Tests for `shop_probe.report`.
 
 Covers:
 
 * JSON round-trip for ``EvidenceRef``, ``BrowserMeta``, ``ProbeResult``,
-  ``CategoryScore``, ``JudgeCall``, and ``ProbeReport``.
+  ``CategoryScore``, and ``ProbeReport``.
 * ``extra="forbid"`` unknown-field rejection on every schema.
 * Numeric range constraints (coverage ∈ [0, 1], duration ≥ 0,
-  rerun_index ≥ 1, prompt_hash 64-hex, predicted_label literal,
-  latency_ms ≥ 0, cost_usd ≥ 0).
+  judge_cost_usd ≥ 0).
 """
 
 from __future__ import annotations
@@ -22,7 +21,6 @@ from shop_probe.report import (
     BrowserMeta,
     CategoryScore,
     EvidenceRef,
-    JudgeCall,
     ProbeReport,
     ProbeResult,
 )
@@ -34,7 +32,6 @@ _SANDBOX_TARGET: Target = Target(
     label="sandbox",
 )
 _RUBRIC_HASH: str = "a" * 64
-_PROMPT_HASH: str = "b" * 64
 _TIMESTAMP: datetime = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
@@ -76,21 +73,10 @@ def _category_score() -> CategoryScore:
     )
 
 
-def _judge_call(predicted: str = "sandbox") -> JudgeCall:
-    return JudgeCall(
-        predicted_label=predicted,  # type: ignore[arg-type]
-        prompt_hash=_PROMPT_HASH,
-        response="picked sandbox because …",
-        latency_ms=420.5,
-        cost_usd=0.0123,
-        model_id="gpt-5-2025-09-01",
-    )
-
-
 def _report(**overrides: object) -> ProbeReport:
     base: dict[str, object] = {
         "target": _SANDBOX_TARGET,
-        "rubric_version": "v1",
+        "rubric_version": "v2",
         "rubric_hash": _RUBRIC_HASH,
         "runner_version": "0.0.0",
         "runtime": _browser_meta(),
@@ -101,7 +87,6 @@ def _report(**overrides: object) -> ProbeReport:
         "coverage_modern": 0.0,
         "coverage_advanced": 0.0,
         "coverage_weighted": 0.5,
-        "rerun_index": 1,
     }
     base.update(overrides)
     return ProbeReport.model_validate(base)
@@ -132,21 +117,9 @@ def test_category_score_round_trip() -> None:
     assert CategoryScore.model_validate_json(c.model_dump_json()) == c
 
 
-def test_judge_call_round_trip() -> None:
-    j = _judge_call()
-    assert JudgeCall.model_validate_json(j.model_dump_json()) == j
-
-
 def test_probe_report_round_trip() -> None:
     r = _report()
     assert ProbeReport.model_validate_json(r.model_dump_json()) == r
-
-
-def test_probe_report_with_judge_calls_round_trip() -> None:
-    r = _report(judge_calls=(_judge_call("sandbox"), _judge_call("real")))
-    payload = json.loads(r.model_dump_json())
-    assert len(payload["judge_calls"]) == 2  # noqa: PLR2004
-    assert ProbeReport.model_validate(payload) == r
 
 
 # --------------------------------------------------------------------------- #
@@ -161,7 +134,6 @@ def test_probe_report_with_judge_calls_round_trip() -> None:
         ("browser_meta", "device_pixel_ratio"),
         ("probe_result", "evidence_count"),
         ("category_score", "weight_skipped"),
-        ("judge_call", "swap_index"),
     ],
 )
 def test_extra_forbid_on_inner_schemas(model_name: str, extra_field: str) -> None:
@@ -170,7 +142,6 @@ def test_extra_forbid_on_inner_schemas(model_name: str, extra_field: str) -> Non
         "browser_meta": _browser_meta,
         "probe_result": _probe_result,
         "category_score": _category_score,
-        "judge_call": _judge_call,
     }
     factory = factories[model_name]
     raw = json.loads(factory().model_dump_json())
@@ -210,118 +181,49 @@ def test_probe_report_rejects_out_of_range_coverage(field: str, value: float) ->
         _report(**{field: value})
 
 
-def test_probe_report_rejects_rerun_index_zero() -> None:
-    with pytest.raises(ValidationError):
-        _report(rerun_index=0)
-
-
-def test_judge_call_rejects_invalid_prompt_hash() -> None:
-    with pytest.raises(ValidationError):
-        JudgeCall(
-            predicted_label="sandbox",
-            prompt_hash="not-hex",
-            response="r",
-            latency_ms=10.0,
-            cost_usd=0.0,
-            model_id="m",
-        )
-
-
-def test_judge_call_rejects_invalid_predicted_label() -> None:
-    with pytest.raises(ValidationError):
-        JudgeCall(
-            predicted_label="bogus",  # type: ignore[arg-type]
-            prompt_hash=_PROMPT_HASH,
-            response="r",
-            latency_ms=10.0,
-            cost_usd=0.0,
-            model_id="m",
-        )
-
-
-def test_judge_call_rejects_negative_latency() -> None:
-    with pytest.raises(ValidationError):
-        JudgeCall(
-            predicted_label="abstain",
-            prompt_hash=_PROMPT_HASH,
-            response="r",
-            latency_ms=-1.0,
-            cost_usd=0.0,
-            model_id="m",
-        )
-
-
-def test_judge_call_rejects_negative_cost() -> None:
-    with pytest.raises(ValidationError):
-        JudgeCall(
-            predicted_label="abstain",
-            prompt_hash=_PROMPT_HASH,
-            response="r",
-            latency_ms=10.0,
-            cost_usd=-0.01,
-            model_id="m",
-        )
-
-
 # --------------------------------------------------------------------------- #
-# v1.3 cost / model side-channel fields (impl plan T6.2).
+# Capture-judge cost side-channel fields.
 # --------------------------------------------------------------------------- #
 
 
-def test_probe_result_carries_v1_3_cost_fields() -> None:
-    """Agent-driven results round-trip with judge + agent cost / model."""
+def test_probe_result_carries_judge_cost_fields() -> None:
+    """Capture-judge results round-trip with judge cost / model."""
     r = ProbeResult(
-        id="collection.sort.changes_order",
+        id="homepage.hero.has_value_proposition",
         passed=True,
         evidence=(_evidence_ref(),),
         notes=None,
-        duration_ms=87_412,
+        duration_ms=2_412,
         judge_cost_usd=0.0123,
-        judge_model="claude-opus-4-7",
-        agent_cost_usd=0.2456,
-        agent_model="claude-opus-4-7",
+        judge_model="claude-haiku-4-5",
     )
     assert ProbeResult.model_validate_json(r.model_dump_json()) == r
 
 
-def test_probe_result_v1_3_cost_fields_default_to_none() -> None:
-    """Deterministic probes leave the four side-channel fields ``None``."""
+def test_probe_result_judge_cost_fields_default_to_none() -> None:
+    """Deterministic probes leave judge fields ``None``."""
     r = _probe_result()
     assert r.judge_cost_usd is None
     assert r.judge_model is None
-    assert r.agent_cost_usd is None
-    assert r.agent_model is None
 
 
-@pytest.mark.parametrize("field", ["judge_cost_usd", "agent_cost_usd"])
-def test_probe_result_rejects_negative_v1_3_cost(field: str) -> None:
+def test_probe_result_rejects_negative_judge_cost() -> None:
     with pytest.raises(ValidationError):
-        ProbeResult(
-            id="x",
-            passed=True,
-            duration_ms=1,
-            **{field: -0.01},  # type: ignore[arg-type]
-        )
+        ProbeResult(id="x", passed=True, duration_ms=1, judge_cost_usd=-0.01)
 
 
-def test_probe_report_carries_total_cost_rollups() -> None:
-    r = _report(
-        total_judge_cost_usd=0.08,
-        total_agent_cost_usd=1.92,
-    )
+def test_probe_report_carries_total_judge_cost_rollup() -> None:
+    r = _report(total_judge_cost_usd=0.08)
     payload = json.loads(r.model_dump_json())
     assert payload["total_judge_cost_usd"] == pytest.approx(0.08)
-    assert payload["total_agent_cost_usd"] == pytest.approx(1.92)
     assert ProbeReport.model_validate(payload) == r
 
 
-def test_probe_report_total_cost_rollups_default_to_none() -> None:
+def test_probe_report_total_judge_cost_rollup_defaults_to_none() -> None:
     r = _report()
     assert r.total_judge_cost_usd is None
-    assert r.total_agent_cost_usd is None
 
 
-@pytest.mark.parametrize("field", ["total_judge_cost_usd", "total_agent_cost_usd"])
-def test_probe_report_rejects_negative_total_cost(field: str) -> None:
+def test_probe_report_rejects_negative_total_judge_cost() -> None:
     with pytest.raises(ValidationError):
-        _report(**{field: -0.5})
+        _report(total_judge_cost_usd=-0.5)

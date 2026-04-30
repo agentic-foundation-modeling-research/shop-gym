@@ -1,4 +1,4 @@
-"""Tests for `shop_probe.fidelity` (web_probe_patch.md).
+"""Tests for `shop_probe.fidelity`.
 
 Covers:
 
@@ -9,7 +9,6 @@ Covers:
 * Surface ratio per-metric — including parity-on-zero and rejection of
   ``real==0, sandbox>0``.
 * Sandbox-in-real-envelope per metric per shop.
-* Judge accuracy and indistinguishability gap from per-shop judge calls.
 * Group label / category mismatch errors.
 """
 
@@ -29,14 +28,12 @@ from shop_probe.fidelity import (
 from shop_probe.report import (
     BrowserMeta,
     CategoryScore,
-    JudgeCall,
     ProbeReport,
 )
 from shop_probe.surface.metrics import SurfaceMetrics
 from shop_probe.targets import Target, TargetLabel
 
 _RUBRIC_HASH: str = "a" * 64
-_PROMPT_HASH: str = "b" * 64
 _TIMESTAMP: datetime = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
@@ -82,17 +79,6 @@ def _categories(values: dict[str, float]) -> tuple[CategoryScore, ...]:
     )
 
 
-def _judge_call(predicted: str) -> JudgeCall:
-    return JudgeCall(
-        predicted_label=predicted,  # type: ignore[arg-type]
-        prompt_hash=_PROMPT_HASH,
-        response="r",
-        latency_ms=10.0,
-        cost_usd=0.0,
-        model_id="gpt-stub",
-    )
-
-
 def _report(
     *,
     name: str,
@@ -100,12 +86,11 @@ def _report(
     coverages: dict[str, float],
     coverage_weighted: float,
     surface: SurfaceMetrics | None,
-    judge_calls: tuple[JudgeCall, ...] = (),
 ) -> ProbeReport:
     target = Target(name=name, base_url="http://localhost:4000", label=label)
     return ProbeReport(
         target=target,
-        rubric_version="v1",
+        rubric_version="v2",
         rubric_hash=_RUBRIC_HASH,
         runner_version="0.0.0",
         runtime=_browser_meta(),
@@ -116,8 +101,6 @@ def _report(
         coverage_advanced=0.0,
         coverage_weighted=coverage_weighted,
         surface=surface,
-        judge_calls=judge_calls,
-        rerun_index=1,
     )
 
 
@@ -134,8 +117,6 @@ def _group_summary() -> GroupSummary:
         coverage_per_axis_mean={"product": 0.7},
         surface_metric_means={"distinct_templates": 5.0},
         surface_metric_envelope={"distinct_templates": (4.0, 6.0)},
-        judge_accuracy=0.6,
-        judge_calls_total=10,
     )
 
 
@@ -161,14 +142,11 @@ def test_bench_comparison_round_trip() -> None:
             coverage_per_axis_mean={"product": 0.8},
             surface_metric_means={"distinct_templates": 6.0},
             surface_metric_envelope={"distinct_templates": (5.0, 7.0)},
-            judge_accuracy=0.9,
-            judge_calls_total=15,
         ),
         coverage_gap_weighted=0.1,
         coverage_gap_per_axis={"product": 0.1},
         surface_ratio={"distinct_templates": 0.83},
         sandbox_in_real_envelope={"shop_a": {"distinct_templates": True}},
-        judge_indistinguishability=0.3,
     )
     assert BenchComparison.model_validate_json(b.model_dump_json()) == b
 
@@ -226,10 +204,6 @@ def test_compute_bench_comparison_basic_axes_a_and_b() -> None:
     # ``in_real_envelope`` is False for distinct_templates.
     assert comparison.sandbox_in_real_envelope["shop_alpha"]["distinct_templates"] is False
     assert comparison.sandbox_in_real_envelope["shop_beta"]["distinct_templates"] is False
-    # Judge calls absent → indistinguishability is None.
-    assert comparison.judge_indistinguishability is None
-    assert comparison.sandbox.judge_accuracy is None
-    assert comparison.real.judge_accuracy is None
 
 
 def test_compute_bench_comparison_rejects_empty_sandbox() -> None:
@@ -378,71 +352,3 @@ def test_compute_bench_comparison_surface_ratio_undefined_when_real_zero() -> No
     )
     with pytest.raises(ValueError, match="ratio is undefined"):
         compute_bench_comparison(sandbox_reports, real_reports)
-
-
-# --------------------------------------------------------------------------- #
-# Judge accuracy + indistinguishability.
-# --------------------------------------------------------------------------- #
-
-
-def test_compute_bench_comparison_judge_accuracy_per_group() -> None:
-    sandbox_reports = (
-        _report(
-            name="shop_a",
-            label="sandbox",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            surface=None,
-            judge_calls=(
-                _judge_call("sandbox"),
-                _judge_call("sandbox"),
-                _judge_call("real"),
-                _judge_call("abstain"),
-            ),
-        ),
-    )
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            surface=None,
-            judge_calls=(
-                _judge_call("real"),
-                _judge_call("real"),
-            ),
-        ),
-    )
-    comparison = compute_bench_comparison(sandbox_reports, real_reports)
-    assert comparison.sandbox.judge_accuracy == pytest.approx(0.5)
-    assert comparison.sandbox.judge_calls_total == 4  # noqa: PLR2004
-    assert comparison.real.judge_accuracy == pytest.approx(1.0)
-    assert comparison.real.judge_calls_total == 2  # noqa: PLR2004
-    assert comparison.judge_indistinguishability == pytest.approx(0.5)
-
-
-def test_compute_bench_comparison_judge_indistinguishability_none_when_one_group_empty() -> None:
-    sandbox_reports = (
-        _report(
-            name="shop_a",
-            label="sandbox",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            surface=None,
-            judge_calls=(_judge_call("sandbox"),),
-        ),
-    )
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            surface=None,
-        ),
-    )
-    comparison = compute_bench_comparison(sandbox_reports, real_reports)
-    assert comparison.sandbox.judge_accuracy == pytest.approx(1.0)
-    assert comparison.real.judge_accuracy is None
-    assert comparison.judge_indistinguishability is None

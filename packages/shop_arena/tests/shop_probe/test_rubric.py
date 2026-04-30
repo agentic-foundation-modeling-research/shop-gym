@@ -72,7 +72,6 @@ def _entry_dict(**overrides: object) -> dict[str, object]:
         "description": "PDP gallery exposes a thumbnail strip.",
         "authenticated": False,
         "transactional": False,
-        "agent_task": None,
         "capture_judge": None,
     }
     base.update(overrides)

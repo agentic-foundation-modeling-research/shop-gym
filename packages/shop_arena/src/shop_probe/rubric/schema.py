@@ -1,12 +1,9 @@
 """Closed schemas for the axis-A capability-coverage rubric.
 
-Implements the typed contract documented in
-``docs/specs/shop_arena/web_probe.md`` §5.3 and §5.8:
-
-* :class:`RubricEntry` — one rubric row (the YAML example in spec §5.3).
+* :class:`RubricEntry` — one rubric row.
 * :class:`Rubric` — the loaded, hashed rubric (``version`` + ``entries`` +
-  ``content_hash``); embedded into every :class:`ProbeReport` header per
-  spec §5.6 / §5.8.
+  ``content_hash``); embedded into every :class:`ProbeReport` header so
+  paper figures can be re-rendered unambiguously.
 
 Both models set ``extra="forbid"`` and ``frozen=True``: rubrics are
 content-addressable and must round-trip exactly. The module is import
@@ -20,23 +17,19 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-RubricLevel = Literal["core", "modern", "advanced", "agent_driven", "capture_judge"]
-"""Capability tier (spec §5.3, extended for the v2 capture-judge tier).
+RubricLevel = Literal["core", "modern", "advanced", "capture_judge"]
+"""Capability tier.
 
 * ``core`` — every modern storefront has this.
 * ``modern`` — common in 2025-era themes; fidelity signal.
-* ``advanced`` — stretch behavior; deterministic Playwright probes (v1.2).
-* ``agent_driven`` — behavioural task driven by an LLM agent + LLM judge
-  via an inline ``agent_task`` block (v1.3, retired in source order
-  alongside v1.x rubric YAMLs but kept here so existing reports parse).
+* ``advanced`` — stretch behavior; deterministic Playwright probes.
 * ``capture_judge`` — structural-affordance verdict from one Anthropic
-  Messages-API call over a screenshot + accessibility-tree bundle slice
-  (v2, spec §5.3.3 + Appendix 8.4–8.5). Carries an inline
-  ``capture_judge`` block instead of a ``probe`` reference.
+  Messages-API call over a screenshot + accessibility-tree bundle slice.
+  Carries an inline ``capture_judge`` block instead of a ``probe`` reference.
 """
 
 PageRef = Literal["home", "collection", "product", "cart", "search"]
-"""Fixed 5-page surface every capture-judge entry references (spec §2).
+"""Fixed 5-page surface every capture-judge entry references.
 
 The :func:`shop_probe.capture.bundle.capture_bundle` runner captures one
 :class:`shop_probe.capture.bundle.PageCapture` per ``PageRef`` per shop.
@@ -59,48 +52,10 @@ RubricCategory = Literal[
     "account",
     "checkout",
 ]
-"""v1 rubric categories (spec §5.3 table) plus the v1.1 auth + checkout slice (T7.4).
-
-v1 ships the first 11 categories. ``account`` and ``checkout`` ship in v1.1
-behind ``authenticated: true`` / ``transactional: true`` and are gated behind
-``shop-probe run --include-auth`` per spec §5.9.
+"""Rubric categories. ``account`` and ``checkout`` are gated behind
+``authenticated: true`` / ``transactional: true`` and the
+``--include-auth`` flag.
 """
-
-
-class AgentTaskInline(BaseModel):
-    """Inline task definition for a ``level: agent_driven`` rubric entry.
-
-    Drives the generic agent runner (``shop_probe.agent.runner.run_agent_task``)
-    and the completion judge (``shop_probe.agent.judge.run_completion_judge``).
-    Adding a new agent-driven probe is one YAML edit — no Python wrapper needed.
-
-    Attributes:
-        goal: Natural-language instruction for the agent (the planner /
-            executor prompt body).
-        judge_prompt: Natural-language rubric for the vision judge,
-            evaluating the BEFORE / AFTER screenshots and trajectory.
-        precondition_url_attr: Which ``ProbeContext`` URL the runner should
-            navigate to before spawning the agent. Must be one of the URL
-            slots that exist on the context.
-        step_budget: Optional per-task override of the default agent step
-            budget (``AgentRuntimeConfig.step_budget``). ``None`` falls back
-            to the runtime default.
-        timeout_s: Optional per-task override of the default agent timeout
-            (``AgentRuntimeConfig.timeout_s``). ``None`` falls back to the
-            runtime default.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    goal: str = Field(min_length=1)
-    judge_prompt: str = Field(min_length=1)
-    precondition_url_attr: Literal[
-        "base_url",
-        "sample_collection_url",
-        "sample_product_url",
-    ]
-    step_budget: int | None = Field(default=None, ge=1, le=50)
-    timeout_s: int | None = Field(default=None, ge=10, le=600)
 
 
 class CaptureJudgeTask(BaseModel):
@@ -108,8 +63,7 @@ class CaptureJudgeTask(BaseModel):
 
     A capture-judge entry asks the vision judge a structural-affordance
     question over a slice of the per-shop page bundle (one screenshot +
-    accessibility tree per :class:`PageRef`). Adding a new entry is one
-    YAML edit — no Python wrapper needed.
+    accessibility tree per :class:`PageRef`).
 
     Attributes:
         judge_prompt: The structural-affordance question handed to the
@@ -138,37 +92,32 @@ class CaptureJudgeTask(BaseModel):
 class RubricEntry(BaseModel):
     """One row of the capability rubric.
 
-    Mirrors the YAML schema in spec §5.3 verbatim. ``extra="forbid"``
-    means a typo in the YAML (``categroy:`` → unknown field) fails the
-    loader rather than silently scoring zero.
+    ``extra="forbid"`` means a typo in the YAML (``categroy:`` → unknown
+    field) fails the loader rather than silently scoring zero.
 
     Attributes:
         id: Stable, dot-separated probe identifier (e.g.
             ``"product.gallery.thumbnails"``). Must be unique within a
             :class:`Rubric`.
-        category: One of the 11 v1 categories (see :data:`RubricCategory`).
+        category: Rubric category (see :data:`RubricCategory`).
         level: Capability tier (see :data:`RubricLevel`).
         weight: Importance weight, integer in ``[1, 3]``. Used in the
             per-category coverage formula
-            ``Σ weight·passed / Σ weight`` (spec §5.3).
+            ``Σ weight·passed / Σ weight``.
         probe: Dotted Python reference to the probe callable, e.g.
             ``"probes.product.gallery_has_thumbnails"``. Required for
             deterministic entries (``core`` / ``modern`` / ``advanced``);
-            must be ``None`` for ``agent_driven`` and ``capture_judge``
-            entries — those carry an inline :class:`AgentTaskInline` or
-            :class:`CaptureJudgeTask` block instead.
-        agent_task: Inline agent-task definition. Required for
-            ``level: agent_driven`` entries; must be ``None`` otherwise.
+            must be ``None`` for ``capture_judge`` entries — those carry
+            an inline :class:`CaptureJudgeTask` block instead.
         capture_judge: Inline capture-judge task definition. Required
             for ``level: capture_judge`` entries; must be ``None``
-            otherwise (spec §5.3.3).
+            otherwise.
         description: One-line human-readable description of what the
             probe asserts. Surfaces in reports and figures.
         authenticated: ``True`` if the probe requires a logged-in
-            session. Always ``False`` in v1 (spec §5.9 — auth probes
-            ship in v1.1).
+            session. Gated behind ``--include-auth``.
         transactional: ``True`` if the probe exercises checkout / order
-            creation. Always ``False`` in v1 (spec §5.9).
+            creation. Gated behind ``--include-auth``.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -181,40 +130,18 @@ class RubricEntry(BaseModel):
     description: str = Field(min_length=1)
     authenticated: bool
     transactional: bool
-    agent_task: AgentTaskInline | None = None
     capture_judge: CaptureJudgeTask | None = None
 
     @model_validator(mode="after")
     def _check_probe_xor_inline_task(self) -> RubricEntry:
         """Enforce the probe / inline-task contract per ``level``.
 
-        * ``agent_driven`` entries: ``agent_task`` is required and
-          ``probe`` / ``capture_judge`` must be ``None``.
         * ``capture_judge`` entries: ``capture_judge`` is required and
-          ``probe`` / ``agent_task`` must be ``None``.
-        * Other levels: ``probe`` is required and both inline blocks
-          must be ``None``.
+          ``probe`` must be ``None``.
+        * Other levels: ``probe`` is required and ``capture_judge`` must
+          be ``None``.
         """
-        if self.level == "agent_driven":
-            if self.agent_task is None:
-                msg = (
-                    f"rubric entry {self.id!r}: level='agent_driven' requires an "
-                    f"inline 'agent_task' block"
-                )
-                raise ValueError(msg)
-            if self.probe is not None:
-                msg = (
-                    f"rubric entry {self.id!r}: level='agent_driven' must not set "
-                    f"'probe' (use the inline 'agent_task' block instead)"
-                )
-                raise ValueError(msg)
-            if self.capture_judge is not None:
-                msg = (
-                    f"rubric entry {self.id!r}: level='agent_driven' must not set "
-                    f"'capture_judge' (only 'capture_judge' entries carry one)"
-                )
-                raise ValueError(msg)
-        elif self.level == "capture_judge":
+        if self.level == "capture_judge":
             if self.capture_judge is None:
                 msg = (
                     f"rubric entry {self.id!r}: level='capture_judge' requires an "
@@ -227,23 +154,11 @@ class RubricEntry(BaseModel):
                     f"'probe' (use the inline 'capture_judge' block instead)"
                 )
                 raise ValueError(msg)
-            if self.agent_task is not None:
-                msg = (
-                    f"rubric entry {self.id!r}: level='capture_judge' must not set "
-                    f"'agent_task' (only 'agent_driven' entries carry one)"
-                )
-                raise ValueError(msg)
         else:
             if self.probe is None:
                 msg = (
                     f"rubric entry {self.id!r}: level={self.level!r} requires a "
                     f"'probe' dotted reference"
-                )
-                raise ValueError(msg)
-            if self.agent_task is not None:
-                msg = (
-                    f"rubric entry {self.id!r}: level={self.level!r} must not set "
-                    f"'agent_task' (only 'agent_driven' entries carry one)"
                 )
                 raise ValueError(msg)
             if self.capture_judge is not None:
@@ -260,15 +175,12 @@ class Rubric(BaseModel):
 
     The ``content_hash`` field is a SHA-256 hex digest over the
     canonical UTF-8 bytes of the source YAML. It pins a specific
-    rubric revision into every :class:`ProbeReport` header so that
-    paper figures can be re-rendered unambiguously (spec §5.8).
+    rubric revision into every :class:`ProbeReport` header.
 
     Attributes:
-        version: Rubric version string, e.g. ``"v1"``. Frozen per spec
-            §5.8 — changes bump this.
+        version: Rubric version string, e.g. ``"v2"``.
         content_hash: 64-char lowercase hex SHA-256 of the source YAML
-            bytes. Reviewers reproducing the report recompute this and
-            compare.
+            bytes.
         entries: All rubric rows, in source order. Must be non-empty
             and have unique ``id``s.
     """
