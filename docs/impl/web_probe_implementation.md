@@ -1,7 +1,7 @@
-# ShopProbe / `web_probe` — Implementation Plan
+# ShopProbe — Implementation Plan (v0.1, M1–M5)
 
-Status: **Plan (proposed)** · Version: **0.1**
-Spec: [`docs/specs/shop_arena/web_probe.md`](../specs/shop_arena/web_probe.md)
+Status: **Historical record** · Version: **0.1**
+Spec: [`docs/specs/shop_arena/shop_probe.md`](../specs/shop_arena/shop_probe.md)
 Target module: `packages/shop_arena/src/shop_probe`
 
 > Pure task list. Each task references the spec section that defines its
