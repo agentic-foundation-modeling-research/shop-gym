@@ -1,27 +1,28 @@
-"""Project ``.env`` loader for the v1.3 agent-driven advanced tier.
+"""Project ``.env`` loader for the capture-judge clients.
 
-The vision completion judge (:mod:`shop_probe.agent.judge`) constructs
-an :class:`anthropic.AsyncAnthropic` client which authenticates against
-the Anthropic Messages API by reading two environment variables:
+The capture-judge (:mod:`shop_probe.agent.judge`) supports two
+providers, selected by a ``--capture-judge-model`` prefix:
 
-* ``ANTHROPIC_API_KEY`` — required (or ``ANTHROPIC_AUTH_TOKEN`` for the
-  OAuth bearer flow).
-* ``ANTHROPIC_BASE_URL`` — optional; routes traffic through a private
-  gateway when set.
+* ``anthropic:<id>`` — needs ``ANTHROPIC_API_KEY`` (or
+  ``ANTHROPIC_AUTH_TOKEN`` for the OAuth bearer flow); honors
+  ``ANTHROPIC_BASE_URL`` for routing through a private gateway.
+* ``openai:<id>`` — needs ``OPENAI_API_KEY``; honors
+  ``OPENAI_BASE_URL`` for the same routing role.
 
-This module surfaces both through a project-level ``.env`` so operators
-do not have to ``export`` them on every invocation. It is import-safe:
-:func:`load_agent_env` is a no-op until called explicitly. The first
-call walks upward from the current working directory to find a ``.env``
-file (matching :func:`dotenv.find_dotenv` semantics), populates
-``os.environ`` *without* overwriting already-set values (shell exports
-win), and remembers it ran so subsequent calls are cheap.
+This module surfaces all of those through a project-level ``.env`` so
+operators do not have to ``export`` them on every invocation. It is
+import-safe: :func:`load_agent_env` is a no-op until called explicitly.
+The first call walks upward from the current working directory to find
+a ``.env`` file (matching :func:`dotenv.find_dotenv` semantics),
+populates ``os.environ`` *without* overwriting already-set values
+(shell exports win), and remembers it ran so subsequent calls are
+cheap.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Final
+from typing import Final, Literal
 
 from dotenv import find_dotenv, load_dotenv
 
@@ -34,14 +35,14 @@ _ANTHROPIC_AUTH_KEYS: Final[tuple[str, ...]] = (
 )
 """Either of these unblocks the Anthropic SDK client constructor."""
 
+_OPENAI_AUTH_KEYS: Final[tuple[str, ...]] = ("OPENAI_API_KEY",)
+"""Required for the OpenAI SDK client constructor."""
 
-class MissingAnthropicCredentialsError(RuntimeError):
-    """Raised when no Anthropic credential is present after ``.env`` load.
+JudgeProvider = Literal["anthropic", "openai"]
 
-    The vision completion judge cannot run without one of
-    ``ANTHROPIC_API_KEY`` or ``ANTHROPIC_AUTH_TOKEN`` reachable from the
-    process environment.
-    """
+
+class MissingJudgeCredentialsError(RuntimeError):
+    """Raised when no credential is present for the requested provider after ``.env`` load."""
 
 
 def load_agent_env() -> None:
@@ -53,7 +54,7 @@ def load_agent_env() -> None:
 
     No error is raised when the file is missing — operators may have
     exported the variables directly. Credential validation is the
-    caller's responsibility (see :func:`require_anthropic_credentials`).
+    caller's responsibility (see :func:`require_credentials`).
     """
     global _loaded  # noqa: PLW0603 — module-scoped once-flag
     if _loaded:
@@ -64,34 +65,38 @@ def load_agent_env() -> None:
     _loaded = True
 
 
-def require_anthropic_credentials() -> None:
-    """Validate that the Anthropic SDK can authenticate.
+def require_credentials(provider: JudgeProvider) -> None:
+    """Validate that the SDK for ``provider`` can authenticate.
 
     Call after :func:`load_agent_env` so ``.env``-sourced values are in
     scope. Raises a clear, actionable error instead of letting the SDK
     surface its own opaque ``TypeError`` from inside the cohort runner's
     generic exception handler.
 
+    Args:
+        provider: ``"anthropic"`` or ``"openai"``.
+
     Raises:
-        MissingAnthropicCredentialsError: When neither
-            ``ANTHROPIC_API_KEY`` nor ``ANTHROPIC_AUTH_TOKEN`` is set in
-            the environment.
+        MissingJudgeCredentialsError: When no credential for
+            ``provider`` is present in the environment.
     """
-    if any(os.environ.get(k) for k in _ANTHROPIC_AUTH_KEYS):
+    if provider == "anthropic":
+        keys = _ANTHROPIC_AUTH_KEYS
+        hint = (
+            "Anthropic capture-judge needs ANTHROPIC_API_KEY (or "
+            "ANTHROPIC_AUTH_TOKEN) in the environment."
+        )
+    else:
+        keys = _OPENAI_AUTH_KEYS
+        hint = "OpenAI capture-judge needs OPENAI_API_KEY in the environment."
+    if any(os.environ.get(k) for k in keys):
         return
-    raise MissingAnthropicCredentialsError(
-        "shop_probe v1.3 agent-driven probes need ANTHROPIC_API_KEY (or "
-        "ANTHROPIC_AUTH_TOKEN) in the environment. Add it to a project "
-        "`.env` (see `.env.example`) or export it in your shell."
+    raise MissingJudgeCredentialsError(
+        f"{hint} Add it to a project `.env` (see `.env.example`) or export it in your shell."
     )
 
 
 def reset_for_testing() -> None:
-    """Clear the once-flag so a test can re-trigger the ``.env`` load.
-
-    Production code never needs this; tests that exercise
-    :func:`load_agent_env` under monkey-patched ``find_dotenv`` /
-    ``load_dotenv`` use it to avoid leaking state between cases.
-    """
+    """Clear the once-flag so a test can re-trigger the ``.env`` load."""
     global _loaded  # noqa: PLW0603 — module-scoped once-flag
     _loaded = False
