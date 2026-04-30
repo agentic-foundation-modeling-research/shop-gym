@@ -40,7 +40,7 @@ from shop_gen.steps.base import InputRef, StepContext, StepInput
 _PHASE: Final[str] = "build"
 
 _CLONE_STEP_ID: Final[str] = "clone_template"
-_CLONE_STEP_VERSION: Final[int] = 2
+_CLONE_STEP_VERSION: Final[int] = 3
 
 _WRITE_ENV_STEP_ID: Final[str] = "write_env_file"
 _WRITE_ENV_STEP_VERSION: Final[int] = 1
@@ -156,6 +156,18 @@ class CloneTemplateStep:
         # ``Cannot read properties of null (reading 'useContext')``
         # crash. ``node_modules/`` belongs to the install step,
         # never to the clone step.
+        #
+        # We also actively remove any ``node_modules/`` already sitting
+        # in the destination. ``copytree(dirs_exist_ok=True)`` does not
+        # descend into directories listed in ``ignore`` — it neither
+        # writes them nor cleans them up — so a corrupted tree from
+        # before this step shipped its ``ignore`` filter would persist
+        # forever otherwise. ``node_modules/`` is owned exclusively by
+        # the downstream ``pnpm install`` step, so wiping it here is
+        # safe.
+        target_node_modules = target / "node_modules"
+        if target_node_modules.exists():
+            shutil.rmtree(target_node_modules)
         shutil.copytree(
             _TEMPLATE_DIR,
             target,

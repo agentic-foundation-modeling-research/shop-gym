@@ -541,10 +541,17 @@ class RunBuildHarnessLoopStep:
                 if target.exists():
                     shutil.rmtree(target)
 
+        # ``ignore=node_modules`` is defence-in-depth: ``hydrogen_src``
+        # is the output of ``CloneTemplateStep`` which already strips it,
+        # but skipping here means a hand-edited or corrupted source tree
+        # cannot leak a dereferenced ``node_modules/`` into the artifact.
+        # ``pnpm install`` below is the sole owner of the artifact's
+        # ``node_modules/``.
         shutil.copytree(
             hydrogen_src,
             artifact_dir / _HYDROGEN_DIR.name,
             dirs_exist_ok=False,
+            ignore=shutil.ignore_patterns("node_modules"),
         )
         shutil.copytree(
             data_dir,

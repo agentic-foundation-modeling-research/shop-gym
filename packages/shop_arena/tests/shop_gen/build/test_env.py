@@ -80,7 +80,7 @@ def test_clone_template_step_satisfies_step_protocol() -> None:
     assert step.inputs == []
     assert step.outputs == [Path("hydrogen") / "package.json"]
     assert step.depends_on == []
-    assert step.version == 2  # noqa: PLR2004
+    assert step.version == 3  # noqa: PLR2004
 
 
 # --------------------------------------------------------------------------- #
@@ -167,6 +167,38 @@ def test_clone_template_excludes_node_modules_from_source(
     target = ctx.out_dir / "hydrogen"
     assert (target / "package.json").is_file()
     assert not (target / "node_modules").exists()
+
+
+def test_clone_template_purges_stale_node_modules_from_destination(
+    tmp_path: Path,
+) -> None:
+    """A pre-existing corrupted ``node_modules/`` in the destination is wiped.
+
+    ``shutil.copytree(dirs_exist_ok=True)`` does not descend into directories
+    listed in ``ignore`` — it neither writes them nor cleans them up. So a
+    workspace that was cloned by a *prior* version of this step (which
+    dereferenced the template's pnpm symlinks into duplicate React copies)
+    would keep that corrupt tree forever, even though the new step skips
+    ``node_modules/`` on read. ``CloneTemplateStep.run`` actively removes
+    any ``node_modules/`` from the destination before the copy so the next
+    ``pnpm install --frozen-lockfile`` rebuilds from a clean slate.
+    """
+    ctx = _make_ctx(tmp_path)
+    # First clone produces a clean tree.
+    CloneTemplateStep().run(ctx)
+    target = ctx.out_dir / "hydrogen"
+
+    # Simulate a corrupted node_modules left over from a pre-fix run.
+    nested = target / "node_modules" / ".pnpm" / "react@18.3.1"
+    nested.mkdir(parents=True)
+    (nested / "react.development.js").write_text("// duplicate", encoding="utf-8")
+    assert (target / "node_modules").is_dir()
+
+    # Second clone purges the stale node_modules.
+    CloneTemplateStep().run(ctx)
+    assert not (target / "node_modules").exists()
+    # Source files still land normally.
+    assert (target / "package.json").is_file()
 
 
 # --------------------------------------------------------------------------- #
