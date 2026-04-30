@@ -28,11 +28,15 @@ Output one JSON array containing exactly {total_products} product
 skeleton objects. Each object has exactly these fields and nothing
 else:
 
-- `title`: plain English noun phrase. **Two to five words.** Examples:
+- `title`: plain English noun phrase. **Two to five whitespace-
+  separated words.** Numeric size or capacity must be glued to its
+  unit with no space — write ``"12oz"``, ``"7qt"``, or ``"7-quart"``,
+  never ``"12 oz"`` or ``"7 quart"``. Examples:
   ``"white sport t-shirt"``, ``"ceramic coffee mug 12oz"``,
-  ``"leather card wallet"``. Lowercase or Title Case is fine; do NOT
-  invent brand names; do NOT include any allowlisted brand token; do
-  NOT reference real-world brands or products.
+  ``"cast iron dutch oven 7qt"``, ``"leather card wallet"``.
+  Lowercase or Title Case is fine; do NOT invent brand names; do NOT
+  include any allowlisted brand token; do NOT reference real-world
+  brands or products.
 - `handle`: URL-safe slug (lowercase ASCII, hyphens between words,
   no leading/trailing hyphen). Derived from `title` — e.g.
   ``"white-sport-t-shirt"``.

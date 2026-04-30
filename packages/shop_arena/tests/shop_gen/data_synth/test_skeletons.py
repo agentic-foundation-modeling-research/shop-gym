@@ -138,7 +138,8 @@ def _make_seed(tmp_path: Path) -> Path:
 def test_prompt_template_states_two_to_five_word_rule() -> None:
     """The prompt body itself ships the 2-5 word naming rule (T3.6 prompt-asserting test)."""
     body = load_synth_product_skeletons_template()
-    assert "Two to five words" in body
+    assert "Two to five whitespace-" in body
+    assert "separated words" in body
 
 
 def test_prompt_template_forbids_brand_tokens() -> None:

@@ -65,6 +65,12 @@ _TITLE_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[A-Z][A-Za-z]+")
 _WORD_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"\s+")
 """Whitespace splitter for the title-word-count check."""
 
+_NUMERIC_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"\d+")
+"""Pure-numeric tokens (e.g. ``7`` in ``"... oven 7 quart"``) are not
+counted as words — a bare size number reads as part of the adjacent unit
+word. Compound tokens like ``12oz`` or ``7-quart`` still count as one
+word because they contain non-digit characters."""
+
 
 # --------------------------------------------------------------------------- #
 # Cached payload shape (synthesis-time, not the final Product schema)
@@ -345,9 +351,16 @@ def _assert_unique_handles_per_collection(skeletons: list[ProductSkeleton]) -> N
 
 
 def _assert_title_word_counts(skeletons: list[ProductSkeleton]) -> None:
-    """Reject titles that fall outside the 2-5 word range (spec §5.3)."""
+    """Reject titles outside the 2-5 word range (spec §5.3).
+
+    Pure-numeric tokens are excluded from the count so a bare size
+    number (e.g. ``"7"`` in ``"cast iron dutch oven 7 quart"``) does
+    not push the title past the limit — it reads as part of the
+    adjacent unit word.
+    """
     for skeleton in skeletons:
-        words = [w for w in _WORD_SPLIT_RE.split(skeleton.title.strip()) if w]
+        tokens = [w for w in _WORD_SPLIT_RE.split(skeleton.title.strip()) if w]
+        words = [t for t in tokens if not _NUMERIC_TOKEN_RE.fullmatch(t)]
         if not _TITLE_MIN_WORDS <= len(words) <= _TITLE_MAX_WORDS:
             raise StageSynthError(
                 f"{_STEP_ID}: skeleton {skeleton.handle!r} title "
