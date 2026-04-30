@@ -82,6 +82,7 @@ from shop_gen.build.verifiers import (
     NavCoverageVerifier,
     NavigationPrimitiveUsageVerifier,
     QualityJudgeVerifier,
+    Routes200Verifier,
     SchemaIntrospection,
     TscVerifier,
     VisualJudgeVerifier,
@@ -648,6 +649,16 @@ def default_verifiers_factory(
         # cassette (`test_build_loop_replay_post_build_artifact_imports_navigation_primitives`).
         # Was advisory in M4 (T4.2); promotion drops the `advisory=True` kwarg.
         NavigationPrimitiveUsageVerifier(),
+        # `routes_200` boots a transient dev server and asserts every bucket
+        # route returns HTTP 2xx (spec §5.3 / impl plan T4.1). Slotted before
+        # the LLM judges so a broken hydrogen tree (e.g. SSR 500s) surfaces
+        # as a cheap, route-by-route FAIL with actionable feedback rather
+        # than burning the visual-judge agent's wall-clock budget rendering
+        # error pages.
+        Routes200Verifier(
+            data_dir=out_dir / _DATA_DIR,
+            dev_server_factory=factory,
+        ),
         # NoBrandLeakVerifier(),  # temporarily disabled — broken; re-add import + line to revive.
     ]
     if "quality_judge" in judges:

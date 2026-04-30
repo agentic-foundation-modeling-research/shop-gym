@@ -63,6 +63,7 @@ from shop_gen.build.verifiers import (
     NavCoverageVerifier,
     NavigationPrimitiveUsageVerifier,
     QualityJudgeVerifier,
+    Routes200Verifier,
     TscVerifier,
     VisualJudgeVerifier,
 )
@@ -871,6 +872,7 @@ def test_default_verifiers_factory_returns_v01_set_when_skill_missing(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        Routes200Verifier,
         QualityJudgeVerifier,
         CrossTaskConsistencyVerifier,
     ]
@@ -907,6 +909,7 @@ def test_default_verifiers_factory_includes_visual_judge_when_skill_present(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        Routes200Verifier,
         QualityJudgeVerifier,
         VisualJudgeVerifier,
         CrossTaskConsistencyVerifier,
@@ -1046,6 +1049,7 @@ def test_default_verifiers_factory_judges_empty_returns_only_rule_verifiers(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        Routes200Verifier,
     ]
 
 
@@ -1076,6 +1080,7 @@ def test_default_verifiers_factory_judges_visual_only_when_skill_present(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        Routes200Verifier,
         VisualJudgeVerifier,
     ]
     assert not [
@@ -1115,6 +1120,7 @@ def test_default_verifiers_factory_judges_visual_only_skill_missing_warns(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        Routes200Verifier,
     ]
     visual_warnings = [
         record
@@ -1166,7 +1172,14 @@ def test_default_verifiers_factory_sc5_judges_visual_and_quality_excludes_cross_
     # The unselected LLM judge is absent.
     assert "cross_task_consistency" not in names_by_count
     # Rule verifiers are unaffected by ``judges``.
-    for rule_name in ("tsc", "build", "data_in_use", "nav_coverage", "navigation_primitive_usage"):
+    for rule_name in (
+        "tsc",
+        "build",
+        "data_in_use",
+        "nav_coverage",
+        "navigation_primitive_usage",
+        "routes_200",
+    ):
         assert names_by_count.get(rule_name) == 1, f"missing rule verifier: {rule_name}"
     # Skill present → no probe-failure warning.
     assert not [
@@ -1200,7 +1213,14 @@ def test_default_verifiers_factory_sc5_judges_none_registers_zero_llm_judges(
     llm_judges = {"visual_judge", "quality_judge", "cross_task_consistency"}
     assert llm_judges.isdisjoint(names)
     # Rule verifiers still register exactly once each.
-    for rule_name in ("tsc", "build", "data_in_use", "nav_coverage", "navigation_primitive_usage"):
+    for rule_name in (
+        "tsc",
+        "build",
+        "data_in_use",
+        "nav_coverage",
+        "navigation_primitive_usage",
+        "routes_200",
+    ):
         assert names.count(rule_name) == 1, f"missing rule verifier: {rule_name}"
 
 
