@@ -5,6 +5,9 @@
 // `navigation_primitive_usage` enforces (per
 // `docs/specs/shop_arena/template_navigation_primitives.md` §"Acceptance"):
 // the header must import at least one of `<NavMenu>` or `<HeaderShell>`.
+//
+// `nav_coverage` anchors (M4 collections wired through `header.menu`):
+// dog-essentials, cat-care.
 import type {ReactElement} from "react";
 
 import {HeaderShell} from "~/components/HeaderShell";
