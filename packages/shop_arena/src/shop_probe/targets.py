@@ -16,6 +16,7 @@ lives in :mod:`shop_probe.bench`.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -38,6 +39,12 @@ class Target(BaseModel):
         base_url: Base URL of the storefront. Crawls and probes are
             rooted here.
         label: Population this target belongs to (see :data:`TargetLabel`).
+        data_dir: Optional path to a directory holding ``products.json``
+            and ``collections.json`` for the storefront's catalog. The
+            ``type: scale`` rubric entry reads catalog counts from this
+            directory; when ``None``, catalog metrics in
+            :class:`shop_probe.scale.metrics.ScaleMetrics` are ``None``
+            and the per-page richness fields still compute.
         notes: Free-form operator notes; ``None`` if unset.
     """
 
@@ -46,6 +53,7 @@ class Target(BaseModel):
     name: str = Field(min_length=1)
     base_url: str = Field(min_length=1)
     label: TargetLabel
+    data_dir: Path | None = None
     notes: str | None = None
 
 

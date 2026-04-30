@@ -22,16 +22,18 @@ The module is import-safe — it performs no I/O at import time.
 
 from __future__ import annotations
 
+import gzip
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 from urllib.parse import urljoin
 
 from playwright.async_api import Page
 
 from shop_probe.probes._runner import ProbeContext, ProbeOutcome, ProbeRunner
 from shop_probe.rubric.schema import PageRef
+from shop_probe.scale.metrics import PageStats
 
 _BUNDLE_PROBE_PREFIX: Final[str] = "_bundle"
 """Probe-id prefix the bundle uses when calling :meth:`ProbeRunner.run`.
@@ -53,6 +55,32 @@ _NOTES_MAX_LEN: Final[int] = 200
 
 Playwright errors can be very long (full DOM dumps); 200 chars is enough
 to identify the failure mode without bloating ``ProbeReport`` size.
+"""
+
+_STATS_FILENAME: Final[str] = "page_stats.json"
+"""Per-page filename holding the :class:`PageStats` JSON dump."""
+
+_STATS_PROBE_JS: Final[str] = r"""
+() => {
+    const interactables = document.querySelectorAll(
+        'a[href], button, input:not([type="hidden"]), select, textarea, '
+        + '[role="button"], [role="link"], [role="tab"], '
+        + '[role="checkbox"], [role="radio"], [role="combobox"], '
+        + '[contenteditable=""], [contenteditable="true"]'
+    ).length;
+    const formFields = document.querySelectorAll(
+        'input:not([type="hidden"]), select, textarea, '
+        + '[contenteditable=""], [contenteditable="true"]'
+    ).length;
+    const a11yNodes = document.querySelectorAll(
+        'a, button, input:not([type="hidden"]), select, textarea, label, '
+        + 'h1, h2, h3, h4, h5, h6, nav, main, header, footer, section, '
+        + 'article, aside, form, fieldset, legend, ul, ol, li, dl, dt, dd, '
+        + 'dialog, table, tr, td, th, caption, figure, figcaption, '
+        + 'img[alt], details, summary, [role]'
+    ).length;
+    return { interactables, formFields, a11yNodes };
+}
 """
 
 
@@ -77,6 +105,10 @@ class PageCapture:
             sample URL was undiscovered.
         notes: Optional one-line failure reason. ``None`` on the happy
             path; capped at :data:`_NOTES_MAX_LEN` chars otherwise.
+        page_stats: Per-page richness measurements taken during the
+            navigation pass — DOM size, interactables count, form
+            fields count, accessibility-tree node count. ``None`` on
+            non-applicable rows or when stats collection failed.
     """
 
     page_ref: PageRef
@@ -85,6 +117,7 @@ class PageCapture:
     accessibility_rel: str | None
     applicable: bool
     notes: str | None = None
+    page_stats: PageStats | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +185,49 @@ def _short(text: str) -> str:
     return text if len(text) <= _NOTES_MAX_LEN else text[: _NOTES_MAX_LEN - 1] + "…"
 
 
+def _gzipped_kb(html: str) -> float:
+    """Return gzipped DOM size in kilobytes (matches the legacy surface-crawler formula)."""
+    return len(gzip.compress(html.encode("utf-8"))) / 1024.0
+
+
+async def _collect_page_stats(page: Page) -> PageStats | None:
+    """Compute :class:`PageStats` for the currently loaded ``page``.
+
+    Returns ``None`` when either the DOM read or the JS probe fails;
+    callers treat that as "stats unavailable" and continue without
+    aborting the bundle.
+    """
+    try:
+        html = await page.content()
+        raw = await page.evaluate(_STATS_PROBE_JS)
+    except Exception:  # noqa: BLE001 — same-shape failures across many error classes
+        return None
+    if not isinstance(raw, dict):
+        return None
+    raw_dict: dict[str, Any] = raw
+    return PageStats(
+        dom_kb_gz=_gzipped_kb(html),
+        interactables_count=int(raw_dict.get("interactables", 0)),
+        form_fields_count=int(raw_dict.get("formFields", 0)),
+        accessibility_nodes_count=int(raw_dict.get("a11yNodes", 0)),
+    )
+
+
+def _load_persisted_stats(stats_path: Path) -> PageStats | None:
+    """Decode a previously persisted :class:`PageStats` JSON dump.
+
+    Returns ``None`` when the file is missing or doesn't validate
+    against the current :class:`PageStats` schema.
+    """
+    if not stats_path.is_file():
+        return None
+    try:
+        payload = json.loads(stats_path.read_text(encoding="utf-8"))
+        return PageStats.model_validate(payload)
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+
+
 async def _capture_one(
     page: Page,
     *,
@@ -182,6 +258,7 @@ async def _capture_one(
     page_dir.mkdir(parents=True, exist_ok=True)
     screenshot_path = page_dir / "screenshot.png"
     a11y_path = page_dir / "a11y.json"
+    stats_path = page_dir / _STATS_FILENAME
     rel_screenshot = f"{page_ref}/screenshot.png"
     rel_a11y = f"{page_ref}/a11y.json"
     await page.goto(url, wait_until="domcontentloaded", timeout=_BUNDLE_NAV_TIMEOUT_MS)
@@ -191,6 +268,12 @@ async def _capture_one(
         json.dumps({"aria_snapshot": snapshot or ""}, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    page_stats = await _collect_page_stats(page)
+    if page_stats is not None:
+        stats_path.write_text(
+            page_stats.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
     return PageCapture(
         page_ref=page_ref,
         url=url,
@@ -198,6 +281,7 @@ async def _capture_one(
         accessibility_rel=rel_a11y,
         applicable=True,
         notes=None,
+        page_stats=page_stats,
     )
 
 
@@ -293,6 +377,7 @@ async def capture_bundle(
                         accessibility_rel=f"{page_ref}/a11y.json",
                         applicable=True,
                         notes="reused",
+                        page_stats=_load_persisted_stats(page_dir / _STATS_FILENAME),
                     )
                 )
                 continue

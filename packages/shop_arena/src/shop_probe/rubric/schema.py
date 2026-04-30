@@ -1,6 +1,9 @@
-"""Closed schemas for the axis-A capability-coverage rubric.
+"""Closed schemas for the rubric.
 
-* :class:`RubricEntry` — one rubric row.
+* :class:`RubricEntry` — one rubric row. The ``type`` field discriminates
+  between three runners — ``probe`` (deterministic Playwright check),
+  ``capture_judge`` (one LLM call over a screenshot + a11y bundle), and
+  ``scale`` (per-page richness metrics + catalog counts).
 * :class:`Rubric` — the loaded, hashed rubric (``version`` + ``entries`` +
   ``content_hash``); embedded into every :class:`ProbeReport` header so
   paper figures can be re-rendered unambiguously.
@@ -17,15 +20,25 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-RubricLevel = Literal["core", "modern", "advanced", "capture_judge"]
-"""Capability tier.
+EntryType = Literal["probe", "capture_judge", "scale"]
+"""Required discriminator that selects the runner for a rubric entry.
+
+* ``probe`` — deterministic Playwright probe; carries a ``probe`` dotted
+  reference and contributes to ``coverage_*`` rollups.
+* ``capture_judge`` — one LLM call over a screenshot + accessibility-tree
+  bundle slice; carries an inline ``capture_judge`` block. Also
+  contributes to ``coverage_*`` rollups.
+* ``scale`` — descriptive scale / richness measurement. Reuses the
+  capture bundle's per-page stats and reads catalog counts from the
+  target's ``data_dir``. Does not contribute to ``coverage_*``.
+"""
+
+RubricLevel = Literal["core", "modern", "advanced"]
+"""Capability tier for ``probe`` and ``capture_judge`` entries.
 
 * ``core`` — every modern storefront has this.
 * ``modern`` — common in 2025-era themes; fidelity signal.
-* ``advanced`` — stretch behavior; deterministic Playwright probes.
-* ``capture_judge`` — structural-affordance verdict from one Anthropic
-  Messages-API call over a screenshot + accessibility-tree bundle slice.
-  Carries an inline ``capture_judge`` block instead of a ``probe`` reference.
+* ``advanced`` — stretch behavior.
 """
 
 PageRef = Literal["home", "collection", "product", "cart", "search"]
@@ -33,7 +46,7 @@ PageRef = Literal["home", "collection", "product", "cart", "search"]
 
 The :func:`shop_probe.capture.bundle.capture_bundle` runner captures one
 :class:`shop_probe.capture.bundle.PageCapture` per ``PageRef`` per shop.
-Each ``level: capture_judge`` rubric entry then references a subset of
+Each ``type: capture_judge`` rubric entry then references a subset of
 these pages via :attr:`CaptureJudgeTask.pages`.
 """
 
@@ -59,7 +72,7 @@ RubricCategory = Literal[
 
 
 class CaptureJudgeTask(BaseModel):
-    """Inline task definition for a ``level: capture_judge`` rubric entry.
+    """Inline task definition for a ``type: capture_judge`` rubric entry.
 
     A capture-judge entry asks the vision judge a structural-affordance
     question over a slice of the per-shop page bundle (one screenshot +
@@ -90,83 +103,120 @@ class CaptureJudgeTask(BaseModel):
 
 
 class RubricEntry(BaseModel):
-    """One row of the capability rubric.
+    """One row of the rubric.
 
     ``extra="forbid"`` means a typo in the YAML (``categroy:`` → unknown
     field) fails the loader rather than silently scoring zero.
 
+    The ``type`` field is the required discriminator. Each type carries
+    a different inline-block contract; see ``_check_type_contract`` for
+    the matrix:
+
+    * ``probe`` requires ``category``, ``level``, ``weight``, ``probe``;
+      ``capture_judge`` is forbidden.
+    * ``capture_judge`` requires ``category``, ``level``, ``weight``,
+      ``capture_judge``; ``probe`` is forbidden.
+    * ``scale`` requires only ``id``, ``type``, ``description``;
+      ``category`` / ``level`` / ``weight`` / ``probe`` /
+      ``capture_judge`` / ``authenticated`` / ``transactional`` must
+      all be unset.
+
     Attributes:
-        id: Stable, dot-separated probe identifier (e.g.
+        id: Stable, dot-separated identifier (e.g.
             ``"product.gallery.thumbnails"``). Must be unique within a
             :class:`Rubric`.
-        category: Rubric category (see :data:`RubricCategory`).
-        level: Capability tier (see :data:`RubricLevel`).
-        weight: Importance weight, integer in ``[1, 3]``. Used in the
-            per-category coverage formula
-            ``Σ weight·passed / Σ weight``.
-        probe: Dotted Python reference to the probe callable, e.g.
-            ``"probes.product.gallery_has_thumbnails"``. Required for
-            deterministic entries (``core`` / ``modern`` / ``advanced``);
-            must be ``None`` for ``capture_judge`` entries — those carry
-            an inline :class:`CaptureJudgeTask` block instead.
-        capture_judge: Inline capture-judge task definition. Required
-            for ``level: capture_judge`` entries; must be ``None``
-            otherwise.
+        type: Discriminator that picks the runner (see :data:`EntryType`).
         description: One-line human-readable description of what the
-            probe asserts. Surfaces in reports and figures.
-        authenticated: ``True`` if the probe requires a logged-in
-            session. Gated behind ``--include-auth``.
-        transactional: ``True`` if the probe exercises checkout / order
-            creation. Gated behind ``--include-auth``.
+            entry asserts. Surfaces in reports and figures.
+        category: Rubric category — required for probe/capture_judge,
+            must be unset for scale.
+        level: Capability tier — required for probe/capture_judge, must
+            be unset for scale.
+        weight: Importance weight (1–3) — required for probe/capture_judge,
+            must be unset for scale.
+        probe: Dotted Python reference to the probe callable (e.g.
+            ``"probes.product.gallery_has_thumbnails"``). Required for
+            ``type: probe``; must be ``None`` otherwise.
+        capture_judge: Inline capture-judge task. Required for
+            ``type: capture_judge``; must be ``None`` otherwise.
+        authenticated: ``True`` if the entry requires a logged-in
+            session. Gated behind ``--include-auth``. Must be unset for
+            ``type: scale``.
+        transactional: ``True`` if the entry exercises checkout / order
+            creation. Gated behind ``--include-auth``. Must be unset for
+            ``type: scale``.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: str = Field(min_length=1)
-    category: RubricCategory
-    level: RubricLevel
-    weight: int = Field(ge=1, le=3)
-    probe: str | None = Field(default=None, min_length=1)
+    type: EntryType
     description: str = Field(min_length=1)
-    authenticated: bool
-    transactional: bool
+    category: RubricCategory | None = None
+    level: RubricLevel | None = None
+    weight: int | None = Field(default=None, ge=1, le=3)
+    probe: str | None = Field(default=None, min_length=1)
     capture_judge: CaptureJudgeTask | None = None
+    authenticated: bool | None = None
+    transactional: bool | None = None
 
     @model_validator(mode="after")
-    def _check_probe_xor_inline_task(self) -> RubricEntry:
-        """Enforce the probe / inline-task contract per ``level``.
-
-        * ``capture_judge`` entries: ``capture_judge`` is required and
-          ``probe`` must be ``None``.
-        * Other levels: ``probe`` is required and ``capture_judge`` must
-          be ``None``.
-        """
-        if self.level == "capture_judge":
-            if self.capture_judge is None:
-                msg = (
-                    f"rubric entry {self.id!r}: level='capture_judge' requires an "
-                    f"inline 'capture_judge' block"
-                )
-                raise ValueError(msg)
-            if self.probe is not None:
-                msg = (
-                    f"rubric entry {self.id!r}: level='capture_judge' must not set "
-                    f"'probe' (use the inline 'capture_judge' block instead)"
-                )
-                raise ValueError(msg)
-        else:
-            if self.probe is None:
-                msg = (
-                    f"rubric entry {self.id!r}: level={self.level!r} requires a "
-                    f"'probe' dotted reference"
-                )
-                raise ValueError(msg)
-            if self.capture_judge is not None:
-                msg = (
-                    f"rubric entry {self.id!r}: level={self.level!r} must not set "
-                    f"'capture_judge' (only 'capture_judge' entries carry one)"
-                )
-                raise ValueError(msg)
+    def _check_type_contract(self) -> RubricEntry:
+        """Enforce the per-``type`` contract on inline blocks + tier fields."""
+        if self.type in ("probe", "capture_judge"):
+            for name, value in (
+                ("category", self.category),
+                ("level", self.level),
+                ("weight", self.weight),
+                ("authenticated", self.authenticated),
+                ("transactional", self.transactional),
+            ):
+                if value is None:
+                    msg = f"rubric entry {self.id!r}: type={self.type!r} requires {name!r}"
+                    raise ValueError(msg)
+            if self.type == "probe":
+                if self.probe is None:
+                    msg = (
+                        f"rubric entry {self.id!r}: type='probe' requires a "
+                        f"'probe' dotted reference"
+                    )
+                    raise ValueError(msg)
+                if self.capture_judge is not None:
+                    msg = (
+                        f"rubric entry {self.id!r}: type='probe' must not set "
+                        f"'capture_judge'"
+                    )
+                    raise ValueError(msg)
+            else:  # capture_judge
+                if self.capture_judge is None:
+                    msg = (
+                        f"rubric entry {self.id!r}: type='capture_judge' requires "
+                        f"an inline 'capture_judge' block"
+                    )
+                    raise ValueError(msg)
+                if self.probe is not None:
+                    msg = (
+                        f"rubric entry {self.id!r}: type='capture_judge' must not "
+                        f"set 'probe'"
+                    )
+                    raise ValueError(msg)
+        else:  # scale
+            forbidden = (
+                ("category", self.category),
+                ("level", self.level),
+                ("weight", self.weight),
+                ("probe", self.probe),
+                ("capture_judge", self.capture_judge),
+                ("authenticated", self.authenticated),
+                ("transactional", self.transactional),
+            )
+            for name, value in forbidden:
+                if value is not None:
+                    msg = (
+                        f"rubric entry {self.id!r}: type='scale' must not set "
+                        f"{name!r}"
+                    )
+                    raise ValueError(msg)
         return self
 
 
@@ -178,11 +228,11 @@ class Rubric(BaseModel):
     rubric revision into every :class:`ProbeReport` header.
 
     Attributes:
-        version: Rubric version string, e.g. ``"v2"``.
+        version: Rubric version string, e.g. ``"v3"``.
         content_hash: 64-char lowercase hex SHA-256 of the source YAML
             bytes.
         entries: All rubric rows, in source order. Must be non-empty
-            and have unique ``id``s.
+            and have unique ``id``s. At most one ``type: scale`` entry.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -200,4 +250,21 @@ class Rubric(BaseModel):
                 msg = f"rubric {self.version!r}: duplicate entry id {entry.id!r}"
                 raise ValueError(msg)
             seen.add(entry.id)
+        return self
+
+    @model_validator(mode="after")
+    def _check_at_most_one_scale_entry(self) -> Rubric:
+        """Reject rubrics with more than one ``type: scale`` entry.
+
+        The scale runner emits a single :class:`ScaleMetrics` per shop;
+        multiple scale entries with different intents are not modeled.
+        """
+        scale_ids = [e.id for e in self.entries if e.type == "scale"]
+        max_scale_entries = 1
+        if len(scale_ids) > max_scale_entries:
+            msg = (
+                f"rubric {self.version!r}: at most one type='scale' entry allowed, "
+                f"got {scale_ids!r}"
+            )
+            raise ValueError(msg)
         return self

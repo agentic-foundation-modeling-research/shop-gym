@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -28,6 +29,7 @@ def test_target_round_trip_sandbox() -> None:
         "name": "shop_alpha",
         "base_url": "http://localhost:4000",
         "label": "sandbox",
+        "data_dir": None,
         "notes": "deployed 2026-01-15",
     }
     target = Target.model_validate(raw)
@@ -43,6 +45,21 @@ def test_target_round_trip_real_no_notes() -> None:
     }
     target = Target.model_validate(raw)
     assert target.notes is None
+    assert target.data_dir is None
+
+
+def test_target_round_trip_with_data_dir(tmp_path: Path) -> None:
+    raw = {
+        "name": "shop_alpha",
+        "base_url": "http://localhost:4000",
+        "label": "sandbox",
+        "data_dir": str(tmp_path / "data"),
+    }
+    target = Target.model_validate(raw)
+    assert target.data_dir == tmp_path / "data"
+    # Round-trip through JSON.
+    rebuilt = Target.model_validate_json(target.model_dump_json())
+    assert rebuilt == target
 
 
 def test_target_rejects_unknown_field() -> None:
@@ -94,6 +111,7 @@ def test_bench_round_trip() -> None:
                 "name": "shop_alpha",
                 "base_url": "http://localhost:4000",
                 "label": "sandbox",
+                "data_dir": None,
                 "notes": None,
             }
         ],
@@ -102,6 +120,7 @@ def test_bench_round_trip() -> None:
                 "name": "real_a",
                 "base_url": "https://real-a.example.invalid",
                 "label": "real",
+                "data_dir": None,
                 "notes": None,
             }
         ],

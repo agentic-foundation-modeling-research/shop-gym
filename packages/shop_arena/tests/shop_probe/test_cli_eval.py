@@ -45,7 +45,7 @@ def _stub_report(target: Target, *, rubric_hash: str) -> ProbeReport:
     )
     return ProbeReport(
         target=target,
-        rubric_version="v2",
+        rubric_version="v3",
         rubric_hash=rubric_hash,
         runner_version="0.0.0",
         runtime=_runtime(),
@@ -55,6 +55,7 @@ def _stub_report(target: Target, *, rubric_hash: str) -> ProbeReport:
         coverage_modern=0.0,
         coverage_advanced=0.0,
         coverage_weighted=cov,
+        scale=None,
     )
 
 
@@ -85,8 +86,6 @@ def _stub_run_factory() -> tuple[list[Target], Any]:
         target: Target,
         rubric: Any,
         evidence_root: Path,  # noqa: ARG001
-        run_axis_a: bool,  # noqa: ARG001
-        run_axis_b: bool,  # noqa: ARG001
         include_auth: bool,  # noqa: ARG001
         capture_judge_model: str,  # noqa: ARG001
     ) -> ProbeReport:
@@ -227,11 +226,18 @@ def test_cli_eval_missing_benchmark_yaml(
     assert "benchmark not found" in capsys.readouterr().err
 
 
-def test_cli_eval_rejects_unknown_axes(
+def test_cli_eval_rejects_invalid_capture_judge_model(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     benchmark = tmp_path / "benchmark.yaml"
     _write_benchmark(benchmark)
-    rc = main(_eval_args(benchmark, tmp_path / "out", "--axes", "C"))
+    rc = main(
+        _eval_args(
+            benchmark,
+            tmp_path / "out",
+            "--capture-judge-model",
+            "claude-haiku-4-5",  # missing provider prefix
+        )
+    )
     assert rc == EXIT_USAGE
-    assert "not supported" in capsys.readouterr().err
+    assert "anthropic:<id>" in capsys.readouterr().err

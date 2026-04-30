@@ -4,9 +4,10 @@ Covers:
 
 * :class:`GroupSummary` and :class:`BenchComparison` round-trip and
   ``extra="forbid"``.
-* :func:`compute_bench_comparison` over synthetic A+B reports.
+* :func:`compute_bench_comparison` over synthetic reports carrying
+  :class:`ScaleMetrics`.
 * Per-category coverage gap aggregated as ``real - sandbox``.
-* Surface ratio per-metric — including parity-on-zero and rejection of
+* Scale ratio per-metric — including parity-on-zero and rejection of
   ``real==0, sandbox>0``.
 * Sandbox-in-real-envelope per metric per shop.
 * Group label / category mismatch errors.
@@ -30,7 +31,7 @@ from shop_probe.report import (
     CategoryScore,
     ProbeReport,
 )
-from shop_probe.surface.metrics import SurfaceMetrics
+from shop_probe.scale.metrics import ScaleMetrics
 from shop_probe.targets import Target, TargetLabel
 
 _RUBRIC_HASH: str = "a" * 64
@@ -48,23 +49,17 @@ def _browser_meta() -> BrowserMeta:
     )
 
 
-def _surface(**overrides: float) -> SurfaceMetrics:
-    base: dict[str, float] = {
-        "distinct_templates": 5,
-        "routes_crawled": 50,
-        "interactables_per_template_median": 30.0,
-        "interactables_per_template_p95": 90.0,
-        "forms_total": 4,
-        "form_fields_total": 20,
+def _scale(**overrides: float | int | None) -> ScaleMetrics:
+    base: dict[str, float | int | None] = {
+        "median_dom_kb_gz": 80.0,
+        "interactables_per_page_median": 30.0,
+        "form_fields_per_page_median": 4.0,
+        "accessibility_nodes_per_page_median": 400.0,
         "catalog_products": 100,
         "catalog_collections": 12,
-        "catalog_variants": 250,
-        "filter_x_sort_state_space": 64,
-        "median_dom_kb_gz": 80.0,
-        "accessibility_nodes_per_template_median": 400.0,
     }
     base.update(overrides)
-    return SurfaceMetrics.model_validate(base)
+    return ScaleMetrics.model_validate(base)
 
 
 def _categories(values: dict[str, float]) -> tuple[CategoryScore, ...]:
@@ -85,12 +80,12 @@ def _report(
     label: TargetLabel,
     coverages: dict[str, float],
     coverage_weighted: float,
-    surface: SurfaceMetrics | None,
+    scale: ScaleMetrics | None,
 ) -> ProbeReport:
     target = Target(name=name, base_url="http://localhost:4000", label=label)
     return ProbeReport(
         target=target,
-        rubric_version="v2",
+        rubric_version="v3",
         rubric_hash=_RUBRIC_HASH,
         runner_version="0.0.0",
         runtime=_browser_meta(),
@@ -100,7 +95,7 @@ def _report(
         coverage_modern=0.0,
         coverage_advanced=0.0,
         coverage_weighted=coverage_weighted,
-        surface=surface,
+        scale=scale,
     )
 
 
@@ -115,8 +110,8 @@ def _group_summary() -> GroupSummary:
         n_shops=2,
         coverage_weighted_mean=0.7,
         coverage_per_axis_mean={"product": 0.7},
-        surface_metric_means={"distinct_templates": 5.0},
-        surface_metric_envelope={"distinct_templates": (4.0, 6.0)},
+        scale_metric_means={"catalog_products": 100.0},
+        scale_metric_envelope={"catalog_products": (80.0, 120.0)},
     )
 
 
@@ -140,37 +135,37 @@ def test_bench_comparison_round_trip() -> None:
             n_shops=3,
             coverage_weighted_mean=0.8,
             coverage_per_axis_mean={"product": 0.8},
-            surface_metric_means={"distinct_templates": 6.0},
-            surface_metric_envelope={"distinct_templates": (5.0, 7.0)},
+            scale_metric_means={"catalog_products": 150.0},
+            scale_metric_envelope={"catalog_products": (120.0, 180.0)},
         ),
         coverage_gap_weighted=0.1,
         coverage_gap_per_axis={"product": 0.1},
-        surface_ratio={"distinct_templates": 0.83},
-        sandbox_in_real_envelope={"shop_a": {"distinct_templates": True}},
+        scale_ratio={"catalog_products": 100.0 / 150.0},
+        sandbox_in_real_envelope={"shop_a": {"catalog_products": True}},
     )
     assert BenchComparison.model_validate_json(b.model_dump_json()) == b
 
 
 # --------------------------------------------------------------------------- #
-# compute_bench_comparison — coverage / surface arithmetic.
+# compute_bench_comparison — coverage / scale arithmetic.
 # --------------------------------------------------------------------------- #
 
 
-def test_compute_bench_comparison_basic_axes_a_and_b() -> None:
+def test_compute_bench_comparison_basic_with_scale() -> None:
     sandbox_reports = (
         _report(
             name="shop_alpha",
             label="sandbox",
             coverages={"product": 0.6, "search": 0.5},
             coverage_weighted=0.55,
-            surface=_surface(distinct_templates=4),
+            scale=_scale(catalog_products=80),
         ),
         _report(
             name="shop_beta",
             label="sandbox",
             coverages={"product": 0.8, "search": 0.7},
             coverage_weighted=0.75,
-            surface=_surface(distinct_templates=6),
+            scale=_scale(catalog_products=120),
         ),
     )
     real_reports = (
@@ -179,14 +174,14 @@ def test_compute_bench_comparison_basic_axes_a_and_b() -> None:
             label="real",
             coverages={"product": 0.9, "search": 0.8},
             coverage_weighted=0.85,
-            surface=_surface(distinct_templates=8),
+            scale=_scale(catalog_products=160),
         ),
         _report(
             name="real_b",
             label="real",
             coverages={"product": 1.0, "search": 0.9},
             coverage_weighted=0.95,
-            surface=_surface(distinct_templates=10),
+            scale=_scale(catalog_products=200),
         ),
     )
 
@@ -198,12 +193,11 @@ def test_compute_bench_comparison_basic_axes_a_and_b() -> None:
     assert comparison.real.coverage_weighted_mean == pytest.approx(0.90)
     assert comparison.coverage_gap_weighted == pytest.approx(0.25)
     assert comparison.coverage_gap_per_axis["product"] == pytest.approx(0.25)
-    # sandbox/real means: 5/9 for distinct_templates.
-    assert comparison.surface_ratio["distinct_templates"] == pytest.approx(5 / 9)
-    # Both sandboxes (4, 6) fall outside the real envelope (8, 10) so
-    # ``in_real_envelope`` is False for distinct_templates.
-    assert comparison.sandbox_in_real_envelope["shop_alpha"]["distinct_templates"] is False
-    assert comparison.sandbox_in_real_envelope["shop_beta"]["distinct_templates"] is False
+    # sandbox/real means: 100/180 for catalog_products.
+    assert comparison.scale_ratio["catalog_products"] == pytest.approx(100.0 / 180.0)
+    # Both sandboxes (80, 120) fall outside the real envelope (160, 200).
+    assert comparison.sandbox_in_real_envelope["shop_alpha"]["catalog_products"] is False
+    assert comparison.sandbox_in_real_envelope["shop_beta"]["catalog_products"] is False
 
 
 def test_compute_bench_comparison_rejects_empty_sandbox() -> None:
@@ -213,7 +207,7 @@ def test_compute_bench_comparison_rejects_empty_sandbox() -> None:
             label="real",
             coverages={"x": 0.5},
             coverage_weighted=0.5,
-            surface=None,
+            scale=None,
         ),
     )
     with pytest.raises(ValueError, match="sandbox_reports must be non-empty"):
@@ -227,7 +221,7 @@ def test_compute_bench_comparison_rejects_empty_real() -> None:
             label="sandbox",
             coverages={"x": 0.5},
             coverage_weighted=0.5,
-            surface=None,
+            scale=None,
         ),
     )
     with pytest.raises(ValueError, match="real_reports must be non-empty"):
@@ -241,7 +235,7 @@ def test_compute_bench_comparison_rejects_mislabeled_target() -> None:
             label="real",  # mislabel
             coverages={"x": 0.5},
             coverage_weighted=0.5,
-            surface=None,
+            scale=None,
         ),
     )
     real_reports = (
@@ -250,7 +244,7 @@ def test_compute_bench_comparison_rejects_mislabeled_target() -> None:
             label="real",
             coverages={"x": 0.5},
             coverage_weighted=0.5,
-            surface=None,
+            scale=None,
         ),
     )
     with pytest.raises(ValueError, match="expected 'sandbox'"):
@@ -264,7 +258,7 @@ def test_compute_bench_comparison_rejects_category_mismatch() -> None:
             label="sandbox",
             coverages={"product": 0.5},
             coverage_weighted=0.5,
-            surface=None,
+            scale=None,
         ),
     )
     real_reports = (
@@ -273,22 +267,22 @@ def test_compute_bench_comparison_rejects_category_mismatch() -> None:
             label="real",
             coverages={"search": 0.5},
             coverage_weighted=0.5,
-            surface=None,
+            scale=None,
         ),
     )
     with pytest.raises(ValueError, match="category mismatch"):
         compute_bench_comparison(sandbox_reports, real_reports)
 
 
-def test_compute_bench_comparison_skips_missing_surface() -> None:
-    """Reports with surface=None contribute coverage but not surface aggregates."""
+def test_compute_bench_comparison_skips_missing_scale() -> None:
+    """Reports with scale=None contribute coverage but not scale aggregates."""
     sandbox_reports = (
         _report(
             name="shop_a",
             label="sandbox",
             coverages={"x": 0.5},
             coverage_weighted=0.5,
-            surface=None,
+            scale=None,
         ),
     )
     real_reports = (
@@ -297,25 +291,25 @@ def test_compute_bench_comparison_skips_missing_surface() -> None:
             label="real",
             coverages={"x": 0.7},
             coverage_weighted=0.7,
-            surface=_surface(),
+            scale=_scale(),
         ),
     )
     comparison = compute_bench_comparison(sandbox_reports, real_reports)
-    # Sandbox group has no surfaces → no surface_metric_means → ratio empty.
-    assert comparison.sandbox.surface_metric_means == {}
-    assert comparison.surface_ratio == {}
-    # The shop with no surface is not present in the envelope dict.
+    # Sandbox group has no scale rows → no scale_metric_means → ratio empty.
+    assert comparison.sandbox.scale_metric_means == {}
+    assert comparison.scale_ratio == {}
+    # The shop with no scale is not present in the envelope dict.
     assert "shop_a" not in comparison.sandbox_in_real_envelope
 
 
-def test_compute_bench_comparison_surface_ratio_zero_parity() -> None:
+def test_compute_bench_comparison_scale_ratio_zero_parity() -> None:
     sandbox_reports = (
         _report(
             name="shop_a",
             label="sandbox",
             coverages={"x": 0.5},
             coverage_weighted=0.5,
-            surface=_surface(forms_total=0),
+            scale=_scale(form_fields_per_page_median=0.0),
         ),
     )
     real_reports = (
@@ -324,21 +318,21 @@ def test_compute_bench_comparison_surface_ratio_zero_parity() -> None:
             label="real",
             coverages={"x": 0.5},
             coverage_weighted=0.5,
-            surface=_surface(forms_total=0),
+            scale=_scale(form_fields_per_page_median=0.0),
         ),
     )
     comparison = compute_bench_comparison(sandbox_reports, real_reports)
-    assert comparison.surface_ratio["forms_total"] == 1.0
+    assert comparison.scale_ratio["form_fields_per_page_median"] == 1.0
 
 
-def test_compute_bench_comparison_surface_ratio_undefined_when_real_zero() -> None:
+def test_compute_bench_comparison_scale_ratio_undefined_when_real_zero() -> None:
     sandbox_reports = (
         _report(
             name="shop_a",
             label="sandbox",
             coverages={"x": 0.5},
             coverage_weighted=0.5,
-            surface=_surface(forms_total=4),
+            scale=_scale(form_fields_per_page_median=4.0),
         ),
     )
     real_reports = (
@@ -347,8 +341,36 @@ def test_compute_bench_comparison_surface_ratio_undefined_when_real_zero() -> No
             label="real",
             coverages={"x": 0.5},
             coverage_weighted=0.5,
-            surface=_surface(forms_total=0),
+            scale=_scale(form_fields_per_page_median=0.0),
         ),
     )
     with pytest.raises(ValueError, match="ratio is undefined"):
         compute_bench_comparison(sandbox_reports, real_reports)
+
+
+def test_compute_bench_comparison_handles_partial_scale_fields() -> None:
+    """A metric with no samples in the sandbox group is omitted from ratio."""
+    sandbox_reports = (
+        _report(
+            name="shop_a",
+            label="sandbox",
+            coverages={"x": 0.5},
+            coverage_weighted=0.5,
+            scale=_scale(catalog_products=None, catalog_collections=None),
+        ),
+    )
+    real_reports = (
+        _report(
+            name="real_a",
+            label="real",
+            coverages={"x": 0.5},
+            coverage_weighted=0.5,
+            scale=_scale(catalog_products=200, catalog_collections=20),
+        ),
+    )
+    comparison = compute_bench_comparison(sandbox_reports, real_reports)
+    # Per-page metrics are populated in both groups → ratio present.
+    assert "median_dom_kb_gz" in comparison.scale_ratio
+    # Catalog metrics absent in sandbox → omitted from ratio.
+    assert "catalog_products" not in comparison.scale_ratio
+    assert "catalog_collections" not in comparison.scale_ratio

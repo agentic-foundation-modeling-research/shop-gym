@@ -22,7 +22,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from shop_probe.surface.metrics import SurfaceMetrics
+from shop_probe.scale.metrics import ScaleMetrics
 from shop_probe.targets import Target
 
 EvidenceKind = Literal["screenshot", "dom_snapshot", "a11y_snapshot", "har"]
@@ -149,11 +149,11 @@ class ProbeReport(BaseModel):
         coverage_modern: Weighted coverage over ``level == "modern"``
             probes.
         coverage_advanced: Weighted coverage over ``level == "advanced"``
-            and ``level == "capture_judge"`` probes.
+            probes (deterministic + capture-judge).
         coverage_weighted: Weighted-mean coverage across categories.
-        surface: Crawl-derived axis-B surface-area metrics
-            (:class:`shop_probe.surface.metrics.SurfaceMetrics`); ``None``
-            on axis-A-only runs.
+        scale: Bundle-derived scale / richness metrics
+            (:class:`shop_probe.scale.metrics.ScaleMetrics`); ``None``
+            when the rubric carries no ``type: scale`` entry.
         total_judge_cost_usd: Sum of ``judge_cost_usd`` across all
             probe results that recorded one (``None`` when no probe
             issued a judge call).
@@ -177,8 +177,8 @@ class ProbeReport(BaseModel):
     coverage_advanced: float = Field(ge=0.0, le=1.0)
     coverage_weighted: float = Field(ge=0.0, le=1.0)
 
-    # Axis B — surface area (None for axis-A-only runs)
-    surface: SurfaceMetrics | None = None
+    # Bundle-derived scale / richness (None when no scale entry in rubric)
+    scale: ScaleMetrics | None = None
 
     # Capture-judge cost rollup
     total_judge_cost_usd: float | None = Field(default=None, ge=0.0)

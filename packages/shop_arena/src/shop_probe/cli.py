@@ -1,9 +1,14 @@
 """Command-line entrypoint for ShopProbe.
 
 One subcommand, ``shop-probe eval``: takes a benchmark YAML, runs every
-target end-to-end (deterministic probes + capture-judge + surface
-metrics), writes one report per shop, then renders a comparative figure
-pair under ``<out>/figures/``.
+target end-to-end (deterministic probes + capture-judge + bundle-derived
+scale metrics), writes one report per shop, then renders a comparative
+figure pair under ``<out>/figures/``.
+
+The rubric is the single source of truth for what runs. Each entry's
+``type`` field selects the runner — ``probe`` (deterministic
+Playwright), ``capture_judge`` (one LLM call over the per-shop
+bundle), or ``scale`` (bundle-derived richness + catalog counts).
 
 Resume is per-shop. A target with an existing
 ``<out>/reports/<label>__<name>.json`` whose embedded ``rubric_hash``
@@ -30,11 +35,12 @@ from typing import Final
 from urllib.parse import urljoin
 
 from anthropic import AnthropicError
+from openai import OpenAIError
 from playwright.async_api import Page
 from pydantic import ValidationError
 
 from shop_probe import __version__
-from shop_probe.agent.judge import run_capture_judge
+from shop_probe.agent.judge import _split_provider, run_capture_judge
 from shop_probe.bench import BenchLoadError, load_bench
 from shop_probe.capture import PageBundle, capture_bundle
 from shop_probe.fidelity import BenchComparison, compute_bench_comparison
@@ -59,8 +65,8 @@ from shop_probe.report_writer import (
     render_per_shop_table,
 )
 from shop_probe.rubric import Rubric, RubricEntry, load_rubric
-from shop_probe.surface import SurfaceMetrics
-from shop_probe.surface.crawler import SurfaceCrawler
+from shop_probe.scale.computer import compute_scale_metrics
+from shop_probe.scale.metrics import ScaleMetrics
 from shop_probe.targets import Bench, Target
 
 EXIT_OK: Final[int] = 0
@@ -70,14 +76,14 @@ _PROBE_DOTTED_PREFIX: Final[str] = "probes."
 _MIN_PROBE_DOTS: Final[int] = 2
 
 _PACKAGE_RUBRIC_DIR: Final[Path] = Path(__file__).resolve().parent / "rubric"
-_RUBRIC_PATH: Final[Path] = _PACKAGE_RUBRIC_DIR / "v2.yaml"
+_RUBRIC_PATH: Final[Path] = _PACKAGE_RUBRIC_DIR / "rubric.yaml"
 """The single rubric we ship. Pinned for reproducibility."""
 
 _DISCOVERY_PROBE_ID: Final[str] = "_discover"
 _BUNDLE_SUBDIR: Final[str] = "_bundle"
 
-_DEFAULT_CAPTURE_JUDGE_MODEL: Final[str] = "claude-haiku-4-5"
-"""Default Anthropic model for the capture-judge tier."""
+_DEFAULT_CAPTURE_JUDGE_MODEL: Final[str] = "anthropic:claude-haiku-4-5"
+"""Default capture-judge model. Format: ``<provider>:<model>``."""
 
 _DEFAULT_OUT_ROOT: Final[Path] = Path("outputs/shop_probe")
 
@@ -134,14 +140,6 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     eval_parser.add_argument(
-        "--axes",
-        default="A,B",
-        help=(
-            "Comma-separated axes to run. 'A' = capability coverage, "
-            "'A,B' = coverage + crawl-derived surface metrics. Default: 'A,B'."
-        ),
-    )
-    eval_parser.add_argument(
         "--include-auth",
         action="store_true",
         default=False,
@@ -157,7 +155,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--capture-judge-model",
         default=_DEFAULT_CAPTURE_JUDGE_MODEL,
         help=(
-            "Anthropic model id for the capture-judge tier "
+            "Provider-prefixed model id for the capture-judge tier — "
+            "'anthropic:<id>' or 'openai:<id>' "
             f"(default: {_DEFAULT_CAPTURE_JUDGE_MODEL})."
         ),
     )
@@ -167,11 +166,6 @@ def _build_parser() -> argparse.ArgumentParser:
 # --------------------------------------------------------------------------- #
 # Per-shop probe execution.
 # --------------------------------------------------------------------------- #
-
-
-def _parse_axes(raw: str) -> tuple[str, ...]:
-    """Parse ``--axes`` value into a sorted, deduplicated tuple."""
-    return tuple(sorted({a.strip() for a in raw.split(",") if a.strip()}))
 
 
 def _resolve_probe(dotted: str) -> ProbeFn:
@@ -257,9 +251,9 @@ async def _run_capture_judge_entry(
             entry.capture_judge.judge_prompt,
             model=model,
         )
-    except AnthropicError as exc:
+    except (AnthropicError, OpenAIError) as exc:
         # ``run_capture_judge`` already retries 429 / 5xx / transport errors;
-        # if we still bubble out, the proxy quota is genuinely exhausted.
+        # if we still bubble out, the provider quota is genuinely exhausted.
         return ProbeOutcome(
             passed=None,
             evidence=tuple(evidence),
@@ -282,69 +276,75 @@ async def _run(
     target: Target,
     rubric: Rubric,
     evidence_root: Path,
-    run_axis_a: bool,
-    run_axis_b: bool,
     include_auth: bool,
     capture_judge_model: str,
 ) -> ProbeReport:
-    """Run the requested axes and assemble the closed :class:`ProbeReport`."""
+    """Run every selected rubric entry and assemble the closed :class:`ProbeReport`.
+
+    Each entry's ``type`` discriminator picks the runner: ``probe``
+    invokes the deterministic Playwright callable, ``capture_judge``
+    issues one LLM call over the per-shop bundle, ``scale`` rolls
+    bundle-derived stats + catalog counts into a :class:`ScaleMetrics`.
+    The 5-page bundle is captured once and reused across every entry
+    that needs it.
+    """
     started = datetime.now(UTC)
     results: list[ProbeResult] = []
-    categories: tuple[CategoryScore, ...] = ()
-    c_core = c_modern = c_advanced = c_weighted = 0.0
     chromium_version = "unknown"
+    scale: ScaleMetrics | None = None
     selected_entries = _select_rubric_entries(rubric, include_auth=include_auth)
+    needs_bundle = any(e.type in {"capture_judge", "scale"} for e in selected_entries)
 
-    if run_axis_a:
-        async with ProbeRunner(evidence_root=evidence_root) as runner:
-            chromium_version = runner.chromium_version
-            sample_collection_url, sample_product_url = await _discover_sample_urls(
-                runner, target.base_url
-            )
-            bundle: PageBundle | None = None
-            bundle_root = evidence_root / _BUNDLE_SUBDIR
-            if any(e.level == "capture_judge" for e in selected_entries):
-                bundle = await capture_bundle(
-                    runner,
-                    base_url=target.base_url,
-                    sample_collection_url=sample_collection_url,
-                    sample_product_url=sample_product_url,
-                    bundle_root=bundle_root,
-                )
-            for entry in selected_entries:
-                if entry.level == "capture_judge":
-                    assert bundle is not None, (
-                        "capture_judge entry present but bundle was never captured"
-                    )
-                    outcome = await _run_capture_judge_entry(
-                        entry,
-                        bundle=bundle,
-                        bundle_root=bundle_root,
-                        model=capture_judge_model,
-                    )
-                else:
-                    assert entry.probe is not None, (
-                        f"rubric entry {entry.id!r} has level={entry.level!r} "
-                        f"but no probe; schema validator should have caught this"
-                    )
-                    probe = _resolve_probe(entry.probe)
-                    outcome = await runner.run(
-                        probe,
-                        base_url=target.base_url,
-                        probe_id=entry.id,
-                        sample_product_url=sample_product_url,
-                        sample_collection_url=sample_collection_url,
-                    )
-                results.append(_build_probe_result(entry.id, outcome))
-        categories, c_core, c_modern, c_advanced, c_weighted = _aggregate_coverage(
-            selected_entries, results
+    async with ProbeRunner(evidence_root=evidence_root) as runner:
+        chromium_version = runner.chromium_version
+        sample_collection_url, sample_product_url = await _discover_sample_urls(
+            runner, target.base_url
         )
+        bundle: PageBundle | None = None
+        bundle_root = evidence_root / _BUNDLE_SUBDIR
+        if needs_bundle:
+            bundle = await capture_bundle(
+                runner,
+                base_url=target.base_url,
+                sample_collection_url=sample_collection_url,
+                sample_product_url=sample_product_url,
+                bundle_root=bundle_root,
+            )
+        for entry in selected_entries:
+            if entry.type == "capture_judge":
+                assert bundle is not None, (
+                    "capture_judge entry present but bundle was never captured"
+                )
+                outcome = await _run_capture_judge_entry(
+                    entry,
+                    bundle=bundle,
+                    bundle_root=bundle_root,
+                    model=capture_judge_model,
+                )
+                results.append(_build_probe_result(entry.id, outcome))
+            elif entry.type == "scale":
+                assert bundle is not None, (
+                    "scale entry present but bundle was never captured"
+                )
+                scale = compute_scale_metrics(bundle, target.data_dir)
+            else:  # probe
+                assert entry.probe is not None, (
+                    f"rubric entry {entry.id!r} has type='probe' but no probe; "
+                    "schema validator should have caught this"
+                )
+                probe = _resolve_probe(entry.probe)
+                outcome = await runner.run(
+                    probe,
+                    base_url=target.base_url,
+                    probe_id=entry.id,
+                    sample_product_url=sample_product_url,
+                    sample_collection_url=sample_collection_url,
+                )
+                results.append(_build_probe_result(entry.id, outcome))
 
-    surface: SurfaceMetrics | None = None
-    if run_axis_b:
-        async with SurfaceCrawler() as crawler:
-            surface = await crawler.crawl(target.base_url)
-
+    categories, c_core, c_modern, c_advanced, c_weighted = _aggregate_coverage(
+        selected_entries, results
+    )
     runtime = BrowserMeta(
         python_version=platform.python_version(),
         playwright_version=_safe_pkg_version("playwright"),
@@ -367,16 +367,22 @@ async def _run(
         coverage_modern=c_modern,
         coverage_advanced=c_advanced,
         coverage_weighted=c_weighted,
-        surface=surface,
+        scale=scale,
         total_judge_cost_usd=total_judge_cost_usd,
     )
 
 
 def _select_rubric_entries(rubric: Rubric, *, include_auth: bool) -> tuple[RubricEntry, ...]:
-    """Filter rubric entries by the ``--include-auth`` gate."""
+    """Filter rubric entries by the ``--include-auth`` gate.
+
+    ``type: scale`` entries carry no ``authenticated`` / ``transactional``
+    flags (rejected by the schema), so they pass through regardless.
+    """
     if include_auth:
         return rubric.entries
-    return tuple(e for e in rubric.entries if not (e.authenticated or e.transactional))
+    return tuple(
+        e for e in rubric.entries if not (e.authenticated or e.transactional)
+    )
 
 
 def _build_probe_result(probe_id: str, outcome: ProbeOutcome) -> ProbeResult:
@@ -429,7 +435,11 @@ def _aggregate_judge_cost(results: list[ProbeResult]) -> float | None:
 def _aggregate_coverage(
     entries: tuple[RubricEntry, ...], results: list[ProbeResult]
 ) -> tuple[tuple[CategoryScore, ...], float, float, float, float]:
-    """Compute per-category + per-level + weighted coverage."""
+    """Compute per-category + per-level + weighted coverage.
+
+    Only ``probe`` and ``capture_judge`` entries contribute; ``scale``
+    entries produce no :class:`ProbeResult` and are skipped.
+    """
     by_id = {r.id: r for r in results}
     by_category: dict[str, list[float]] = {}
     by_level: dict[str, list[float]] = {
@@ -440,6 +450,11 @@ def _aggregate_coverage(
     total_passed = 0.0
     total_weight = 0.0
     for entry in entries:
+        if entry.type == "scale":
+            continue
+        assert entry.category is not None and entry.level is not None and entry.weight is not None, (
+            f"rubric entry {entry.id!r}: type={entry.type!r} should have category/level/weight"
+        )
         result = by_id[entry.id]
         if result.passed is None:
             continue
@@ -448,10 +463,7 @@ def _aggregate_coverage(
         cat = by_category.setdefault(entry.category, [0.0, 0.0])
         cat[0] += passed
         cat[1] += weight
-        # ``capture_judge`` entries roll up into ``coverage_advanced``
-        # alongside deterministic-advanced probes.
-        level_bucket = "advanced" if entry.level == "capture_judge" else entry.level
-        lv = by_level[level_bucket]
+        lv = by_level[entry.level]
         lv[0] += passed
         lv[1] += weight
         total_passed += passed
@@ -524,13 +536,10 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     out_root: Path = args.out
     force: bool = args.force
 
-    axes = _parse_axes(args.axes)
-    if axes not in {("A",), ("A", "B")}:
-        print(
-            f"shop-probe: --axes={args.axes!r} not supported; "
-            "use 'A' or 'A,B'.",
-            file=sys.stderr,
-        )
+    try:
+        _split_provider(args.capture_judge_model)
+    except ValueError as err:
+        print(f"shop-probe: {err}", file=sys.stderr)
         return EXIT_USAGE
 
     try:
@@ -547,7 +556,7 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     targets: tuple[Target, ...] = (*bench.sandboxes, *bench.reals)
     print(
         f"shop-probe eval: benchmark={benchmark_path} targets={len(targets)} "
-        f"rubric={rubric.version} axes={','.join(axes)}"
+        f"rubric={rubric.version}"
     )
 
     reports_dir = out_root / _REPORTS_SUBDIR
@@ -572,8 +581,6 @@ def _cmd_eval(args: argparse.Namespace) -> int:
                         target=target,
                         rubric=rubric,
                         evidence_root=evidence_root,
-                        run_axis_a="A" in axes,
-                        run_axis_b="B" in axes,
                         include_auth=args.include_auth,
                         capture_judge_model=args.capture_judge_model,
                     )

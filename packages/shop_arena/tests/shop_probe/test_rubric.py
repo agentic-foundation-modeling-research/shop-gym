@@ -36,6 +36,7 @@ _FIXTURE_YAML: bytes = textwrap.dedent(
     version: v1-test
     entries:
       - id: product.gallery.thumbnails
+        type: probe
         category: product
         level: modern
         weight: 2
@@ -44,6 +45,7 @@ _FIXTURE_YAML: bytes = textwrap.dedent(
         authenticated: false
         transactional: false
       - id: collection.filters.sidebar
+        type: probe
         category: collection
         level: core
         weight: 3
@@ -65,6 +67,7 @@ _FIXTURE_HASH: str = hashlib.sha256(_FIXTURE_YAML).hexdigest()
 def _entry_dict(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
         "id": "product.gallery.thumbnails",
+        "type": "probe",
         "category": "product",
         "level": "modern",
         "weight": 2,
@@ -73,6 +76,36 @@ def _entry_dict(**overrides: object) -> dict[str, object]:
         "authenticated": False,
         "transactional": False,
         "capture_judge": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def _capture_judge_entry_dict(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "id": "homepage.hero.coherent",
+        "type": "capture_judge",
+        "category": "homepage",
+        "level": "advanced",
+        "weight": 2,
+        "probe": None,
+        "description": "Hero is visually coherent.",
+        "authenticated": False,
+        "transactional": False,
+        "capture_judge": {
+            "judge_prompt": "Is the hero visually coherent?",
+            "pages": ["home"],
+        },
+    }
+    base.update(overrides)
+    return base
+
+
+def _scale_entry_dict(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "id": "site.scale",
+        "type": "scale",
+        "description": "Per-page scale + catalog counts.",
     }
     base.update(overrides)
     return base
@@ -109,6 +142,88 @@ def test_rubric_entry_rejects_unknown_category() -> None:
     raw = _entry_dict(category="not-a-real-category")
     with pytest.raises(ValidationError):
         RubricEntry.model_validate(raw)
+
+
+# --------------------------------------------------------------------------- #
+# RubricEntry — per-type contract
+# --------------------------------------------------------------------------- #
+
+
+def test_probe_entry_requires_probe_field() -> None:
+    raw = _entry_dict(probe=None)
+    with pytest.raises(ValidationError, match="requires a 'probe' dotted reference"):
+        RubricEntry.model_validate(raw)
+
+
+def test_probe_entry_rejects_capture_judge_block() -> None:
+    raw = _entry_dict(
+        capture_judge={"judge_prompt": "x", "pages": ["home"]},
+    )
+    with pytest.raises(ValidationError, match="must not set 'capture_judge'"):
+        RubricEntry.model_validate(raw)
+
+
+def test_capture_judge_entry_round_trip() -> None:
+    raw = _capture_judge_entry_dict()
+    entry = RubricEntry.model_validate(raw)
+    assert entry.type == "capture_judge"
+    assert entry.capture_judge is not None
+    assert entry.capture_judge.pages == ("home",)
+
+
+def test_capture_judge_entry_requires_capture_judge_block() -> None:
+    raw = _capture_judge_entry_dict(capture_judge=None)
+    with pytest.raises(ValidationError, match="requires an inline 'capture_judge' block"):
+        RubricEntry.model_validate(raw)
+
+
+def test_capture_judge_entry_rejects_probe_field() -> None:
+    raw = _capture_judge_entry_dict(probe="probes.something")
+    with pytest.raises(ValidationError, match="must not set 'probe'"):
+        RubricEntry.model_validate(raw)
+
+
+def test_scale_entry_round_trip() -> None:
+    raw = _scale_entry_dict()
+    entry = RubricEntry.model_validate(raw)
+    assert entry.type == "scale"
+    assert entry.category is None
+    assert entry.level is None
+    assert entry.weight is None
+    assert entry.probe is None
+    assert entry.capture_judge is None
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("category", "product"),
+        ("level", "core"),
+        ("weight", 2),
+        ("probe", "probes.x"),
+        ("authenticated", False),
+        ("transactional", False),
+    ],
+)
+def test_scale_entry_rejects_disallowed_fields(field: str, value: object) -> None:
+    raw = _scale_entry_dict(**{field: value})
+    with pytest.raises(ValidationError, match=f"must not set '{field}'"):
+        RubricEntry.model_validate(raw)
+
+
+def test_scale_entry_rejects_capture_judge_block() -> None:
+    raw = _scale_entry_dict(
+        capture_judge={"judge_prompt": "x", "pages": ["home"]},
+    )
+    with pytest.raises(ValidationError, match="must not set 'capture_judge'"):
+        RubricEntry.model_validate(raw)
+
+
+def test_rubric_rejects_two_scale_entries() -> None:
+    a = RubricEntry.model_validate(_scale_entry_dict(id="site.scale.a"))
+    b = RubricEntry.model_validate(_scale_entry_dict(id="site.scale.b"))
+    with pytest.raises(ValidationError, match="at most one type='scale' entry"):
+        Rubric(version="v1", content_hash="0" * 64, entries=(a, b))
 
 
 # --------------------------------------------------------------------------- #

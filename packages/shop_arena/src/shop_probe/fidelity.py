@@ -14,14 +14,19 @@ Aggregation conventions:
 * ``coverage_weighted_mean`` — arithmetic mean of
   :attr:`~shop_probe.report.ProbeReport.coverage_weighted` across the
   group.
-* ``surface_metric_means[name]`` / ``surface_metric_envelope[name]`` —
-  per-metric mean and ``(min, max)`` envelope across the group's
-  populated :class:`~shop_probe.surface.metrics.SurfaceMetrics` rows.
+* ``scale_metric_means[name]`` / ``scale_metric_envelope[name]`` —
+  per-metric mean and ``(min, max)`` envelope across populated
+  :class:`~shop_probe.scale.metrics.ScaleMetrics` rows. ``None`` values
+  for a metric are skipped — the metric simply contributes fewer
+  samples.
 * ``coverage_gap_weighted = real.coverage_weighted_mean -
   sandbox.coverage_weighted_mean``.
-* ``surface_ratio[name] = sandbox.mean / real.mean`` per metric.
+* ``scale_ratio[name] = sandbox.mean / real.mean`` per metric, computed
+  only for metrics that have at least one sample in both groups.
 * ``sandbox_in_real_envelope[name][metric]`` — for each sandbox shop,
-  whether its per-metric value falls inside the real-group envelope.
+  whether its per-metric value falls inside the real-group envelope
+  (only metrics where both the sandbox value and the envelope are
+  populated).
 """
 
 from __future__ import annotations
@@ -31,7 +36,7 @@ from collections.abc import Sequence
 from pydantic import BaseModel, ConfigDict, Field
 
 from shop_probe.report import ProbeReport
-from shop_probe.surface.metrics import SurfaceMetrics
+from shop_probe.scale.metrics import ScaleMetrics
 from shop_probe.targets import TargetLabel
 
 
@@ -45,10 +50,11 @@ class GroupSummary(BaseModel):
             :attr:`~shop_probe.report.ProbeReport.coverage_weighted`.
         coverage_per_axis_mean: Per-category coverage mean across the
             group.
-        surface_metric_means: Per-metric mean across populated
-            :class:`SurfaceMetrics` rows.
-        surface_metric_envelope: Per-metric ``(min, max)`` envelope
-            across populated :class:`SurfaceMetrics` rows.
+        scale_metric_means: Per-metric mean across populated
+            :class:`ScaleMetrics` rows (``None`` per-metric values are
+            skipped per-sample, not per-shop).
+        scale_metric_envelope: Per-metric ``(min, max)`` envelope across
+            populated :class:`ScaleMetrics` rows (same skip semantics).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -57,8 +63,8 @@ class GroupSummary(BaseModel):
     n_shops: int = Field(ge=0)
     coverage_weighted_mean: float = Field(ge=0.0, le=1.0)
     coverage_per_axis_mean: dict[str, float]
-    surface_metric_means: dict[str, float]
-    surface_metric_envelope: dict[str, tuple[float, float]]
+    scale_metric_means: dict[str, float]
+    scale_metric_envelope: dict[str, tuple[float, float]]
 
 
 class BenchComparison(BaseModel):
@@ -71,7 +77,7 @@ class BenchComparison(BaseModel):
             sandbox.coverage_weighted_mean``.
         coverage_gap_per_axis: Per-category ``real.mean -
             sandbox.mean``.
-        surface_ratio: Per-metric ``sandbox.mean / real.mean``.
+        scale_ratio: Per-metric ``sandbox.mean / real.mean``.
         sandbox_in_real_envelope: Per-sandbox-name ``metric -> bool``
             describing whether each sandbox metric falls inside the
             real-group envelope.
@@ -83,7 +89,7 @@ class BenchComparison(BaseModel):
     real: GroupSummary
     coverage_gap_weighted: float = Field(ge=-1.0, le=1.0)
     coverage_gap_per_axis: dict[str, float]
-    surface_ratio: dict[str, float]
+    scale_ratio: dict[str, float]
     sandbox_in_real_envelope: dict[str, dict[str, bool]]
 
 
@@ -95,8 +101,8 @@ def compute_bench_comparison(
 
     Both groups must be non-empty and must agree on the set of category
     names exposed in :attr:`ProbeReport.categories`. Reports without
-    ``surface`` populated contribute to coverage but are skipped silently
-    for surface aggregates.
+    ``scale`` populated contribute to coverage but are skipped silently
+    for scale aggregates.
 
     Args:
         sandbox_reports: Reports for sandbox shops. Every entry must
@@ -143,12 +149,12 @@ def compute_bench_comparison(
         real_summary.coverage_weighted_mean - sandbox_summary.coverage_weighted_mean
     )
 
-    surface_ratio = _surface_ratio(
-        sandbox_summary.surface_metric_means,
-        real_summary.surface_metric_means,
+    scale_ratio = _scale_ratio(
+        sandbox_summary.scale_metric_means,
+        real_summary.scale_metric_means,
     )
     sandbox_in_real_envelope = _sandbox_in_real_envelope(
-        sandbox_reports, real_summary.surface_metric_envelope
+        sandbox_reports, real_summary.scale_metric_envelope
     )
 
     return BenchComparison(
@@ -156,7 +162,7 @@ def compute_bench_comparison(
         real=real_summary,
         coverage_gap_weighted=coverage_gap_weighted,
         coverage_gap_per_axis=coverage_gap_per_axis,
-        surface_ratio=surface_ratio,
+        scale_ratio=scale_ratio,
         sandbox_in_real_envelope=sandbox_in_real_envelope,
     )
 
@@ -182,16 +188,16 @@ def _summarize_group(label: TargetLabel, reports: Sequence[ProbeReport]) -> Grou
     n = len(reports)
     coverage_weighted_mean = sum(r.coverage_weighted for r in reports) / n
     coverage_per_axis_mean = _coverage_per_axis_mean(reports)
-    surfaces = tuple(r.surface for r in reports if r.surface is not None)
-    surface_metric_means, surface_metric_envelope = _surface_aggregates(surfaces)
+    scales = tuple(r.scale for r in reports if r.scale is not None)
+    scale_metric_means, scale_metric_envelope = _scale_aggregates(scales)
 
     return GroupSummary(
         label=label,
         n_shops=n,
         coverage_weighted_mean=coverage_weighted_mean,
         coverage_per_axis_mean=coverage_per_axis_mean,
-        surface_metric_means=surface_metric_means,
-        surface_metric_envelope=surface_metric_envelope,
+        scale_metric_means=scale_metric_means,
+        scale_metric_envelope=scale_metric_envelope,
     )
 
 
@@ -225,40 +231,48 @@ def _coverage_per_axis_mean(reports: Sequence[ProbeReport]) -> dict[str, float]:
     return out
 
 
-def _surface_aggregates(
-    surfaces: Sequence[SurfaceMetrics],
+def _scale_aggregates(
+    scales: Sequence[ScaleMetrics],
 ) -> tuple[dict[str, float], dict[str, tuple[float, float]]]:
-    """Per-metric mean and ``(min, max)`` envelope over populated rows."""
+    """Per-metric mean and ``(min, max)`` envelope over populated rows.
+
+    Each :class:`ScaleMetrics` field can independently be ``None`` (e.g.
+    ``catalog_products`` is ``None`` for targets without ``data_dir``).
+    A metric with no populated samples across the group is omitted from
+    the result entirely.
+    """
     means: dict[str, float] = {}
     envelope: dict[str, tuple[float, float]] = {}
-    if not surfaces:
+    if not scales:
         return means, envelope
-    for name in SurfaceMetrics.model_fields:
-        values = [float(getattr(s, name)) for s in surfaces]
+    for name in ScaleMetrics.model_fields:
+        values: list[float] = []
+        for s in scales:
+            v = getattr(s, name)
+            if v is None:
+                continue
+            values.append(float(v))
+        if not values:
+            continue
         means[name] = sum(values) / len(values)
         envelope[name] = (min(values), max(values))
     return means, envelope
 
 
-def _surface_ratio(
+def _scale_ratio(
     sandbox_means: dict[str, float],
     real_means: dict[str, float],
 ) -> dict[str, float]:
     """Per-metric ``sandbox / real`` ratio.
 
-    ``real == 0`` with ``sandbox == 0`` is parity (``1.0``); ``real == 0``
-    with ``sandbox > 0`` is undefined and raises.
+    Only metrics populated in *both* groups are emitted. ``real == 0``
+    with ``sandbox == 0`` is parity (``1.0``); ``real == 0`` with
+    ``sandbox > 0`` is undefined and raises.
     """
     if not sandbox_means or not real_means:
         return {}
-    if set(sandbox_means) != set(real_means):
-        msg = (
-            "_surface_ratio: metric set mismatch — "
-            f"sandbox has {sorted(sandbox_means)}, real has {sorted(real_means)}"
-        )
-        raise ValueError(msg)
     out: dict[str, float] = {}
-    for name in sorted(sandbox_means):
+    for name in sorted(set(sandbox_means) & set(real_means)):
         s = sandbox_means[name]
         r = real_means[name]
         if r == 0.0:
@@ -266,7 +280,7 @@ def _surface_ratio(
                 out[name] = 1.0
             else:
                 msg = (
-                    f"surface_ratio[{name!r}]: real mean is 0 but sandbox mean is "
+                    f"scale_ratio[{name!r}]: real mean is 0 but sandbox mean is "
                     f"{s}; ratio is undefined"
                 )
                 raise ValueError(msg)
@@ -281,15 +295,19 @@ def _sandbox_in_real_envelope(
 ) -> dict[str, dict[str, bool]]:
     """For each sandbox shop, whether each metric is inside the real envelope.
 
-    Sandboxes without surface metrics are excluded.
+    Sandboxes without :class:`ScaleMetrics` are excluded. Within a shop,
+    metrics where the sandbox value is ``None`` are simply skipped — the
+    other metrics still report.
     """
     out: dict[str, dict[str, bool]] = {}
     for report in sandbox_reports:
-        if report.surface is None:
+        if report.scale is None:
             continue
         metrics: dict[str, bool] = {}
         for name, (lo, hi) in real_envelope.items():
-            value = float(getattr(report.surface, name))
-            metrics[name] = lo <= value <= hi
+            value = getattr(report.scale, name)
+            if value is None:
+                continue
+            metrics[name] = lo <= float(value) <= hi
         out[report.target.name] = metrics
     return out

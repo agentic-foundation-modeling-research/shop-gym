@@ -70,7 +70,7 @@ def render_per_shop_table(
     """
     header = (
         "| Label | Name | Coverage weighted | Coverage core | "
-        "Coverage modern | In real envelope |"
+        "Coverage modern | In real envelope (scale) |"
     )
     separator = "|---|---|---:|---:|---:|---:|"
     rows = [header, separator]

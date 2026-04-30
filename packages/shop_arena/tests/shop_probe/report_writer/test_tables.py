@@ -33,8 +33,8 @@ def _summary(label: TargetLabel) -> GroupSummary:
         n_shops=2,
         coverage_weighted_mean=0.7 if label == "sandbox" else 0.85,
         coverage_per_axis_mean={"product": 0.7 if label == "sandbox" else 0.85},
-        surface_metric_means={"distinct_templates": 4.0 if label == "sandbox" else 8.0},
-        surface_metric_envelope={"distinct_templates": (3.0, 5.0)},
+        scale_metric_means={"catalog_products": 80.0 if label == "sandbox" else 160.0},
+        scale_metric_envelope={"catalog_products": (60.0, 100.0)},
     )
 
 
@@ -44,10 +44,10 @@ def _comparison() -> BenchComparison:
         real=_summary("real"),
         coverage_gap_weighted=0.15,
         coverage_gap_per_axis={"product": 0.15},
-        surface_ratio={"distinct_templates": 0.5},
+        scale_ratio={"catalog_products": 0.5},
         sandbox_in_real_envelope={
-            "shop_alpha": {"distinct_templates": True},
-            "shop_beta": {"distinct_templates": False},
+            "shop_alpha": {"catalog_products": True},
+            "shop_beta": {"catalog_products": False},
         },
     )
 
@@ -56,7 +56,7 @@ def _report(name: str, label: TargetLabel) -> ProbeReport:
     target = Target(name=name, base_url="http://localhost", label=label)
     return ProbeReport(
         target=target,
-        rubric_version="v2",
+        rubric_version="v3",
         rubric_hash=_RUBRIC_HASH,
         runner_version="0.0.0",
         runtime=_browser_meta(),
