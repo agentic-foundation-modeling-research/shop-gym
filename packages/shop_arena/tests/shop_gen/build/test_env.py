@@ -80,7 +80,7 @@ def test_clone_template_step_satisfies_step_protocol() -> None:
     assert step.inputs == []
     assert step.outputs == [Path("hydrogen") / "package.json"]
     assert step.depends_on == []
-    assert step.version == 1
+    assert step.version == 2  # noqa: PLR2004
 
 
 # --------------------------------------------------------------------------- #

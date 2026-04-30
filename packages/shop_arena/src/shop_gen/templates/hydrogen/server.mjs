@@ -5,6 +5,20 @@ import express from 'express';
 import morgan from 'morgan';
 import {createHydrogenContext, InMemoryCache} from '@shopify/hydrogen';
 
+// Load .env into process.env *before* the defaults block below seeds
+// any missing keys. shop_gen's write_env_file step (spec §5.5.1) emits
+// PUBLIC_STORE_DOMAIN with the resolved sidecar port; without this
+// load it stays undefined and the defaults block falls back to
+// localhost:4000, where nothing is listening, so every route loader's
+// Storefront API fetch fails. process.loadEnvFile is a Node built-in
+// (>=21.7.0); a missing .env is ignored so production builds and tests
+// without a .env still work via the defaults below.
+try {
+  process.loadEnvFile();
+} catch (err) {
+  if (err?.code !== 'ENOENT') throw err;
+}
+
 // Default env vars for mock API connection (can be overridden by process.env)
 const defaults = {
   SESSION_SECRET: 'mock-secret',

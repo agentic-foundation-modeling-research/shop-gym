@@ -40,7 +40,7 @@ from shop_gen.steps.base import InputRef, StepContext, StepInput
 _PHASE: Final[str] = "build"
 
 _CLONE_STEP_ID: Final[str] = "clone_template"
-_CLONE_STEP_VERSION: Final[int] = 1
+_CLONE_STEP_VERSION: Final[int] = 2
 
 _WRITE_ENV_STEP_ID: Final[str] = "write_env_file"
 _WRITE_ENV_STEP_VERSION: Final[int] = 1

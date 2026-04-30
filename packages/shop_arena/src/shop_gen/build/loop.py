@@ -44,6 +44,7 @@ Module is import-safe: no I/O, no env reads, no side effects at import.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import shutil
 from collections.abc import Sequence
@@ -124,6 +125,20 @@ _HYDROGEN_ENV: Final[Path] = _HYDROGEN_DIR / ".env"
 
 _HYDROGEN_SENTINEL: Final[Path] = _HYDROGEN_DIR / "package.json"
 """Run-relative clone sentinel that mirrors ``CloneTemplateStep``'s output."""
+
+_SOURCE_STAMP: Final[Path] = Path(".shop_gen") / "source_fingerprint"
+"""Run-relative path of the artifact tree's source-fingerprint stamp.
+
+Records a content hash of the ``<out_dir>/hydrogen/`` +
+``<out_dir>/data/`` trees at the time their copies were materialised
+under ``<run_dir>/artifact/``. ``_setup_run_dir`` compares this against
+the current hash on every invocation and rebuilds the artifact subtrees
+if they drift, so a refreshed template (e.g. after bumping
+``CloneTemplateStep.version``) actually reaches the tree the harness
+boots. Without this stamp the prior ``run_dir``-empty gate would skip
+the copy whenever the workspace had any content, and a re-run after a
+``clone_template`` rev would replay against the *old* artifact tree.
+"""
 
 _DATA_DIR: Final[Path] = Path("data")
 """Run-relative path of the assembled SandboxShop dataset."""
@@ -460,6 +475,20 @@ class RunBuildHarnessLoopStep:
         manifest *before* we add the mutable hydrogen + data trees, so
         seed-immutability checks ignore them.
 
+        On every subsequent invocation we compare the current source
+        fingerprint (a content hash of ``hydrogen_src`` + ``data_dir``)
+        against the stamp persisted at ``artifact/.shop_gen/source_fingerprint``.
+        When they match we take the fast path. When they drift —
+        because :class:`CloneTemplateStep`'s version was bumped, the
+        template was edited and re-cloned, ``assemble_data`` produced a
+        new dataset, or the stamp is missing on a workspace from before
+        this stamp existed — we wipe the artifact's ``hydrogen/`` and
+        ``data/`` subtrees and re-copy from source, then re-run
+        ``pnpm install``. Other contents under ``artifact/`` (the
+        seeded manual, ``run.json``, ``plan.md``) and the run_dir's
+        ``iters/`` tree are preserved so the executor's iteration
+        history survives a template upgrade.
+
         After the trees are in place we run ``pnpm install --ignore-workspace
         --frozen-lockfile`` inside the artifact's hydrogen tree. The vendored
         template ships a normalised ``package.json`` + ``pnpm-lock.yaml``
@@ -486,27 +515,44 @@ class RunBuildHarnessLoopStep:
                 the runner records the step ``FAILED``.
         """
         run_dir = harness_config.run_dir
+        current_fp = _compute_source_fingerprint(hydrogen_src, data_dir)
+
         if not run_dir.exists() or not any(run_dir.iterdir()):
             run_dir.mkdir(parents=True, exist_ok=True)
             workspace = Workspace.create(harness_config)
             artifact_dir = workspace.artifact_dir
-            shutil.copytree(
-                hydrogen_src,
-                artifact_dir / _HYDROGEN_DIR.name,
-                dirs_exist_ok=False,
-            )
-            shutil.copytree(
-                data_dir,
-                artifact_dir / _DATA_DIR.name,
-                dirs_exist_ok=False,
-            )
             # ``Workspace.create`` writes an empty ``plan.md``; the
             # harness then re-enters this run via ``Workspace.open``
             # which validates the plan structure. Seed a minimal
             # ``## Tasks`` heading so ``parse_plan`` accepts it; the
             # planner iteration overwrites the file with the real plan.
             workspace.plan_md.write_text(_EMPTY_PLAN_MD, encoding="utf-8")
-            self._install_artifact_deps(artifact_dir / _HYDROGEN_DIR.name)
+        else:
+            artifact_dir = run_dir / "artifact"
+            if _read_source_stamp(artifact_dir) == current_fp:
+                return self._force
+            _log.info(
+                "build artifact source-fingerprint drift detected — "
+                "rebuilding hydrogen + data subtrees under %s",
+                artifact_dir,
+            )
+            for sub in (_HYDROGEN_DIR.name, _DATA_DIR.name):
+                target = artifact_dir / sub
+                if target.exists():
+                    shutil.rmtree(target)
+
+        shutil.copytree(
+            hydrogen_src,
+            artifact_dir / _HYDROGEN_DIR.name,
+            dirs_exist_ok=False,
+        )
+        shutil.copytree(
+            data_dir,
+            artifact_dir / _DATA_DIR.name,
+            dirs_exist_ok=False,
+        )
+        self._install_artifact_deps(artifact_dir / _HYDROGEN_DIR.name)
+        _write_source_stamp(artifact_dir, current_fp)
         return self._force
 
     def _install_artifact_deps(self, hydrogen_dir: Path) -> None:
@@ -530,6 +576,58 @@ class RunBuildHarnessLoopStep:
                 f"stderr:\n{truncate_stream(completed.stderr)}",
             )
 
+
+# --------------------------------------------------------------------------- #
+# Source-fingerprint helpers
+# --------------------------------------------------------------------------- #
+
+
+def _compute_source_fingerprint(hydrogen_src: Path, data_dir: Path) -> str:
+    """Hash the content of the hydrogen + data trees deterministically.
+
+    Walks both directories in lexicographic order, mixing each file's
+    relative path and bytes into a sha256 digest. ``node_modules/`` is
+    excluded so an environmental ``pnpm install`` inside the source
+    tree does not perturb the digest. Both trees are small (~100 files
+    for hydrogen, a handful of JSON files for data); the cost is
+    negligible compared to ``pnpm install``.
+
+    Args:
+        hydrogen_src: Source hydrogen directory (``<out_dir>/hydrogen/``).
+        data_dir: Source data directory (``<out_dir>/data/``).
+
+    Returns:
+        Lowercase hex sha256 digest of the combined tree content.
+    """
+    digest = hashlib.sha256()
+    for label, root in (("hydrogen", hydrogen_src), ("data", data_dir)):
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            if "node_modules" in path.parts:
+                continue
+            digest.update(label.encode("utf-8"))
+            digest.update(b"\x00")
+            digest.update(str(path.relative_to(root)).encode("utf-8"))
+            digest.update(b"\x00")
+            digest.update(path.read_bytes())
+            digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _read_source_stamp(artifact_dir: Path) -> str | None:
+    """Return the previously persisted source fingerprint, or ``None``."""
+    stamp = artifact_dir / _SOURCE_STAMP
+    if not stamp.is_file():
+        return None
+    return stamp.read_text(encoding="utf-8").strip() or None
+
+
+def _write_source_stamp(artifact_dir: Path, fingerprint: str) -> None:
+    """Persist ``fingerprint`` to ``<artifact_dir>/.shop_gen/source_fingerprint``."""
+    stamp = artifact_dir / _SOURCE_STAMP
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(fingerprint + "\n", encoding="utf-8")
 
 # --------------------------------------------------------------------------- #
 # Defaults
