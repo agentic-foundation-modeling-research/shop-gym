@@ -73,6 +73,7 @@ def _entry_dict(**overrides: object) -> dict[str, object]:
         "authenticated": False,
         "transactional": False,
         "agent_task": None,
+        "capture_judge": None,
     }
     base.update(overrides)
     return base

@@ -38,7 +38,9 @@ from pydantic import ValidationError
 
 from shop_probe import __version__
 from shop_probe.agent.config import AgentRuntimeConfig
+from shop_probe.agent.judge import run_capture_judge
 from shop_probe.bench import load_bench
+from shop_probe.capture import PageBundle, capture_bundle
 from shop_probe.fidelity import BenchComparison, compute_bench_comparison
 from shop_probe.probes._runner import (
     PINNED_USER_AGENT,
@@ -52,6 +54,7 @@ from shop_probe.probes._runner import (
 from shop_probe.report import (
     BrowserMeta,
     CategoryScore,
+    EvidenceRef,
     ProbeReport,
     ProbeResult,
 )
@@ -82,6 +85,11 @@ _MIN_PROBE_DOTS: Final[int] = 2
 
 _PACKAGE_RUBRIC_DIR: Final[Path] = Path(__file__).resolve().parent / "rubric"
 _DISCOVERY_PROBE_ID: Final[str] = "_discover"
+_BUNDLE_SUBDIR: Final[str] = "_bundle"
+"""Directory under ``evidence_root`` for the v2 capture-judge page bundle."""
+
+_DEFAULT_CAPTURE_JUDGE_MODEL: Final[str] = "claude-opus-4-7"
+"""Default Anthropic model id for the v2 capture-judge tier."""
 
 _RERUN_SUFFIX_PREFIX: Final[str] = "__rerun"
 """Suffix prefix for raw rerun JSON files: ``<label>__<name>__rerun<N>.json``."""
@@ -206,6 +214,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     _add_agent_flags(run)
+    _add_capture_judge_flag(run)
 
     report = sub.add_parser(
         "report",
@@ -367,6 +376,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional baselines directory forwarded to the report stage.",
     )
     _add_agent_flags(eval_parser)
+    _add_capture_judge_flag(eval_parser)
     return parser
 
 
@@ -422,6 +432,23 @@ def _add_agent_flags(subparser: argparse.ArgumentParser) -> None:
         help=(
             "Model id used for the vision completion judge "
             f"(default: {_DEFAULT_AGENT_CONFIG.judge_model})."
+        ),
+    )
+
+
+def _add_capture_judge_flag(subparser: argparse.ArgumentParser) -> None:
+    """Add the v2 ``--capture-judge-model`` flag to a subcommand.
+
+    Inert when the selected rubric has no ``level: capture_judge`` entries
+    (e.g. ``v1``, ``v1.1``): the bundle is never captured and no Anthropic
+    call is issued.
+    """
+    subparser.add_argument(
+        "--capture-judge-model",
+        default=_DEFAULT_CAPTURE_JUDGE_MODEL,
+        help=(
+            "Model id for the v2 capture-judge tier "
+            f"(default: {_DEFAULT_CAPTURE_JUDGE_MODEL})."
         ),
     )
 
@@ -488,6 +515,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             include_auth=args.include_auth,
             record_har=args.record_har,
             agent_config=_build_agent_config(args),
+            capture_judge_model=args.capture_judge_model,
         )
     )
 
@@ -565,6 +593,84 @@ async def _discover_sample_urls(
     return discovered["collection"], discovered["product"]
 
 
+async def _run_capture_judge_entry(
+    entry: RubricEntry,
+    *,
+    bundle: PageBundle,
+    bundle_root: Path,
+    model: str,
+) -> ProbeOutcome:
+    """Dispatch one ``level: capture_judge`` rubric entry against the bundle.
+
+    Slices ``bundle`` by ``entry.capture_judge.pages`` and hands the
+    resulting :class:`PageCapture` tuple to
+    :func:`shop_probe.agent.judge.run_capture_judge`. When every requested
+    page is inapplicable, returns ``ProbeOutcome(passed=None, ...)``
+    ("not applicable") **without issuing an Anthropic call** so an
+    undiscovered sample URL doesn't burn API budget.
+
+    Args:
+        entry: The rubric entry; ``entry.level == "capture_judge"`` and
+            ``entry.capture_judge`` is non-None (schema-enforced).
+        bundle: The 5-page :class:`PageBundle` captured once per axis-A
+            run.
+        bundle_root: Directory under which the bundle's per-page files
+            live (``evidence_root / _BUNDLE_SUBDIR``).
+        model: Anthropic model id for the capture-judge call.
+
+    Returns:
+        A :class:`ProbeOutcome` carrying ``passed`` from the verdict (or
+        ``None`` when the slice was entirely inapplicable), the bundle's
+        screenshot + a11y references as evidence, and the judge's cost
+        and model id on ``extra``.
+    """
+    assert entry.capture_judge is not None, (
+        f"rubric entry {entry.id!r}: capture_judge level requires inline block"
+    )
+    requested = entry.capture_judge.pages
+    captures = tuple(c for p in requested if (c := bundle.get(p)) is not None)
+    applicable = tuple(c for c in captures if c.applicable)
+    evidence: list[EvidenceRef] = []
+    for capture in applicable:
+        if capture.screenshot_rel is not None:
+            evidence.append(
+                EvidenceRef(
+                    kind="screenshot",
+                    path=f"{_BUNDLE_SUBDIR}/{capture.screenshot_rel}",
+                )
+            )
+        if capture.accessibility_rel is not None:
+            evidence.append(
+                EvidenceRef(
+                    kind="a11y_snapshot",
+                    path=f"{_BUNDLE_SUBDIR}/{capture.accessibility_rel}",
+                )
+            )
+
+    if not applicable:
+        return ProbeOutcome(
+            passed=None,
+            evidence=tuple(evidence),
+            notes="bundle pages unavailable",
+        )
+
+    verdict = await run_capture_judge(
+        captures,
+        bundle_root,
+        entry.capture_judge.judge_prompt,
+        model=model,
+    )
+    return ProbeOutcome(
+        passed=verdict.passed,
+        evidence=tuple(evidence),
+        notes=verdict.reasoning,
+        extra={
+            "judge_cost_usd": verdict.cost_usd,
+            "judge_model": verdict.model_id,
+        },
+    )
+
+
 async def _run(
     *,
     target: Target,
@@ -576,6 +682,7 @@ async def _run(
     include_auth: bool = False,
     record_har: bool = False,
     agent_config: AgentRuntimeConfig | None = None,
+    capture_judge_model: str = _DEFAULT_CAPTURE_JUDGE_MODEL,
 ) -> ProbeReport:
     """Run the requested axes and assemble the closed :class:`ProbeReport`."""
     started = datetime.now(UTC)
@@ -591,6 +698,16 @@ async def _run(
             sample_collection_url, sample_product_url = await _discover_sample_urls(
                 runner, target.base_url
             )
+            bundle: PageBundle | None = None
+            bundle_root = evidence_root / _BUNDLE_SUBDIR
+            if any(e.level == "capture_judge" for e in selected_entries):
+                bundle = await capture_bundle(
+                    runner,
+                    base_url=target.base_url,
+                    sample_collection_url=sample_collection_url,
+                    sample_product_url=sample_product_url,
+                    bundle_root=bundle_root,
+                )
             for entry in selected_entries:
                 if entry.level == "agent_driven":
                     # v1.3 agent-driven dispatch (impl plan T4.1). Inline
@@ -603,6 +720,16 @@ async def _run(
                         sample_product_url=sample_product_url,
                         sample_collection_url=sample_collection_url,
                         agent_config=agent_config,
+                    )
+                elif entry.level == "capture_judge":
+                    assert bundle is not None, (
+                        "capture_judge entry present but bundle was never captured"
+                    )
+                    outcome = await _run_capture_judge_entry(
+                        entry,
+                        bundle=bundle,
+                        bundle_root=bundle_root,
+                        model=capture_judge_model,
                     )
                 else:
                     # Deterministic entries always carry a ``probe`` ref;
@@ -752,11 +879,15 @@ def _aggregate_coverage(
         cat = by_category.setdefault(entry.category, [0.0, 0.0])
         cat[0] += passed
         cat[1] += weight
-        # v1.3 ``agent_driven`` entries replace the v1.2 deterministic
-        # ``advanced`` tier and roll up into ``coverage_advanced`` so the
-        # M7 success criterion (sandbox vs. real ``coverage_advanced`` gap)
-        # is measured on the same axis as v1.2.
-        level_bucket = "advanced" if entry.level == "agent_driven" else entry.level
+        # v1.3 ``agent_driven`` and v2 ``capture_judge`` entries both
+        # roll up into ``coverage_advanced`` so the M7 success criterion
+        # (sandbox vs. real ``coverage_advanced`` gap) is measured on the
+        # same axis as the v1.2 deterministic-advanced tier.
+        level_bucket = (
+            "advanced"
+            if entry.level in {"agent_driven", "capture_judge"}
+            else entry.level
+        )
         lv = by_level[level_bucket]
         lv[0] += passed
         lv[1] += weight
@@ -1127,6 +1258,7 @@ def _cmd_eval(args: argparse.Namespace) -> int:
                 agent_step_budget=args.agent_step_budget,
                 agent_timeout_s=args.agent_timeout_s,
                 agent_judge_model=args.agent_judge_model,
+                capture_judge_model=args.capture_judge_model,
             )
             rc = _cmd_run(run_args)
             if rc != EXIT_OK:

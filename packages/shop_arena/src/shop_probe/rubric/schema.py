@@ -20,14 +20,28 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-RubricLevel = Literal["core", "modern", "advanced", "agent_driven"]
-"""Capability tier (spec §5.3, extended for v1.3 agent-driven advanced tier).
+RubricLevel = Literal["core", "modern", "advanced", "agent_driven", "capture_judge"]
+"""Capability tier (spec §5.3, extended for the v2 capture-judge tier).
 
 * ``core`` — every modern storefront has this.
 * ``modern`` — common in 2025-era themes; fidelity signal.
 * ``advanced`` — stretch behavior; deterministic Playwright probes (v1.2).
 * ``agent_driven`` — behavioural task driven by an LLM agent + LLM judge
-  via an inline ``agent_task`` block (v1.3, spec ``web_probe_v1_3_agent_driven.md``).
+  via an inline ``agent_task`` block (v1.3, retired in source order
+  alongside v1.x rubric YAMLs but kept here so existing reports parse).
+* ``capture_judge`` — structural-affordance verdict from one Anthropic
+  Messages-API call over a screenshot + accessibility-tree bundle slice
+  (v2, spec §5.3.3 + Appendix 8.4–8.5). Carries an inline
+  ``capture_judge`` block instead of a ``probe`` reference.
+"""
+
+PageRef = Literal["home", "collection", "product", "cart", "search"]
+"""Fixed 5-page surface every capture-judge entry references (spec §2).
+
+The :func:`shop_probe.capture.bundle.capture_bundle` runner captures one
+:class:`shop_probe.capture.bundle.PageCapture` per ``PageRef`` per shop.
+Each ``level: capture_judge`` rubric entry then references a subset of
+these pages via :attr:`CaptureJudgeTask.pages`.
 """
 
 RubricCategory = Literal[
@@ -89,6 +103,38 @@ class AgentTaskInline(BaseModel):
     timeout_s: int | None = Field(default=None, ge=10, le=600)
 
 
+class CaptureJudgeTask(BaseModel):
+    """Inline task definition for a ``level: capture_judge`` rubric entry.
+
+    A capture-judge entry asks the vision judge a structural-affordance
+    question over a slice of the per-shop page bundle (one screenshot +
+    accessibility tree per :class:`PageRef`). Adding a new entry is one
+    YAML edit — no Python wrapper needed.
+
+    Attributes:
+        judge_prompt: The structural-affordance question handed to the
+            judge verbatim, embedded inside the closing instruction that
+            asks for ``{"passed": bool, "reasoning": str}``.
+        pages: Subset of :data:`PageRef` (in the order the judge should
+            see them). Must be non-empty and unique. The dispatcher
+            slices the per-shop bundle by this tuple before calling
+            :func:`shop_probe.agent.judge.run_capture_judge`.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    judge_prompt: str = Field(min_length=1)
+    pages: tuple[PageRef, ...] = Field(min_length=1, max_length=5)
+
+    @model_validator(mode="after")
+    def _check_unique_pages(self) -> CaptureJudgeTask:
+        """Reject capture-judge tasks that list the same page twice."""
+        if len(set(self.pages)) != len(self.pages):
+            msg = f"capture_judge.pages must be unique, got {self.pages!r}"
+            raise ValueError(msg)
+        return self
+
+
 class RubricEntry(BaseModel):
     """One row of the capability rubric.
 
@@ -108,10 +154,14 @@ class RubricEntry(BaseModel):
         probe: Dotted Python reference to the probe callable, e.g.
             ``"probes.product.gallery_has_thumbnails"``. Required for
             deterministic entries (``core`` / ``modern`` / ``advanced``);
-            must be ``None`` for ``agent_driven`` entries — those carry an
-            inline :class:`AgentTaskInline` block on ``agent_task`` instead.
+            must be ``None`` for ``agent_driven`` and ``capture_judge``
+            entries — those carry an inline :class:`AgentTaskInline` or
+            :class:`CaptureJudgeTask` block instead.
         agent_task: Inline agent-task definition. Required for
             ``level: agent_driven`` entries; must be ``None`` otherwise.
+        capture_judge: Inline capture-judge task definition. Required
+            for ``level: capture_judge`` entries; must be ``None``
+            otherwise (spec §5.3.3).
         description: One-line human-readable description of what the
             probe asserts. Surfaces in reports and figures.
         authenticated: ``True`` if the probe requires a logged-in
@@ -132,15 +182,18 @@ class RubricEntry(BaseModel):
     authenticated: bool
     transactional: bool
     agent_task: AgentTaskInline | None = None
+    capture_judge: CaptureJudgeTask | None = None
 
     @model_validator(mode="after")
-    def _check_probe_xor_agent_task(self) -> RubricEntry:
-        """Enforce the probe / agent_task contract per ``level``.
+    def _check_probe_xor_inline_task(self) -> RubricEntry:
+        """Enforce the probe / inline-task contract per ``level``.
 
-        * ``agent_driven`` entries: ``agent_task`` is required and ``probe``
+        * ``agent_driven`` entries: ``agent_task`` is required and
+          ``probe`` / ``capture_judge`` must be ``None``.
+        * ``capture_judge`` entries: ``capture_judge`` is required and
+          ``probe`` / ``agent_task`` must be ``None``.
+        * Other levels: ``probe`` is required and both inline blocks
           must be ``None``.
-        * Other levels: ``probe`` is required and ``agent_task`` must be
-          ``None``.
         """
         if self.level == "agent_driven":
             if self.agent_task is None:
@@ -155,6 +208,31 @@ class RubricEntry(BaseModel):
                     f"'probe' (use the inline 'agent_task' block instead)"
                 )
                 raise ValueError(msg)
+            if self.capture_judge is not None:
+                msg = (
+                    f"rubric entry {self.id!r}: level='agent_driven' must not set "
+                    f"'capture_judge' (only 'capture_judge' entries carry one)"
+                )
+                raise ValueError(msg)
+        elif self.level == "capture_judge":
+            if self.capture_judge is None:
+                msg = (
+                    f"rubric entry {self.id!r}: level='capture_judge' requires an "
+                    f"inline 'capture_judge' block"
+                )
+                raise ValueError(msg)
+            if self.probe is not None:
+                msg = (
+                    f"rubric entry {self.id!r}: level='capture_judge' must not set "
+                    f"'probe' (use the inline 'capture_judge' block instead)"
+                )
+                raise ValueError(msg)
+            if self.agent_task is not None:
+                msg = (
+                    f"rubric entry {self.id!r}: level='capture_judge' must not set "
+                    f"'agent_task' (only 'agent_driven' entries carry one)"
+                )
+                raise ValueError(msg)
         else:
             if self.probe is None:
                 msg = (
@@ -166,6 +244,12 @@ class RubricEntry(BaseModel):
                 msg = (
                     f"rubric entry {self.id!r}: level={self.level!r} must not set "
                     f"'agent_task' (only 'agent_driven' entries carry one)"
+                )
+                raise ValueError(msg)
+            if self.capture_judge is not None:
+                msg = (
+                    f"rubric entry {self.id!r}: level={self.level!r} must not set "
+                    f"'capture_judge' (only 'capture_judge' entries carry one)"
                 )
                 raise ValueError(msg)
         return self

@@ -21,16 +21,25 @@ from the environment) at import time.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from anthropic import AsyncAnthropic
+from anthropic import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncAnthropic,
+    RateLimitError,
+)
 
 from shop_probe.agent.env import load_agent_env, require_anthropic_credentials
+from shop_probe.capture.bundle import PageCapture
 
 _RATE_TABLE: Final[dict[str, tuple[float, float]]] = {
     # USD per million tokens: (input, output). Source: Anthropic public
@@ -72,6 +81,21 @@ The verdict shape is two short fields (``passed`` + one-sentence
 any per-request rate limit we care about.
 """
 
+_RETRY_MAX_ATTEMPTS: Final[int] = 6
+"""Cap on Messages-API retry attempts before giving up.
+
+With :data:`_RETRY_BASE_DELAY_S` = 1.0 and :data:`_RETRY_MAX_DELAY_S` = 60,
+six attempts span ``1 + 2 + 4 + 8 + 16 + 32 ≈ 63 s`` worst-case wall time
+(plus jitter), well inside the per-call wait budget while still leaving
+upstream proxy quotas time to reset.
+"""
+
+_RETRY_BASE_DELAY_S: Final[float] = 1.0
+"""Initial backoff in seconds; doubled on each subsequent retry."""
+
+_RETRY_MAX_DELAY_S: Final[float] = 60.0
+"""Backoff cap in seconds — keeps the worst-case wait bounded."""
+
 
 @dataclass(frozen=True, slots=True)
 class JudgeVerdict:
@@ -96,6 +120,106 @@ class JudgeVerdict:
     reasoning: str
     cost_usd: float
     model_id: str
+
+
+def _retry_after_seconds(exc: BaseException) -> float | None:
+    """Extract a ``retry-after`` header (in seconds) from an Anthropic error.
+
+    The Messages API surfaces upstream rate-limit hints via the standard
+    ``Retry-After`` HTTP header (seconds, integer). Our bundled judges
+    fan out 8 calls in tight succession — when the proxy responds with a
+    cooldown, honour it instead of layering exponential backoff on top.
+
+    Returns:
+        Seconds to wait when the response carries a parseable
+        ``retry-after`` header; ``None`` otherwise.
+    """
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    raw = headers.get("retry-after") if hasattr(headers, "get") else None
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _retry_backoff(attempt: int) -> float:
+    """Compute exponential backoff with ±50% jitter for ``attempt``.
+
+    Args:
+        attempt: 0-indexed retry number. ``0`` returns the base delay,
+            ``n`` returns ``base * 2**n`` capped at the maximum.
+
+    Returns:
+        Seconds to sleep before the next attempt.
+    """
+    base = min(_RETRY_BASE_DELAY_S * (2**attempt), _RETRY_MAX_DELAY_S)
+    return base * (0.5 + random.random())
+
+
+async def _messages_create_with_retry(
+    client: AsyncAnthropic,
+    *,
+    model: str,
+    max_tokens: int,
+    messages: list[dict[str, object]],
+) -> object:
+    """Call ``client.messages.create`` with bounded exponential-backoff retry.
+
+    Retries on:
+
+    * :class:`anthropic.RateLimitError` (HTTP 429) — honours
+      ``Retry-After`` when set, falls back to exponential backoff.
+    * :class:`anthropic.APIConnectionError` and
+      :class:`anthropic.APITimeoutError` — transient transport failures.
+    * :class:`anthropic.APIStatusError` with ``status_code >= 500`` —
+      upstream gateway / model-server failures.
+
+    Other 4xx errors (auth, bad-request, forbidden) propagate
+    immediately so we don't paper over real misconfiguration.
+
+    Args:
+        client: The :class:`AsyncAnthropic` client.
+        model: Pinned model id forwarded to ``messages.create``.
+        max_tokens: Cap on the response length.
+        messages: The user-message content list.
+
+    Returns:
+        The Anthropic :class:`Message` returned by the underlying call.
+
+    Raises:
+        anthropic.AnthropicError: When every attempt is exhausted; the
+            most recent retryable exception is re-raised so the caller
+            sees the actual error from the proxy.
+    """
+    last_exc: BaseException | None = None
+    for attempt in range(_RETRY_MAX_ATTEMPTS):
+        try:
+            return await client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                messages=messages,  # type: ignore[arg-type]
+            )
+        except RateLimitError as exc:
+            last_exc = exc
+            delay = _retry_after_seconds(exc) or _retry_backoff(attempt)
+        except (APIConnectionError, APITimeoutError) as exc:
+            last_exc = exc
+            delay = _retry_backoff(attempt)
+        except APIStatusError as exc:
+            if exc.status_code < 500:  # noqa: PLR2004 — HTTP semantics
+                raise
+            last_exc = exc
+            delay = _retry_backoff(attempt)
+        if attempt + 1 == _RETRY_MAX_ATTEMPTS:
+            break
+        await asyncio.sleep(min(delay, _RETRY_MAX_DELAY_S))
+    assert last_exc is not None
+    raise last_exc
 
 
 def _encode_image(path: Path) -> dict[str, object]:
@@ -305,10 +429,193 @@ async def run_completion_judge(
         trajectory_text=trajectory_text,
         judge_prompt=judge_prompt,
     )
-    response = await client.messages.create(
+    response = await _messages_create_with_retry(
+        client,
         model=model,
         max_tokens=_MAX_OUTPUT_TOKENS,
-        messages=[{"role": "user", "content": content}],  # type: ignore[arg-type]
+        messages=[{"role": "user", "content": content}],
+    )
+
+    raw = _extract_text(response)
+    passed, reasoning, _fallback = _parse_verdict(raw)
+
+    usage = getattr(response, "usage", None)
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+    cost_usd = _compute_cost(model, input_tokens, output_tokens)
+
+    return JudgeVerdict(
+        passed=passed,
+        reasoning=reasoning,
+        cost_usd=cost_usd,
+        model_id=model,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# v2 capture-judge — one Messages-API call over a screenshot + a11y bundle.
+# --------------------------------------------------------------------------- #
+
+
+def _read_a11y_text(path: Path) -> str:
+    """Read a per-page a11y JSON file and return it as a UTF-8 string.
+
+    The bundle writes ``{"aria_snapshot": "<yaml text>"}`` JSON; we hand
+    the file contents to the judge verbatim so the model sees the same
+    bytes the bundle persisted.
+
+    Args:
+        path: Absolute path to the bundle's ``a11y.json``.
+
+    Returns:
+        The file contents as a UTF-8 string. Empty when the file is
+        missing or unreadable — the caller decides whether to drop the
+        capture or proceed with a placeholder.
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _build_capture_judge_content(
+    captures: tuple[PageCapture, ...],
+    bundle_root: Path,
+    judge_prompt: str,
+) -> list[dict[str, object]]:
+    """Assemble the Messages-API content list for one capture-judge call.
+
+    Layout (top-to-bottom — order matters because the model reads in
+    sequence; spec §Appendix 8.4):
+
+    1. For each :class:`PageCapture` in ``captures`` (already filtered
+       to ``applicable=True``):
+       a. Text label ``"<page> (<url>) — screenshot:"``.
+       b. Base64 ``image/png`` block from
+          ``bundle_root / capture.screenshot_rel``.
+       c. Text label ``"<page> accessibility tree:\\n```json\\n…\\n```"``
+          carrying the bundle's ``a11y.json`` payload verbatim.
+    2. Closing block: the rubric question + structural-affordance
+       framing + closing JSON-shape instruction.
+
+    Args:
+        captures: All applicable captures (the dispatcher filters
+            ``applicable=False`` out before calling).
+        bundle_root: Directory under which the bundle's per-page files
+            live. ``capture.screenshot_rel`` / ``capture.accessibility_rel``
+            are joined onto this root.
+        judge_prompt: The rubric entry's ``capture_judge.judge_prompt``
+            embedded verbatim.
+
+    Returns:
+        A typed content list ready for ``messages.create``.
+    """
+    content: list[dict[str, object]] = []
+    for capture in captures:
+        if capture.screenshot_rel is None or capture.accessibility_rel is None:
+            continue
+        screenshot_path = bundle_root / capture.screenshot_rel
+        a11y_path = bundle_root / capture.accessibility_rel
+        content.append(
+            {
+                "type": "text",
+                "text": f"{capture.page_ref} ({capture.url}) — screenshot:",
+            }
+        )
+        content.append(_encode_image(screenshot_path))
+        content.append(
+            {
+                "type": "text",
+                "text": (
+                    f"{capture.page_ref} accessibility tree:\n```json\n"
+                    f"{_read_a11y_text(a11y_path)}\n```"
+                ),
+            }
+        )
+    content.append(
+        {
+            "type": "text",
+            "text": (
+                f"Rubric question:\n{judge_prompt}\n\n"
+                "Decide whether the storefront exposes the affordance described "
+                "above. You are looking at static page captures — judge structural "
+                "presence, not interaction. Respond with a single-line JSON object "
+                'exactly of the form {"passed": <true|false>, "reasoning": '
+                '"<one short sentence>"}. Do not wrap the response in Markdown.'
+            ),
+        }
+    )
+    return content
+
+
+async def run_capture_judge(
+    captures: tuple[PageCapture, ...],
+    bundle_root: Path,
+    judge_prompt: str,
+    *,
+    model: str = "claude-opus-4-7",
+    client: AsyncAnthropic | None = None,
+) -> JudgeVerdict:
+    """Issue one Messages-API call over a capture-bundle slice.
+
+    For each applicable :class:`PageCapture` we attach the screenshot
+    and the aria-snapshot JSON; we then ask the judge the rubric's
+    structural-affordance question and parse the response into the
+    closed :class:`JudgeVerdict` shape.
+
+    When **every** capture in ``captures`` has ``applicable=False``,
+    the function short-circuits with
+    ``JudgeVerdict(passed=False, reasoning="bundle pages unavailable",
+    cost_usd=0.0, model_id=model)`` — **no Anthropic call is issued**.
+    The dispatcher already prefers ``passed=None`` ("not applicable")
+    in that branch and never invokes us, but we belt-and-brace here so
+    the function is safe to call directly from tests / scripts.
+
+    Args:
+        captures: Bundle slice the rubric entry asked for, in
+            :data:`PageRef` order. ``applicable=False`` rows are
+            dropped from the prompt; an entirely-inapplicable slice
+            short-circuits.
+        bundle_root: Directory under which the bundle's per-page files
+            live (typically ``evidence_root / "_bundle"``).
+        judge_prompt: The rubric entry's
+            ``CaptureJudgeTask.judge_prompt`` verbatim.
+        model: Anthropic model id (default ``"claude-opus-4-7"``).
+        client: Optional pre-built :class:`AsyncAnthropic` client; tests
+            inject a stub here. ``None`` constructs a client lazily so
+            the module stays import-safe.
+
+    Returns:
+        A populated :class:`JudgeVerdict`. ``passed`` reflects the
+        model's parsed decision (or the regex fallback when the
+        response is malformed); ``cost_usd`` projects ``usage`` via
+        :data:`_RATE_TABLE`.
+    """
+    applicable = tuple(c for c in captures if c.applicable)
+    if not applicable:
+        return JudgeVerdict(
+            passed=False,
+            reasoning="bundle pages unavailable",
+            cost_usd=0.0,
+            model_id=model,
+        )
+
+    if client is None:
+        # Lazy construction keeps this module import-safe — the
+        # ``AsyncAnthropic`` constructor reads ``ANTHROPIC_API_KEY`` /
+        # ``ANTHROPIC_BASE_URL`` from the environment. Source them from
+        # a project ``.env`` first, then fail fast with an actionable
+        # message if no credential is reachable.
+        load_agent_env()
+        require_anthropic_credentials()
+        client = AsyncAnthropic()
+
+    content = _build_capture_judge_content(applicable, bundle_root, judge_prompt)
+    response = await _messages_create_with_retry(
+        client,
+        model=model,
+        max_tokens=_MAX_OUTPUT_TOKENS,
+        messages=[{"role": "user", "content": content}],
     )
 
     raw = _extract_text(response)
