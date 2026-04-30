@@ -91,6 +91,33 @@ the URL-stripping rule, hoisted as a pure function so sibling
 primitives (`<MobileNavDrawer>`, `<FooterColumns>`) reuse it without
 re-deriving.
 
+To wrap each parent's popover in custom mega-menu chrome (eyebrow,
+"Shop all" link, column headings) without losing per-parent content,
+pass `renderChildren` and call `defaultRender()` inside it — the
+default renders `item.items` (the parent's own children) into a
+`<ul className="nav-menu-children">` that the consumer styles. The
+parent context arrives as the `item` argument; never substitute a
+module-level constant for `defaultRender()`, otherwise every tab
+shows the same flyout body:
+
+```tsx
+<NavMenu
+  menu={header.menu}
+  viewport="desktop"
+  primaryDomainUrl={header.shop.primaryDomain.url}
+  publicStoreDomain={publicStoreDomain}
+  renderChildren={(item, defaultRender) => (
+    <div className="mega-menu" data-parent={item.id}>
+      <span className="eyebrow">Shop</span>
+      <NavLink to={toLocalUrl(item.url ?? '/', /* … */)}>
+        Shop all {item.title} →
+      </NavLink>
+      {defaultRender()}
+    </div>
+  )}
+/>
+```
+
 ### `<HeaderShell>` — `app/components/HeaderShell.tsx`
 
 Presentational layout for the page header. Three slots —

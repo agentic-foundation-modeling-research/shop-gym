@@ -72,6 +72,11 @@ pre {
   white-space: pre-wrap;
 }
 
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   display: flex;
   flex-direction: column;

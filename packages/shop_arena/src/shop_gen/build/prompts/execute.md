@@ -318,6 +318,23 @@ failure (the
 `navigation_primitive_usage` verifier flags both the missing import
 and the re-derived anti-patterns). Compose the primitives instead.
 
+**Bind the mega menu (and mobile drawer panels) to `header.menu`,
+not to a static config.** Each parent tab's flyout must render *that
+parent's own children* from the Storefront menu payload — pass
+`<NavMenu>`'s `renderChildren` a wrapper that calls `defaultRender()`
+(which renders `item.items`) or read `item.items` directly inside
+the wrapper. **Do not** author a module-level `MEGA_MENU_COLUMNS` /
+`NAV_LINKS` / similar constant that lists every collection handle
+and render it for every parent. That pattern satisfies
+`nav_coverage`'s textual scan (every handle appears in source) while
+shipping the same flyout body for every tab, so hovering "Cookware"
+and "Bakeware" show identical content. If a sub-manual asks for a
+column count larger than any one parent's child set, derive the
+columns from `item.items` (e.g. `chunk(item.items, n)`) — never
+from a hard-coded list. The same rule applies to `<MobileNavDrawer>`:
+each accordion's body is its parent's `item.items`, not a shared
+global list.
+
 ---
 
 ## 4. Tool-use efficiency
