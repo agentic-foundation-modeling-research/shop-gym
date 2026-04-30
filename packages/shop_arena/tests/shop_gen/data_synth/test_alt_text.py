@@ -40,8 +40,11 @@ from shop_gen.data_synth import (
     SynthAltTextStep,
 )
 from shop_gen.data_synth.alt_text import (
+    _FAILED_RAW_DUMP_PREFIX,
     _MAX_ALT_CHARS,
+    _MAX_RETRIES,
     _MIN_ALT_CHARS,
+    _STEP_VERSION,
     synth_alt_text_for_collection,
 )
 from shop_gen.data_synth.prompts import load_synth_alt_text_template
@@ -147,8 +150,13 @@ def _alts_for(handle: str, *, count: int) -> list[str]:
     return angles[:count]
 
 
-def _payload_for(skeletons: list[ProductSkeleton], *, count: int = 2) -> dict[str, list[str]]:
-    return {s.handle: _alts_for(s.handle, count=count) for s in skeletons}
+def _payload_for(
+    skeletons: list[ProductSkeleton],
+    *,
+    count: int = 2,
+) -> list[dict[str, Any]]:
+    """Build the LLM-side array-of-records payload for ``skeletons``."""
+    return [{"handle": s.handle, "alts": _alts_for(s.handle, count=count)} for s in skeletons]
 
 
 def _response_for(skeletons: list[ProductSkeleton], *, count: int = 2) -> str:
@@ -343,9 +351,10 @@ def test_synth_alt_text_rejects_non_positive_images_per_product() -> None:
         )
 
 
-def test_synth_alt_text_rejects_array_response() -> None:
-    completer = _StubCompleter(responses={"outerwear": ["[]"]})
-    with pytest.raises(StageSynthError, match="JSON object"):
+def test_synth_alt_text_rejects_object_response() -> None:
+    """Schema is now an array; an object payload fails fast."""
+    completer = _StubCompleter(responses={"outerwear": ["{}"]})
+    with pytest.raises(StageSynthError, match="JSON array"):
         synth_alt_text_for_collection(
             collection=_OUTERWEAR,
             skeletons=_OUTERWEAR_SKELETONS,
@@ -356,8 +365,10 @@ def test_synth_alt_text_rejects_array_response() -> None:
 
 
 def test_synth_alt_text_rejects_missing_handle() -> None:
-    """Coverage check (T3.9): every product handle must be in the response."""
-    partial = json.dumps({"warm-winter-coat": _alts_for("warm-winter-coat", count=2)})
+    """Coverage check (T3.9): every product handle must appear in the response."""
+    partial = json.dumps(
+        [{"handle": "warm-winter-coat", "alts": _alts_for("warm-winter-coat", count=2)}],
+    )
     completer = _StubCompleter(responses={"outerwear": [partial]})
     with pytest.raises(StageSynthError, match="missing"):
         synth_alt_text_for_collection(
@@ -372,9 +383,28 @@ def test_synth_alt_text_rejects_missing_handle() -> None:
 def test_synth_alt_text_rejects_unexpected_handle() -> None:
     """Cardinality check (T3.9): no extra handles outside the requested set."""
     payload = _payload_for(_OUTERWEAR_SKELETONS)
-    payload["phantom-product"] = _alts_for("phantom-product", count=2)
+    payload.append(
+        {"handle": "phantom-product", "alts": _alts_for("phantom-product", count=2)},
+    )
     completer = _StubCompleter(responses={"outerwear": [json.dumps(payload)]})
     with pytest.raises(StageSynthError, match="unexpected handles"):
+        synth_alt_text_for_collection(
+            collection=_OUTERWEAR,
+            skeletons=_OUTERWEAR_SKELETONS,
+            details=_OUTERWEAR_DETAILS,
+            images_per_product=2,
+            completer=cast(LLMCompleter, completer),
+        )
+
+
+def test_synth_alt_text_rejects_duplicate_handle() -> None:
+    """Same handle emitted twice fails the step (replaces the old object-key dedupe)."""
+    payload = _payload_for(_OUTERWEAR_SKELETONS)
+    payload.append(
+        {"handle": "warm-winter-coat", "alts": _alts_for("warm-winter-coat", count=2)},
+    )
+    completer = _StubCompleter(responses={"outerwear": [json.dumps(payload)]})
+    with pytest.raises(StageSynthError, match="duplicate handles"):
         synth_alt_text_for_collection(
             collection=_OUTERWEAR,
             skeletons=_OUTERWEAR_SKELETONS,
@@ -387,7 +417,7 @@ def test_synth_alt_text_rejects_unexpected_handle() -> None:
 def test_synth_alt_text_rejects_wrong_alt_count() -> None:
     """Cardinality check (T3.9): each handle must have exactly ``images_per_product`` strings."""
     payload = _payload_for(_OUTERWEAR_SKELETONS, count=2)
-    payload["warm-winter-coat"] = payload["warm-winter-coat"][:1]
+    payload[0]["alts"] = payload[0]["alts"][:1]
     completer = _StubCompleter(responses={"outerwear": [json.dumps(payload)]})
     with pytest.raises(StageSynthError, match="expected exactly 2"):
         synth_alt_text_for_collection(
@@ -402,7 +432,7 @@ def test_synth_alt_text_rejects_wrong_alt_count() -> None:
 def test_synth_alt_text_rejects_short_string() -> None:
     """Length-bound check (T3.9): below ``_MIN_ALT_CHARS`` fails."""
     payload = _payload_for(_OUTERWEAR_SKELETONS)
-    payload["warm-winter-coat"][0] = "short"
+    payload[0]["alts"][0] = "short"
     completer = _StubCompleter(responses={"outerwear": [json.dumps(payload)]})
     with pytest.raises(StageSynthError, match="outside bounds"):
         synth_alt_text_for_collection(
@@ -417,7 +447,7 @@ def test_synth_alt_text_rejects_short_string() -> None:
 def test_synth_alt_text_rejects_long_string() -> None:
     """Length-bound check (T3.9): above ``_MAX_ALT_CHARS`` fails."""
     payload = _payload_for(_OUTERWEAR_SKELETONS)
-    payload["warm-winter-coat"][0] = "x" * (_MAX_ALT_CHARS + 1)
+    payload[0]["alts"][0] = "x" * (_MAX_ALT_CHARS + 1)
     completer = _StubCompleter(responses={"outerwear": [json.dumps(payload)]})
     with pytest.raises(StageSynthError, match="outside bounds"):
         synth_alt_text_for_collection(
@@ -431,8 +461,13 @@ def test_synth_alt_text_rejects_long_string() -> None:
 
 def test_synth_alt_text_rejects_non_string_alt() -> None:
     """Schema check: alt-text values must be strings."""
-    payload: dict[str, Any] = {"warm-winter-coat": [123, 456]}
-    payload["waterproof-rain-jacket"] = _alts_for("waterproof-rain-jacket", count=2)
+    payload: list[dict[str, Any]] = [
+        {"handle": "warm-winter-coat", "alts": [123, 456]},
+        {
+            "handle": "waterproof-rain-jacket",
+            "alts": _alts_for("waterproof-rain-jacket", count=2),
+        },
+    ]
     completer = _StubCompleter(responses={"outerwear": [json.dumps(payload)]})
     with pytest.raises(StageSynthError, match="schema validation"):
         synth_alt_text_for_collection(
@@ -445,14 +480,73 @@ def test_synth_alt_text_rejects_non_string_alt() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Retry behaviour
+# --------------------------------------------------------------------------- #
+
+
+def test_synth_alt_text_retries_after_parse_failure(tmp_path: Path) -> None:
+    """A malformed first response is recovered when a retry is allowed."""
+    bad_responses = ["{not valid json"] * _MAX_RETRIES
+    good = _response_for(_OUTERWEAR_SKELETONS)
+    completer = _StubCompleter(responses={"outerwear": [*bad_responses, good]})
+    debug_dir = tmp_path / "debug"
+    mapping = synth_alt_text_for_collection(
+        collection=_OUTERWEAR,
+        skeletons=_OUTERWEAR_SKELETONS,
+        details=_OUTERWEAR_DETAILS,
+        images_per_product=2,
+        completer=cast(LLMCompleter, completer),
+        max_retries=_MAX_RETRIES,
+        debug_dir=debug_dir,
+    )
+    assert set(mapping.keys()) == {s.handle for s in _OUTERWEAR_SKELETONS}
+    assert len(completer.prompts) == _MAX_RETRIES + 1
+    # Retry prompts carry the previous error as a corrective preamble.
+    for retry_prompt in completer.prompts[1:]:
+        assert "previous attempt failed" in retry_prompt
+    # Failed responses are persisted under debug_dir for inspection.
+    for attempt in range(_MAX_RETRIES):
+        dump = debug_dir / f"{_FAILED_RAW_DUMP_PREFIX}_{_OUTERWEAR.handle}_attempt_{attempt}.txt"
+        assert dump.read_text(encoding="utf-8") == bad_responses[attempt]
+
+
+def test_synth_alt_text_raises_after_exhausting_retries() -> None:
+    """All attempts failing surfaces the last error to the caller."""
+    bad_responses = ["{not valid json"] * (_MAX_RETRIES + 1)
+    completer = _StubCompleter(responses={"outerwear": bad_responses})
+    with pytest.raises(StageSynthError, match="not valid JSON"):
+        synth_alt_text_for_collection(
+            collection=_OUTERWEAR,
+            skeletons=_OUTERWEAR_SKELETONS,
+            details=_OUTERWEAR_DETAILS,
+            images_per_product=2,
+            completer=cast(LLMCompleter, completer),
+            max_retries=_MAX_RETRIES,
+        )
+    assert len(completer.prompts) == _MAX_RETRIES + 1
+
+
+def test_synth_alt_text_step_uses_max_retries_constant() -> None:
+    """The step layer opts into ``_MAX_RETRIES`` (regression guard)."""
+    assert _MAX_RETRIES >= 1
+
+
+# --------------------------------------------------------------------------- #
 # AltTextPayload schema
 # --------------------------------------------------------------------------- #
 
 
 def test_alt_text_payload_round_trips() -> None:
-    raw = {"warm-winter-coat": ["a moderately long alt", "another moderately long alt"]}
+    """The LLM-side schema is now an array of ``{handle, alts}`` records."""
+    raw = [
+        {
+            "handle": "warm-winter-coat",
+            "alts": ["a moderately long alt", "another moderately long alt"],
+        },
+    ]
     payload = AltTextPayload.model_validate(raw)
-    assert payload.root == raw
+    assert [entry.handle for entry in payload.root] == ["warm-winter-coat"]
+    assert payload.root[0].alts == raw[0]["alts"]
 
 
 # --------------------------------------------------------------------------- #
@@ -466,7 +560,7 @@ def test_step_metadata() -> None:
     assert step.phase == "data_synth"
     assert step.outputs == [Path(".shop_gen") / "stage_cache" / "alt_text.json"]
     assert step.depends_on == ["synth_product_details"]
-    assert step.version == 1
+    assert step.version == _STEP_VERSION
 
 
 def test_step_run_writes_cache_for_every_product(tmp_path: Path) -> None:

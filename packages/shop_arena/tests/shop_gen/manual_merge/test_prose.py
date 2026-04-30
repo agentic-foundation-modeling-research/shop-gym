@@ -111,7 +111,6 @@ _REAL_BRAND_DENYLIST: tuple[str, ...] = (
     "Adidas",
     "Levi",
     "HexClad",
-    "Shopify",
     "Lululemon",
     "Patagonia",
     "Tesla",

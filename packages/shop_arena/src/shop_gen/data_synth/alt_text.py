@@ -31,10 +31,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Final, cast
 
-from pydantic import RootModel, ValidationError
+from pydantic import BaseModel, ConfigDict, RootModel, ValidationError
 
 from harness.runtimes import LLMCompleter
-from shop_gen.data_synth._synth_helpers import StageSynthError, parse_json_object
+from shop_gen.data_synth._synth_helpers import StageSynthError, parse_json_array
 from shop_gen.data_synth.collections import CollectionDraft
 from shop_gen.data_synth.details import ProductDetail
 from shop_gen.data_synth.prompts import load_synth_alt_text_template
@@ -44,7 +44,10 @@ from shop_gen.steps.base import InputRef, StepContext, StepInput
 _PHASE: Final[str] = "data_synth"
 _STEP_ID: Final[str] = "synth_alt_text"
 _UPSTREAM_ID: Final[str] = "synth_product_details"
-_STEP_VERSION: Final[int] = 1
+_STEP_VERSION: Final[int] = 2
+"""Bumped to 2 in T3.9.1 when the LLM output schema flipped from
+``{handle: [alts]}`` to ``[{handle, alts}]``. The cached file shape is
+unchanged; the bump invalidates stale caches written by version 1."""
 
 _OUT_ALT_TEXT: Final[Path] = Path(".shop_gen") / "stage_cache" / "alt_text.json"
 _IN_DETAILS_MANIFEST: Final[Path] = Path(".shop_gen") / "stage_cache" / "details" / "_manifest.json"
@@ -67,21 +70,45 @@ _MAX_ALT_CHARS: Final[int] = 200
 reject the field (storefront alt-text limit is 512; we keep
 a tighter budget so the prompt encourages concise descriptions)."""
 
+_MAX_RETRIES: Final[int] = 1
+"""One re-prompt allowed per collection on parse / schema / coverage
+failure. Mirrors the per-row retry budget in
+``synth_product_details`` (spec §5.3 "Schema strictness vs. LLM drift")."""
+
+_FAILED_RAW_DUMP_PREFIX: Final[str] = "_failed"
+"""Filename prefix for raw LLM responses persisted on retryable failure."""
+
 
 # --------------------------------------------------------------------------- #
-# Cached payload shape
+# LLM payload shape (transformed before caching)
 # --------------------------------------------------------------------------- #
 
 
-class AltTextPayload(RootModel[dict[str, list[str]]]):
-    """``{handle: [alt, alt, ...]}`` mapping authored by ``synth_alt_text``.
+class _AltTextEntry(BaseModel):
+    """One entry of the LLM-emitted alt-text array.
 
-    The terminal :func:`assemble_data` step (T3.11) reads this file and
-    pairs each alt-text string with the matching
-    :class:`~shop_gen.data_synth.schema.ProductImage` ``alt`` field on
-    the final ``products.json``. The mapping is keyed by product
-    ``handle`` so it remains stable across collection renames.
-    """
+    The LLM emits a JSON array of these records, one per product.
+    Modelling each entry as a fixed-schema object — with both ``handle``
+    and ``alts`` in *value* position — sidesteps the duplicate-key drift
+    that previously plagued an object-keyed-by-handle output (see
+    :data:`_STEP_VERSION` history). The array is transformed into the
+    public ``{handle: [alts]}`` mapping by
+    :func:`_validate_response` before it leaves the module."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    handle: str
+    alts: list[str]
+
+
+class AltTextPayload(RootModel[list[_AltTextEntry]]):
+    """Validated LLM-side payload: an array of ``{handle, alts}`` records.
+
+    The cached ``alt_text.json`` on disk keeps its historical
+    ``{handle: [alt, alt, ...]}`` mapping shape so downstream consumers
+    (:func:`gen_images`, :func:`assemble_data`) and the terminal
+    :class:`~shop_gen.data_synth.schema.ProductImage` ``alt`` field need
+    no changes. The conversion happens in :func:`_validate_response`."""
 
 
 # --------------------------------------------------------------------------- #
@@ -96,13 +123,15 @@ def synth_alt_text_for_collection(
     details: list[ProductDetail],
     images_per_product: int,
     completer: LLMCompleter,
+    max_retries: int = 0,
+    debug_dir: Path | None = None,
 ) -> dict[str, list[str]]:
     """Synthesize alt-text strings for one collection's products.
 
-    Issues exactly one LLM completion with the merged skeleton + detail
-    payload for every product in the collection, parses the response
-    into a JSON object, and validates it against
-    :class:`AltTextPayload`. The function then enforces:
+    Issues an LLM completion with the merged skeleton + detail payload
+    for every product in the collection, parses the response into a
+    JSON object, and validates it against :class:`AltTextPayload`. The
+    function then enforces:
 
     * Coverage — every product handle in ``skeletons`` is a key of the
       response (no missing handles, no extra handles).
@@ -110,6 +139,14 @@ def synth_alt_text_for_collection(
       strings.
     * Length bounds — every string's length is in
       ``[_MIN_ALT_CHARS, _MAX_ALT_CHARS]``.
+
+    On any :class:`StageSynthError` from parse, schema, coverage, or
+    length validation, the call retries up to ``max_retries`` times.
+    Each retry passes the previous error message back to the model as
+    a corrective hint so the LLM can self-correct (truncated JSON,
+    missing handle, overlong string, etc.). Raw responses for failing
+    attempts are persisted to ``debug_dir`` when set, mirroring the
+    pattern in :func:`synth_product_details_for_collection`.
 
     Args:
         collection: The :class:`CollectionDraft` whose products are
@@ -123,13 +160,23 @@ def synth_alt_text_for_collection(
             product (mirrors :attr:`ShopGenConfig.catalog.images_per_product`).
         completer: One-shot LLM completer (typically the runtime's
             :class:`~harness.runtimes.LLMCompleter`).
+        max_retries: Number of additional attempts allowed on a
+            :class:`StageSynthError`. ``0`` (default) preserves the
+            original single-shot behaviour for callers that don't want
+            extra LLM cost; the step layer opts into ``_MAX_RETRIES``.
+        debug_dir: When set, raw LLM responses for attempts that fail
+            validation are persisted under
+            ``<debug_dir>/_failed_<collection>_attempt_<n>.txt`` before
+            the next attempt (or the final raise). ``None`` (default)
+            suppresses the dump.
 
     Returns:
         ``{handle: [alt_1, alt_2, ...]}`` for every skeleton in
         ``skeletons``.
 
     Raises:
-        StageSynthError: ``skeletons`` is empty, the response cannot be
+        StageSynthError: ``skeletons`` is empty, ``images_per_product``
+            is non-positive, or the final attempt's response cannot be
             parsed, fails the schema, omits a handle, has an unexpected
             length, or includes an out-of-bounds string.
     """
@@ -142,49 +189,129 @@ def synth_alt_text_for_collection(
         raise StageSynthError(
             f"{_STEP_ID}: images_per_product must be positive, got {images_per_product}",
         )
-    raw = _run_completion(
-        collection=collection,
-        skeletons=skeletons,
-        details=details,
-        images_per_product=images_per_product,
-        completer=completer,
-    )
-    payload = parse_json_object(raw, step_id=_STEP_ID)
+    previous_error: str | None = None
+    for attempt in range(max_retries + 1):
+        raw = _run_completion(
+            collection=collection,
+            skeletons=skeletons,
+            details=details,
+            images_per_product=images_per_product,
+            completer=completer,
+            previous_error=previous_error,
+        )
+        try:
+            return _validate_response(
+                raw,
+                collection=collection,
+                skeletons=skeletons,
+                images_per_product=images_per_product,
+            )
+        except StageSynthError as exc:
+            _dump_failed_response(
+                raw,
+                debug_dir=debug_dir,
+                collection_handle=collection.handle,
+                attempt=attempt,
+            )
+            if attempt < max_retries:
+                previous_error = str(exc)
+                continue
+            raise
+    # ``range(max_retries + 1)`` is non-empty for any non-negative
+    # ``max_retries``, so the loop above always either returns or raises.
+    raise AssertionError("unreachable: retry loop exited without return or raise")
+
+
+def _validate_response(
+    raw: str,
+    *,
+    collection: CollectionDraft,
+    skeletons: list[ProductSkeleton],
+    images_per_product: int,
+) -> dict[str, list[str]]:
+    """Parse + schema + coverage + length checks for one LLM response.
+
+    The LLM emits a JSON array of ``{handle, alts}`` records (one per
+    product). This function parses the array, runs schema +
+    duplicate-handle + coverage + cardinality + length validation,
+    then transforms the array into the ``{handle: [alts]}`` mapping
+    that the cached ``alt_text.json`` and downstream consumers expect.
+    Raises :class:`StageSynthError` on any failure so the caller can
+    decide whether to retry.
+    """
+    payload = parse_json_array(raw, step_id=_STEP_ID)
     try:
         validated = AltTextPayload.model_validate(payload)
     except ValidationError as exc:
         raise StageSynthError(
             f"{_STEP_ID}: response failed AltTextPayload schema validation: {exc}",
         ) from exc
-    mapping = validated.root
+    entries = validated.root
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for entry in entries:
+        if entry.handle in seen:
+            duplicates.append(entry.handle)
+        seen.add(entry.handle)
+    if duplicates:
+        raise StageSynthError(
+            f"{_STEP_ID}: collection {collection.handle!r} response has "
+            f"duplicate handles: {sorted(set(duplicates))}",
+        )
     expected = {s.handle for s in skeletons}
-    missing = expected - mapping.keys()
+    missing = expected - seen
     if missing:
         raise StageSynthError(
             f"{_STEP_ID}: collection {collection.handle!r} response missing "
             f"alt-text for handles: {sorted(missing)}",
         )
-    extra = mapping.keys() - expected
+    extra = seen - expected
     if extra:
         raise StageSynthError(
             f"{_STEP_ID}: collection {collection.handle!r} response has "
             f"unexpected handles: {sorted(extra)}",
         )
-    for handle, alts in mapping.items():
-        if len(alts) != images_per_product:
+    for entry in entries:
+        if len(entry.alts) != images_per_product:
             raise StageSynthError(
-                f"{_STEP_ID}: handle {handle!r} has {len(alts)} alt-text "
+                f"{_STEP_ID}: handle {entry.handle!r} has {len(entry.alts)} alt-text "
                 f"strings; expected exactly {images_per_product}",
             )
-        for index, alt in enumerate(alts):
+        for index, alt in enumerate(entry.alts):
             if not _MIN_ALT_CHARS <= len(alt) <= _MAX_ALT_CHARS:
                 raise StageSynthError(
-                    f"{_STEP_ID}: handle {handle!r} alt[{index}] length "
+                    f"{_STEP_ID}: handle {entry.handle!r} alt[{index}] length "
                     f"{len(alt)} outside bounds "
                     f"[{_MIN_ALT_CHARS}, {_MAX_ALT_CHARS}]",
                 )
-    # Preserve the input skeleton order.
-    return {s.handle: mapping[s.handle] for s in skeletons}
+    # Transform array → {handle: [alts]} mapping, preserving input order.
+    by_handle: dict[str, list[str]] = {entry.handle: list(entry.alts) for entry in entries}
+    return {s.handle: by_handle[s.handle] for s in skeletons}
+
+
+def _dump_failed_response(
+    raw: str,
+    *,
+    debug_dir: Path | None,
+    collection_handle: str,
+    attempt: int,
+) -> None:
+    """Persist a failing LLM response so the caller can inspect it.
+
+    Best-effort: ``debug_dir=None`` and any :class:`OSError` during the
+    write are swallowed. The original :class:`StageSynthError` is the
+    source of truth for the step failure — a missing debug artefact must
+    not mask it.
+    """
+    if debug_dir is None:
+        return
+    filename = f"{_FAILED_RAW_DUMP_PREFIX}_{collection_handle}_attempt_{attempt}.txt"
+    try:
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        (debug_dir / filename).write_text(raw, encoding="utf-8")
+    except OSError:
+        # Never let a debug-side failure shadow the real validation error.
+        return
 
 
 def _run_completion(
@@ -194,8 +321,16 @@ def _run_completion(
     details: list[ProductDetail],
     images_per_product: int,
     completer: LLMCompleter,
+    previous_error: str | None = None,
 ) -> str:
-    """Render the per-collection prompt and return the raw LLM response."""
+    """Render the per-collection prompt and return the raw LLM response.
+
+    When ``previous_error`` is set, a brief corrective preamble is
+    prepended to the prompt so the model can fix the specific failure
+    (e.g. unescaped quote, missing handle, overlong string) on the
+    retry. Mirrors the re-prompt feedback pattern in
+    :func:`synth_product_details_for_collection`.
+    """
     products = _merge_skeletons_with_details(skeletons=skeletons, details=details)
     prompt = load_synth_alt_text_template().format(
         collection=json.dumps(collection.model_dump(mode="json"), indent=2, sort_keys=True),
@@ -204,6 +339,14 @@ def _run_completion(
         min_chars=_MIN_ALT_CHARS,
         max_chars=_MAX_ALT_CHARS,
     )
+    if previous_error is not None:
+        prompt = (
+            "Your previous attempt failed validation with this error:\n"
+            f"  {previous_error}\n"
+            "Re-emit the JSON object from scratch, fixing the specific "
+            "problem above. Output JSON only — no commentary, no code "
+            "fences, no trailing prose.\n\n" + prompt
+        )
     return completer.complete(prompt, timeout=_LLM_TIMEOUT_S)
 
 
@@ -315,6 +458,11 @@ class SynthAltTextStep:
         skeletons_by_collection = _group_by_collection(skeletons, collections=collections)
 
         images_per_product = ctx.config.catalog.images_per_product
+        # Persist raw responses for failing attempts under a sibling
+        # debug dir so the user can inspect malformed payloads without
+        # re-running the whole step. Mirrors
+        # ``synth_product_details``'s ``debug_dir`` convention.
+        debug_dir = ctx.out_dir / _OUT_ALT_TEXT.parent / "alt_text_debug"
 
         results: dict[str, dict[str, list[str]]] = {}
         with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
@@ -326,6 +474,8 @@ class SynthAltTextStep:
                     details=details_by_collection.get(collection.handle, []),
                     images_per_product=images_per_product,
                     completer=ctx.runtime,
+                    max_retries=_MAX_RETRIES,
+                    debug_dir=debug_dir,
                 ): collection.handle
                 for collection in collections
             }

@@ -12,10 +12,7 @@ Owners: ShopBackend
 
 `shop_backend` is the runtime that backs every SandboxShop instance.
 Given a directory of synthesized JSON files (the SandboxShop dataset),
-it exposes a graphql-yoga server whose schema, types, and resolver
-behavior mirror the live [Shopify Storefront
-API](https://shopify.dev/docs/api/storefront) closely enough that an
-agent or storefront client can talk to it as if it were a real shop.
+it exposes a graphql-yoga server hosting sandbox shop's data.
 
 Two design choices define the module:
 

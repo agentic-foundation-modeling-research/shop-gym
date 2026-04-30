@@ -31,10 +31,16 @@ The products in this collection (skeleton + detail merged) are:
 {products}
 ```
 
-Output one JSON object whose keys are the product handles listed above
-(every handle must be present, no extra keys) and whose values are
-arrays of exactly {images_per_product} alt-text strings, in display
-order. Each string has these constraints:
+Output one JSON array containing exactly one object per product handle
+listed above (every handle must appear, no extras). Each object has
+exactly two fields and nothing else:
+
+- ``handle``: the product handle, copied verbatim from the products
+  list above.
+- ``alts``: an array of exactly {images_per_product} alt-text strings,
+  in display order.
+
+Each alt-text string has these constraints:
 
 - **Length**: between {min_chars} and {max_chars} characters
   (inclusive). Short alt text fails screen readers; long alt text
@@ -46,18 +52,21 @@ order. Each string has these constraints:
   trademarks, NO model numbers, NO real-world companies or
   jurisdictions.
 - **Distinct**: the {images_per_product} strings for one product
-  must each describe a different shot — e.g. "front view on a wooden
-  bench", "close-up of the stitched seam", "draped across a chair
-  back". Do not repeat one description with minor punctuation
-  differences.
-- **No HTML, no markdown, no emoji, no quote-escapes inside the
-  string.**
+  must each describe a different shot — e.g. front view on a wooden
+  bench, close-up of the stitched seam, draped across a chair back.
+  Do not repeat one description with minor punctuation differences.
+- **No HTML, no markdown, no emoji.** Do not put any double-quote
+  character (``"``) inside the alt-text value — it breaks JSON
+  parsing. Use plain words only. If you would normally quote a
+  phrase, drop the quotes.
 
 Rules:
 
 - Output JSON only. No markdown code fences, no commentary, no
   trailing prose.
 - Cover every product handle. Missing handles fail the step.
-- Do not invent extra handles. Extra keys fail the step.
+- Do not invent extra handles. Extra entries fail the step.
+- Each handle appears **exactly once** in the output array. Duplicate
+  handles fail the step.
 
 {brand_safety}

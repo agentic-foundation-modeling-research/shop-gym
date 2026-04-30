@@ -99,9 +99,27 @@ def _decode_json(body: str, *, step_id: str) -> Any:
     try:
         return json.loads(body)
     except json.JSONDecodeError as exc:
+        snippet = _error_snippet(body, exc.pos)
         raise StageSynthError(
-            f"{step_id}: LLM response is not valid JSON: {exc}",
+            f"{step_id}: LLM response is not valid JSON: {exc}; context: {snippet}",
         ) from exc
+
+
+def _error_snippet(body: str, pos: int, *, radius: int = 60) -> str:
+    """Return ``body[pos-radius:pos+radius]`` with the offending byte marked.
+
+    Used to enrich :class:`json.JSONDecodeError` messages so a stage
+    failure shows what the LLM actually emitted around the offending
+    position. The marker is ``>>><<<`` placed around ``body[pos]``.
+    """
+    start = max(0, pos - radius)
+    end = min(len(body), pos + radius)
+    if pos < 0 or pos >= len(body):
+        return repr(body[start:end])
+    before = body[start:pos]
+    here = body[pos]
+    after = body[pos + 1 : end]
+    return repr(f"{before}>>>{here}<<<{after}")
 
 
 __all__ = [

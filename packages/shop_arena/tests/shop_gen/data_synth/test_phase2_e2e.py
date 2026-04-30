@@ -333,7 +333,9 @@ def _alt_for(handle: str) -> list[str]:
 
 
 _ALT_TEXT_RESPONSE_BY_COLLECTION: dict[str, str] = {
-    handle: json.dumps({s["handle"]: _alt_for(s["handle"]) for s in skeletons})
+    handle: json.dumps(
+        [{"handle": s["handle"], "alts": _alt_for(s["handle"])} for s in skeletons],
+    )
     for handle, skeletons in _SKELETONS_BY_COLLECTION.items()
 }
 
