@@ -31,6 +31,7 @@ module import time).
 
 from __future__ import annotations
 
+import shutil
 from functools import cache
 from pathlib import Path
 from typing import Final
@@ -42,6 +43,7 @@ _EXECUTE_FILE: Final[str] = "execute.md"
 _QUALITY_JUDGE_FILE: Final[str] = "quality_judge.md"
 _CROSS_TASK_CONSISTENCY_FILE: Final[str] = "cross_task_consistency.md"
 _VISUAL_JUDGE_FILE: Final[str] = "visual_judge.md"
+_FIXES_DIRNAME: Final[str] = "fixes"
 
 VERIFIER_FEEDBACK_PLACEHOLDER: Final[str] = "{{verifier_feedback}}"
 """The placeholder the harness renders with verifier feedback (verifiers spec §5.5).
@@ -181,6 +183,36 @@ def load_visual_judge_prompt() -> str:
     return _read_prompt_file(_VISUAL_JUDGE_FILE)
 
 
+def copy_fixes_into(prompts_dir: Path) -> None:
+    """Side-copy ``prompts/fixes/`` into the harness workspace's prompts dir.
+
+    The executor body (``execute.md`` §2 step 5) instructs the agent to
+    read ``prompts/fixes/common.md`` and ``prompts/fixes/<task_id>.md``
+    after picking its task. The harness's :meth:`Workspace.create` only
+    materialises the two files carried in the in-memory
+    :class:`Prompts` struct (``planner.md`` + ``execute.md``); this
+    helper copies the per-task fix tree alongside them so the executor
+    can resolve those paths from the run directory at runtime.
+
+    Idempotent: if the target ``fixes/`` directory already exists, the
+    call is a no-op so resume paths do not collide. If the source
+    ``fixes/`` directory is missing (e.g. an older build of the
+    package without the fix tree), the call is also a no-op — the
+    executor's read instruction tolerates a missing per-task file.
+
+    Args:
+        prompts_dir: The harness's ``<run_dir>/prompts/`` directory,
+            already created by :meth:`harness.workspace.Workspace.create`.
+    """
+    target = prompts_dir / _FIXES_DIRNAME
+    if target.exists():
+        return
+    source = _PROMPTS_DIR / _FIXES_DIRNAME
+    if not source.is_dir():
+        return
+    shutil.copytree(source, target)
+
+
 def _read_prompt_file(name: str) -> str:
     """Read ``<prompts dir>/<name>`` as UTF-8 text."""
     return (_PROMPTS_DIR / name).read_text(encoding="utf-8")
@@ -188,6 +220,7 @@ def _read_prompt_file(name: str) -> str:
 
 __all__ = [
     "VERIFIER_FEEDBACK_PLACEHOLDER",
+    "copy_fixes_into",
     "load_agents_md",
     "load_cross_task_consistency_prompt",
     "load_execute_prompt",

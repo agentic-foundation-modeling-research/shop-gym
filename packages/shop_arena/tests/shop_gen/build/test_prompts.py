@@ -13,12 +13,14 @@ spawn an LLM client and never load runtime config.
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Final
 
 import pytest
 
 from shop_gen.build.prompts import (
     VERIFIER_FEEDBACK_PLACEHOLDER,
+    copy_fixes_into,
     load_agents_md,
     load_cross_task_consistency_prompt,
     load_execute_prompt,
@@ -240,3 +242,72 @@ def test_visual_judge_prompt_calls_out_pre_filtered_capability_slice() -> None:
         "visual_judge.md must reference the page-bucket axis so the "
         "agent understands why the slice is narrow (spec §9.2)."
     )
+
+
+# ---------------------------------------------------------------------------
+# `prompts/fixes/` — per-task pitfall + reuse rules read by the executor at
+# task-start (execute.md §2 step 5).
+# ---------------------------------------------------------------------------
+
+# The fix files we expect on disk. ``common.md`` is read by every task; the
+# per-task files are read only when the executor's task id matches.
+_REQUIRED_FIX_FILES: Final[tuple[str, ...]] = (
+    "common.md",
+    "gen_navigation.md",
+    "gen_homepage.md",
+    "gen_collections.md",
+    "gen_product.md",
+    "gen_cart_search.md",
+)
+
+
+def test_execute_prompt_points_executor_at_fixes_dir() -> None:
+    """`execute.md` must instruct the executor to read `prompts/fixes/`.
+
+    Without this pointer the per-task fix files stay on disk and never
+    enter the executor's context. The exact wording is allowed to drift
+    — what matters is that the path is named.
+    """
+    body = load_execute_prompt()
+    assert "prompts/fixes/common.md" in body, (
+        "execute.md must instruct the executor to read "
+        "`prompts/fixes/common.md` (the cross-cutting rule file)."
+    )
+    assert "prompts/fixes/<task_id>.md" in body, (
+        "execute.md must instruct the executor to read "
+        "`prompts/fixes/<task_id>.md` after picking its task."
+    )
+
+
+def test_copy_fixes_into_materialises_per_task_files(tmp_path: Path) -> None:
+    """`copy_fixes_into` must materialise the canonical fix tree in the target dir.
+
+    Doubles as the source-side assertion: a missing or empty file in
+    the package's `prompts/fixes/` directory would surface here as a
+    missing or empty file in the copy target.
+    """
+    target_prompts = tmp_path / "prompts"
+    target_prompts.mkdir()
+    copy_fixes_into(target_prompts)
+
+    fixes_dir = target_prompts / "fixes"
+    assert fixes_dir.is_dir(), "fixes/ subdir must be created under prompts/"
+    for name in _REQUIRED_FIX_FILES:
+        path = fixes_dir / name
+        assert path.is_file(), f"prompts/fixes/{name} not copied"
+        assert path.read_text(encoding="utf-8").strip(), f"prompts/fixes/{name} is empty"
+
+
+def test_copy_fixes_into_is_idempotent_for_resume(tmp_path: Path) -> None:
+    """`copy_fixes_into` must no-op when the target already exists.
+
+    The harness's resume path leaves a populated `<run_dir>/prompts/fixes/`
+    in place; a second call (e.g. on retry after a transient failure) must
+    not raise `FileExistsError` or clobber the existing tree.
+    """
+    target_prompts = tmp_path / "prompts"
+    target_prompts.mkdir()
+    copy_fixes_into(target_prompts)
+    sentinel = (target_prompts / "fixes" / "common.md").read_bytes()
+    copy_fixes_into(target_prompts)  # second call must not raise
+    assert (target_prompts / "fixes" / "common.md").read_bytes() == sentinel

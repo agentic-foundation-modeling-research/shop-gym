@@ -49,6 +49,7 @@ from shop_gen.build.loop import (
 )
 from shop_gen.build.prompts import (
     VERIFIER_FEEDBACK_PLACEHOLDER,
+    copy_fixes_into,
     load_agents_md,
     load_cross_task_consistency_prompt,
     load_execute_prompt,
@@ -102,6 +103,7 @@ __all__ = [
     "VisualJudgeVerifier",
     "WriteEnvFileStep",
     "append_redo_task",
+    "copy_fixes_into",
     "default_verifiers_factory",
     "load_agents_md",
     "load_cross_task_consistency_prompt",

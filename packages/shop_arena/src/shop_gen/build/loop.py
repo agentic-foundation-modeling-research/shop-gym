@@ -66,6 +66,7 @@ from harness import (
 from harness.workspace import Workspace
 from shop_gen.build.env import _CLONE_STEP_VERSION
 from shop_gen.build.prompts import (
+    copy_fixes_into,
     load_agents_md,
     load_execute_prompt,
     load_planner_prompt,
@@ -513,6 +514,11 @@ class RunBuildHarnessLoopStep:
 
         run_dir.mkdir(parents=True, exist_ok=True)
         workspace = Workspace.create(harness_config)
+        # Side-copy `prompts/fixes/` (per-task pitfall + reuse rules)
+        # alongside the harness-managed `planner.md` / `execute.md`.
+        # The executor reads these at task-start; see `execute.md` §2
+        # step 5.
+        copy_fixes_into(workspace.prompts_dir)
         artifact_dir = workspace.artifact_dir
         # ``Workspace.create`` writes an empty ``plan.md``; the harness
         # then re-enters this run via ``Workspace.open`` which validates
