@@ -40,6 +40,10 @@ from shop_gen.manual_merge.prose import (
     MergeManualProseStep,
     merge_manual_prose_seeds,
 )
+from shop_gen.manual_merge.split import (
+    SplitManualPartsStep,
+    split_manual_into_parts,
+)
 from shop_gen.manual_merge.stats import (
     ComputeMergeStatsStep,
     StatsValidationError,
@@ -53,10 +57,12 @@ __all__ = [
     "MergeCapabilitiesStep",
     "MergeConflict",
     "MergeManualProseStep",
+    "SplitManualPartsStep",
     "StatsValidationError",
     "WriteHistoryEntry",
     "WriteMergeManifestStep",
     "merge_capabilities_seeds",
     "merge_manual_prose_seeds",
     "merge_stats_seeds",
+    "split_manual_into_parts",
 ]

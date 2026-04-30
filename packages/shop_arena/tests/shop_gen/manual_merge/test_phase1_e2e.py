@@ -545,11 +545,14 @@ def test_phase1_three_seed_end_to_end_with_llm(tmp_path: Path) -> None:
     # Topological order with id-sorted tie-breaking (spec §5.7,
     # ``run_pipeline``): ``merge_manual_prose`` and ``compute_merge_stats``
     # both depend only on ``merge_capabilities``, so the runner schedules
-    # them alphabetically (``c`` < ``m``).
+    # them alphabetically (``c`` < ``m``). ``split_manual_parts`` runs
+    # downstream of ``merge_manual_prose`` (per
+    # ``docs/specs/shop_arena/manual_split.md``).
     assert result.ran == (
         "merge_capabilities",
         "compute_merge_stats",
         "merge_manual_prose",
+        "split_manual_parts",
         "write_merge_manifest",
     )
     _assert_phase1_outputs_present(out_dir)

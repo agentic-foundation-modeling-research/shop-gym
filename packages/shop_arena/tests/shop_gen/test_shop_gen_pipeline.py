@@ -74,7 +74,12 @@ def _make_seeds(tmp_path: Path, count: int) -> list[Path]:
         artifact = seed / "artifact"
         artifact.mkdir(parents=True)
         (artifact / "capabilities.json").write_text("{}", encoding="utf-8")
-        (artifact / "manual.md").write_text(f"# seed_{i}\n", encoding="utf-8")
+        # ``split_manual_parts`` (Phase 1) refuses to run against a manual
+        # missing every canonical structural section, so include one.
+        (artifact / "manual.md").write_text(
+            f"# seed_{i}\n\n## Homepage\n\nStub homepage section.\n",
+            encoding="utf-8",
+        )
         (artifact / "stats.json").write_text("{}", encoding="utf-8")
         seeds.append(seed)
     return seeds
@@ -128,6 +133,7 @@ def test_list_steps_only_lists_registered_phases() -> None:
     grouped = list_steps()
     assert grouped["manual_merge"] == (
         "copy_seed_manual",
+        "split_manual_parts",
         "merge_capabilities",
         "merge_manual_prose",
         "compute_merge_stats",
@@ -224,6 +230,7 @@ def test_build_registry_single_seed_registers_copy_seed_manual(tmp_path: Path) -
     )
     assert single.ids() == [
         "copy_seed_manual",
+        "split_manual_parts",
         "synth_identity",
         "synth_store",
         "synth_pages",
@@ -254,6 +261,7 @@ def test_build_registry_multi_seed_registers_manual_merge_steps(tmp_path: Path) 
     assert multi.ids() == [
         "merge_capabilities",
         "merge_manual_prose",
+        "split_manual_parts",
         "compute_merge_stats",
         "write_merge_manifest",
         "synth_identity",

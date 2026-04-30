@@ -112,7 +112,12 @@ _SEED_STATS: dict[str, Any] = {
 _SEED_MANUAL_BODY = (
     "# Shop Manual — boutique outdoor storefront\n\n"
     "## Overview\n\n"
-    "Focused outdoor storefront for hikers and campers.\n"
+    "Focused outdoor storefront for hikers and campers.\n\n"
+    # ``split_manual_parts`` (Phase 1) requires at least one canonical
+    # structural section in the manual; add a stub Homepage to keep the
+    # split happy without affecting Phase 2 assertions below.
+    "## Homepage\n\n"
+    "Hero with featured collections.\n"
 )
 
 # --------------------------------------------------------------------------- #
@@ -500,6 +505,7 @@ def _make_config(seed_dir: Path, out_dir: Path) -> ShopGenConfig:
 _EXPECTED_STEP_IDS: frozenset[str] = frozenset(
     {
         "copy_seed_manual",
+        "split_manual_parts",
         "synth_identity",
         "synth_store",
         "synth_pages",

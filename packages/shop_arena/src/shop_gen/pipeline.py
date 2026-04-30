@@ -67,6 +67,7 @@ from shop_gen.manual_merge import (
     CopySeedManualStep,
     MergeCapabilitiesStep,
     MergeManualProseStep,
+    SplitManualPartsStep,
     WriteMergeManifestStep,
 )
 from shop_gen.steps.base import Step, StepContext, StepStatus
@@ -391,14 +392,20 @@ def _build_registry_from_branch(
     registry = Registry()
     if multi_seed:
         _register_manual_merge(registry, config=config)
-        manual_step_ids: tuple[str, ...] = ("merge_capabilities", "merge_manual_prose")
+        manual_step_ids: tuple[str, ...] = (
+            "merge_capabilities",
+            "merge_manual_prose",
+            "split_manual_parts",
+        )
         stats_aware_manual_step_ids: tuple[str, ...] = (
-            *manual_step_ids,
+            "merge_capabilities",
+            "merge_manual_prose",
+            "split_manual_parts",
             "compute_merge_stats",
         )
     else:
         _register_single_seed_manual(registry, config=config)
-        manual_step_ids = ("copy_seed_manual",)
+        manual_step_ids = ("copy_seed_manual", "split_manual_parts")
         stats_aware_manual_step_ids = manual_step_ids
     _register_data_synth(
         registry,
@@ -437,6 +444,7 @@ def _register_manual_merge(registry: Registry, *, config: ShopGenConfig | None =
         seed_stats_paths = tuple(seed / "artifact" / "stats.json" for seed in config.seeds)
     registry.register(MergeCapabilitiesStep(seed_capabilities_paths=seed_capabilities_paths))
     registry.register(MergeManualProseStep(seed_manual_paths=seed_manual_paths))
+    registry.register(SplitManualPartsStep(upstream_step_id="merge_manual_prose"))
     registry.register(ComputeMergeStatsStep(seed_stats_paths=seed_stats_paths))
     registry.register(WriteMergeManifestStep())
 
@@ -461,6 +469,7 @@ def _register_single_seed_manual(
     """
     seed_dir: Path | None = None if config is None or len(config.seeds) != 1 else config.seeds[0]
     registry.register(CopySeedManualStep(seed_dir=seed_dir))
+    registry.register(SplitManualPartsStep(upstream_step_id="copy_seed_manual"))
 
 
 def _register_data_synth(

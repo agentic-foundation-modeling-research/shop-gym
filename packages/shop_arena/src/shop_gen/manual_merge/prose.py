@@ -47,7 +47,7 @@ from shop_gen.steps.base import FileInput, InputRef, StepContext, StepInput
 _PHASE: Final[str] = "manual_merge"
 _STEP_ID: Final[str] = "merge_manual_prose"
 _UPSTREAM_ID: Final[str] = "merge_capabilities"
-_STEP_VERSION: Final[int] = 1
+_STEP_VERSION: Final[int] = 2
 
 _OUT_MANUAL: Final[Path] = Path("manual") / "manual.md"
 _IN_CAPABILITIES: Final[Path] = Path("manual") / "capabilities.json"
