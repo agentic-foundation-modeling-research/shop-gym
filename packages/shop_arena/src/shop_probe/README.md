@@ -65,7 +65,24 @@ real `base_url` values before running.
 ```bash
 uv sync
 uv run --package shop-arena playwright install chromium
+
+# v1.3 agent-driven probes drive a browser via the bundled
+# `playwright-browser` skill (npm package `pi-playwright`). A plain
+# pnpm install at the repo root is enough — the skill lands at
+# `node_modules/pi-playwright/skills/playwright-browser` and is
+# discovered by both runtimes:
+#
+#   - `pi`  (default) — picks it up via the workspace `node_modules`
+#                       walk-up in `_resolve_playwright_skill_dir`.
+#   - `claude_code`   — reads it through the `.claude/skills/playwright-browser`
+#                       symlink committed at the repo root.
+pnpm install
 ```
+
+The agent runtime defaults to `pi`. Override with
+`--agent-runtime claude_code` (requires the `claude` CLI on PATH) when
+targeting Claude Code. Both runtimes accept the same bare model id
+(`--agent-model claude-opus-4-7` by default).
 
 ## Usage
 

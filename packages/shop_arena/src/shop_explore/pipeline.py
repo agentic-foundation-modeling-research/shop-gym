@@ -309,14 +309,37 @@ def _render_agents_md(template: str) -> str:
     )
 
 
+def _find_workspace_skill_dir() -> Path | None:
+    """Walk up from this module looking for a workspace ``node_modules`` install.
+
+    The repo declares ``pi-playwright`` as a root-level dependency
+    (``package.json``), so a plain ``pnpm install`` lands the skill at
+    ``<repo>/node_modules/pi-playwright/skills/playwright-browser``. We
+    prefer this over a global package-manager root because it pins the
+    skill version to the repo lockfile and avoids a subprocess call.
+
+    Returns the skill path when ``SKILL.md`` is present, or ``None`` when
+    no parent directory contains a matching install.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "node_modules" / _PLAYWRIGHT_SKILL_RELPATH
+        if (candidate / "SKILL.md").is_file():
+            return candidate
+    return None
+
+
 def _resolve_playwright_skill_dir() -> Path | None:
     """Locate the ``pi-playwright`` browser skill on this machine.
 
-    Tries ``pnpm root -g`` first (the project standard), then falls back
-    to ``npm root -g``. Returns the absolute path to the skill directory
-    when ``SKILL.md`` is present, or ``None`` when neither command
-    succeeds or the skill is not installed globally.
+    Tries the workspace ``node_modules`` first (populated by ``pnpm
+    install`` at the repo root), then ``pnpm root -g``, then ``npm root
+    -g``. Returns the absolute path to the skill directory when
+    ``SKILL.md`` is present, or ``None`` when nothing resolves.
     """
+    workspace_hit = _find_workspace_skill_dir()
+    if workspace_hit is not None:
+        return workspace_hit
     for cmd in (("pnpm", "root", "-g"), ("npm", "root", "-g")):
         try:
             proc = subprocess.run(

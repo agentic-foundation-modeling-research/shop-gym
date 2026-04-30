@@ -517,12 +517,12 @@ def test_resolve_playwright_skill_dir_uses_pnpm_root(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The resolver shells out to ``pnpm root -g`` first and validates SKILL.md.
+    """``pnpm root -g`` fallback fires when the workspace install is absent.
 
-    Stubs :func:`subprocess.run` so the test is hermetic — no global
-    package manager invocations. Builds a fake global root with a
-    ``pi-playwright`` skill tree to confirm the helper joins the
-    relative skill path correctly.
+    Stubs the workspace-walk helper to return ``None`` and
+    :func:`subprocess.run` so the test is hermetic. Builds a fake global
+    root with a ``pi-playwright`` skill tree to confirm the helper joins
+    the relative skill path correctly.
     """
     skill_root = tmp_path / "global"
     skill_dir = skill_root / "pi-playwright" / "skills" / "playwright-browser"
@@ -537,6 +537,7 @@ def test_resolve_playwright_skill_dir_uses_pnpm_root(
             return subprocess.CompletedProcess(argv, 0, stdout=f"{skill_root}\n", stderr="")
         raise AssertionError("npm fallback should not be reached when pnpm succeeds")
 
+    monkeypatch.setattr(pipeline_mod, "_find_workspace_skill_dir", lambda: None)
     monkeypatch.setattr(pipeline_mod.subprocess, "run", fake_run)
 
     resolved = _resolve_playwright_skill_dir()
@@ -548,15 +549,40 @@ def test_resolve_playwright_skill_dir_uses_pnpm_root(
 def test_resolve_playwright_skill_dir_returns_none_when_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Returns ``None`` when both pnpm and npm are unavailable or skill is missing."""
+    """Returns ``None`` when workspace, pnpm, and npm all come up empty."""
 
     def fake_run(argv: tuple[str, ...], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
         # Both managers exit non-zero — equivalent to "skill not installed".
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="not found")
 
+    monkeypatch.setattr(pipeline_mod, "_find_workspace_skill_dir", lambda: None)
     monkeypatch.setattr(pipeline_mod.subprocess, "run", fake_run)
 
     assert _resolve_playwright_skill_dir() is None
+
+
+def test_resolve_playwright_skill_dir_prefers_workspace_install(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Workspace ``node_modules`` install short-circuits the subprocess fallback.
+
+    When :func:`_find_workspace_skill_dir` returns a hit, the resolver
+    must return it without ever shelling out to ``pnpm`` or ``npm``.
+    """
+    workspace_skill = (
+        tmp_path / "node_modules" / "pi-playwright" / "skills" / "playwright-browser"
+    )
+    workspace_skill.mkdir(parents=True)
+    (workspace_skill / "SKILL.md").write_text("# stub", encoding="utf-8")
+
+    def fake_run(argv: tuple[str, ...], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise AssertionError(f"subprocess fallback must not run; got {argv!r}")
+
+    monkeypatch.setattr(pipeline_mod, "_find_workspace_skill_dir", lambda: workspace_skill)
+    monkeypatch.setattr(pipeline_mod.subprocess, "run", fake_run)
+
+    assert _resolve_playwright_skill_dir() == workspace_skill
 
 
 def test_derive_playwright_session_is_stable_and_safe() -> None:

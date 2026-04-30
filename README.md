@@ -24,6 +24,12 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 
 - Python ≥ 3.11 with [`uv`](https://docs.astral.sh/uv/)
 - Node ≥ 20 with [`pnpm`](https://pnpm.io/) ≥ 9
+- One of the supported coding-agent CLIs (only required for v1.3
+  agent-driven `shop-probe` runs and `shop_explore`):
+  - `pi` (default agent runtime) — install per the
+    [pi CLI docs](https://www.npmjs.com/package/pi-playwright).
+  - `claude` (Anthropic Claude Code CLI) — install per the
+    [Claude Code docs](https://docs.claude.com/claude-code/).
 
 ## Setup
 
@@ -32,9 +38,26 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 uv sync
 uv run --package shop-arena playwright install chromium  # only if running shop-probe
 
-# TypeScript workspace (shop_backend)
+# TypeScript workspace (shop_backend) — also installs the
+# `pi-playwright` skill into `node_modules/`. The repo's
+# `.claude/skills/playwright-browser` symlink exposes that same skill
+# tree to Claude Code; the `pi` runtime discovers it via a workspace
+# walk-up. No extra global install is needed.
 pnpm install
 ```
+
+### Anthropic credentials (shop-probe v1.3)
+
+The v1.3 agent-driven probes call the Anthropic Messages API for the
+vision completion judge. Copy `.env.example` and fill in your key:
+
+```bash
+cp .env.example .env
+# then edit .env to set ANTHROPIC_API_KEY (and optionally ANTHROPIC_BASE_URL)
+```
+
+`.env` is loaded automatically by `shop-probe`; values already exported
+in the shell take precedence.
 
 ## Common commands
 
