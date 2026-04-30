@@ -7,8 +7,8 @@ The judge is **quality-only** — it does not cross-compare against any
 seed storefront (spec §5.5.5 + alt-#5).
 
 Applicability mirrors the spec table: post ``gen_homepage``,
-``gen_product``, ``gen_cart_search``, ``visual_polish``, and the
-mandatory ``consolidate`` task (spec §5.5.4).
+``gen_product``, ``gen_cart_search``, and the mandatory ``visual_fix``
+task (spec §5.5.4).
 
 The verifier reads:
 
@@ -77,8 +77,7 @@ _DEFAULT_TASKS: Final[frozenset[str]] = frozenset(
         "gen_homepage",
         "gen_product",
         "gen_cart_search",
-        "visual_polish",
-        "consolidate",
+        "visual_fix",
     },
 )
 """Tasks this verifier applies to per spec §5.5.3 + §5.5.4."""
@@ -128,7 +127,7 @@ class QualityJudgeVerifier:
         )
 
     def applies_to(self, task_id: str) -> bool:
-        """Match the spec §5.5.3 task list (plus ``consolidate`` per §5.5.4).
+        """Match the spec §5.5.3 task list (plus ``visual_fix`` per §5.5.4).
 
         Args:
             task_id: Selected task id (the executor's ``selected_task_id``).

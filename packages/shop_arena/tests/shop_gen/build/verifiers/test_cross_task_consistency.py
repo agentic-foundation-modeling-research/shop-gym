@@ -100,8 +100,8 @@ def _seed_collections(
 def test_name_and_applicability() -> None:
     verifier = CrossTaskConsistencyVerifier()
     assert verifier.name == "cross_task_consistency"
-    # Per spec §5.5.4: post-consolidate only.
-    assert verifier.applies_to("consolidate") is True
+    # Per spec §5.5.4: post-visual_fix only.
+    assert verifier.applies_to("visual_fix") is True
     # Every other task is out of scope by design.
     for task_id in (
         "gen_homepage",
@@ -109,7 +109,6 @@ def test_name_and_applicability() -> None:
         "gen_cart_search",
         "gen_navigation",
         "gen_theme",
-        "visual_polish",
         "plan",
     ):
         assert verifier.applies_to(task_id) is False, f"unexpected match {task_id}"
@@ -127,7 +126,7 @@ def test_passes_when_llm_returns_pass(
     )
     runtime = _StubLLM(responses=['{"verdict": "pass", "feedback": ""}'])
     verifier = CrossTaskConsistencyVerifier()
-    result = verifier.run(make_ctx(selected_task_id="consolidate", runtime=runtime))
+    result = verifier.run(make_ctx(selected_task_id="visual_fix", runtime=runtime))
 
     assert result.verdict is Verdict.PASS
     assert result.feedback == ""
@@ -152,7 +151,7 @@ def test_fails_when_llm_returns_fail(
         ],
     )
     verifier = CrossTaskConsistencyVerifier()
-    result = verifier.run(make_ctx(selected_task_id="consolidate", runtime=runtime))
+    result = verifier.run(make_ctx(selected_task_id="visual_fix", runtime=runtime))
     assert result.verdict is Verdict.FAIL
     assert "navigation references a missing handle" in result.feedback
 
@@ -162,7 +161,7 @@ def test_fail_when_collections_missing(
 ) -> None:
     runtime = _StubLLM(responses=[])
     verifier = CrossTaskConsistencyVerifier()
-    result = verifier.run(make_ctx(selected_task_id="consolidate", runtime=runtime))
+    result = verifier.run(make_ctx(selected_task_id="visual_fix", runtime=runtime))
     assert result.verdict is Verdict.FAIL
     assert "collections.json" in result.feedback
     assert runtime.prompts == []
@@ -177,7 +176,7 @@ def test_fail_when_collections_invalid_json(
     target.write_text("not json", encoding="utf-8")
     runtime = _StubLLM(responses=[])
     verifier = CrossTaskConsistencyVerifier()
-    result = verifier.run(make_ctx(selected_task_id="consolidate", runtime=runtime))
+    result = verifier.run(make_ctx(selected_task_id="visual_fix", runtime=runtime))
     assert result.verdict is Verdict.FAIL
     assert "could not parse" in result.feedback
     assert runtime.prompts == []
@@ -192,7 +191,7 @@ def test_fail_when_hydrogen_tree_missing(
     (artifact_dir / "hydrogen").rmdir()
     runtime = _StubLLM(responses=[])
     verifier = CrossTaskConsistencyVerifier()
-    result = verifier.run(make_ctx(selected_task_id="consolidate", runtime=runtime))
+    result = verifier.run(make_ctx(selected_task_id="visual_fix", runtime=runtime))
     assert result.verdict is Verdict.FAIL
     assert "hydrogen" in result.feedback
     assert runtime.prompts == []
@@ -215,7 +214,7 @@ def test_collection_payload_with_non_dict_entries_yields_empty_handles(
     write_app_file("routes/_index.tsx", "export default null;\n")
     runtime = _StubLLM(responses=['{"verdict": "pass", "feedback": ""}'])
     verifier = CrossTaskConsistencyVerifier()
-    result = verifier.run(make_ctx(selected_task_id="consolidate", runtime=runtime))
+    result = verifier.run(make_ctx(selected_task_id="visual_fix", runtime=runtime))
     assert result.verdict is Verdict.PASS
     assert result.details["collection_handles"] == []
 
@@ -229,7 +228,7 @@ def test_fail_on_llm_timeout(
     write_app_file("routes/_index.tsx", "export default null;\n")
     runtime = _RaisingLLM(exc=subprocess.TimeoutExpired(cmd="llm", timeout=240.0))
     verifier = CrossTaskConsistencyVerifier()
-    result = verifier.run(make_ctx(selected_task_id="consolidate", runtime=runtime))
+    result = verifier.run(make_ctx(selected_task_id="visual_fix", runtime=runtime))
     assert result.verdict is Verdict.FAIL
     assert "timeout" in result.feedback.lower()
     assert result.details["phase"] == "llm_complete"
@@ -244,7 +243,7 @@ def test_fail_on_unparseable_llm_response(
     write_app_file("routes/_index.tsx", "export default null;\n")
     runtime = _StubLLM(responses=["the answer depends"])
     verifier = CrossTaskConsistencyVerifier()
-    result = verifier.run(make_ctx(selected_task_id="consolidate", runtime=runtime))
+    result = verifier.run(make_ctx(selected_task_id="visual_fix", runtime=runtime))
     assert result.verdict is Verdict.FAIL
     assert "could not parse the LLM" in result.feedback
     assert result.details["phase"] == "parse"
@@ -260,4 +259,4 @@ def test_runtime_without_completer_raises(
     write_app_file("routes/_index.tsx", "export default null;\n")
     verifier = CrossTaskConsistencyVerifier()
     with pytest.raises(TypeError, match="LLMCompleter"):
-        verifier.run(make_ctx(selected_task_id="consolidate"))
+        verifier.run(make_ctx(selected_task_id="visual_fix"))

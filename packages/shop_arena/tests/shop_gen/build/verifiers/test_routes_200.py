@@ -176,8 +176,7 @@ def test_does_not_apply_to_non_gen_tasks(data_dir: Path) -> None:
         dev_server_factory=_factory({}),
     )
     assert verifier.applies_to("plan") is False
-    assert verifier.applies_to("consolidate") is False
-    assert verifier.applies_to("visual_polish") is False
+    assert verifier.applies_to("visual_fix") is False
 
 
 # --------------------------------------------------------------------------- #

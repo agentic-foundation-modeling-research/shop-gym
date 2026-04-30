@@ -84,7 +84,7 @@ _EXPECTED_HYDROGEN_FILES: Final[tuple[str, ...]] = (
     "app/styles/theme.css",
     "app/components/Header.tsx",
     "app/routes/_index.tsx",
-    "CONSOLIDATE.md",
+    "VISUAL_FIX.md",
 )
 """Hydrogen mutations the cassette layers across the four executor iterations."""
 
@@ -392,7 +392,7 @@ def test_phase4_e2e_replay_produces_working_hydrogen_with_no_blocking_verifier(
     )
 
     # Cassette has 1 plan + 4 executor iterations; budget allows one
-    # extra in case the consolidate-fallback resumes the loop.
+    # extra of slack.
     step.run(_build_ctx(out_dir, max_iters=6))
 
     run_dir = out_dir / "runs" / "build"

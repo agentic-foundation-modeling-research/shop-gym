@@ -23,14 +23,14 @@
       "timestamp": "2026-04-25T10:40:02.400000+00:00",
       "kind": "tool_result",
       "call_id": "plan-write-1",
-      "output": "Wrote plan.md with gen_theme, gen_navigation, gen_homepage, consolidate.",
+      "output": "Wrote plan.md with gen_theme, gen_navigation, gen_homepage, visual_fix.",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:40:02.500000+00:00",
       "kind": "message",
       "role": "assistant",
-      "text": "Plan emitted: gen_theme, gen_navigation, gen_homepage, consolidate."
+      "text": "Plan emitted: gen_theme, gen_navigation, gen_homepage, visual_fix."
     }
   ]
 }

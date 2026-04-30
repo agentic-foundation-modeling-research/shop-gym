@@ -499,7 +499,7 @@ def test_step_run_passes_expected_loop_config_to_harness(tmp_path: Path) -> None
         name = "sentinel"
 
         def applies_to(self, task_id: str) -> bool:
-            return task_id == "consolidate"
+            return task_id == "visual_fix"
 
         def run(self, ctx: VerifierContext) -> VerifierResult:  # pragma: no cover
             del ctx
@@ -907,13 +907,12 @@ def test_step_run_holds_sidecar_open_for_loop_call(tmp_path: Path) -> None:
 
 
 _REPLAY_PLAN_MD: Final[str] = (
-    "# Plan\n\n## Tasks\n- [x] gen_theme   [priority: 9]\n- [x] consolidate   [priority: 1]\n"
+    "# Plan\n\n## Tasks\n- [x] gen_theme   [priority: 9]\n- [x] visual_fix   [priority: 2]\n"
 )
 """Plan body the replay cassette emits — already-done so the executor loop drains immediately.
 
-Includes the canonical ``consolidate`` task so the orchestrator's
-spec §5.5.4 fallback (T5.8) finds the contract already satisfied and
-does not re-invoke the harness.
+Includes the canonical ``visual_fix`` task as the lowest-priority
+final bullet (spec §5.5.4) so the planner contract is satisfied.
 """
 
 
@@ -1483,23 +1482,25 @@ def test_default_introspector_raises_on_http_error() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Consolidate-task contract (T5.8)
+# Single-pass loop contract (visual_fix is a planner-emitted canonical task)
 # --------------------------------------------------------------------------- #
 
 
-_PLAN_WITHOUT_CONSOLIDATE: Final[str] = "# Plan\n\n## Tasks\n- [x] gen_theme — done [priority: 9]\n"
-"""Planner output that omitted the mandatory ``consolidate`` task."""
-
-_PLAN_WITH_CONSOLIDATE: Final[str] = (
+_PLAN_WITH_VISUAL_FIX: Final[str] = (
     "# Plan\n\n## Tasks\n"
     "- [x] gen_theme — done [priority: 9]\n"
-    "- [x] consolidate — already-emitted [priority: 1]\n"
+    "- [x] visual_fix — done [priority: 2]\n"
 )
-"""Compliant planner output — consolidate is already emitted."""
+"""Compliant planner output — ``visual_fix`` is the lowest-priority bullet."""
 
 
-def test_step_run_appends_consolidate_when_planner_omits_it(tmp_path: Path) -> None:
-    """T5.8: orchestrator appends ``consolidate`` to ``plan.md`` and resumes the harness."""
+def test_step_run_invokes_loop_once(tmp_path: Path) -> None:
+    """The orchestrator runs the harness exactly once: ``visual_fix`` is a planner task.
+
+    The earlier ``consolidate``-append fallback (T5.8) is retired —
+    the canonical 8-task plan now ends with ``visual_fix`` and the
+    harness drives it inline like any other task.
+    """
     out_dir = tmp_path / "out"
     out_dir.mkdir()
     _materialise_workspace(out_dir)
@@ -1515,11 +1516,8 @@ def test_step_run_appends_consolidate_when_planner_omits_it(tmp_path: Path) -> N
     ) -> PlanExecLoopResult:
         del runtime, force
         call_count["n"] += 1
-        # First call simulates the planner writing a plan WITHOUT consolidate.
-        # Subsequent (resume) calls find the appended ``consolidate`` task and
-        # are no-ops as far as the test is concerned.
         if call_count["n"] == 1:
-            plan_path.write_text(_PLAN_WITHOUT_CONSOLIDATE, encoding="utf-8")
+            plan_path.write_text(_PLAN_WITH_VISUAL_FIX, encoding="utf-8")
         return PlanExecLoopResult(
             run_dir=config.run_dir,
             final_status=FinalStatus.COMPLETED,
@@ -1545,67 +1543,5 @@ def test_step_run_appends_consolidate_when_planner_omits_it(tmp_path: Path) -> N
     ):
         step.run(_build_ctx(out_dir))
 
-    # Loop ran twice: once for the original plan, once after the orchestrator
-    # appended the missing consolidate task.
-    assert call_count["n"] == 2  # noqa: PLR2004 — 1 initial + 1 resume after fallback
-
-    # The on-disk plan.md now carries a PENDING ``consolidate`` task.
-    after = plan_path.read_text(encoding="utf-8")
-    assert "consolidate" in after
-    consolidate_lines = [
-        line for line in after.splitlines() if line.startswith("- [") and "consolidate" in line
-    ]
-    assert len(consolidate_lines) == 1
-    assert consolidate_lines[0].startswith("- [ ] consolidate")
-
-
-def test_step_run_skips_consolidate_append_when_planner_emits_it(tmp_path: Path) -> None:
-    """When the planner emits ``consolidate`` the orchestrator does not double-invoke."""
-    out_dir = tmp_path / "out"
-    out_dir.mkdir()
-    _materialise_workspace(out_dir)
-
-    plan_path = out_dir / "runs" / "build" / "plan.md"
-    call_count = {"n": 0}
-
-    def _loop_runner(
-        config: PlanExecLoopConfig,
-        runtime: AgentRuntime,
-        *,
-        force: bool,
-    ) -> PlanExecLoopResult:
-        del runtime, force
-        call_count["n"] += 1
-        if call_count["n"] == 1:
-            plan_path.write_text(_PLAN_WITH_CONSOLIDATE, encoding="utf-8")
-        return PlanExecLoopResult(
-            run_dir=config.run_dir,
-            final_status=FinalStatus.COMPLETED,
-            plan_iter_count=1,
-            exec_iter_count=1,
-            trajectory_paths=(
-                "iters/plan/trajectory.json",
-                "iters/exec-0001/trajectory.json",
-            ),
-        )
-
-    step = RunBuildHarnessLoopStep(
-        loop_runner=_loop_runner,
-        runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
-        sidecar_factory=_stub_sidecar_factory,
-        verifiers_factory=_empty_verifiers_factory,
-        install_runner=_stub_install_runner,
-    )
-
-    before = None
-    with patch(
-        "shop_gen.build.loop.find_shop_backend_cli",
-        return_value=_shop_backend_cli_stub(),
-    ):
-        step.run(_build_ctx(out_dir))
-        before = plan_path.read_text(encoding="utf-8")
-
-    # Single loop call — the planner satisfied the contract.
     assert call_count["n"] == 1
-    # Plan.md is unchanged from what the planner wrote.
-    assert before == _PLAN_WITH_CONSOLIDATE
+    assert plan_path.read_text(encoding="utf-8") == _PLAN_WITH_VISUAL_FIX

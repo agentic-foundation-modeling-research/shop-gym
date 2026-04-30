@@ -104,7 +104,7 @@ _PASS_JUDGE_PAYLOAD: Final[str] = json.dumps({"verdict": "pass", "feedback": ""}
 
 # Visual-judge applies to these two cassette tasks; restricting the set
 # keeps the test focused on a single PASS / single FAIL pairing without
-# pulling the multi-bucket ``consolidate`` fan-out (covered by the
+# pulling the multi-bucket ``visual_fix`` fan-out (covered by the
 # unit-suite under ``tests/shop_gen/build/verifiers/test_visual_judge.py``).
 _VISUAL_TASKS: Final[frozenset[str]] = frozenset({"gen_navigation", "gen_homepage"})
 

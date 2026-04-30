@@ -16,11 +16,11 @@ sidecar lifecycle land:
   context-manager helper the harness loop driver (T5.6) reuses to
   hold the long-lived sidecar that the build loop talks to.
 * :mod:`shop_gen.build.prompts` — ``agents.md`` / ``planner.md`` /
-  ``execute.md`` / ``consolidate_execute.md`` (T5.3) loaders. The
-  T5.6 loop driver feeds the agents-md / planner / executor strings
-  into :class:`harness.PlanExecLoopConfig` and swaps in the
-  consolidate body when the harness selects the mandatory final
-  task.
+  ``execute.md`` (T5.3) loaders. The T5.6 loop driver feeds the
+  agents-md / planner / executor strings into
+  :class:`harness.PlanExecLoopConfig`. The mandatory final
+  ``visual_fix`` task reuses the same executor body (its scope is
+  documented in ``execute.md`` §3a).
 
 * :mod:`shop_gen.build.verifiers` — rule-based verifiers used by the
   T5.6 loop driver: ``tsc``/``build``/``data_in_use``/
@@ -31,9 +31,6 @@ sidecar lifecycle land:
   verifier set, spawns the long-lived sidecar via
   :func:`sidecar_lifecycle`, and invokes
   :func:`harness.run_plan_exec_loop`.
-* :mod:`shop_gen.build.consolidate` — :func:`ensure_consolidate_task`
-  (T5.8) appends the mandatory ``consolidate`` task to ``plan.md``
-  when the planner omits it (spec §5.5.4).
 
 The package is import-safe: no I/O, no env reads, no side effects at
 import.
@@ -41,12 +38,6 @@ import.
 
 from __future__ import annotations
 
-from shop_gen.build.consolidate import (
-    CONSOLIDATE_BRIEF,
-    CONSOLIDATE_PRIORITY,
-    CONSOLIDATE_TASK_ID,
-    ensure_consolidate_task,
-)
 from shop_gen.build.env import CloneTemplateStep, WriteEnvFileStep
 from shop_gen.build.loop import (
     LoopRunner,
@@ -59,7 +50,6 @@ from shop_gen.build.loop import (
 from shop_gen.build.prompts import (
     VERIFIER_FEEDBACK_PLACEHOLDER,
     load_agents_md,
-    load_consolidate_execute_prompt,
     load_cross_task_consistency_prompt,
     load_execute_prompt,
     load_planner_prompt,
@@ -88,9 +78,6 @@ from shop_gen.build.verifiers import (
 )
 
 __all__ = [
-    "CONSOLIDATE_BRIEF",
-    "CONSOLIDATE_PRIORITY",
-    "CONSOLIDATE_TASK_ID",
     "VERIFIER_FEEDBACK_PLACEHOLDER",
     "BuildVerifier",
     "CloneTemplateStep",
@@ -116,9 +103,7 @@ __all__ = [
     "WriteEnvFileStep",
     "append_redo_task",
     "default_verifiers_factory",
-    "ensure_consolidate_task",
     "load_agents_md",
-    "load_consolidate_execute_prompt",
     "load_cross_task_consistency_prompt",
     "load_execute_prompt",
     "load_planner_prompt",

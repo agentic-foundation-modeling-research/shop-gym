@@ -77,9 +77,9 @@ def _seed_dataset(data_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def test_task_buckets_constant_has_eight_keys() -> None:
-    """Sanity check: 6 ``gen_*`` + ``visual_polish`` + ``consolidate`` (spec §5.3)."""
-    assert len(TASK_BUCKETS) == 8  # noqa: PLR2004 -- 6 gen_* + visual_polish + consolidate
+def test_task_buckets_constant_has_seven_keys() -> None:
+    """Sanity check: 6 ``gen_*`` + ``visual_fix`` (spec §5.3)."""
+    assert len(TASK_BUCKETS) == 7  # noqa: PLR2004 -- 6 gen_* + visual_fix
     assert set(TASK_BUCKETS) == {
         "gen_homepage",
         "gen_navigation",
@@ -87,8 +87,7 @@ def test_task_buckets_constant_has_eight_keys() -> None:
         "gen_product",
         "gen_cart_search",
         "gen_info_pages",
-        "visual_polish",
-        "consolidate",
+        "visual_fix",
     }
 
 
@@ -119,9 +118,9 @@ def test_buckets_for_task_unknown_id_returns_empty() -> None:
     assert buckets_for_task("") == frozenset()
 
 
-def test_buckets_for_task_consolidate_covers_all_six_buckets() -> None:
-    """``consolidate`` is the only multi-bucket task that sees every bucket."""
-    assert buckets_for_task("consolidate") == frozenset(BUCKET_CAPABILITY_KEYS)
+def test_buckets_for_task_visual_fix_covers_all_six_buckets() -> None:
+    """``visual_fix`` is the only multi-bucket task that sees every bucket."""
+    assert buckets_for_task("visual_fix") == frozenset(BUCKET_CAPABILITY_KEYS)
 
 
 def test_buckets_for_task_redo_suffix_only_strips_trailing() -> None:
@@ -326,18 +325,9 @@ def test_routes_for_buckets_returns_sorted_union(tmp_path: Path) -> None:
     assert len(routes) == len(set(routes))
 
 
-def test_routes_for_buckets_visual_polish_sweeps_three_buckets(tmp_path: Path) -> None:
+def test_routes_for_buckets_visual_fix_covers_full_set(tmp_path: Path) -> None:
     _seed_dataset(tmp_path)
-    routes = routes_for_buckets(buckets_for_task("visual_polish"), tmp_path)
-    assert "/" in routes
-    assert "/collections" in routes
-    assert "/collections/col-00" in routes
-    assert "/products/prod-00-a" in routes
-
-
-def test_routes_for_buckets_consolidate_covers_full_set(tmp_path: Path) -> None:
-    _seed_dataset(tmp_path)
-    routes = routes_for_buckets(buckets_for_task("consolidate"), tmp_path)
+    routes = routes_for_buckets(buckets_for_task("visual_fix"), tmp_path)
     # Spot-check one route per bucket.
     assert "/" in routes
     assert "/collections" in routes
@@ -365,9 +355,9 @@ def test_routes_for_buckets_redo_task_resolves_same_as_base(tmp_path: Path) -> N
 def test_routes_for_buckets_caps_propagate(tmp_path: Path) -> None:
     """The ``caps`` argument flows through to every bucket in the union."""
     _seed_dataset(tmp_path)
-    consolidate = buckets_for_task("consolidate")
-    default_routes = routes_for_buckets(consolidate, tmp_path, caps=DEFAULT_CAPS)
-    sweep_routes = routes_for_buckets(consolidate, tmp_path, caps=SWEEP_CAPS)
+    visual_fix = buckets_for_task("visual_fix")
+    default_routes = routes_for_buckets(visual_fix, tmp_path, caps=DEFAULT_CAPS)
+    sweep_routes = routes_for_buckets(visual_fix, tmp_path, caps=SWEEP_CAPS)
     # Sweep yields strictly more routes than the per-iteration default
     # (more collections + more products + more pages).
     assert len(sweep_routes) > len(default_routes)
@@ -422,46 +412,19 @@ def test_capabilities_for_buckets_unknown_bucket_contributes_no_keys() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_routes_for_buckets_visual_polish_is_sorted(tmp_path: Path) -> None:
-    """``visual_polish`` (homepage + collections + product) returns a sorted tuple."""
+def test_routes_for_buckets_visual_fix_is_sorted(tmp_path: Path) -> None:
+    """``visual_fix`` (all 6 buckets) returns a sorted tuple with no duplicates."""
     _seed_dataset(tmp_path)
-    routes = routes_for_buckets(buckets_for_task("visual_polish"), tmp_path)
-    assert list(routes) == sorted(routes)
-    # No duplicates in the union.
-    assert len(routes) == len(set(routes))
-
-
-def test_routes_for_buckets_consolidate_is_sorted(tmp_path: Path) -> None:
-    """``consolidate`` (all 6 buckets) returns a sorted tuple with no duplicates."""
-    _seed_dataset(tmp_path)
-    routes = routes_for_buckets(buckets_for_task("consolidate"), tmp_path)
+    routes = routes_for_buckets(buckets_for_task("visual_fix"), tmp_path)
     assert list(routes) == sorted(routes)
     assert len(routes) == len(set(routes))
 
 
-def test_routes_for_buckets_visual_polish_length_within_default_caps(tmp_path: Path) -> None:
-    """Per-iteration caps bound the multi-bucket union length.
-
-    ``visual_polish`` covers homepage (``/``) + collections (``/collections`` +
-    ``max_collections`` handles) + product (``products_per_collection`` per
-    sampled collection). With :data:`DEFAULT_CAPS` (1/1/1) the upper bound is
-    1 + 2 + 1 = 4 routes.
-    """
-    _seed_dataset(tmp_path)
-    routes = routes_for_buckets(buckets_for_task("visual_polish"), tmp_path)
-    upper_bound = (
-        1
-        + (1 + DEFAULT_CAPS.max_collections)
-        + (DEFAULT_CAPS.max_collections * DEFAULT_CAPS.products_per_collection)
-    )
-    assert len(routes) <= upper_bound
-
-
-def test_routes_for_buckets_consolidate_length_within_sweep_caps(tmp_path: Path) -> None:
-    """Sweep caps bound the consolidate union length (spec §5.6.1)."""
+def test_routes_for_buckets_visual_fix_length_within_sweep_caps(tmp_path: Path) -> None:
+    """Sweep caps bound the visual_fix union length (spec §5.6.1)."""
     _seed_dataset(tmp_path)
     routes = routes_for_buckets(
-        buckets_for_task("consolidate"),
+        buckets_for_task("visual_fix"),
         tmp_path,
         caps=SWEEP_CAPS,
     )
@@ -479,30 +442,11 @@ def test_routes_for_buckets_consolidate_length_within_sweep_caps(tmp_path: Path)
     assert len(routes) <= upper_bound
 
 
-def test_routes_for_buckets_sweep_widens_visual_polish(tmp_path: Path) -> None:
-    """Sweep ``BucketCaps`` yields strictly more ``visual_polish`` routes than default."""
+def test_routes_for_buckets_visual_fix_redo_resolves_same_as_base(tmp_path: Path) -> None:
+    """``visual_fix_redo_5`` produces identical routes to ``visual_fix``."""
     _seed_dataset(tmp_path)
-    polish = buckets_for_task("visual_polish")
-    default_routes = routes_for_buckets(polish, tmp_path, caps=DEFAULT_CAPS)
-    sweep_routes = routes_for_buckets(polish, tmp_path, caps=SWEEP_CAPS)
-    assert len(sweep_routes) > len(default_routes)
-    # The default set is a subset of the sweep set (sweep only adds, never drops).
-    assert set(default_routes).issubset(set(sweep_routes))
-
-
-def test_routes_for_buckets_visual_polish_redo_resolves_same_as_base(tmp_path: Path) -> None:
-    """``visual_polish_redo_2`` produces identical routes to ``visual_polish``."""
-    _seed_dataset(tmp_path)
-    base = routes_for_buckets(buckets_for_task("visual_polish"), tmp_path)
-    redo = routes_for_buckets(buckets_for_task("visual_polish_redo_2"), tmp_path)
-    assert base == redo
-
-
-def test_routes_for_buckets_consolidate_redo_resolves_same_as_base(tmp_path: Path) -> None:
-    """``consolidate_redo_5`` produces identical routes to ``consolidate``."""
-    _seed_dataset(tmp_path)
-    base = routes_for_buckets(buckets_for_task("consolidate"), tmp_path)
-    redo = routes_for_buckets(buckets_for_task("consolidate_redo_5"), tmp_path)
+    base = routes_for_buckets(buckets_for_task("visual_fix"), tmp_path)
+    redo = routes_for_buckets(buckets_for_task("visual_fix_redo_5"), tmp_path)
     assert base == redo
 
 
@@ -510,12 +454,12 @@ def test_routes_for_buckets_redo_resolves_same_under_sweep_caps(tmp_path: Path) 
     """Redo prefix-match coverage holds under sweep caps too (spec §5.3 layer 1)."""
     _seed_dataset(tmp_path)
     base = routes_for_buckets(
-        buckets_for_task("consolidate"),
+        buckets_for_task("visual_fix"),
         tmp_path,
         caps=SWEEP_CAPS,
     )
     redo = routes_for_buckets(
-        buckets_for_task("consolidate_redo_9"),
+        buckets_for_task("visual_fix_redo_9"),
         tmp_path,
         caps=SWEEP_CAPS,
     )

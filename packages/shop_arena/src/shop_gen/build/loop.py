@@ -63,9 +63,7 @@ from harness import (
     get_runtime,
     run_plan_exec_loop,
 )
-from harness.config import FinalStatus
 from harness.workspace import Workspace
-from shop_gen.build.consolidate import ensure_consolidate_task
 from shop_gen.build.env import _CLONE_STEP_VERSION
 from shop_gen.build.prompts import (
     load_agents_md,
@@ -347,12 +345,10 @@ class RunBuildHarnessLoopStep:
     def run(self, ctx: StepContext) -> None:
         """Drive the build harness loop end-to-end.
 
-        After the harness invocation returns, the spec §5.5.4 mandatory
-        ``consolidate`` task contract is enforced via
-        :func:`shop_gen.build.consolidate.ensure_consolidate_task`: if
-        the planner omitted ``consolidate`` from ``plan.md`` the helper
-        appends a canonical bullet and the harness is resumed so the
-        executor picks the new PENDING task.
+        The planner emits the canonical 8-task plan (spec §5.5.4); the
+        mandatory ``visual_fix`` task is the lowest-priority bullet and
+        the harness drives it inline like any other task — no
+        post-loop fixup is required.
 
         Args:
             ctx: Execution context. ``ctx.runtime`` is unused — the
@@ -404,7 +400,6 @@ class RunBuildHarnessLoopStep:
 
         runtime = self._runtime_factory(ctx.config)
 
-        plan_path = run_dir / "plan.md"
         with self._sidecar_factory(argv=argv, port=port) as sidecar:
             verifiers = self._verifiers_factory(
                 out_dir=out_dir,
@@ -415,24 +410,7 @@ class RunBuildHarnessLoopStep:
                 visual_judge_max_concurrency=ctx.config.visual_judge_max_concurrency,
             )
             loop_config = harness_config.model_copy(update={"verifiers": verifiers})
-            result = self._loop_runner(loop_config, runtime, force=force)
-
-            # Spec §5.5.4: enforce the mandatory ``consolidate`` task contract.
-            # The fallback only fires when the planner produced a parseable plan
-            # (``plan_iter_count > 0`` and ``final_status`` is not ``invalid_plan``);
-            # otherwise the harness already failed and the orchestrator must not
-            # silently fix the on-disk plan. When the helper appends a consolidate
-            # bullet we resume the harness so the executor picks the new PENDING
-            # task; the prior ``completed`` / ``budget_exhausted`` status is not in
-            # the §5.5 refusal set so the resume call does not strictly need
-            # ``force=True``, but we pass it for symmetry with the T5.7 redo flow.
-            if (
-                result.plan_iter_count > 0
-                and result.final_status is not FinalStatus.INVALID_PLAN
-                and plan_path.is_file()
-                and ensure_consolidate_task(plan_path) is not None
-            ):
-                self._loop_runner(loop_config, runtime, force=True)
+            self._loop_runner(loop_config, runtime, force=force)
 
     # ------------------------------------------------------------------
     # Internals

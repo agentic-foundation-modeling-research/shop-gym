@@ -222,7 +222,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
         metavar="N",
         help=(
-            "Page-bucket fan-out worker count for the ``consolidate`` task and the "
+            "Page-bucket fan-out worker count for the ``visual_fix`` task and the "
             "final-eval visual sweep (spec \u00a75.2.1 step 5, \u00a75.6). Strictly positive. "
             f"Default: {DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY}."
         ),

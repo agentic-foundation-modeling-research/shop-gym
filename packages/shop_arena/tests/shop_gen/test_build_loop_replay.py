@@ -5,7 +5,7 @@ hand-crafted ``fixture_build_loop`` cassette under
 :class:`harness.runtimes.replay.ReplayRuntime`. The cassette covers the
 four canonical build-loop tasks documented in
 ``docs/specs/shop_arena/shop_gen.md`` §5.5: ``gen_theme``,
-``gen_navigation``, ``gen_homepage``, and the mandatory ``consolidate``
+``gen_navigation``, ``gen_homepage``, and the mandatory ``visual_fix``
 cleanup pass.
 
 This is the milestone gate for the build-loop driver: the loop step
@@ -44,7 +44,7 @@ _EXPECTED_TASK_ORDER: Final[tuple[str, ...]] = (
     "gen_theme",
     "gen_navigation",
     "gen_homepage",
-    "consolidate",
+    "visual_fix",
 )
 """Order ``select_next`` walks the cassette plan (highest priority wins)."""
 
@@ -53,7 +53,7 @@ _EXPECTED_HYDROGEN_FILES: Final[tuple[str, ...]] = (
     "app/components/Header.tsx",
     "app/components/Footer.tsx",
     "app/routes/_index.tsx",
-    "CONSOLIDATE.md",
+    "VISUAL_FIX.md",
 )
 """Hydrogen files the four executor iterations layer onto the work surface."""
 
@@ -188,7 +188,7 @@ def test_build_loop_replay_drives_four_canonical_tasks(
     * created ``runs/build/run.json`` with ``final_status=completed``;
     * ran the planner plus four executor iterations in priority order
       (``gen_theme`` → ``gen_navigation`` → ``gen_homepage`` →
-      ``consolidate``);
+      ``visual_fix``);
     * preserved the cassette's hydrogen mutations under
       ``runs/build/artifact/hydrogen/``;
     * persisted the seed manifest only against the manual subtree
@@ -263,7 +263,7 @@ def test_build_loop_replay_records_selected_task_per_iteration(
     """Each executor iteration's metadata names the task the harness selected.
 
     Confirms the cassette and the harness agree on which task is in
-    flight every iteration. Spec §5.5 + §5.5.4: ``consolidate`` is
+    flight every iteration. Spec §5.5 + §5.5.4: ``visual_fix`` is
     dispatched last because it has the lowest priority.
     """
     monkeypatch.setattr(

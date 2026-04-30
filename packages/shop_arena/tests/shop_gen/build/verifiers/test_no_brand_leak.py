@@ -20,9 +20,9 @@ def test_name_and_applicability() -> None:
     assert verifier.name == "no_brand_leak"
     assert verifier.applies_to("gen_theme") is True
     assert verifier.applies_to("gen_homepage") is True
-    # Spec §5.5.4 lists consolidate's gating set explicitly; no_brand_leak
+    # Spec §5.5.4 lists visual_fix's gating set explicitly; no_brand_leak
     # is not on it.
-    assert verifier.applies_to("consolidate") is False
+    assert verifier.applies_to("visual_fix") is False
     assert verifier.applies_to("plan") is False
 
 

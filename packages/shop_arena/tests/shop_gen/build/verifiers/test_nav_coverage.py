@@ -30,7 +30,7 @@ def test_name_and_applicability(tmp_path: Path) -> None:
     assert verifier.name == "nav_coverage"
     assert verifier.applies_to("gen_navigation") is True
     assert verifier.applies_to("gen_homepage") is False
-    assert verifier.applies_to("consolidate") is False
+    assert verifier.applies_to("visual_fix") is False
 
 
 def test_passes_when_every_handle_is_referenced(

@@ -44,8 +44,7 @@ A small apparel store that sells fitted t-shirts and accessories.
 - [x] gen_product — PDP with variant pickers [priority: 5]
 - [x] gen_cart_search — cart drawer + predictive search [priority: 4]
 - [x] gen_info_pages — about / contact / policies [priority: 3]
-- [x] visual_polish — final responsive pass [priority: 2]
-- [x] consolidate — REQUIRED final task [priority: 1]
+- [x] visual_fix — REQUIRED final task; cross-task cleanup [priority: 2]
 
 ## Omitted Areas
 
@@ -101,7 +100,7 @@ def test_append_redo_task_appends_pending_bullet(plan_path: Path) -> None:
 
 
 def test_append_redo_task_default_priority_is_one(plan_path: Path) -> None:
-    """Default priority matches consolidate; spec §5.7.3 records "priority 1"."""
+    """Default priority sits one below visual_fix (priority 2)."""
     new_id = append_redo_task(plan_path, _TARGET_TASK_ID)
 
     plan = parse(plan_path.read_text(encoding="utf-8"))
@@ -123,20 +122,20 @@ def test_append_redo_task_preserves_other_sections(plan_path: Path) -> None:
     assert after.endswith("\n")
 
 
-def test_append_redo_task_inserts_after_consolidate(plan_path: Path) -> None:
-    """Spec §5.7.3 places the new task after the mandatory ``consolidate``."""
+def test_append_redo_task_inserts_after_visual_fix(plan_path: Path) -> None:
+    """Spec §5.7.3 places the new task after the mandatory ``visual_fix``."""
     new_id = append_redo_task(plan_path, _TARGET_TASK_ID)
 
     after = plan_path.read_text(encoding="utf-8")
-    consolidate_idx = -1
+    visual_fix_idx = -1
     new_idx = -1
     for i, line in enumerate(after.splitlines()):
-        if "consolidate" in line and line.startswith("- ["):
-            consolidate_idx = i
+        if "visual_fix" in line and line.startswith("- ["):
+            visual_fix_idx = i
         if new_id in line and line.startswith("- ["):
             new_idx = i
-    assert consolidate_idx != -1
-    assert new_idx > consolidate_idx
+    assert visual_fix_idx != -1
+    assert new_idx > visual_fix_idx
 
 
 def test_append_redo_task_with_reason_includes_reason_in_note(plan_path: Path) -> None:
@@ -173,8 +172,8 @@ def test_append_redo_task_increment_skips_gaps(plan_path: Path) -> None:
     # Drop a hand-authored ``gen_homepage_redo_5`` into the plan.
     text = plan_path.read_text(encoding="utf-8")
     text = text.replace(
-        "- [x] consolidate — REQUIRED final task [priority: 1]\n",
-        "- [x] consolidate — REQUIRED final task [priority: 1]\n"
+        "- [x] visual_fix — REQUIRED final task; cross-task cleanup [priority: 2]\n",
+        "- [x] visual_fix — REQUIRED final task; cross-task cleanup [priority: 2]\n"
         "- [x] gen_homepage_redo_5 — earlier manual redo [priority: 1]\n",
     )
     plan_path.write_text(text, encoding="utf-8")

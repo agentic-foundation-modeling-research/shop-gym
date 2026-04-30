@@ -24,7 +24,7 @@ The schema is supplied through the :class:`SchemaIntrospection` seam:
   ``shop_backend`` root field set used by the cassette fixtures.
 
 Applicability mirrors the spec table: every ``gen_*`` task. The
-``consolidate`` task is excluded — §5.5.4 lists its gating verifier
+``visual_fix`` task is excluded — §5.5.4 lists its gating verifier
 set and ``data_in_use`` is not on it.
 """
 

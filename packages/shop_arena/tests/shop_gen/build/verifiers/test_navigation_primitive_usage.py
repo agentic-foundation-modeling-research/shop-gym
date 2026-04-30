@@ -136,7 +136,7 @@ def test_name_and_applicability() -> None:
     assert verifier.name == "navigation_primitive_usage"
     assert verifier.applies_to("gen_navigation") is True
     assert verifier.applies_to("gen_homepage") is False
-    assert verifier.applies_to("consolidate") is False
+    assert verifier.applies_to("visual_fix") is False
 
 
 def test_passes_when_both_primitives_imported_and_no_anti_patterns(

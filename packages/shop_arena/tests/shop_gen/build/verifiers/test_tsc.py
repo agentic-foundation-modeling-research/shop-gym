@@ -64,8 +64,7 @@ def test_name_and_applicability() -> None:
     assert verifier.name == "tsc"
     assert verifier.applies_to("gen_theme") is True
     assert verifier.applies_to("gen_homepage") is True
-    assert verifier.applies_to("consolidate") is True
-    assert verifier.applies_to("visual_polish") is False
+    assert verifier.applies_to("visual_fix") is True
     assert verifier.applies_to("plan") is False
 
 
@@ -152,7 +151,7 @@ def test_passing_synthetic_tree_does_not_require_app_dir(
     ``pnpm`` says the tree is fine, the verifier is fine.
     """
     verifier = TscVerifier(runner=_runner(returncode=0))
-    ctx = make_ctx(selected_task_id="consolidate")
+    ctx = make_ctx(selected_task_id="visual_fix")
     result = verifier.run(ctx)
     assert result.verdict is Verdict.PASS
 
@@ -174,7 +173,7 @@ def test_failing_synthetic_tree_uses_failing_runner(
 
 @pytest.mark.parametrize(
     "task_id",
-    ["gen_theme", "gen_navigation", "gen_homepage", "consolidate"],
+    ["gen_theme", "gen_navigation", "gen_homepage", "visual_fix"],
 )
 def test_runs_against_all_gating_task_ids(
     make_ctx: Callable[..., VerifierContext],

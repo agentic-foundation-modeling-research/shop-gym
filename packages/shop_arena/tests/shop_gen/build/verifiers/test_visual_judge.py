@@ -225,7 +225,7 @@ def test_name_matches_spec(data_dir: Path) -> None:
 
 
 def test_applies_to_default_set(data_dir: Path) -> None:
-    """Default applicability set per spec §5.2 (consolidate added back in T5.7)."""
+    """Default applicability set per spec §5.2."""
     verifier = VisualJudgeVerifier(
         data_dir=data_dir,
         dev_server_factory=_StubDevServer(),
@@ -237,19 +237,18 @@ def test_applies_to_default_set(data_dir: Path) -> None:
         "gen_product",
         "gen_cart_search",
         "gen_info_pages",
-        "visual_polish",
-        "consolidate",
+        "visual_fix",
     ):
         assert verifier.applies_to(task_id) is True, f"missing {task_id}"
 
 
-def test_consolidate_included_after_t5_7(data_dir: Path) -> None:
-    """T5.7 wires multi-bucket fan-out, so ``consolidate`` is back in the default set."""
+def test_visual_fix_included_after_t5_7(data_dir: Path) -> None:
+    """T5.7 wires multi-bucket fan-out, so ``visual_fix`` is in the default set."""
     verifier = VisualJudgeVerifier(
         data_dir=data_dir,
         dev_server_factory=_StubDevServer(),
     )
-    assert verifier.applies_to("consolidate") is True
+    assert verifier.applies_to("visual_fix") is True
 
 
 # --------------------------------------------------------------------------- #
@@ -1046,7 +1045,7 @@ def _autoseed_capabilities(
 
 
 # --------------------------------------------------------------------------- #
-# SC4 - ``consolidate`` page-bucket fan-out (T5.7 - spec §5.2.1 step 5-6)
+# SC4 - ``visual_fix`` page-bucket fan-out (T5.7 - spec §5.2.1 step 5-6)
 # --------------------------------------------------------------------------- #
 
 
@@ -1093,7 +1092,7 @@ class _PerBucketRuntime:
         )
 
 
-_CONSOLIDATE_ACTIVE_BUCKETS: tuple[str, ...] = (
+_VISUAL_FIX_ACTIVE_BUCKETS: tuple[str, ...] = (
     "cart_search",
     "collections",
     "homepage",
@@ -1108,35 +1107,35 @@ per spec §9.5 rather than failing the whole verdict.
 """
 
 
-def test_consolidate_fanout_walks_every_active_bucket(
+def test_visual_fix_fanout_walks_every_active_bucket(
     make_visual_ctx: Callable[..., VerifierContext],
     data_dir: Path,
     artifact_dir: Path,
 ) -> None:
-    """SC4: ``consolidate`` invocation fans out one ``run_iteration`` per bucket."""
+    """SC4: ``visual_fix`` invocation fans out one ``run_iteration`` per bucket."""
     runtime = _PerBucketRuntime(
-        bodies={bucket: _pass_body(score=8.0) for bucket in _CONSOLIDATE_ACTIVE_BUCKETS},
+        bodies={bucket: _pass_body(score=8.0) for bucket in _VISUAL_FIX_ACTIVE_BUCKETS},
     )
     server = _StubDevServer()
     verifier = VisualJudgeVerifier(
         data_dir=data_dir,
         dev_server_factory=server,
     )
-    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="visual_fix")
 
     result = verifier.run(ctx)
 
     # Every active bucket received exactly one runtime call; ``product``
     # was skipped (no routes against an empty data_dir).
-    assert len(runtime.calls) == len(_CONSOLIDATE_ACTIVE_BUCKETS)
+    assert len(runtime.calls) == len(_VISUAL_FIX_ACTIVE_BUCKETS)
     called_buckets = sorted(call.parent.name for call in runtime.calls)
-    assert called_buckets == sorted(_CONSOLIDATE_ACTIVE_BUCKETS)
+    assert called_buckets == sorted(_VISUAL_FIX_ACTIVE_BUCKETS)
     # Dev server boots once across the fan-out (single shared server).
     assert server.enters == 1
     assert server.exits == 1
     # Per-bucket sub-iters exist on disk so reviewers can browse evidence.
     parent_dir = ctx.run_dir / "iters" / ctx.iter_id / "checks" / "verifiers" / verifier.name
-    for bucket in _CONSOLIDATE_ACTIVE_BUCKETS:
+    for bucket in _VISUAL_FIX_ACTIVE_BUCKETS:
         assert (parent_dir / bucket / "work" / "verdict.json").is_file(), bucket
     # Merged verdict.json carries the rolled-up numbers (spec §9.5).
     merged_path = parent_dir / "verdict.json"
@@ -1154,13 +1153,13 @@ def test_consolidate_fanout_walks_every_active_bucket(
     per_bucket = {entry["bucket"]: entry for entry in result.details["per_bucket"]}
     assert per_bucket["product"]["verdict"] is None
     assert per_bucket["product"]["error"] == "no routes resolved for bucket"
-    for bucket in _CONSOLIDATE_ACTIVE_BUCKETS:
+    for bucket in _VISUAL_FIX_ACTIVE_BUCKETS:
         assert per_bucket[bucket]["verdict"] == "pass"
         assert per_bucket[bucket]["score"] == pytest.approx(8.0)
     del artifact_dir  # unused; capabilities.json already seeded by autouse fixture
 
 
-def test_consolidate_fanout_weighted_score_uses_page_weights(
+def test_visual_fix_fanout_weighted_score_uses_page_weights(
     make_visual_ctx: Callable[..., VerifierContext],
     data_dir: Path,
 ) -> None:
@@ -1180,7 +1179,7 @@ def test_consolidate_fanout_weighted_score_uses_page_weights(
         data_dir=data_dir,
         dev_server_factory=_StubDevServer(),
     )
-    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="visual_fix")
 
     result = verifier.run(ctx)
 
@@ -1194,19 +1193,19 @@ def test_consolidate_fanout_weighted_score_uses_page_weights(
     assert result.verdict is Verdict.PASS
 
 
-def test_consolidate_fanout_bucket_fail_propagates_to_merged_verdict(
+def test_visual_fix_fanout_bucket_fail_propagates_to_merged_verdict(
     make_visual_ctx: Callable[..., VerifierContext],
     data_dir: Path,
 ) -> None:
     """SC4: a single bucket FAIL flips the merged verdict to FAIL."""
-    bodies = {bucket: _pass_body(score=8.0) for bucket in _CONSOLIDATE_ACTIVE_BUCKETS}
+    bodies = {bucket: _pass_body(score=8.0) for bucket in _VISUAL_FIX_ACTIVE_BUCKETS}
     bodies["navigation"] = _fail_body(score=3.0)
     runtime = _PerBucketRuntime(bodies=bodies)
     verifier = VisualJudgeVerifier(
         data_dir=data_dir,
         dev_server_factory=_StubDevServer(),
     )
-    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="visual_fix")
 
     result = verifier.run(ctx)
 
@@ -1218,7 +1217,7 @@ def test_consolidate_fanout_bucket_fail_propagates_to_merged_verdict(
     assert per_bucket["homepage"]["verdict"] == "pass"
 
 
-def test_consolidate_fanout_runtime_error_collapses_to_fail(
+def test_visual_fix_fanout_runtime_error_collapses_to_fail(
     make_visual_ctx: Callable[..., VerifierContext],
     data_dir: Path,
 ) -> None:
@@ -1258,14 +1257,14 @@ def test_consolidate_fanout_runtime_error_collapses_to_fail(
                 ),
             )
 
-    bodies = {bucket: _pass_body(score=8.0) for bucket in _CONSOLIDATE_ACTIVE_BUCKETS}
+    bodies = {bucket: _pass_body(score=8.0) for bucket in _VISUAL_FIX_ACTIVE_BUCKETS}
     runtime = _OneBucketRaises(bodies=bodies, raise_on_bucket="homepage")
     server = _StubDevServer()
     verifier = VisualJudgeVerifier(
         data_dir=data_dir,
         dev_server_factory=server,
     )
-    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="visual_fix")
 
     result = verifier.run(ctx)
 
@@ -1277,7 +1276,7 @@ def test_consolidate_fanout_runtime_error_collapses_to_fail(
     assert "runtime raised RuntimeError" in (per_bucket["homepage"]["error"] or "")
 
 
-def test_consolidate_fanout_per_bucket_capability_slice_isolated(
+def test_visual_fix_fanout_per_bucket_capability_slice_isolated(
     make_visual_ctx: Callable[..., VerifierContext],
     data_dir: Path,
 ) -> None:
@@ -1315,7 +1314,7 @@ def test_consolidate_fanout_per_bucket_capability_slice_isolated(
         data_dir=data_dir,
         dev_server_factory=_StubDevServer(),
     )
-    ctx = make_visual_ctx(runtime=runtime, selected_task_id="consolidate")
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="visual_fix")
 
     verifier.run(ctx)
 

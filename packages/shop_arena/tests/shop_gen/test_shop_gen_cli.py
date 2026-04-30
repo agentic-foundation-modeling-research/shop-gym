@@ -693,7 +693,7 @@ _COMPLETED_BUILD_PLAN = """\
 - [x] gen_theme — ship the theme tokens [priority: 9]
 - [x] gen_navigation — wire the header / footer [priority: 8]
 - [x] gen_homepage — render the hero [priority: 7]
-- [x] consolidate — REQUIRED final task [priority: 1]
+- [x] visual_fix — REQUIRED final task [priority: 1]
 """
 
 

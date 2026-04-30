@@ -10,14 +10,14 @@
       "timestamp": "2026-04-25T10:44:00.000000+00:00",
       "kind": "message",
       "role": "user",
-      "text": "<<<harness-control>>>\nselected_task_id: consolidate\n<<<end>>>\n\nExecute the consolidate task."
+      "text": "<<<harness-control>>>\nselected_task_id: visual_fix\n<<<end>>>\n\nExecute the visual_fix task."
     },
     {
       "timestamp": "2026-04-25T10:44:05.000000+00:00",
       "kind": "tool_call",
       "call_id": "exec4-write-log",
       "tool": "write",
-      "arguments": {"path": "artifact/hydrogen/CONSOLIDATE.md"}
+      "arguments": {"path": "artifact/hydrogen/VISUAL_FIX.md"}
     },
     {
       "timestamp": "2026-04-25T10:44:10.000000+00:00",
@@ -37,14 +37,14 @@
       "timestamp": "2026-04-25T10:44:28.000000+00:00",
       "kind": "tool_result",
       "call_id": "exec4-write-plan",
-      "output": "Flipped consolidate to [x].",
+      "output": "Flipped visual_fix to [x].",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:44:30.000000+00:00",
       "kind": "message",
       "role": "assistant",
-      "text": "consolidate: cleanup pass complete; consolidate [x]."
+      "text": "visual_fix: cleanup pass complete; visual_fix [x]."
     }
   ]
 }

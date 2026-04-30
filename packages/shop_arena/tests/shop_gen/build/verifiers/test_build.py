@@ -45,7 +45,7 @@ def test_name_and_applicability() -> None:
     assert verifier.name == "build"
     assert verifier.applies_to("gen_theme") is True
     assert verifier.applies_to("gen_homepage") is True
-    assert verifier.applies_to("consolidate") is True
+    assert verifier.applies_to("visual_fix") is True
     assert verifier.applies_to("plan") is False
 
 

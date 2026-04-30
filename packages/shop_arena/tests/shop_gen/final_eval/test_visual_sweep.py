@@ -31,7 +31,7 @@ from shop_gen.final_eval.visual_sweep import PlaywrightSkillUnavailableError, ru
 # --------------------------------------------------------------------------- #
 
 _BASE_URL: Final[str] = "http://127.0.0.1:54321"
-_EXPECTED_BUCKETS: Final[frozenset[str]] = TASK_BUCKETS["consolidate"]
+_EXPECTED_BUCKETS: Final[frozenset[str]] = TASK_BUCKETS["visual_fix"]
 
 
 _STUB_PROMPT: Final[str] = (
@@ -218,12 +218,12 @@ def _stub_skill_probe(monkeypatch: pytest.MonkeyPatch) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_run_visual_sweep_walks_every_consolidate_bucket(
+def test_run_visual_sweep_walks_every_visual_fix_bucket(
     out_dir: Path,
     hydrogen_dir: Path,
     data_dir: Path,
 ) -> None:
-    """SC: the sweep dispatches one iteration per `consolidate` bucket.
+    """SC: the sweep dispatches one iteration per `visual_fix` bucket.
 
     Spec §5.6 step 4 — six buckets, six runtime calls, six per-bucket
     sub-iter dirs.

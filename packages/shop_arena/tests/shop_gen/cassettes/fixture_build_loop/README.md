@@ -4,7 +4,7 @@ Hand-crafted replay cassette that drives the Phase 4 build loop
 (`shop_gen.build.loop.RunBuildHarnessLoopStep`) through the four
 canonical tasks documented in `docs/specs/shop_arena/shop_gen.md` §5.5:
 `gen_theme`, `gen_navigation`, `gen_homepage`, and the mandatory
-`consolidate` cleanup pass.
+`visual_fix` cleanup pass.
 
 It is consumed by `tests/shop_gen/test_build_loop_replay.py` (T5.9) so
 the loop driver is exercised end-to-end deterministically without any
@@ -33,16 +33,16 @@ fixture_build_loop/
 │   └── workspace_after/
 │       ├── plan.md                     # 3/4 [x]
 │       └── artifact/hydrogen/app/routes/_index.tsx
-└── exec-0004/                          # selects consolidate
+└── exec-0004/                          # selects visual_fix
     ├── trajectory.json
     └── workspace_after/
         ├── plan.md                     # all 4 [x]
-        └── artifact/hydrogen/CONSOLIDATE.md
+        └── artifact/hydrogen/VISUAL_FIX.md
 ```
 
 Each `workspace_after/plan.md` is the **complete** plan snapshot the
 harness re-applies after the iteration. Priorities (`gen_theme=4`,
-`gen_navigation=3`, `gen_homepage=2`, `consolidate=1`) drive the
+`gen_navigation=3`, `gen_homepage=2`, `visual_fix=1`) drive the
 executor's `select_next` ordering so the cassette and the harness agree
 on which task is in flight every iteration.
 

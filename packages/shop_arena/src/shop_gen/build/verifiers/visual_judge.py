@@ -9,7 +9,7 @@ score → verdict coercion rules from spec §9.3 are applied inside
 :mod:`shop_gen.build.verifiers._runtime_call`.
 
 This M1 landing covers per-task invocations only
-(``gen_homepage``, ``gen_product``, …). The ``consolidate``
+(``gen_homepage``, ``gen_product``, …). The ``visual_fix``
 page-bucket fan-out lands later (T5.7); the per-task retry budget
 (M2 / T2.2) is enforced inline via
 :func:`shop_gen.build.verifiers._history.count_prior_task_fails`.
@@ -87,10 +87,9 @@ _DEFAULT_PASS_THRESHOLD: Final[float] = 7.0
 _DEFAULT_MAX_CONCURRENCY: Final[int] = 3
 """Default page-bucket fan-out worker count (spec §5.2.1 step 5, §5.6).
 
-Caps the ``ThreadPoolExecutor`` width used by the ``consolidate`` and
-``visual_polish`` fan-out path (T5.7). Single-bucket invocations bypass
-the executor entirely so the knob has no effect when only one bucket
-resolves.
+Caps the ``ThreadPoolExecutor`` width used by the ``visual_fix`` fan-out
+path (T5.7). Single-bucket invocations bypass the executor entirely so
+the knob has no effect when only one bucket resolves.
 """
 
 _HYDROGEN_DIRNAME: Final[str] = "hydrogen"
@@ -110,14 +109,13 @@ _DEFAULT_TASKS: Final[frozenset[str]] = frozenset(
         "gen_product",
         "gen_cart_search",
         "gen_info_pages",
-        "visual_polish",
-        # ``consolidate`` is in scope as of T5.7: multi-bucket
+        # ``visual_fix`` is in scope as of T5.7: multi-bucket
         # invocations fan out under a ``ThreadPoolExecutor`` and the
         # per-bucket verdicts are merged per spec §5.2.1 step 6 + §9.5.
-        "consolidate",
+        "visual_fix",
     },
 )
-"""Default applicability set per spec §5.2 (now includes ``consolidate``, T5.7)."""
+"""Default applicability set per spec §5.2 (now includes ``visual_fix``, T5.7)."""
 
 _VERDICT_SCHEMA_BLOCK: Final[str] = """\
 {
@@ -191,8 +189,8 @@ class VisualJudgeVerifier:
                 :data:`_DEFAULT_MAX_CONCURRENCY`. Stored for the M5
                 fan-out arm; M1 invokes a single bucket per call.
             applicable_tasks: Override the default applicability set.
-                Defaults to :data:`_DEFAULT_TASKS` (M1 scope, minus
-                ``consolidate``).
+                Defaults to :data:`_DEFAULT_TASKS` (M1 scope plus
+                ``visual_fix``).
         """
         self._data_dir = data_dir
         self._dev_server_factory = dev_server_factory
@@ -366,9 +364,9 @@ class VisualJudgeVerifier:
 
         # Step 5+6: dispatch single-bucket vs multi-bucket fan-out
         # (T5.7). The single-bucket path stays a one-shot ``run_iteration``
-        # call; multi-bucket invocations (``consolidate``, ``visual_polish``)
-        # fan out per bucket under a ``ThreadPoolExecutor`` and merge the
-        # per-bucket verdicts per spec §5.2.1 step 6 + §9.5.
+        # call; multi-bucket invocations (``visual_fix``) fan out per
+        # bucket under a ``ThreadPoolExecutor`` and merge the per-bucket
+        # verdicts per spec §5.2.1 step 6 + §9.5.
         if len(buckets) > 1:
             return self._run_fanout(
                 ctx=ctx,

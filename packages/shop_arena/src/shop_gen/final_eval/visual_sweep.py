@@ -90,7 +90,7 @@ _DEFAULT_MAX_CONCURRENCY: Final[int] = 3
 _DEFAULT_PASS_THRESHOLD: Final[float] = 7.0
 """Score floor reused from §9.3 for the per-bucket coercion rule."""
 
-_CONSOLIDATE_TASK_ID: Final[str] = "consolidate"
+_VISUAL_FIX_TASK_ID: Final[str] = "visual_fix"
 """Source key in :data:`TASK_BUCKETS` for the all-pages bucket set."""
 
 _SKILL_UNAVAILABLE_ERROR: Final[str] = "playwright skill not available"
@@ -238,8 +238,8 @@ def run_visual_sweep(
     screenshots_root = visual_eval_dir / _SCREENSHOTS_DIRNAME
     visual_eval_dir.mkdir(parents=True, exist_ok=True)
 
-    consolidate_buckets = TASK_BUCKETS[_CONSOLIDATE_TASK_ID]
-    buckets_sorted = sorted(consolidate_buckets)
+    visual_fix_buckets = TASK_BUCKETS[_VISUAL_FIX_TASK_ID]
+    buckets_sorted = sorted(visual_fix_buckets)
 
     bucket_specs: list[_BucketSpec] = []
     for bucket in buckets_sorted:

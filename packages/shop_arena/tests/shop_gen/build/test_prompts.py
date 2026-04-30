@@ -1,11 +1,10 @@
 """Lint-only tests for the Phase 4 build-harness-loop prompt templates.
 
-T5.3 from ``docs/impl/shop_gen_implementation.md`` requires four prompt
+T5.3 from ``docs/impl/shop_gen_implementation.md`` requires the prompt
 files under ``packages/shop_arena/src/shop_gen/build/prompts/`` —
-``agents.md`` / ``planner.md`` / ``execute.md`` /
-``consolidate_execute.md`` — and asserts that both executor bodies carry
-the ``{{verifier_feedback}}`` placeholder the harness substitutes at
-runtime (verifiers spec §5.5).
+``agents.md`` / ``planner.md`` / ``execute.md`` — and asserts that the
+executor body carries the ``{{verifier_feedback}}`` placeholder the
+harness substitutes at runtime (verifiers spec §5.5).
 
 These tests are pure I/O over the in-repo prompt files; they never
 spawn an LLM client and never load runtime config.
@@ -21,7 +20,6 @@ import pytest
 from shop_gen.build.prompts import (
     VERIFIER_FEEDBACK_PLACEHOLDER,
     load_agents_md,
-    load_consolidate_execute_prompt,
     load_cross_task_consistency_prompt,
     load_execute_prompt,
     load_planner_prompt,
@@ -29,23 +27,20 @@ from shop_gen.build.prompts import (
     load_visual_judge_prompt,
 )
 
-# The four loaders T5.3 ships, keyed by the prompt-file slot they
-# populate. Keep this in lockstep with
-# ``shop_gen.build.prompts.__all__``.
+# The loaders T5.3 ships, keyed by the prompt-file slot they populate.
+# Keep this in lockstep with ``shop_gen.build.prompts.__all__``.
 _LOADERS: Final[dict[str, Callable[[], str]]] = {
     "agents.md": load_agents_md,
     "planner.md": load_planner_prompt,
     "execute.md": load_execute_prompt,
-    "consolidate_execute.md": load_consolidate_execute_prompt,
     "quality_judge.md": load_quality_judge_prompt,
     "cross_task_consistency.md": load_cross_task_consistency_prompt,
     "visual_judge.md": load_visual_judge_prompt,
 }
 
-# The two executor bodies must carry the verifier-feedback placeholder.
+# The executor body must carry the verifier-feedback placeholder.
 _EXECUTOR_LOADERS: Final[dict[str, Callable[[], str]]] = {
     "execute.md": load_execute_prompt,
-    "consolidate_execute.md": load_consolidate_execute_prompt,
 }
 
 
@@ -80,11 +75,9 @@ def test_planner_prompt_lists_canonical_task_ids() -> None:
     Spec §5.5.2 fixes the planner output to a canonical block:
     ``gen_theme``, ``gen_navigation``, ``gen_homepage``,
     ``gen_collections``, ``gen_product``, ``gen_cart_search``,
-    ``gen_info_pages``, ``visual_polish``, ``consolidate``. A planner
-    prompt that drops one of these would cause the orchestrator's
-    consolidate-append fallback (spec §5.5.4) to fire and would surprise
-    the verifier dispatch contract (spec §5.5.3) which keys on the
-    canonical task ids.
+    ``gen_info_pages``, ``visual_fix``. A planner prompt that drops
+    one of these would surprise the verifier dispatch contract
+    (spec §5.5.3) which keys on the canonical task ids.
     """
     body = load_planner_prompt()
     canonical_ids = (
@@ -95,8 +88,7 @@ def test_planner_prompt_lists_canonical_task_ids() -> None:
         "gen_product",
         "gen_cart_search",
         "gen_info_pages",
-        "visual_polish",
-        "consolidate",
+        "visual_fix",
     )
     missing = [task_id for task_id in canonical_ids if task_id not in body]
     assert not missing, (
@@ -105,50 +97,37 @@ def test_planner_prompt_lists_canonical_task_ids() -> None:
     )
 
 
-def test_planner_prompt_marks_consolidate_as_required() -> None:
-    """The planner prompt must mark ``consolidate`` as REQUIRED + lowest priority.
+def test_planner_prompt_marks_visual_fix_as_required() -> None:
+    """The planner prompt must mark ``visual_fix`` as REQUIRED + lowest priority.
 
-    Spec §5.5.4 makes ``consolidate`` mandatory; if the planner emits
-    the rest of the plan but drops ``consolidate``, the orchestrator
-    appends it deterministically. Marking it REQUIRED in the planner
-    prompt avoids that fallback in the common case and gives the
-    planner the language it needs to brief the task.
+    Spec §5.5.4 makes ``visual_fix`` mandatory: it absorbs the
+    cross-task cleanup remit. The planner prompt must brief that
+    explicitly so the planner does not drop it.
     """
     body = load_planner_prompt()
-    assert "REQUIRED" in body, "planner.md must mark `consolidate` as REQUIRED (spec §5.5.4)."
-    assert "consolidate" in body, "planner.md must reference the `consolidate` task id."
+    assert "REQUIRED" in body, "planner.md must mark `visual_fix` as REQUIRED (spec §5.5.4)."
+    assert "visual_fix" in body, "planner.md must reference the `visual_fix` task id."
 
 
-def test_consolidate_prompt_describes_cross_task_cleanup() -> None:
-    """The consolidate prompt must orient the agent to cross-task cleanup, not new features.
+def test_execute_prompt_describes_visual_fix_cross_task_cleanup() -> None:
+    """The execute prompt must orient ``visual_fix`` to cross-task cleanup, not new features.
 
-    Spec §5.5.4 quotes the consolidation contract:
-    "Read the entire `hydrogen/app/` tree. Look for: shared-component
-    drift, conflicting design tokens, orphaned imports, broken links
-    between pages, navigation paths that no longer match collection
-    handles, and any verifier feedback from prior iterations that was
-    deferred. Fix them in place. Do not introduce new features."
-
-    The exact wording can drift; this test asserts the *intent*
-    survives, not the verbatim quote.
+    Spec §5.5.4 — ``visual_fix`` reads the entire ``hydrogen/app/``
+    tree, fixes leftover ``[!]`` issues + cross-page seams (shared-
+    component drift, conflicting tokens, orphaned imports, broken
+    inter-page links, deferred verifier feedback). The exact wording
+    can drift; this test asserts the *intent* survives.
     """
-    body = load_consolidate_execute_prompt()
+    body = load_execute_prompt()
     must_mention = (
-        "consolidat",  # consolidate / consolidation
+        "visual_fix",
         "drift",
         "deferred",
     )
     missing = [token for token in must_mention if token.lower() not in body.lower()]
     assert not missing, (
-        f"consolidate_execute.md must orient the agent to cross-task "
-        f"cleanup (spec §5.5.4). Missing key concept(s): {missing}."
-    )
-    # The body's wording wraps freely across lines. Normalise to a
-    # single-spaced string before substring matching so a line break
-    # between "introduce" and "new" does not flake the assertion.
-    flat = " ".join(body.split())
-    assert "do not introduce new" in flat.lower() or "no new features" in flat.lower(), (
-        "consolidate_execute.md must forbid introducing new features (spec §5.5.4)."
+        f"execute.md must orient `visual_fix` to cross-task cleanup "
+        f"(spec §5.5.4). Missing key concept(s): {missing}."
     )
 
 

@@ -122,7 +122,7 @@ overall ``score`` is strictly below this threshold. The default of
 DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY: Final[int] = 3
 """Default page-bucket fan-out worker count (spec §5.2.1 step 5, §5.6).
 
-Caps the ``ThreadPoolExecutor`` width used by the ``consolidate``
+Caps the ``ThreadPoolExecutor`` width used by the ``visual_fix``
 page-bucket fan-out and the final-eval visual sweep. Values must
 be strictly positive.
 """
@@ -234,7 +234,7 @@ class ShopGenConfig(BaseModel):
             :data:`DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD`. Must be
             non-negative.
         visual_judge_max_concurrency: Page-bucket fan-out worker count
-            for the ``consolidate`` task and the final-eval visual sweep
+            for the ``visual_fix`` task and the final-eval visual sweep
             (spec §5.2.1 step 5, §5.6). Defaults to
             :data:`DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY`. Strictly
             positive.

@@ -66,9 +66,9 @@ def test_name_and_applicability() -> None:
     verifier = DataInUseVerifier(introspect=_introspector())
     assert verifier.name == "data_in_use"
     assert verifier.applies_to("gen_homepage") is True
-    # Spec §5.5.4 lists the consolidate gating set explicitly; data_in_use
+    # Spec §5.5.4 lists the visual_fix gating set explicitly; data_in_use
     # is not on it.
-    assert verifier.applies_to("consolidate") is False
+    assert verifier.applies_to("visual_fix") is False
     assert verifier.applies_to("plan") is False
 
 

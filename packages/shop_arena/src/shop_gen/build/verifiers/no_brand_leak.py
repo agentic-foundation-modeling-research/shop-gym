@@ -9,7 +9,7 @@ embeds the eight-element allowlist verbatim so the next iteration's
 agent has the full vocabulary in context.
 
 Applicability mirrors the spec table: every ``gen_*`` task. The
-``consolidate`` task is excluded — §5.5.4 lists its gating verifier set
+``visual_fix`` task is excluded — §5.5.4 lists its gating verifier set
 explicitly and ``no_brand_leak`` is not on it.
 """
 

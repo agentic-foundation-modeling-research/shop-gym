@@ -236,7 +236,7 @@ validate_hosting                            write_env_file
                                             run_build_harness_loop
                                               (one harness.run_plan_exec_loop
                                                invocation; planner emits
-                                               gen_theme … consolidate; verifier
+                                               gen_theme … visual_fix; verifier
                                                set gates each task)
 
 [phase 5: final_eval]
@@ -249,7 +249,7 @@ seed runs register the `copy_seed_manual` shortcut. Phases 2–5 are
 config-independent at v0.1.
 
 The build loop's tasks (`gen_theme`, `gen_navigation`, `gen_homepage`,
-`consolidate`, …) live *inside* `run_build_harness_loop` — they're
+`visual_fix`, …) live *inside* `run_build_harness_loop` — they're
 not separate Python steps. Re-running an individual build-loop task
 is the `--only gen_<task>` redo flow above.
 

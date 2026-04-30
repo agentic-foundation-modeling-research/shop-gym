@@ -1,14 +1,14 @@
 """``cross_task_consistency`` build-loop verifier (spec §5.5.3 + §5.5.4, T5.5).
 
 Asks the configured runtime's :class:`~harness.runtimes.LLMCompleter`
-to do a whole-app sweep after the mandatory ``consolidate`` task: are
+to do a whole-app sweep after the mandatory ``visual_fix`` task: are
 all generated components mutually consistent (shared design tokens,
 shared types, no orphan imports, navigation paths matching collection
 handles)?
 
-Applicability matches the spec table: post ``consolidate`` only. The
+Applicability matches the spec table: post ``visual_fix`` only. The
 verifier exists because the slice-owned ``gen_*`` tasks cannot re-open
-each other; ``consolidate`` is the seam where cross-task drift gets
+each other; ``visual_fix`` is the seam where cross-task drift gets
 repaired (spec §5.5.4) and this judge is its gating signal.
 
 The verifier reads:
@@ -52,7 +52,7 @@ _COLLECTIONS_FILE: Final[str] = "data/collections.json"
 _DEFAULT_TIMEOUT_S: Final[float] = 240.0
 """Wall-clock budget for the LLM judge call.
 
-Conservative: the consolidate sweep typically reviews more files than
+Conservative: the visual_fix sweep typically reviews more files than
 ``quality_judge`` (whole-app rather than task-scoped), so the default
 budget is a minute longer than the per-task quality judge.
 """
@@ -67,7 +67,7 @@ Higher than ``quality_judge``'s default because this verifier reviews
 the whole app rather than one task slice.
 """
 
-_DEFAULT_TASKS: Final[frozenset[str]] = frozenset({"consolidate"})
+_DEFAULT_TASKS: Final[frozenset[str]] = frozenset({"visual_fix"})
 """Tasks this verifier applies to per spec §5.5.4."""
 
 
@@ -102,7 +102,7 @@ class CrossTaskConsistencyVerifier:
                 cap are dropped. Defaults to
                 :data:`_DEFAULT_MAX_TOTAL_BYTES`.
             applicable_tasks: Override the default applicability set.
-                Defaults to :data:`_DEFAULT_TASKS` (``{"consolidate"}``
+                Defaults to :data:`_DEFAULT_TASKS` (``{"visual_fix"}``
                 per spec §5.5.4).
         """
         self._timeout_s = timeout_s
@@ -113,7 +113,7 @@ class CrossTaskConsistencyVerifier:
         )
 
     def applies_to(self, task_id: str) -> bool:
-        """Match the spec §5.5.4 task list (``consolidate`` only by default).
+        """Match the spec §5.5.4 task list (``visual_fix`` only by default).
 
         Args:
             task_id: Selected task id.

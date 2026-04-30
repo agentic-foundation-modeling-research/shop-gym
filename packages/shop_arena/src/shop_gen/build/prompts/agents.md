@@ -66,8 +66,9 @@ The harness owns the top-level run dir. The seed-immutability invariant
 
 The cloned hydrogen tree starts as the vendored template. Every `gen_*`
 task mutates a defined slice of the tree (theme, navigation, homepage,
-collection / product detail, cart + search, info pages, polish,
-consolidate). Two rules govern *where* you write:
+collection / product detail, cart + search, info pages); the final
+`visual_fix` task fixes leftover `[!]` issues and cross-page seams. Two
+rules govern *where* you write:
 
 - **Stay inside `artifact/hydrogen/`** for every code / asset edit.
   Writing outside that subtree breaks the seed-immutability check and
@@ -139,8 +140,8 @@ The v0.1 verifier set the orchestrator wires up:
 | `build`                  | rule | every `gen_*` task                                                                |
 | `data_in_use`            | rule | every `gen_*` task                                                                |
 | `nav_coverage`           | rule | post `gen_navigation`                                                             |
-| `quality_judge`          | LLM  | post `gen_homepage`, `gen_product`, `gen_cart_search`, `visual_polish`, `consolidate` |
-| `cross_task_consistency` | LLM  | post `consolidate`                                                                |
+| `quality_judge`          | LLM  | post `gen_homepage`, `gen_product`, `gen_cart_search`, `visual_fix`               |
+| `cross_task_consistency` | LLM  | post `visual_fix`                                                                 |
 
 ---
 

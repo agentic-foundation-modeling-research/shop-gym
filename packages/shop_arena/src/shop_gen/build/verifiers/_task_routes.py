@@ -3,8 +3,8 @@
 Two-layer model from spec §5.3 + §9.1.
 
 * **Layer 1 — task → buckets.** ``TASK_BUCKETS`` is a static map from a
-  ``gen_*`` / ``visual_polish`` / ``consolidate`` task id to a small set
-  of page **buckets**. :func:`buckets_for_task` strips a trailing
+  ``gen_*`` / ``visual_fix`` task id to a small set of page **buckets**.
+  :func:`buckets_for_task` strips a trailing
   ``_redo_<n>`` suffix (B1 prefix match, §5.3 layer 1) before lookup so
   the redo flow (``gen_homepage_redo_3``) reuses the base task's scope.
 * **Layer 2 — bucket → routes.** :func:`bucket_routes` reads
@@ -55,7 +55,7 @@ __all__ = [
 class BucketCaps:
     """Per-bucket sampling caps for :func:`bucket_routes`.
 
-    Both the build-loop ``visual_judge`` (per-iteration ``consolidate``
+    Both the build-loop ``visual_judge`` (per-iteration ``visual_fix``
     invocations) and the final-eval visual sweep flow through the same
     :func:`routes_for_buckets` entry point with different cap profiles
     (spec §5.6.1). The verifier passes :data:`DEFAULT_CAPS` (tight: 1
@@ -101,8 +101,7 @@ TASK_BUCKETS: Final[dict[str, frozenset[str]]] = {
     "gen_product": frozenset({"product"}),
     "gen_cart_search": frozenset({"cart_search"}),
     "gen_info_pages": frozenset({"info_pages"}),
-    "visual_polish": frozenset({"homepage", "collections", "product"}),
-    "consolidate": frozenset(
+    "visual_fix": frozenset(
         {
             "homepage",
             "navigation",
@@ -149,7 +148,7 @@ PAGE_WEIGHTS: Final[dict[str, float]] = {
 """Page-bucket weights for merging per-bucket verdicts (spec §9.5).
 
 Used by :class:`shop_gen.build.verifiers.visual_judge.VisualJudgeVerifier`
-to merge ``consolidate``-task fan-out results (T5.7) and by
+to merge ``visual_fix``-task fan-out results (T5.7) and by
 the :mod:`shop_gen.final_eval.visual_sweep` driver (T5.3) to compute
 the overall sweep score. Buckets absent from a fan-out are dropped from
 both numerator and denominator so the weighted average stays well-defined.
@@ -238,9 +237,9 @@ def routes_for_buckets(
 ) -> tuple[str, ...]:
     """Sorted union of :func:`bucket_routes` over ``buckets``.
 
-    Multi-bucket invocations (``visual_polish``, ``consolidate``, the
-    final-eval sweep) take the union; sorting makes the result
-    deterministic across reruns and across bucket-set orderings.
+    Multi-bucket invocations (``visual_fix``, the final-eval sweep)
+    take the union; sorting makes the result deterministic across
+    reruns and across bucket-set orderings.
 
     Args:
         buckets: Bucket names; unknown bucket names contribute no routes.

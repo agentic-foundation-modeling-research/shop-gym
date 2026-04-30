@@ -112,8 +112,7 @@ def test_name_and_applicability() -> None:
         "gen_homepage",
         "gen_product",
         "gen_cart_search",
-        "visual_polish",
-        "consolidate",
+        "visual_fix",
     ):
         assert verifier.applies_to(task_id) is True, f"missing task {task_id}"
     # Other gen_* tasks (and non-gen tasks) are out of scope.

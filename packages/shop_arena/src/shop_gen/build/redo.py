@@ -13,7 +13,7 @@ original ``[x]`` line. Concretely, calling :func:`append_redo_task` against
 3. Counts existing ``<base>_redo_<N>`` siblings to compute the next
    suffix.
 4. Appends a new ``[ ]`` (PENDING) task line at the end of the
-   ``## Tasks`` section — i.e. **after** the mandatory ``consolidate``
+   ``## Tasks`` section — i.e. **after** the mandatory ``visual_fix``
    bullet that the planner pins to last position (planner.md §3 / spec
    §5.7.3).
 5. Writes the file back atomically and returns the new task id.
@@ -45,10 +45,11 @@ from harness.plan.parser import InvalidPlanError
 _DEFAULT_PRIORITY: Final[int] = 1
 """Spec §5.7.3 default priority for an appended redo task.
 
-Matches the canonical priority of ``consolidate`` (planner.md §5). On a
-completed run every other task is ``[x]``, so :func:`harness.plan.select_next`
-picks the redo task regardless of the tie — the priority value is recorded
-literally for forward compatibility with future selection refinements.
+One below the canonical priority of ``visual_fix`` (planner.md §5,
+priority 2). On a completed run every other task is ``[x]``, so
+:func:`harness.plan.select_next` picks the redo task regardless of
+the tie — the priority value is recorded literally for forward
+compatibility with future selection refinements.
 """
 
 _TASKS_HEADING_RE: Final[re.Pattern[str]] = re.compile(r"^##\s+Tasks\s*$")
@@ -93,8 +94,8 @@ def append_redo_task(
             the executor can locate the original task's iteration
             history; ``reason`` is appended after a colon when supplied.
         priority: Priority value for the new task. Defaults to
-            :data:`_DEFAULT_PRIORITY` (matches ``consolidate``); higher
-            values override consolidate's selection tie.
+            :data:`_DEFAULT_PRIORITY` (one below ``visual_fix``); higher
+            values override the selection tie when needed.
 
     Returns:
         The newly appended task id (``<base>_redo_<N>``).

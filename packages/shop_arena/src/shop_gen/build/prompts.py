@@ -3,35 +3,26 @@
 Externalises the markdown bodies that
 :mod:`shop_gen.build.loop.RunBuildHarnessLoopStep` (T5.6) hands to
 :func:`harness.run_plan_exec_loop` as the agents constitution + planner
-body + executor bodies for the gen tasks and the consolidate task. Spec
-§5.5.2 + §5.5.4.
+body + executor body. Spec §5.5.2 + §5.5.4.
 
-Six files live next to this module under
+Five files live next to this module under
 :mod:`shop_gen.build.prompts` (the package directory):
 
 * ``agents.md`` — the shared constitution rendered into
   :class:`harness.PlanExecLoopConfig.agents_md`. Returned verbatim.
 * ``planner.md`` — the planner-iteration body rendered into
   :class:`harness.Prompts.planner`. Returned verbatim.
-* ``execute.md`` — the executor body for every ``gen_*`` task. The
-  harness renders the ``{{verifier_feedback}}`` slot from the previous
-  iteration's verifier dispatch (verifiers spec §5.5).
-* ``consolidate_execute.md`` — the executor body the build loop driver
-  selects when the harness routes the ``consolidate`` task (spec
-  §5.5.4). Carries the same ``{{verifier_feedback}}`` slot so the
-  consolidation pass can react to its own verifier failures across
-  iterations.
-  iterations.
+* ``execute.md`` — the executor body for every ``gen_*`` task and the
+  mandatory final ``visual_fix`` task. The harness renders the
+  ``{{verifier_feedback}}`` slot from the previous iteration's
+  verifier dispatch (verifiers spec §5.5).
 * ``quality_judge.md`` / ``cross_task_consistency.md`` /
   ``visual_judge.md`` — the ``str.format()`` templates the verifier
   dispatcher renders (T5.5; ``visual_judge`` per the visual-verifier
   spec §9.2).
+
 The files are checked into the repo and considered API: changes flow
 through prompt-engineering review, not silent edits to the loop driver.
-The two executor bodies are intentionally kept as standalone files even
-though their retry-budget and verifier-feedback sections are nearly
-identical — prompt-engineering review prefers reading each role
-top-to-bottom over chasing template indirection.
 
 Lookups are cached so repeated calls are free; the disk read happens
 lazily on first use, keeping the parent package import-safe (no I/O at
@@ -48,7 +39,6 @@ _PROMPTS_DIR: Final[Path] = Path(__file__).resolve().parent / "prompts"
 _AGENTS_FILE: Final[str] = "agents.md"
 _PLANNER_FILE: Final[str] = "planner.md"
 _EXECUTE_FILE: Final[str] = "execute.md"
-_CONSOLIDATE_EXECUTE_FILE: Final[str] = "consolidate_execute.md"
 _QUALITY_JUDGE_FILE: Final[str] = "quality_judge.md"
 _CROSS_TASK_CONSISTENCY_FILE: Final[str] = "cross_task_consistency.md"
 _VISUAL_JUDGE_FILE: Final[str] = "visual_judge.md"
@@ -120,36 +110,6 @@ def load_execute_prompt() -> str:
             f"the '{VERIFIER_FEEDBACK_PLACEHOLDER}' placeholder so the "
             "harness can inject prior-iteration verifier feedback "
             "(verifiers spec §5.5).",
-        )
-    return body
-
-
-@cache
-def load_consolidate_execute_prompt() -> str:
-    """Return the executor body for the mandatory ``consolidate`` task.
-
-    The build-loop driver swaps this body in when the harness selects
-    ``consolidate`` (spec §5.5.4). It carries the same
-    ``{{verifier_feedback}}`` placeholder as :func:`load_execute_prompt`
-    so the consolidation pass reacts to its own verifier failures across
-    iterations.
-
-    Returns:
-        The consolidate-executor prompt text, terminated by a single
-        newline.
-
-    Raises:
-        FileNotFoundError: ``consolidate_execute.md`` is missing.
-        ValueError: The body is missing the
-            ``{{verifier_feedback}}`` placeholder.
-    """
-    body = _read_prompt_file(_CONSOLIDATE_EXECUTE_FILE)
-    if VERIFIER_FEEDBACK_PLACEHOLDER not in body:
-        raise ValueError(
-            f"{_CONSOLIDATE_EXECUTE_FILE}: consolidate-executor prompt "
-            f"must contain the '{VERIFIER_FEEDBACK_PLACEHOLDER}' "
-            "placeholder so the harness can inject prior-iteration "
-            "verifier feedback (verifiers spec §5.5).",
         )
     return body
 
@@ -229,7 +189,6 @@ def _read_prompt_file(name: str) -> str:
 __all__ = [
     "VERIFIER_FEEDBACK_PLACEHOLDER",
     "load_agents_md",
-    "load_consolidate_execute_prompt",
     "load_cross_task_consistency_prompt",
     "load_execute_prompt",
     "load_planner_prompt",

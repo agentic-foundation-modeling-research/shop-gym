@@ -10,7 +10,7 @@ applies to.
 The v0.1 verifier set lives here:
 
 * :class:`TscVerifier` — ``pnpm tsc --noEmit`` against the hydrogen
-  tree. Applies to every ``gen_*`` task plus ``consolidate``.
+  tree. Applies to every ``gen_*`` task plus ``visual_fix``.
 * :class:`BuildVerifier` — ``pnpm build`` against the hydrogen tree.
   Same applicability as :class:`TscVerifier`.
 * :class:`DataInUseVerifier` — diffs the agent's GraphQL queries

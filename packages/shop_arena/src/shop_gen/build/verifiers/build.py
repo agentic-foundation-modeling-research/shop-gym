@@ -14,7 +14,7 @@ hydrogen directory invokes the same ``build`` script; the spec's
 phrasing is approximate.
 
 Applicability mirrors :class:`TscVerifier`: every ``gen_*`` task plus
-the mandatory ``consolidate`` task (spec §5.5.4).
+the mandatory ``visual_fix`` task (spec §5.5.4).
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ class BuildVerifier:
         self._runner = runner
 
     def applies_to(self, task_id: str) -> bool:
-        """Match every ``gen_*`` task plus ``consolidate`` (spec §5.5.4).
+        """Match every ``gen_*`` task plus ``visual_fix`` (spec §5.5.4).
 
         Args:
             task_id: Selected task id (the executor's ``selected_task_id``).
@@ -81,7 +81,7 @@ class BuildVerifier:
         Returns:
             ``True`` when the verifier should run for ``task_id``.
         """
-        return task_id.startswith("gen_") or task_id == "consolidate"
+        return task_id.startswith("gen_") or task_id == "visual_fix"
 
     def run(self, ctx: VerifierContext) -> VerifierResult:
         """Spawn ``pnpm build`` and translate the exit code into a verdict.

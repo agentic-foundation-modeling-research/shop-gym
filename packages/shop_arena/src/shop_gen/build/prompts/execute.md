@@ -5,11 +5,10 @@ You are the **executor** for one `shop_gen` build task. `AGENTS.md`
 sidecar / Storefront API conventions, verifier contract. Read it first;
 this prompt does not duplicate it.
 
-The `consolidate` task has its own purpose-built body
-(`prompts/consolidate_execute.md`) — the orchestrator routes to that
-prompt when the harness selects `consolidate`. You will not be invoked
-for `consolidate`; if you somehow are, fall through to the consolidation
-behavior described there.
+This single prompt handles every canonical task — including
+`visual_fix`, the lowest-priority cleanup task that runs last. There
+is no separate prompt body for `visual_fix`; §3 below describes its
+scope.
 
 ---
 
@@ -97,12 +96,26 @@ edit any other task's checkbox or any other line of `plan.md`.
 
 Before you mutate anything:
 
-1. **`artifact/manual/manual.md`** — your task brief points at named
-   surfaces; read those sections. Capture the structural details (column
-   counts, sticky behavior, variant axes, …) you will translate into
-   TSX.
+1. **The right manual slice for your task.** The merged manual is
+   sliced by area into `artifact/manual/parts/<area>.md`. Most
+   `gen_*` tasks read **only** their slice — opening the full manual
+   wastes turns on detail that is not yours. The mapping:
+
+   | Task               | Reads                                          |
+   | ------------------ | ---------------------------------------------- |
+   | `gen_theme`        | `artifact/manual/manual.md` (full)             |
+   | `gen_navigation`   | `artifact/manual/parts/navigation.md`          |
+   | `gen_homepage`     | `artifact/manual/parts/homepage.md`            |
+   | `gen_collections`  | `artifact/manual/parts/collections.md`         |
+   | `gen_product`      | `artifact/manual/parts/product.md`             |
+   | `gen_cart_search`  | `artifact/manual/parts/cart_and_search.md`     |
+   | `gen_info_pages`   | `artifact/manual/parts/info_pages.md`          |
+   | `visual_fix`       | `artifact/manual/manual.md` (full)             |
+
+   Capture the structural details (column counts, sticky behavior,
+   variant axes, …) you will translate into TSX.
 2. **`artifact/manual/capabilities.json`** — the closed schema. Use it
-   as ground truth when the prose in `manual.md` is ambiguous; if a
+   as ground truth when the prose in the sub-manual is ambiguous; if a
    capability is `false`, leave the corresponding surface at the
    template default and move on.
 3. **`artifact/hydrogen/app/`** — find the file slice your task touches.
@@ -118,12 +131,13 @@ Before you mutate anything:
 
 ## 3. What to do
 
-The seven `gen_*` tasks divide the storefront into disjoint slices. The
-specifics live in the task brief; the contract below is what every
-`gen_*` task shares.
+The seven `gen_*` tasks divide the storefront into disjoint slices.
+`visual_fix` is the cleanup pass that runs last and may touch any
+slice. The specifics live in each task brief; the contract below is
+what every task shares.
 
-1. **Stay in your slice.** Each task owns a defined subtree of
-   `hydrogen/app/`:
+1. **Stay in your slice (except `visual_fix`).** Each `gen_*` task
+   owns a defined subtree of `hydrogen/app/`:
 
    | Task              | Owned slice                                                                            |
    | ----------------- | -------------------------------------------------------------------------------------- |
@@ -134,12 +148,55 @@ specifics live in the task brief; the contract below is what every
    | `gen_product`     | `app/routes/products.$handle.tsx`, `app/components/ProductGallery.tsx`, `app/components/VariantSelector.tsx`. |
    | `gen_cart_search` | `app/components/CartDrawer.tsx`, `app/components/PredictiveSearch.tsx`, the cart / search route loaders. |
    | `gen_info_pages`  | `app/routes/pages.$handle.tsx`, `app/routes/policies.$handle.tsx`, FAQ / about / contact static routes. |
-   | `visual_polish`   | Cross-cutting CSS / spacing / responsive tweaks. No new components.                    |
+   | `visual_fix`      | Any slice — final cross-cutting cleanup pass (see §3a).                                |
 
-   Touching another slice is **`consolidate`'s** job, not yours. If you
-   discover that another slice needs to change, stop, mark your task
-   `[!] needs cross-task fix in <slice>`, and the orchestrator's
-   append-redo flow + the `consolidate` task will pick it up.
+   Touching another slice from a `gen_*` task is **`visual_fix`'s**
+   job, not yours. If you discover that another slice needs to change
+   from a `gen_*` task, stop, mark your task `[!] needs cross-task fix
+   in <slice>`, and `visual_fix` will pick it up.
+
+### 3a. `visual_fix` scope
+
+When your selected task is `visual_fix`, you are the cleanup pass.
+Every other `gen_*` task has either completed (`[x]`) or been
+deferred (`[!]`). Walk these checks **in order**:
+
+1. **Address every `[!]` task.** Read `plan.md`; for each `[!]`
+   `gen_*` line whose note describes a cross-slice fix or a leftover
+   verifier failure, apply the fix in the right slice. If the fix
+   lands cleanly, drop the deferral marker on that line so the plan
+   reflects the resolved state.
+2. **Shared-component drift.** Two slices importing slightly different
+   versions of `ProductItem`, `Button`, `Price`, `ImageWithFallback`,
+   etc. Resolve to a single canonical implementation under
+   `app/components/`; update all importers.
+3. **Design-token drift.** `gen_theme` defined a token set; later
+   slices may have hard-coded values (`#0066cc` instead of
+   `var(--color-accent)`, `1rem` instead of `var(--space-4)`). Replace
+   literals with the tokens from `gen_theme`. If `gen_theme` did not
+   define the token your slice needed, **add it to the theme**.
+4. **Navigation coverage drift.** Every collection in
+   `data/collections.json` must be reachable from the rendered nav.
+   The `nav_coverage` verifier already catches missing handles; close
+   the loop on the inverse case (nav links pointing at routes
+   renamed by another slice).
+5. **Orphan imports / dead routes.** Any `import` resolving to a file
+   that no longer exists; any route file unreachable from any link.
+   Either delete the orphan or wire it back in.
+6. **GraphQL fragment / query drift.** Two slices defining nearly-the-
+   same fragment with different field sets. Hoist a shared fragment
+   into `app/lib/fragments.ts` (or the template's equivalent) and
+   converge importers.
+7. **Final responsive / spacing / typography pass** across header,
+   homepage sections, collection grid, PDP, and cart drawer. Treat
+   `quality_judge` and `cross_task_consistency` verifier feedback as
+   the spec for what to fix.
+
+What is **out of scope** for `visual_fix`:
+
+- New components, new pages, new sections, new design treatments.
+- Mutating `artifact/manual/`. The manual is the seed; cleanup
+  reconciles the build to the manual, not the other way around.
 
 2. **Talk to the sidecar via the Storefront API client.** Hydrogen
    ships a typed Storefront client (`createStorefrontClient` from
@@ -162,7 +219,7 @@ specifics live in the task brief; the contract below is what every
    - `[!] retry_exhausted: <verifier>` — only when the inbound note
      already showed `(retry 3/3)`. Permanently retires the task.
    - `[!] needs cross-task fix in <slice>` — the issue cannot be
-     solved within your owned slice. `consolidate` will pick it up.
+     solved within your owned slice. `visual_fix` will pick it up.
 
    Never mark `[x]` while the verifier feedback above describes an
    unresolved failure unless your edits in this iteration positively

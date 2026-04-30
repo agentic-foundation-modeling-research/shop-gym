@@ -19,9 +19,12 @@ other path under `artifact/`. Code generation belongs to the executor.
 You do not need to inspect every file. Skim only what you need to write a
 high-quality plan:
 
-1. `artifact/manual/manual.md` — the structural ground truth. Identify
-   which surfaces are non-default (mega-menu, predictive search, info
-   pages beyond the standard set, …).
+1. `artifact/manual/manual.md` — the structural ground truth for the
+   whole storefront. Identify which surfaces are non-default
+   (mega-menu, predictive search, info pages beyond the standard set,
+   …). The merged manual is sliced into per-area sub-manuals under
+   `artifact/manual/parts/`; you do not need to open the sub-manuals
+   yourself — the executor will read them per task.
 2. `artifact/manual/capabilities.json` — the closed schema. Use
    `homepage.section_types`, `collection.has_filters`, `product.*`,
    `cart.*`, `search.*`, `floating.*`, `info_pages_present` to scope the
@@ -45,26 +48,26 @@ template default and note the gap in its iteration reply.
 
 ```
 - [ ] gen_theme        — write design tokens, palette, and typography per the manual's tone; wire them through the Hydrogen theme entry [priority: 9]
-- [ ] gen_navigation   — implement Header, Footer, MegaMenu, mobile nav, and announcement bar from `data/navigation.json`; every collection handle reachable [priority: 8]
-- [ ] gen_homepage     — render hero, featured collections, and any promo banner from `homepage.section_types`; bind to live Storefront API queries [priority: 7]
-- [ ] gen_collections  — collection list + collection detail with the filter / sort affordances `capabilities.collection` declares; ProductItem component shared with PDP [priority: 6]
-- [ ] gen_product      — product detail with variant pickers, gallery, and the option / quantity / availability rules `capabilities.product` declares [priority: 5]
-- [ ] gen_cart_search  — cart drawer with the lifecycle states (`empty`, `filled`, `qty change`, `remove`); predictive search per `capabilities.search` [priority: 4]
-- [ ] gen_info_pages   — every page in `info_pages_present` (about, contact, policies, FAQ, …) wired into routes and the footer [priority: 3]
-- [ ] visual_polish    — final layout / spacing / responsive pass; ADVISORY verifiers only [priority: 2]
-- [ ] consolidate      — REQUIRED final task; cross-task cleanup (shared-component drift, design-token drift, broken links, deferred verifier feedback) [priority: 1]
+- [ ] gen_navigation   — implement Header, Footer, MegaMenu, mobile nav, and announcement bar from `data/navigation.json` and `artifact/manual/parts/navigation.md`; every collection handle reachable [priority: 8]
+- [ ] gen_homepage     — render hero, featured collections, and any promo banner from `homepage.section_types` and `artifact/manual/parts/homepage.md`; bind to live Storefront API queries [priority: 7]
+- [ ] gen_collections  — collection list + collection detail with the filter / sort affordances `capabilities.collection` and `artifact/manual/parts/collections.md` declare; ProductItem component shared with PDP [priority: 6]
+- [ ] gen_product      — product detail with variant pickers, gallery, and the option / quantity / availability rules `capabilities.product` and `artifact/manual/parts/product.md` declare [priority: 5]
+- [ ] gen_cart_search  — cart drawer with the lifecycle states (`empty`, `filled`, `qty change`, `remove`); predictive search per `capabilities.search` and `artifact/manual/parts/cart_and_search.md` [priority: 4]
+- [ ] gen_info_pages   — every page in `info_pages_present` (about, contact, policies, FAQ, …) per `artifact/manual/parts/info_pages.md`; wire into routes and the footer [priority: 3]
+- [ ] visual_fix       — REQUIRED final task; fix leftover `[!]` task issues and cross-page seams (shared-component drift, design-token drift, broken inter-page links, deferred verifier feedback) [priority: 2]
 ```
 
-The `consolidate` task is **mandatory**: the orchestrator appends it
-deterministically if you omit it, but writing a one-line brief here is
-the easier path. Its job is documented in
-`prompts/consolidate_execute.md`.
+The `visual_fix` task is **mandatory** and is always the last bullet
+under `## Tasks`. Its job is documented in `prompts/execute.md` §3.
+Unlike the prior `visual_polish` + `consolidate` pair, `visual_fix`
+absorbs both the responsive / spacing pass and the cross-task cleanup
+remit; do not split it.
 
 If the manual surfaces a *shop-specific* feature that none of the
 canonical ids cover (e.g. a `gift_card_purchase` flow, a
 `bundle_builder` page, a `loyalty_program` tier surface), append
 additional snake_case task ids **between `gen_info_pages` and
-`visual_polish`**. Justify each addition with a one-line evidence
+`visual_fix`**. Justify each addition with a one-line evidence
 reference in the brief that points back to the manual.
 
 The `## Omitted Areas` block is reserved for taxonomy areas the manual
@@ -90,7 +93,7 @@ catalog shape). No real-world brand, no source URL.>
 <the full canonical block from §2, verbatim, with briefs tightened to
 mention the specific manual / capabilities anchors that scope each task;
 optionally followed by shop-specific tasks between `gen_info_pages` and
-`visual_polish`>
+`visual_fix`>
 
 ## Omitted Areas
 
@@ -111,16 +114,15 @@ optionally followed by shop-specific tasks between `gen_info_pages` and
     order.
 
 **Conventions** (not parser-enforced, but downstream verifiers and the
-`consolidate` task consume them):
+`visual_fix` task consume them):
 
 - `## Omitted Areas` is required even if empty (write `(none)`). Each
   entry is `- <area> — <one-line capabilities-grounded reason>`.
 - The canonical block from §2 is emitted **verbatim and unconditionally**;
   do not drop tasks because a feature looks absent. Any shop-specific
-  additions appear *between `gen_info_pages` and `visual_polish`*.
-- `consolidate` is the **lowest-priority task** in the plan and the
-  **last bullet** under `## Tasks`. The orchestrator's append-redo flow
-  (spec §5.7.3) relies on this position.
+  additions appear *between `gen_info_pages` and `visual_fix`*.
+- `visual_fix` is the **lowest-priority task** in the plan and the
+  **last bullet** under `## Tasks`.
 - Tweak briefs (the trailer after `—`) when the manual reveals a more
   specific target (e.g. naming the section types the homepage promises).
   Do not change task ids or priorities of the canonical list.
@@ -132,8 +134,9 @@ optionally followed by shop-specific tasks between `gen_info_pages` and
 The trailer after `—` is the spec the executor follows. One line, ≤ 200
 chars, imperative voice ("render …", "wire …", "implement …"), anchors
 concrete deliverables (route paths, component names, capabilities-schema
-keys). Reference the manual / capabilities by section name when it helps
-the executor pick the right slice. Do not name a real-world store or
+keys, sub-manual paths). Reference the per-area sub-manual
+(`artifact/manual/parts/<area>.md`) when scoping a `gen_*` task so the
+executor reads the right slice. Do not name a real-world store or
 product.
 
 ---
@@ -146,9 +149,8 @@ product.
 | 7–8      | High-traffic surfaces that depend on the foundation (navigation, homepage).              |
 | 5–6      | Product-facing surfaces that share components with the homepage (collections, product).  |
 | 3–4      | Secondary surfaces (cart drawer + search, info pages).                                   |
-| 2        | Polish passes; advisory verifiers only.                                                  |
-| 1        | `consolidate` — REQUIRED, always lowest priority.                                        |
+| 2        | `visual_fix` — REQUIRED, always lowest priority and last bullet.                         |
 
 The canonical priorities in §2 already cover most rows; this guide is
 for shop-specific tasks you append between `gen_info_pages` and
-`visual_polish`.
+`visual_fix`.
