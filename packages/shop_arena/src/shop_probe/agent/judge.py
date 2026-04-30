@@ -30,6 +30,8 @@ from typing import Final
 
 from anthropic import AsyncAnthropic
 
+from shop_probe.agent.env import load_agent_env, require_anthropic_credentials
+
 _RATE_TABLE: Final[dict[str, tuple[float, float]]] = {
     # USD per million tokens: (input, output). Source: Anthropic public
     # pricing for the models referenced by the v1.3 implementation plan.
@@ -289,7 +291,12 @@ async def run_completion_judge(
     """
     if client is None:
         # Lazy construction keeps this module import-safe (the ``AsyncAnthropic``
-        # constructor reads ``ANTHROPIC_API_KEY`` from the environment).
+        # constructor reads ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_BASE_URL`` from
+        # the environment). Source them from a project ``.env`` first so
+        # operators don't have to ``export`` on every invocation, then
+        # fail fast with an actionable message if no credential is reachable.
+        load_agent_env()
+        require_anthropic_credentials()
         client = AsyncAnthropic()
 
     content = _build_user_content(
