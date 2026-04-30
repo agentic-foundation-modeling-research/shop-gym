@@ -387,6 +387,47 @@ button.reset:hover:not(:has(> *)) {
   background: var(--color-light);
   position: sticky;
   top: 0;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+}
+
+.predictive-search-form input[type='search'],
+.search-form input[type='search'] {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border, #ccc);
+  border-radius: 4px;
+  font: inherit;
+  background: var(--color-bg-elevated, #fff);
+  color: var(--color-fg, #1a1a1a);
+}
+
+.predictive-search-form input[type='search']:focus-visible,
+.search-form input[type='search']:focus-visible {
+  outline: 2px solid var(--color-accent, #1a1a1a);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.predictive-search-form button,
+.search-form button {
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--color-fg, #1a1a1a);
+  border-radius: 4px;
+  background: var(--color-fg, #1a1a1a);
+  color: var(--color-bg-elevated, #fff);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.predictive-search-form button:hover,
+.search-form button:hover {
+  background: var(--color-accent, #1a1a1a);
+  border-color: var(--color-accent, #1a1a1a);
 }
 
 .predictive-search-result {
