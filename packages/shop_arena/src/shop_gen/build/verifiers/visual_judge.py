@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+import subprocess
 from collections.abc import Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -51,6 +52,7 @@ from shop_gen.build.prompts import load_visual_judge_prompt
 from shop_gen.build.verifiers._history import count_prior_task_fails
 from shop_gen.build.verifiers._runtime_call import (
     VisualVerdict,
+    parse_visual_verdict,
     run_visual_iteration,
 )
 from shop_gen.build.verifiers._task_routes import (
@@ -401,7 +403,13 @@ class VisualJudgeVerifier:
                 "viewports": ["desktop", "mobile"],
             }
 
-            # Step 5: single nested agent iteration.
+            # Step 5: single nested agent iteration. ``stage_sub_workspace``
+            # always materialises ``parent_dir/work`` before the runtime
+            # call, so we know where to look for partial artifacts even
+            # if the iteration raises before binding ``work_dir``.
+            work_dir = parent_dir / "work"
+            parsed: VisualVerdict | None = None
+            timeout_reason: str | None = None
             try:
                 work_dir, parsed = run_visual_iteration(
                     ctx.runtime,
@@ -411,8 +419,25 @@ class VisualJudgeVerifier:
                     timeout_s=self._timeout_s,
                     pass_threshold=self._pass_threshold,
                 )
+            except subprocess.TimeoutExpired:
+                # Spec §5.4: the agent burned its wall-clock budget.
+                # Don't propagate — try to recover whatever the agent did
+                # capture so the next iteration sees actionable feedback
+                # instead of the harness recording an opaque ERROR.
+                _log.warning(
+                    "visual_judge runtime invocation timed out after %.1fs",
+                    self._timeout_s,
+                )
+                timeout_reason = (
+                    f"agent iteration exceeded the {self._timeout_s:.0f}s budget"
+                )
+                parsed = parse_visual_verdict(
+                    work_dir / "verdict.json",
+                    pass_threshold=self._pass_threshold,
+                )
             except Exception as exc:  # pragma: no cover -- harness wraps as ERROR
-                # Re-raise so dispatch records the verifier as ERROR.
+                # Non-timeout runtime crash. Re-raise so dispatch records
+                # the verifier as ERROR — the failure mode is opaque to us.
                 _log.warning(
                     "visual_judge runtime invocation raised: %s: %s",
                     type(exc).__name__,
@@ -425,6 +450,15 @@ class VisualJudgeVerifier:
         _promote_screenshots(work_dir, parent_dir / _SCREENSHOTS_DIRNAME)
 
         # Step 6: parse + emit VerifierResult.
+        if timeout_reason is not None:
+            return self._timeout_result(
+                ctx=ctx,
+                parent_dir=parent_dir,
+                common_details=common_details,
+                parsed=parsed,
+                timeout_reason=timeout_reason,
+            )
+
         if parsed is None:
             return VerifierResult(
                 verdict=Verdict.FAIL,
@@ -452,6 +486,72 @@ class VisualJudgeVerifier:
                 "pages_judged": parsed.pages_judged,
                 "issue_count": len(parsed.issues),
                 "coercion_reason": parsed.coercion_reason,
+            },
+        )
+
+    def _timeout_result(
+        self,
+        *,
+        ctx: VerifierContext,
+        parent_dir: Path,
+        common_details: dict[str, Any],
+        parsed: VisualVerdict | None,
+        timeout_reason: str,
+    ) -> VerifierResult:
+        """Render the FAIL surfaced when the nested agent iteration timed out.
+
+        Always returns :attr:`Verdict.FAIL` — the budget overrun is the
+        failure signal regardless of whether a partial ``verdict.json``
+        was recovered. The feedback enumerates whatever evidence
+        survived (parsed verdict body, on-disk screenshots) so the next
+        iteration's executor sees what the judge actually saw before
+        the timeout fired.
+        """
+        screenshots_dir = parent_dir / _SCREENSHOTS_DIRNAME
+        screenshot_count = (
+            sum(1 for entry in screenshots_dir.rglob("*") if entry.is_file())
+            if screenshots_dir.is_dir()
+            else 0
+        )
+        screenshots_rel = (
+            str(screenshots_dir.relative_to(ctx.run_dir))
+            if screenshots_dir.is_dir()
+            else None
+        )
+
+        lines: list[str] = [f"`visual_judge` timed out: {timeout_reason}."]
+        if parsed is not None:
+            lines.append(
+                f"Recovered a partial verdict (score={parsed.score:.2f}, "
+                f"pages_judged={parsed.pages_judged}). The timeout is itself "
+                "the FAIL — the partial body is included below for debugging.",
+            )
+            if parsed.feedback:
+                lines.append("")
+                lines.append(parsed.feedback)
+        elif screenshot_count > 0 and screenshots_rel is not None:
+            lines.append(
+                f"No `verdict.json` was emitted, but {screenshot_count} "
+                f"screenshot(s) survived under `{screenshots_rel}/` for inspection.",
+            )
+        else:
+            lines.append(
+                "No `verdict.json` and no screenshots were produced. The agent "
+                "likely timed out before any page rendered — confirm the dev "
+                "server is reachable and that routes return 2xx (the "
+                "`routes_200` verifier is the cheap gate for this).",
+            )
+        return VerifierResult(
+            verdict=Verdict.FAIL,
+            feedback="\n".join(lines),
+            details={
+                **common_details,
+                "phase": "timeout",
+                "timeout_s": self._timeout_s,
+                "screenshot_count": screenshot_count,
+                "partial_verdict": parsed is not None,
+                "score": parsed.score if parsed is not None else None,
+                "pages_judged": parsed.pages_judged if parsed is not None else 0,
             },
         )
 

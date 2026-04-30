@@ -10,6 +10,28 @@ and mobile (375×667). Save each screenshot under
 ``./screenshots/<slug>__<viewport>.png`` (use the route's last path
 segment as the slug, or ``home`` for ``/``).
 
+## Fail fast on broken pages
+
+Before walking the full route list, render the **first** route in the
+list and inspect what the dev server returned:
+
+- If the page shows ``Unexpected Server Error``, ``500``, ``Cannot
+  GET``, an error stack trace, or otherwise fails to render, **stop
+  immediately**. Write ``./verdict.json`` with ``verdict=fail``,
+  ``score=0``, and a ``critical``-severity issue describing the
+  status (e.g. *"home page returns HTTP 500: Cannot read properties
+  of null"*). Do not attempt the remaining routes — they will time
+  out the same way and burn the verifier's wall-clock budget without
+  adding signal.
+- If a single ``page.goto`` call hangs or hits its own timeout,
+  treat it the same way: write ``./verdict.json`` with the routes
+  rendered so far recorded in ``pages_judged`` and a ``critical``
+  issue naming the hanging route, then exit.
+
+A ``critical`` issue forces ``verdict=fail`` regardless of the score,
+so the gate is correct even if you optimistically wrote ``pass``
+earlier.
+
 ## Judge only what you have rendered
 
 The capabilities slice below has been **pre-filtered** for this task's
@@ -56,6 +78,14 @@ structured ``score`` / ``category_scores`` / ``issues`` you emit:
   ``verdict=fail`` regardless of the overall score.
 - ``pages_judged`` is the integer count of distinct
   (route, viewport) pairs you rendered and judged.
+
+## Write `verdict.json` early and update it as you go
+
+The verifier's wall-clock budget is finite. Write a first draft of
+``./verdict.json`` after the **first** successful render so a partial
+verdict survives if you run out of time, then overwrite it with the
+final body once every route has been rendered. The verifier reads
+whatever is on disk when the iteration ends.
 
 Verdict schema (§9.3):
 

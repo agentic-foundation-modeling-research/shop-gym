@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -569,6 +570,154 @@ def test_dev_server_torn_down_on_runtime_exception(
     assert server.exits == 1
     assert runtime.calls == 1
 
+
+
+def test_run_returns_fail_on_runtime_timeout_with_partial_verdict(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """`subprocess.TimeoutExpired` after the agent wrote `verdict.json`.
+
+    The verifier should recover the partial verdict body, surface a
+    FAIL (the budget overrun is itself the failure signal), keep
+    a balanced dev-server lifecycle, and embed the partial score in
+    `details` so the next iteration sees actionable signal.
+    """
+
+    @dataclass
+    class _TimeoutAfterVerdictRuntime:
+        body: str
+        calls: int = 0
+
+        def run_iteration(
+            self,
+            *,
+            run_dir: Path,
+            iter_dir: Path,
+            prompt: str,
+            timeout: float,
+        ) -> RuntimeIterationResult:
+            del iter_dir, prompt
+            self.calls += 1
+            (run_dir / "verdict.json").write_text(self.body, encoding="utf-8")
+            raise subprocess.TimeoutExpired(
+                cmd=["pi", "--print", "--mode", "json"],
+                timeout=timeout,
+            )
+
+    runtime = _TimeoutAfterVerdictRuntime(body=_fail_body(score=4.0))
+    server = _StubDevServer()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=server,
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="gen_homepage")
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.FAIL
+    assert result.details["phase"] == "timeout"
+    assert result.details["partial_verdict"] is True
+    assert result.details["score"] == 4.0  # noqa: PLR2004 -- mirrors fixture
+    assert "timed out" in result.feedback
+    # Dev-server lifecycle is balanced even on timeout.
+    assert server.enters == 1
+    assert server.exits == 1
+    assert runtime.calls == 1
+
+
+def test_run_returns_fail_on_runtime_timeout_with_partial_screenshots(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """Timeout with no `verdict.json` but partial screenshots on disk.
+
+    The verifier should promote the screenshots into its tree and
+    surface a FAIL whose feedback names the screenshot count, so the
+    executor can browse the partial captures next iteration.
+    """
+
+    @dataclass
+    class _TimeoutAfterScreenshotsRuntime:
+        calls: int = 0
+
+        def run_iteration(
+            self,
+            *,
+            run_dir: Path,
+            iter_dir: Path,
+            prompt: str,
+            timeout: float,
+        ) -> RuntimeIterationResult:
+            del iter_dir, prompt
+            self.calls += 1
+            shots = run_dir / "screenshots"
+            shots.mkdir()
+            (shots / "home__desktop.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            (shots / "home__mobile.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            raise subprocess.TimeoutExpired(
+                cmd=["pi", "--print", "--mode", "json"],
+                timeout=timeout,
+            )
+
+    runtime = _TimeoutAfterScreenshotsRuntime()
+    server = _StubDevServer()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=server,
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="gen_homepage")
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.FAIL
+    assert result.details["phase"] == "timeout"
+    assert result.details["partial_verdict"] is False
+    assert result.details["screenshot_count"] == 2  # noqa: PLR2004 -- mirrors fixture
+    assert "screenshot(s) survived" in result.feedback
+    # Screenshots were promoted into the verifier tree.
+    promoted = (
+        ctx.run_dir / "iters" / ctx.iter_id / "checks" / "verifiers" /
+        "visual_judge" / "screenshots"
+    )
+    assert (promoted / "home__desktop.png").is_file()
+    assert (promoted / "home__mobile.png").is_file()
+    assert server.enters == 1
+    assert server.exits == 1
+
+
+def test_run_returns_fail_on_runtime_timeout_with_no_artifacts(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """Timeout with neither verdict nor screenshots.
+
+    The agent likely never reached a renderable page (e.g. dev server
+    returning 5xx). Feedback names this explicitly and points at the
+    cheap `routes_200` gate so the executor knows what to fix.
+    """
+    runtime = _RaisingRuntime(
+        subprocess.TimeoutExpired(
+            cmd=["pi", "--print", "--mode", "json"],
+            timeout=300.0,
+        ),
+    )
+    server = _StubDevServer()
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=server,
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="gen_homepage")
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.FAIL
+    assert result.details["phase"] == "timeout"
+    assert result.details["partial_verdict"] is False
+    assert result.details["screenshot_count"] == 0
+    assert "routes_200" in result.feedback
+    assert server.enters == 1
+    assert server.exits == 1
 
 def test_screenshots_promoted_into_verifier_tree(
     make_visual_ctx: Callable[..., VerifierContext],
