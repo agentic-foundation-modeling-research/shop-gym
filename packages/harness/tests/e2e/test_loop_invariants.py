@@ -95,8 +95,14 @@ def test_invalid_plan_when_planner_emits_duplicate_ids(tmp_path: Path) -> None:
     assert (result.run_dir / "iters" / "plan" / "trajectory.json").is_file()
 
 
-def test_protocol_violation_when_executor_completes_unrelated_task(tmp_path: Path) -> None:
-    """Executor marks a non-selected task DONE → `FinalStatus.PROTOCOL_VIOLATION`."""
+def test_executor_protocol_violation_blocks_task_and_continues(tmp_path: Path) -> None:
+    """Executor protocol violation → BLOCKED + skip set, loop continues.
+
+    Spec ``docs/specs/harness/protocol_violation_recovery.md``: an
+    executor-phase protocol violation is no longer terminal. The selected
+    task is forcibly marked ``[!]`` BLOCKED, added to the skip set, and
+    the loop picks the next-priority pending task.
+    """
     scenario_dir = tmp_path / "cassettes"
     _write_cassette(
         scenario_dir,
@@ -109,8 +115,9 @@ def test_protocol_violation_when_executor_completes_unrelated_task(tmp_path: Pat
         ),
     )
     # Selected task is `homepage` (highest priority), but this cassette
-    # marks both tasks `[x]` — the protocol check must catch the unrelated
-    # transition on `product_detail`.
+    # marks both tasks `[x]` — the protocol check catches the unrelated
+    # transition on `product_detail`. Recovery must: mark `homepage` `[!]`,
+    # restore the plan, then run exec-0002 against `product_detail`.
     _write_cassette(
         scenario_dir,
         "exec-0001",
@@ -121,17 +128,37 @@ def test_protocol_violation_when_executor_completes_unrelated_task(tmp_path: Pat
             "- [x] product_detail   [priority: 1]\n"
         ),
     )
+    _write_cassette(
+        scenario_dir,
+        "exec-0002",
+        plan_md=(
+            "# Plan\n\n"
+            "## Tasks\n"
+            "- [!] homepage         [priority: 2] — protocol_violation: selected_terminal\n"
+            "- [x] product_detail   [priority: 1]\n"
+        ),
+    )
 
     runtime = ReplayRuntime(scenario_dir)
     result = run_plan_exec_loop(_config(tmp_path), runtime)
 
-    assert result.final_status is FinalStatus.PROTOCOL_VIOLATION
-    assert result.exec_iter_count == 1
+    # Run reaches COMPLETED — every remaining PENDING task drained, the
+    # BLOCKED task counts as terminal.
+    assert result.final_status is FinalStatus.COMPLETED
+    assert result.exec_iter_count == 2  # noqa: PLR2004 — exec-0001 (violation) + exec-0002
+
+    # The first iteration's protocol.json still records the violation.
     protocol_path = result.run_dir / "iters" / "exec-0001" / "checks" / "protocol.json"
     assert protocol_path.is_file()
     payload = json.loads(protocol_path.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert any("product_detail" in v for v in payload["violations"])
+
+    # The live plan.md after recovery shows `homepage` BLOCKED with a
+    # ``protocol_violation`` note.
+    final_plan = (result.run_dir / "plan.md").read_text(encoding="utf-8")
+    assert "[!] homepage" in final_plan
+    assert "protocol_violation" in final_plan
 
 
 def test_budget_exhausted_when_pending_tasks_remain(tmp_path: Path) -> None:

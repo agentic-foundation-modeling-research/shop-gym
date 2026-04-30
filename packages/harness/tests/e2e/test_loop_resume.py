@@ -73,8 +73,18 @@ def _trajectory(iter_id: str) -> Trajectory:
     )
 
 
-def _write_cassette(scenario_dir: Path, iter_id: str, *, plan_md: str) -> None:
-    """Materialise a minimal cassette: trajectory + `workspace_after/plan.md`."""
+def _write_cassette(
+    scenario_dir: Path,
+    iter_id: str,
+    *,
+    plan_md: str,
+    overlay_files: dict[str, bytes] | None = None,
+) -> None:
+    """Materialise a minimal cassette: trajectory + `workspace_after/plan.md`.
+
+    ``overlay_files`` keys are POSIX paths relative to ``workspace_after/``,
+    e.g. ``"artifact/prefetch/intruder.md"``.
+    """
     cassette_dir = scenario_dir / iter_id
     cassette_dir.mkdir(parents=True)
     (cassette_dir / "trajectory.json").write_text(
@@ -84,17 +94,36 @@ def _write_cassette(scenario_dir: Path, iter_id: str, *, plan_md: str) -> None:
     overlay = cassette_dir / "workspace_after"
     overlay.mkdir()
     (overlay / "plan.md").write_text(plan_md, encoding="utf-8")
+    if overlay_files:
+        for rel, content in overlay_files.items():
+            target = overlay / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
 
 
-def _config(tmp_path: Path, *, max_iters: int = 5) -> PlanExecLoopConfig:
+def _config(
+    tmp_path: Path,
+    *,
+    max_iters: int = 5,
+    seed: Path | None = None,
+) -> PlanExecLoopConfig:
     """Build a `PlanExecLoopConfig` rooted at `tmp_path/run`."""
     return PlanExecLoopConfig(
         run_dir=tmp_path / "run",
         prompts=Prompts(planner="planner-prompt", execute="execute-prompt"),
         agents_md="# AGENTS\n",
+        artifact_seed_dir=seed,
         max_iters=max_iters,
         timeout=30.0,
     )
+
+
+def _seed_dir(tmp_path: Path) -> Path:
+    """Return a seed dir with a single ``prefetch/`` top-level entry."""
+    seed = tmp_path / "seed"
+    (seed / "prefetch").mkdir(parents=True)
+    (seed / "prefetch" / "robots.txt").write_text("User-agent: *\n", encoding="utf-8")
+    return seed
 
 
 class _CountingRuntime:
@@ -416,13 +445,22 @@ def test_resume_after_completed_is_a_no_op(tmp_path: Path) -> None:
 
 
 def test_resume_after_protocol_violation_refuses_by_default(tmp_path: Path) -> None:
-    """Prior `protocol_violation` blocks resume unless `force=True`."""
-    scenario_dir = tmp_path / "cassettes"
-    _write_cassette(scenario_dir, "plan", plan_md=_PLAN_TWO_PENDING)
-    # Executor marks the wrong task done -> protocol_violation.
-    _write_cassette(scenario_dir, "exec-0001", plan_md=_PLAN_BOTH_DONE)
+    """Prior `protocol_violation` blocks resume unless `force=True`.
 
-    cfg = _config(tmp_path)
+    Driven by a planner-phase seed extension: per
+    ``docs/specs/harness/protocol_violation_recovery.md`` only the planner
+    branch still terminates with ``PROTOCOL_VIOLATION`` (executor-phase
+    violations now recover in-place).
+    """
+    scenario_dir = tmp_path / "cassettes"
+    _write_cassette(
+        scenario_dir,
+        "plan",
+        plan_md=_PLAN_TWO_PENDING,
+        overlay_files={"artifact/prefetch/_planner/snapshot.md": b"intruder"},
+    )
+
+    cfg = _config(tmp_path, seed=_seed_dir(tmp_path))
     first_result = run_plan_exec_loop(cfg, ReplayRuntime(scenario_dir))
     assert first_result.final_status is FinalStatus.PROTOCOL_VIOLATION
 
@@ -435,23 +473,28 @@ def test_resume_after_protocol_violation_refuses_by_default(tmp_path: Path) -> N
 
 
 def test_resume_force_overrides_protocol_violation_refusal(tmp_path: Path) -> None:
-    """`force=True` lets resume past the protocol-violation refusal gate."""
-    scenario_dir = tmp_path / "cassettes"
-    _write_cassette(scenario_dir, "plan", plan_md=_PLAN_TWO_PENDING)
-    _write_cassette(scenario_dir, "exec-0001", plan_md=_PLAN_BOTH_DONE)
+    """`force=True` lets resume past the protocol-violation refusal gate.
 
-    cfg = _config(tmp_path)
+    Same planner-phase trigger as the refusal test above.
+    """
+    scenario_dir = tmp_path / "cassettes"
+    _write_cassette(
+        scenario_dir,
+        "plan",
+        plan_md=_PLAN_TWO_PENDING,
+        overlay_files={"artifact/prefetch/_planner/snapshot.md": b"intruder"},
+    )
+
+    cfg = _config(tmp_path, seed=_seed_dir(tmp_path))
     first_result = run_plan_exec_loop(cfg, ReplayRuntime(scenario_dir))
     assert first_result.final_status is FinalStatus.PROTOCOL_VIOLATION
 
-    # Re-invoke with force=True. Plan already shows both tasks `[x]`, so
-    # the executor loop exits via `select_next is None` -> COMPLETED.
+    # Re-invoke with force=True. The contract is that no
+    # `ResumeRefusedError` is raised — whatever final status the resumed
+    # run reaches is post-gate behaviour and out of scope here.
     silent = _CountingRuntime(ReplayRuntime(scenario_dir))
-    second_result = run_plan_exec_loop(cfg, silent, force=True)
-
-    assert second_result.final_status is FinalStatus.COMPLETED
-    # No new runtime invocations: nothing PENDING after the override.
-    assert silent.iter_ids == []
+    # Should not raise.
+    run_plan_exec_loop(cfg, silent, force=True)
 
 
 def test_resume_after_runtime_error_refuses_by_default(tmp_path: Path) -> None:

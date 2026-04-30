@@ -207,11 +207,13 @@ class _LoopState:
         self._trajectory_paths: list[str] = []
         self._final_status: FinalStatus | None = None
         self._verifier_runs: list[VerifierRun] = []
-        # Task ids whose executor iteration timed out within this attempt.
-        # Held in runner-local state so the timed-out task stays PENDING in
-        # `plan.md` (a future resume retries it) but the in-flight loop
-        # advances to the next selectable task instead of looping forever.
-        self._timed_out_task_ids: set[str] = set()
+        # Task ids whose executor iteration ended in a recoverable failure
+        # (timeout or protocol violation) within this attempt. Held in
+        # runner-local state so the loop advances to the next selectable
+        # task instead of looping forever. Timeouts leave the task PENDING
+        # in `plan.md` (a future resume retries it); protocol violations
+        # forcibly mark the task `[!]` BLOCKED in-place.
+        self._skipped_task_ids: set[str] = set()
         # Latched when any executor iteration times out. Surfaces TIMEOUT
         # as the run's terminal status even when the loop later drains all
         # other tasks or exhausts its budget.
@@ -336,9 +338,11 @@ class _LoopState:
     def run_executor_loop(self) -> None:
         """Drive the executor loop until completion, budget, or failure.
 
-        Task selection skips ids in `self._timed_out_task_ids` so a single
-        runaway task does not stall the rest of the plan; those ids stay
-        PENDING in `plan.md` and a future resume retries them.
+        Task selection skips ids in `self._skipped_task_ids` so a single
+        runaway task does not stall the rest of the plan; timed-out ids
+        stay PENDING in `plan.md` and a future resume retries them.
+        Protocol-violating ids are forcibly marked `[!]` BLOCKED in-place
+        before being added to the skip set.
 
         When at least one iteration timed out and the loop would
         otherwise terminate as ``COMPLETED`` or ``BUDGET_EXHAUSTED``, the
@@ -353,7 +357,7 @@ class _LoopState:
                 self._rewrite_run_summary()
                 return
 
-            selected = _select_next_skipping(tasks, skip=self._timed_out_task_ids)
+            selected = _select_next_skipping(tasks, skip=self._skipped_task_ids)
             if selected is None:
                 self._final_status = (
                     FinalStatus.TIMEOUT if self._had_timeout else FinalStatus.COMPLETED
@@ -373,12 +377,20 @@ class _LoopState:
     def _run_one_executor(self, *, before: TaskList, selected: Task) -> bool:
         """Run a single executor iteration. Returns False on terminal failure.
 
-        ``TIMEOUT`` is handled non-terminally: the partial iter dir is
-        quarantined to ``iters/<id>.aborted-<N>/`` with a sentinel, the
-        timed-out task id is added to the runner-local skip set, and the
-        loop continues with the next selectable task. The task stays
-        PENDING in `plan.md` so a future resume retries it. ``RUNTIME_ERROR``
-        and ``PROTOCOL_VIOLATION`` continue to terminate the run.
+        ``TIMEOUT`` and ``PROTOCOL_VIOLATION`` are both handled
+        non-terminally:
+
+        * ``TIMEOUT`` quarantines the partial iter dir to
+          ``iters/<id>.aborted-<N>/`` with a sentinel; the task stays
+          PENDING in `plan.md` so a future resume retries it.
+        * ``PROTOCOL_VIOLATION`` restores `plan.md` from `plan.before.md`,
+          force-marks the selected task `[!]` BLOCKED with a
+          ``protocol_violation: <reasons>`` note, and adds it to the
+          skip set so the next iteration picks a different task.
+
+        In both cases the failing id is added to ``_skipped_task_ids``
+        and the loop continues with the next selectable task.
+        ``RUNTIME_ERROR`` continues to terminate the run.
         """
         next_count = self._exec_iter_count + 1
         exec_id = exec_iter_id(next_count)
@@ -411,7 +423,7 @@ class _LoopState:
                 exec_dir,
                 reason="timeout",
             )
-            self._timed_out_task_ids.add(selected.id)
+            self._skipped_task_ids.add(selected.id)
             self._had_timeout = True
             self._rewrite_run_summary()
             return True
@@ -470,9 +482,22 @@ class _LoopState:
         self._verifier_runs.extend(dispatch_outcome.runs)
 
         if not protocol_result.passed:
-            self._final_status = FinalStatus.PROTOCOL_VIOLATION
+            _log.warning(
+                "executor iteration %s on task=%s violated protocol: %s; "
+                "marking BLOCKED and continuing",
+                exec_id,
+                selected.id,
+                ", ".join(protocol_result.violations),
+            )
+            _force_block_selected_task(
+                workspace=self._workspace,
+                plan_before_path=exec_dir / _PLAN_BEFORE_FILENAME,
+                selected_task_id=selected.id,
+                reasons=protocol_result.violations,
+            )
+            self._skipped_task_ids.add(selected.id)
             self._rewrite_run_summary()
-            return False
+            return True
 
         self._rewrite_run_summary()
         return True
@@ -650,6 +675,69 @@ def _safe_parse_tasks(workspace: Workspace) -> tuple[Task, ...]:
         return _parse_workspace_plan(workspace).tasks
     except InvalidPlanError:
         return ()
+
+
+_TASK_LINE_FOR_REWRITE_RE: Final[re.Pattern[str]] = re.compile(
+    r"^(?P<lead>-\s+)\[(?P<marker>.)\](?P<gap>\s+)(?P<id>\S+)(?P<rest>.*)$",
+)
+_PRIORITY_RE: Final[re.Pattern[str]] = re.compile(r"\[priority:\s*-?\d+\]")
+
+
+def _force_block_selected_task(
+    *,
+    workspace: Workspace,
+    plan_before_path: Path,
+    selected_task_id: str,
+    reasons: tuple[str, ...],
+) -> None:
+    """Restore `plan.md` from `plan.before.md` and force-mark a task `[!]` BLOCKED.
+
+    The agent's plan-mutating side effects from the violating iteration
+    are reversed by copying the pre-iteration snapshot back into place;
+    the harness then rewrites the line that owns ``selected_task_id`` so
+    its status marker becomes ``!`` and its trailing note records the
+    protocol violation. The next iteration sees the task BLOCKED and the
+    executor loop picks a different task.
+
+    Falls back to writing a minimal valid plan.md when ``plan.before.md``
+    is missing or the target line cannot be located — in either case the
+    next iteration will re-plan rather than re-pick the same broken task.
+    """
+    if plan_before_path.is_file():
+        text = plan_before_path.read_text(encoding="utf-8")
+    else:
+        text = workspace.plan_md.read_text(encoding="utf-8")
+
+    note = "protocol_violation: " + (", ".join(reasons) if reasons else "unspecified")
+    new_lines: list[str] = []
+    rewritten = False
+    for line in text.splitlines():
+        match = _TASK_LINE_FOR_REWRITE_RE.match(line)
+        if match is None or match.group("id") != selected_task_id:
+            new_lines.append(line)
+            continue
+        rest = match.group("rest")
+        priority_match = _PRIORITY_RE.search(rest)
+        priority_tag = priority_match.group(0) if priority_match is not None else ""
+        new_line = (
+            f"{match.group('lead')}[!]{match.group('gap')}{selected_task_id}"
+        )
+        if priority_tag:
+            new_line += f" {priority_tag}"
+        new_line += f" — {note}"
+        new_lines.append(new_line)
+        rewritten = True
+
+    if not rewritten:
+        # Couldn't locate the line — fall back to a minimal plan so the
+        # loop can re-plan from scratch on the next iteration.
+        text = "## Tasks\n\n"
+    else:
+        text = "\n".join(new_lines)
+        if not text.endswith("\n"):
+            text += "\n"
+
+    workspace.plan_md.write_text(text, encoding="utf-8")
 
 
 def _write_trajectory(iter_dir_path: Path, trajectory: Trajectory) -> None:

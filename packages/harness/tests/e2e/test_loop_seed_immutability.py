@@ -152,7 +152,13 @@ def test_planner_seed_mutation_aborts_run_with_protocol_violation(tmp_path: Path
 
 
 def test_executor_seed_violation_merges_into_protocol_json(tmp_path: Path) -> None:
-    """Executor mutates seed → seed violation merged into one protocol.json."""
+    """Executor mutates seed → seed violation merged into one protocol.json.
+
+    Per ``docs/specs/harness/protocol_violation_recovery.md`` the
+    executor branch recovers from any protocol-violation class (including
+    seed mutation) by force-marking the selected task ``[!]`` BLOCKED and
+    continuing. The violation itself still has to land in ``protocol.json``.
+    """
     scenario_dir = tmp_path / "cassettes"
     _write_cassette(
         scenario_dir,
@@ -175,7 +181,9 @@ def test_executor_seed_violation_merges_into_protocol_json(tmp_path: Path) -> No
 
     result = run_plan_exec_loop(cfg, runtime)
 
-    assert result.final_status is FinalStatus.PROTOCOL_VIOLATION
+    # Recovery: BLOCKED + continue. With only one task in the plan, the
+    # next iteration sees nothing pending and exits COMPLETED.
+    assert result.final_status is FinalStatus.COMPLETED
     assert result.exec_iter_count == 1
 
     protocol_path = result.run_dir / "iters" / "exec-0001" / "checks" / "protocol.json"
@@ -183,6 +191,10 @@ def test_executor_seed_violation_merges_into_protocol_json(tmp_path: Path) -> No
     payload = json.loads(protocol_path.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert any(v.startswith("seed_mutated:") for v in payload["violations"])
+
+    final_plan = (result.run_dir / "plan.md").read_text(encoding="utf-8")
+    assert "[!] homepage" in final_plan
+    assert "protocol_violation" in final_plan
 
 
 # ---------------------------------------------------------------------------
