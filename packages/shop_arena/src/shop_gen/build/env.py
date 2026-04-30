@@ -141,7 +141,27 @@ class CloneTemplateStep:
         # ``write_env_file`` step is the only writer outside this
         # tree, and the harness loop owns mutations after Phase 4
         # env setup completes.
-        shutil.copytree(_TEMPLATE_DIR, target, dirs_exist_ok=True)
+        #
+        # ``ignore`` skips any ``node_modules/`` that may have
+        # accumulated in the template directory (e.g. from an
+        # exploratory ``pnpm install`` run by a developer). Pnpm's
+        # strict layout uses symlinks to keep a single physical
+        # copy of every package; ``shutil.copytree`` defaults to
+        # ``symlinks=False`` and would dereference those symlinks,
+        # producing a tree with multiple physical copies of
+        # ``react`` / ``react-dom``. The subsequent
+        # ``pnpm install --frozen-lockfile`` rebuilds top-level
+        # symlinks but does not audit the inner ``.pnpm/<pkg>/``
+        # tree, so the duplicates persist and break SSR with a
+        # ``Cannot read properties of null (reading 'useContext')``
+        # crash. ``node_modules/`` belongs to the install step,
+        # never to the clone step.
+        shutil.copytree(
+            _TEMPLATE_DIR,
+            target,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("node_modules"),
+        )
 
 
 class WriteEnvFileStep:

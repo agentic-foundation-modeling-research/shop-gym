@@ -108,7 +108,12 @@ def test_clone_template_tree_is_byte_equivalent_to_template(tmp_path: Path) -> N
 
     CloneTemplateStep().run(ctx)
 
-    diff = filecmp.dircmp(_TEMPLATE_DIR, ctx.out_dir / "hydrogen")
+    # ``node_modules`` is intentionally skipped by the clone step
+    # (see :class:`CloneTemplateStep.run`). Compare against the
+    # template with the same exclusion so the test stays green even
+    # if a developer left a stray ``node_modules`` in the template
+    # directory from an exploratory ``pnpm install``.
+    diff = filecmp.dircmp(_TEMPLATE_DIR, ctx.out_dir / "hydrogen", ignore=["node_modules"])
     assert _no_diff(diff), f"clone diverged from template: {_summarize_diff(diff)}"
 
 
@@ -134,6 +139,34 @@ def test_clone_template_is_idempotent(tmp_path: Path) -> None:
     second = (ctx.out_dir / "hydrogen" / "package.json").read_bytes()
 
     assert first == second
+
+
+def test_clone_template_excludes_node_modules_from_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stray ``node_modules/`` in the source template is not carried into the clone.
+
+    Pnpm's strict layout uses symlinks to keep a single physical copy
+    of every package. ``shutil.copytree`` defaults to ``symlinks=False``
+    which dereferences those symlinks and produces multiple physical
+    React copies, breaking SSR. The clone step skips ``node_modules/``
+    so a follow-up ``pnpm install --frozen-lockfile`` always populates
+    a clean tree.
+    """
+    fake_template = tmp_path / "fake_template"
+    fake_template.mkdir()
+    (fake_template / "package.json").write_text("{}", encoding="utf-8")
+    nested = fake_template / "node_modules" / ".pnpm" / "react@18.3.1"
+    nested.mkdir(parents=True)
+    (nested / "sentinel.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setattr("shop_gen.build.env._TEMPLATE_DIR", fake_template)
+
+    ctx = _make_ctx(tmp_path)
+    CloneTemplateStep().run(ctx)
+
+    target = ctx.out_dir / "hydrogen"
+    assert (target / "package.json").is_file()
+    assert not (target / "node_modules").exists()
 
 
 # --------------------------------------------------------------------------- #
