@@ -1,49 +1,54 @@
 """Unit tests for :mod:`shop_gen.data_synth.images`.
 
-Covers the T3.10 requirements from
-``docs/impl/shop_gen_implementation.md``:
+Covers:
 
-* :class:`PlaceholderBackend` emits well-formed SVG bytes that include
-  the product title and category-derived shapes.
-* Same inputs always produce the same bytes (deterministic
-  fingerprint requirement, spec §5.7).
-* :class:`AIBackend` is constructible but :meth:`render` raises
-  :class:`NotImplementedError` (v0.1 stub; M8 follow-up).
-* :func:`get_backend` resolves both backend literals and rejects
-  unknown names.
-* :class:`GenImagesStep`'s declared step contract matches spec §5.7.1.
-* The step writes ``data/images/<handle>-<n>.svg`` for every
-  ``ProductSkeleton`` and every ``images_per_product`` slot and a sentinel manifest under
+* :class:`PlaceholderBackend` emits well-formed deterministic SVG bytes.
+* :class:`OpenAIImageBackend` happy path against a fake ``AsyncOpenAI``
+  client, cache hit on re-run, content-policy error fast-fail, retry on
+  transient failure, and bounded-concurrency ceiling.
+* :class:`GenImagesStep`'s declared step contract.
+* The step writes per-product files + sentinel manifest under
   ``.shop_gen/stage_cache/images_manifest.json``.
-* Pipeline registration surfaces ``gen_images`` in the data-synth
-  phase listing.
+* Pipeline registration surfaces ``gen_images`` in the data-synth phase.
 """
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
+from openai import APIConnectionError, BadRequestError, RateLimitError
 
 from shop_gen.config import CatalogConfig, ShopGenConfig
 from shop_gen.data_synth import (
-    AIBackend,
+    AsyncImageBackend,
     CollectionDraft,
     GenImagesStep,
     ImageBackend,
+    OpenAIImageBackend,
     PlaceholderBackend,
     ProductDetail,
     ProductSkeleton,
     get_backend,
 )
+from shop_gen.data_synth.images._cache import compute_cache_key
+from shop_gen.data_synth.images._prompts import PROMPT_VERSION
 from shop_gen.pipeline import list_steps
 from shop_gen.steps.base import StepContext
 
 # --------------------------------------------------------------------------- #
 # Fixtures
 # --------------------------------------------------------------------------- #
+
+# 1×1 transparent PNG — minimum valid PNG payload, used as canned bytes.
+_PNG_BYTES: bytes = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=",
+)
+_PNG_B64: str = base64.b64encode(_PNG_BYTES).decode("ascii")
 
 
 def _collection(handle: str, *, count: int) -> CollectionDraft:
@@ -200,6 +205,80 @@ def _make_seed(tmp_path: Path) -> Path:
 
 
 # --------------------------------------------------------------------------- #
+# Fake AsyncOpenAI for OpenAIImageBackend tests
+# --------------------------------------------------------------------------- #
+
+
+class _FakeImageData:
+    """Mimics ``response.data[0]`` shape with a ``b64_json`` attribute."""
+
+    def __init__(self, b64: str) -> None:
+        self.b64_json = b64
+
+
+class _FakeImagesResponse:
+    """Mimics the ``client.images.generate`` response shape."""
+
+    def __init__(self, b64: str) -> None:
+        self.data = [_FakeImageData(b64)]
+
+
+class _FakeImages:
+    """Records each ``generate`` call; returns canned PNG bytes by default.
+
+    Test helpers can override behavior by:
+
+    * setting ``self.errors`` to a list of exceptions popped per call,
+    * setting ``self.delay`` to introduce per-call await time (for the
+      concurrency-ceiling test).
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.errors: list[Exception] = []
+        self.delay: float = 0.0
+        self.in_flight: int = 0
+        self.max_in_flight: int = 0
+
+    async def generate(self, **kwargs: Any) -> _FakeImagesResponse:
+        self.calls.append(kwargs)
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            if self.errors:
+                raise self.errors.pop(0)
+            if self.delay > 0:
+                await asyncio.sleep(self.delay)
+            return _FakeImagesResponse(_PNG_B64)
+        finally:
+            self.in_flight -= 1
+
+
+class _FakeAsyncOpenAI:
+    def __init__(self) -> None:
+        self.images = _FakeImages()
+
+
+def _fake_response_error(status_code: int, message: str) -> Exception:
+    """Build an error matching the openai SDK constructor shape used in v2.x."""
+    response = _FakeHttpxResponse(status_code)
+    if status_code == 400:  # noqa: PLR2004 — the SDK's content-policy code
+        return BadRequestError(message=message, response=response, body=None)  # type: ignore[arg-type]
+    if status_code == 429:  # noqa: PLR2004
+        return RateLimitError(message=message, response=response, body=None)  # type: ignore[arg-type]
+    raise ValueError(f"unsupported test status_code {status_code}")
+
+
+class _FakeHttpxResponse:
+    """Minimal shim — the openai SDK only reads ``status_code`` / ``headers``."""
+
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+        self.headers: dict[str, str] = {}
+        self.request = None  # type: ignore[assignment]
+
+
+# --------------------------------------------------------------------------- #
 # PlaceholderBackend
 # --------------------------------------------------------------------------- #
 
@@ -258,42 +337,6 @@ def test_placeholder_backend_distinct_categories_produce_different_bytes() -> No
     assert a != b
 
 
-def test_placeholder_backend_distinct_indices_produce_different_icons() -> None:
-    """Different ``index`` values yield different icon shapes for the same product."""
-    backend = PlaceholderBackend()
-    images_per_product = 8
-    bodies = {
-        backend.render(
-            handle="x",
-            index=i,
-            title="t",
-            category="c",
-            width=800,
-            height=800,
-        )
-        for i in range(images_per_product)
-    }
-    # With 4 shapes, 8 indices should produce at least 2 distinct outputs.
-    distinct_min = 2
-    assert len(bodies) >= distinct_min
-
-
-def test_placeholder_backend_escapes_title_html() -> None:
-    backend = PlaceholderBackend()
-    body = backend.render(
-        handle="x",
-        index=0,
-        title='hex<>"&',
-        category="c",
-        width=800,
-        height=800,
-    ).decode("utf-8")
-    assert "<>" not in body
-    assert "&lt;" in body
-    assert "&gt;" in body
-    assert "&amp;" in body
-
-
 def test_placeholder_backend_rejects_non_positive_dimensions() -> None:
     backend = PlaceholderBackend()
     with pytest.raises(ValueError, match="positive dimensions"):
@@ -307,58 +350,182 @@ def test_placeholder_backend_rejects_non_positive_dimensions() -> None:
         )
 
 
-def test_placeholder_backend_handles_empty_title() -> None:
-    backend = PlaceholderBackend()
-    body = backend.render(
-        handle="x",
-        index=0,
-        title="",
-        category="c",
-        width=800,
-        height=800,
-    ).decode("utf-8")
-    # Empty title still renders a valid (if mostly blank) SVG.
-    assert "<svg" in body
-    assert "</svg>" in body
-
-
-def test_placeholder_backend_wraps_long_title() -> None:
-    backend = PlaceholderBackend()
-    body = backend.render(
-        handle="x",
-        index=0,
-        title="this is a very long product title that needs wrapping",
-        category="c",
-        width=800,
-        height=800,
-    ).decode("utf-8")
-    # Multi-tspan output indicates word-wrapping kicked in.
-    expected_wrap_lines = 2
-    assert body.count("<tspan") >= expected_wrap_lines
-
-
 # --------------------------------------------------------------------------- #
-# AIBackend
+# OpenAIImageBackend
 # --------------------------------------------------------------------------- #
 
 
-def test_ai_backend_render_raises_not_implemented() -> None:
-    backend = AIBackend()
-    with pytest.raises(NotImplementedError, match="ai"):
-        backend.render(
+def test_openai_backend_metadata() -> None:
+    backend = OpenAIImageBackend(out_dir=Path("."), client=_fake_client_for_metadata())
+    assert backend.name == "openai"
+    assert backend.extension == ".png"
+    assert backend.model == "gpt-image-1"
+    assert backend.size == "1024x1024"
+
+
+def _fake_client_for_metadata() -> Any:
+    """Build a fake client just to satisfy the constructor signature."""
+    return _FakeAsyncOpenAI()
+
+
+def test_openai_backend_render_async_happy_path(tmp_path: Path) -> None:
+    fake = _FakeAsyncOpenAI()
+    backend = OpenAIImageBackend(out_dir=tmp_path, client=fake)  # type: ignore[arg-type]
+    payload = asyncio.run(
+        backend.render_async(
+            handle="warm-winter-coat",
+            index=0,
+            title="warm winter coat",
+            category="outerwear",
+            width=1024,
+            height=1024,
+        ),
+    )
+    assert payload == _PNG_BYTES
+    assert len(fake.images.calls) == 1
+    call = fake.images.calls[0]
+    assert call["model"] == "gpt-image-1"
+    assert call["size"] == "1024x1024"
+    assert "warm winter coat" in call["prompt"]
+    assert "outerwear" in call["prompt"]
+    # Brand-safety suffix must be present on every render.
+    assert "Brand-safety hard constraints" in call["prompt"]
+    assert backend.last_render_was_cache_hit is False
+
+
+def test_openai_backend_render_async_cache_hit_skips_api(tmp_path: Path) -> None:
+    fake = _FakeAsyncOpenAI()
+    backend = OpenAIImageBackend(out_dir=tmp_path, client=fake)  # type: ignore[arg-type]
+    args: dict[str, Any] = {
+        "handle": "x",
+        "index": 0,
+        "title": "t",
+        "category": "c",
+        "width": 1024,
+        "height": 1024,
+    }
+    first = asyncio.run(backend.render_async(**args))
+    second = asyncio.run(backend.render_async(**args))
+    assert first == second == _PNG_BYTES
+    # Second call must be a cache hit; only one upstream API call.
+    assert len(fake.images.calls) == 1
+    assert backend.last_render_was_cache_hit is True
+
+
+def test_openai_backend_cache_key_changes_with_size(tmp_path: Path) -> None:
+    """Cache key includes size so two sizes do not collide."""
+    fake = _FakeAsyncOpenAI()
+    a = OpenAIImageBackend(out_dir=tmp_path, size="1024x1024", client=fake)  # type: ignore[arg-type]
+    b = OpenAIImageBackend(out_dir=tmp_path, size="1024x1536", client=fake)  # type: ignore[arg-type]
+    args: dict[str, Any] = {
+        "handle": "x",
+        "index": 0,
+        "title": "t",
+        "category": "c",
+        "width": 1024,
+        "height": 1024,
+    }
+    asyncio.run(a.render_async(**args))
+    asyncio.run(b.render_async(**args))
+    # Different size → different cache key → two API calls, no hit.
+    assert len(fake.images.calls) == 2  # noqa: PLR2004
+
+
+def test_openai_backend_retries_on_transient_then_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _FakeAsyncOpenAI()
+    fake.images.errors = [APIConnectionError(request=None)]  # type: ignore[arg-type]
+
+    async def _no_sleep(_seconds: float) -> None:
+        del _seconds
+
+    # Patch the backend module's `asyncio.sleep` so the test runs fast.
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+
+    backend = OpenAIImageBackend(out_dir=tmp_path, client=fake)  # type: ignore[arg-type]
+    payload = asyncio.run(
+        backend.render_async(
             handle="x",
             index=0,
             title="t",
             category="c",
-            width=800,
-            height=800,
+            width=1024,
+            height=1024,
+        ),
+    )
+    assert payload == _PNG_BYTES
+    # Original call + 1 retry.
+    expected_attempts = 2
+    assert len(fake.images.calls) == expected_attempts
+
+
+def test_openai_backend_does_not_retry_bad_request(tmp_path: Path) -> None:
+    fake = _FakeAsyncOpenAI()
+    fake.images.errors = [_fake_response_error(400, "content_policy_violation")]
+    backend = OpenAIImageBackend(out_dir=tmp_path, client=fake)  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError, match="rejected prompt"):
+        asyncio.run(
+            backend.render_async(
+                handle="x",
+                index=0,
+                title="t",
+                category="c",
+                width=1024,
+                height=1024,
+            ),
+        )
+    # No retry on a deterministic 400.
+    assert len(fake.images.calls) == 1
+
+
+def test_openai_backend_requires_api_key_in_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Constructing without an injected client + no env key fails at first use."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    backend = OpenAIImageBackend(out_dir=tmp_path)
+    with pytest.raises(EnvironmentError, match="OPENAI_API_KEY"):
+        asyncio.run(
+            backend.render_async(
+                handle="x",
+                index=0,
+                title="t",
+                category="c",
+                width=1024,
+                height=1024,
+            ),
         )
 
 
-def test_ai_backend_metadata() -> None:
-    backend = AIBackend()
-    assert backend.name == "ai"
-    assert backend.extension == ".png"
+# --------------------------------------------------------------------------- #
+# Cache key
+# --------------------------------------------------------------------------- #
+
+
+def test_compute_cache_key_is_stable() -> None:
+    args: dict[str, Any] = {
+        "prompt": "hello",
+        "model": "gpt-image-1",
+        "size": "1024x1024",
+        "quality": "medium",
+        "prompt_version": PROMPT_VERSION,
+    }
+    assert compute_cache_key(**args) == compute_cache_key(**args)
+
+
+def test_compute_cache_key_changes_with_inputs() -> None:
+    base: dict[str, Any] = {
+        "prompt": "hello",
+        "model": "gpt-image-1",
+        "size": "1024x1024",
+        "quality": "medium",
+        "prompt_version": PROMPT_VERSION,
+    }
+    other = base | {"size": "1024x1536"}
+    assert compute_cache_key(**base) != compute_cache_key(**other)
 
 
 # --------------------------------------------------------------------------- #
@@ -366,20 +533,34 @@ def test_ai_backend_metadata() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_get_backend_placeholder_returns_placeholder_backend() -> None:
-    backend = get_backend("placeholder")
+def test_get_backend_placeholder_returns_placeholder_backend(tmp_path: Path) -> None:
+    seed = _make_seed(tmp_path)
+    config = ShopGenConfig(seeds=[seed], out_dir=tmp_path / "out")
+    ctx = StepContext(config=config, out_dir=tmp_path / "out", runtime=None)
+    backend = get_backend("placeholder", ctx=ctx)
     assert isinstance(backend, PlaceholderBackend)
 
 
-def test_get_backend_ai_returns_ai_backend() -> None:
-    backend = get_backend("ai")
-    assert isinstance(backend, AIBackend)
+def test_get_backend_openai_returns_openai_backend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    seed = _make_seed(tmp_path)
+    config = ShopGenConfig(
+        seeds=[seed],
+        out_dir=tmp_path / "out",
+        image_backend="openai",
+    )
+    ctx = StepContext(config=config, out_dir=tmp_path / "out", runtime=None)
+    backend = get_backend("openai", ctx=ctx)
+    assert isinstance(backend, OpenAIImageBackend)
 
 
 def test_image_backend_protocol_runtime_check() -> None:
-    """Both shipped backends satisfy the :class:`ImageBackend` protocol."""
+    """Both shipped backends satisfy their respective protocols."""
     assert isinstance(PlaceholderBackend(), ImageBackend)
-    assert isinstance(AIBackend(), ImageBackend)
+    assert isinstance(OpenAIImageBackend(out_dir=Path(".")), AsyncImageBackend)
 
 
 # --------------------------------------------------------------------------- #
@@ -393,7 +574,8 @@ def test_step_metadata() -> None:
     assert step.phase == "data_synth"
     assert step.outputs == [Path(".shop_gen") / "stage_cache" / "images_manifest.json"]
     assert step.depends_on == ["synth_product_details"]
-    assert step.version == 1
+    expected_step_version = 2
+    assert step.version == expected_step_version
 
 
 def test_step_run_writes_one_svg_per_product_image_slot(tmp_path: Path) -> None:
@@ -439,6 +621,10 @@ def test_step_run_writes_manifest(tmp_path: Path) -> None:
         assert entry["file"].endswith(".svg")
         assert entry["width"] > 0
         assert entry["height"] > 0
+        assert entry["cache_hit"] is False
+    # Top-level cache counters reflect placeholder = always miss in v0.2 manifest.
+    assert manifest["cache_hits"] == 0
+    assert manifest["cache_misses"] == _EXPECTED_TOTAL_IMAGES
 
 
 def test_step_run_uses_configured_images_per_product(tmp_path: Path) -> None:
@@ -458,7 +644,7 @@ def test_step_run_uses_configured_images_per_product(tmp_path: Path) -> None:
     assert sum(1 for _ in images_dir.iterdir()) == len(_ALL_SKELETONS) * _LARGER_IMAGES
 
 
-def test_step_run_is_deterministic(tmp_path: Path) -> None:
+def test_step_run_is_deterministic_for_placeholder(tmp_path: Path) -> None:
     seed = _make_seed(tmp_path)
     out_dir = tmp_path / "out"
     _materialise_workspace(out_dir)
@@ -476,14 +662,137 @@ def test_step_run_is_deterministic(tmp_path: Path) -> None:
     assert _run() == _run()
 
 
-def test_step_run_ai_backend_raises_not_implemented(tmp_path: Path) -> None:
+def test_step_run_openai_backend_uses_async_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``image_backend=openai`` triggers async fan-out + cache + PNG outputs.
+
+    The v0.2 prompt only varies by ``(title, category)``, so every image
+    slot of a given product shares one cache key. Running serially gives
+    deterministic dedup: ``N`` products → ``N`` upstream calls, with the
+    remaining ``(images_per_product - 1) × N`` slots served from cache.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     seed = _make_seed(tmp_path)
     out_dir = tmp_path / "out"
     _materialise_workspace(out_dir)
-    config = ShopGenConfig(seeds=[seed], out_dir=out_dir, image_backend="ai")
+    config = ShopGenConfig(
+        seeds=[seed],
+        out_dir=out_dir,
+        image_backend="openai",
+        image_concurrency=1,  # serial → deterministic cache-dedup ordering
+    )
+
+    fake = _FakeAsyncOpenAI()
+
+    def _factory(name: Any, *, ctx: StepContext) -> Any:
+        del name
+        return OpenAIImageBackend(out_dir=ctx.out_dir, client=fake)  # type: ignore[arg-type]
+
+    from shop_gen.data_synth.images import _step as step_mod
+
+    monkeypatch.setattr(step_mod, "get_backend", _factory)
+
     ctx = StepContext(config=config, out_dir=out_dir, runtime=None)
-    with pytest.raises(NotImplementedError, match="ai"):
-        GenImagesStep().run(ctx)
+    GenImagesStep().run(ctx)
+
+    images_dir = out_dir / "data" / "images"
+    files = sorted(p.name for p in images_dir.iterdir())
+    expected = sorted(f"{s.handle}-{i}.png" for s in _ALL_SKELETONS for i in range(_DEFAULT_IMAGES))
+    assert files == expected
+    for path in images_dir.iterdir():
+        assert path.read_bytes() == _PNG_BYTES
+
+    manifest = json.loads(
+        (out_dir / ".shop_gen" / "stage_cache" / "images_manifest.json").read_text(encoding="utf-8"),
+    )
+    assert manifest["backend"] == "openai"
+    assert manifest["extension"] == ".png"
+    n_products = len(_ALL_SKELETONS)
+    expected_misses = n_products
+    expected_hits = _EXPECTED_TOTAL_IMAGES - n_products
+    assert manifest["cache_misses"] == expected_misses
+    assert manifest["cache_hits"] == expected_hits
+    assert len(fake.images.calls) == expected_misses
+
+
+def test_step_run_openai_backend_concurrency_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    _materialise_workspace(out_dir)
+    cap = 3
+    config = ShopGenConfig(
+        seeds=[seed],
+        out_dir=out_dir,
+        image_backend="openai",
+        image_concurrency=cap,
+    )
+    fake = _FakeAsyncOpenAI()
+    fake.images.delay = 0.05
+
+    def _factory(name: Any, *, ctx: StepContext) -> Any:
+        del name
+        return OpenAIImageBackend(out_dir=ctx.out_dir, client=fake)  # type: ignore[arg-type]
+
+    from shop_gen.data_synth.images import _step as step_mod
+
+    monkeypatch.setattr(step_mod, "get_backend", _factory)
+
+    ctx = StepContext(config=config, out_dir=out_dir, runtime=None)
+    GenImagesStep().run(ctx)
+
+    assert fake.images.max_in_flight <= cap
+    # Sanity: 8 jobs vs. cap=3 with a 50ms per-call delay should saturate
+    # the semaphore (under cooperative scheduling, ≥2 in-flight at peak).
+    assert fake.images.max_in_flight >= 2  # noqa: PLR2004
+
+
+def test_step_run_openai_backend_second_run_is_all_cache_hits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    _materialise_workspace(out_dir)
+    config = ShopGenConfig(
+        seeds=[seed],
+        out_dir=out_dir,
+        image_backend="openai",
+        image_concurrency=1,  # serial → deterministic dedup
+    )
+    fake = _FakeAsyncOpenAI()
+
+    def _factory(name: Any, *, ctx: StepContext) -> Any:
+        del name
+        return OpenAIImageBackend(out_dir=ctx.out_dir, client=fake)  # type: ignore[arg-type]
+
+    from shop_gen.data_synth.images import _step as step_mod
+
+    monkeypatch.setattr(step_mod, "get_backend", _factory)
+
+    ctx = StepContext(config=config, out_dir=out_dir, runtime=None)
+    GenImagesStep().run(ctx)
+    first_call_count = len(fake.images.calls)
+    # First run: one upstream call per unique cache key (= one per product).
+    assert first_call_count == len(_ALL_SKELETONS)
+
+    GenImagesStep().run(ctx)
+    # Second run: every entry hits the cache, so no new API calls.
+    assert len(fake.images.calls) == first_call_count
+
+    manifest = json.loads(
+        (out_dir / ".shop_gen" / "stage_cache" / "images_manifest.json").read_text(encoding="utf-8"),
+    )
+    assert manifest["cache_hits"] == _EXPECTED_TOTAL_IMAGES
+    assert manifest["cache_misses"] == 0
+    for entry in manifest["entries"]:
+        assert entry["cache_hit"] is True
 
 
 def test_step_run_missing_collections_cache(tmp_path: Path) -> None:
@@ -531,6 +840,5 @@ def test_step_run_missing_details_manifest(tmp_path: Path) -> None:
 
 
 def test_step_registered_with_pipeline_appears_in_data_synth_phase() -> None:
-    """T3.10 wires ``gen_images`` into the Phase 2 phase listing."""
     grouped = list_steps()
     assert "gen_images" in grouped["data_synth"]

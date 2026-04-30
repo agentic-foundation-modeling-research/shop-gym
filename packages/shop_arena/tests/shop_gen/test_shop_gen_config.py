@@ -26,6 +26,8 @@ from shop_gen.config import (
     DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION,
     DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
     DEFAULT_IMAGE_BACKEND,
+    DEFAULT_IMAGE_CONCURRENCY,
+    DEFAULT_IMAGE_SIZE,
     DEFAULT_IMAGES_PER_PRODUCT,
     DEFAULT_JUDGES,
     DEFAULT_MAX_ITERS,
@@ -35,6 +37,7 @@ from shop_gen.config import (
     DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
     DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
     DEFAULT_VISUAL_RETRY_BUDGET,
+    IMAGE_SIZES,
     KNOWN_JUDGES,
     CatalogConfig,
     RuntimeName,
@@ -99,6 +102,9 @@ def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
     assert cfg.model is None
     assert cfg.max_iters == DEFAULT_MAX_ITERS
     assert cfg.image_backend == DEFAULT_IMAGE_BACKEND
+    assert cfg.image_model is None
+    assert cfg.image_size == DEFAULT_IMAGE_SIZE
+    assert cfg.image_concurrency == DEFAULT_IMAGE_CONCURRENCY
     assert cfg.catalog == CatalogConfig()
     assert cfg.visual_retry_budget == DEFAULT_VISUAL_RETRY_BUDGET
     assert cfg.judges == DEFAULT_JUDGES
@@ -249,6 +255,63 @@ def test_shop_gen_config_rejects_unknown_image_backend(tmp_path: Path) -> None:
     seed = _seed(tmp_path)
     with pytest.raises(ValidationError):
         ShopGenConfig(seeds=[seed], image_backend="dalle")  # type: ignore[arg-type]
+
+
+def test_shop_gen_config_rejects_unknown_image_size(tmp_path: Path) -> None:
+    """Closed-set ``image_size`` rejects values outside :data:`IMAGE_SIZES`."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError, match="image_size"):
+        ShopGenConfig(seeds=[seed], image_size="999x999")
+
+
+@pytest.mark.parametrize("good", sorted(IMAGE_SIZES))
+def test_shop_gen_config_accepts_every_known_image_size(
+    tmp_path: Path,
+    good: str,
+) -> None:
+    """Every value in :data:`IMAGE_SIZES` round-trips."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], image_size=good)
+    assert cfg.image_size == good
+
+
+@pytest.mark.parametrize("bad", [0, -1, -42])
+def test_shop_gen_config_rejects_non_positive_image_concurrency(
+    tmp_path: Path,
+    bad: int,
+) -> None:
+    """``image_concurrency`` must be strictly positive (semaphore precondition)."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], image_concurrency=bad)
+
+
+def test_shop_gen_config_accepts_image_model_string(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], image_model="gpt-image-2")
+    assert cfg.image_model == "gpt-image-2"
+
+
+def test_shop_gen_config_openai_backend_requires_api_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``image_backend='openai'`` without ``OPENAI_API_KEY`` is rejected at config time."""
+    seed = _seed(tmp_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with pytest.raises(ValidationError, match="OPENAI_API_KEY"):
+        ShopGenConfig(seeds=[seed], image_backend="openai")
+
+
+def test_shop_gen_config_openai_backend_accepts_api_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With ``OPENAI_API_KEY`` set, the openai backend passes validation."""
+    seed = _seed(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    cfg = ShopGenConfig(seeds=[seed], image_backend="openai")
+    assert cfg.image_backend == "openai"
 
 
 def test_shop_gen_config_rejects_unknown_runtime(tmp_path: Path) -> None:

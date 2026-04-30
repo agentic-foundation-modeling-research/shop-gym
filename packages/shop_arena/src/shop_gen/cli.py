@@ -35,6 +35,8 @@ from shop_gen.build.redo import RedoError, append_redo_task
 from shop_gen.config import (
     DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
     DEFAULT_IMAGE_BACKEND,
+    DEFAULT_IMAGE_CONCURRENCY,
+    DEFAULT_IMAGE_SIZE,
     DEFAULT_JUDGES,
     DEFAULT_MAX_ITERS,
     DEFAULT_MODEL_BY_RUNTIME,
@@ -42,6 +44,7 @@ from shop_gen.config import (
     DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
     DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
     DEFAULT_VISUAL_RETRY_BUDGET,
+    IMAGE_SIZES,
     KNOWN_JUDGES,
     CatalogConfig,
     ImageBackend,
@@ -187,11 +190,38 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--image-backend",
-        choices=("placeholder", "ai"),
+        choices=("placeholder", "openai"),
         default=DEFAULT_IMAGE_BACKEND,
         help=(
             f"Image-generation backend. Default: {DEFAULT_IMAGE_BACKEND!r}. "
-            "'ai' is stubbed in v0.1 (lands in M8)."
+            "'openai' uses an OpenAI-compatible API "
+            "(reads OPENAI_API_KEY / OPENAI_BASE_URL from env)."
+        ),
+    )
+    parser.add_argument(
+        "--image-model",
+        default=None,
+        metavar="MODEL",
+        help=(
+            "Model id forwarded to the image backend (e.g. 'gpt-image-1'). "
+            "Accepts org-prefixed ids for compatible vendors. "
+            "Default: backend-specific (gpt-image-1 for openai)."
+        ),
+    )
+    parser.add_argument(
+        "--image-size",
+        choices=tuple(sorted(IMAGE_SIZES)),
+        default=DEFAULT_IMAGE_SIZE,
+        help=f"Canvas size for the image backend. Default: {DEFAULT_IMAGE_SIZE!r}.",
+    )
+    parser.add_argument(
+        "--image-concurrency",
+        type=int,
+        default=DEFAULT_IMAGE_CONCURRENCY,
+        metavar="N",
+        help=(
+            "In-flight cap for the bounded async image-render semaphore. "
+            f"Strictly positive. Default: {DEFAULT_IMAGE_CONCURRENCY}."
         ),
     )
     parser.add_argument(
@@ -425,6 +455,9 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
         catalog=catalog,
         max_iters=args.max_iters,
         image_backend=image_backend,
+        image_model=args.image_model,
+        image_size=args.image_size,
+        image_concurrency=args.image_concurrency,
         visual_retry_budget=args.visual_retry_budget,
         visual_judge_pass_threshold=args.visual_judge_pass_threshold,
         visual_judge_max_concurrency=args.visual_judge_max_concurrency,

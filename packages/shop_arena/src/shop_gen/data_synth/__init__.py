@@ -49,9 +49,10 @@ from shop_gen.data_synth.identity import (
     synth_identity_from_manual,
 )
 from shop_gen.data_synth.images import (
-    AIBackend,
+    AsyncImageBackend,
     GenImagesStep,
     ImageBackend,
+    OpenAIImageBackend,
     PlaceholderBackend,
     get_backend,
 )
@@ -85,10 +86,10 @@ from shop_gen.data_synth.skeletons import (
 from shop_gen.data_synth.store import SynthStoreStep, synth_store_from_identity
 
 __all__ = [
-    "AIBackend",
     "AltTextPayload",
     "AssembleDataStep",
     "AssembledData",
+    "AsyncImageBackend",
     "BrandColors",
     "BrandLeakError",
     "Collection",
@@ -100,6 +101,7 @@ __all__ = [
     "Navigation",
     "NavigationItem",
     "NavigationItemType",
+    "OpenAIImageBackend",
     "Page",
     "PaymentSettings",
     "PlaceholderBackend",

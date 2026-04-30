@@ -17,6 +17,7 @@ dependencies = [
   "playwright>=1.48",
   "harness",
   "anthropic>=0.39",
+  "openai>=1.55",
   "python-dotenv>=1.0",
 ]
 

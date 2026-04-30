@@ -18,6 +18,7 @@ checks happen only when a config is *constructed*.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, Literal
@@ -29,13 +30,29 @@ from harness.runtimes import validate_model_grammar
 RuntimeName = Literal["pi", "claude_code"]
 """Name of the agent runtime to drive the build-loop plan/exec phase."""
 
-ImageBackend = Literal["placeholder", "ai"]
+ImageBackend = Literal["placeholder", "openai"]
 """Image-generation backend selector.
 
-``placeholder`` (v0.1 default) emits deterministic SVGs from the
-synthesis stage. ``ai`` is a v0.2 concern (M8) and will land behind
-this same flag.
+``placeholder`` (default) emits deterministic SVGs from the synthesis
+stage. ``openai`` selects the OpenAI-compatible photorealistic backend
+(:class:`shop_gen.data_synth.images.OpenAIImageBackend`) and reads
+``OPENAI_API_KEY`` (required) and ``OPENAI_BASE_URL`` (optional) from
+the environment — any drop-in compatible vendor (e.g. an internal
+proxy) works without ``shop_gen``-specific code.
 """
+
+IMAGE_SIZES: Final[frozenset[str]] = frozenset(
+    {"1024x1024", "1024x1536", "1536x1024", "auto"},
+)
+"""Closed set of accepted ``--image-size`` values (spec §4.1)."""
+
+DEFAULT_IMAGE_SIZE: Final[str] = "1024x1024"
+"""Default canvas size forwarded to the OpenAI backend (spec §4.1)."""
+
+DEFAULT_IMAGE_CONCURRENCY: Final[int] = 5
+"""Default in-flight cap for the bounded async image-render semaphore (spec §4.1)."""
+
+_OPENAI_API_KEY_ENV: Final[str] = "OPENAI_API_KEY"
 
 DEFAULT_RUNTIME: Final[RuntimeName] = "pi"
 """Default agent runtime forwarded to the build harness loop."""
@@ -218,8 +235,16 @@ class ShopGenConfig(BaseModel):
         catalog: Scale knobs (see :class:`CatalogConfig`).
         max_iters: Executor iteration budget for the build loop.
             Strictly positive.
-        image_backend: ``placeholder`` (v0.1 default) or ``ai`` (v0.2,
-            stubbed in v0.1).
+        image_backend: ``placeholder`` (default) emits deterministic
+            SVGs; ``openai`` calls an OpenAI-compatible image API.
+        image_model: Model id forwarded to the backend. ``None`` →
+            backend default (``gpt-image-1`` for ``openai``). Accepts
+            org-prefixed ids to support compatible vendors.
+        image_size: Canvas size forwarded to ``images.generate(size=...)``.
+            One of :data:`IMAGE_SIZES`.
+        image_concurrency: In-flight cap for the bounded async semaphore
+            in :class:`~shop_gen.data_synth.images.GenImagesStep`. Strictly
+            positive.
         visual_retry_budget: Per-task cap on consecutive ``visual_judge``
             FAILs before the verifier downgrades to ADVISORY (spec
             §5.4). ``0`` disables the budget entirely. Non-negative.
@@ -267,6 +292,9 @@ class ShopGenConfig(BaseModel):
     catalog: CatalogConfig = Field(default_factory=CatalogConfig)
     max_iters: int = Field(default=DEFAULT_MAX_ITERS, gt=0)
     image_backend: ImageBackend = DEFAULT_IMAGE_BACKEND
+    image_model: str | None = None
+    image_size: str = DEFAULT_IMAGE_SIZE
+    image_concurrency: int = Field(default=DEFAULT_IMAGE_CONCURRENCY, gt=0)
     visual_retry_budget: int = Field(default=DEFAULT_VISUAL_RETRY_BUDGET, ge=0)
     judges: frozenset[str] = Field(default=DEFAULT_JUDGES)
     visual_judge_pass_threshold: float = Field(
@@ -365,6 +393,27 @@ class ShopGenConfig(BaseModel):
         if not value.strip():
             raise ValueError("name must be non-empty when provided")
         return value
+
+    @field_validator("image_size")
+    @classmethod
+    def _validate_image_size(cls, value: str) -> str:
+        """Reject ``image_size`` outside the closed :data:`IMAGE_SIZES` set."""
+        if value not in IMAGE_SIZES:
+            allowed = ", ".join(sorted(IMAGE_SIZES))
+            raise ValueError(
+                f"image_size must be one of {{{allowed}}}, got {value!r}",
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _validate_openai_env(self) -> ShopGenConfig:
+        """Require ``OPENAI_API_KEY`` in the environment for the openai backend."""
+        if self.image_backend == "openai" and not os.environ.get(_OPENAI_API_KEY_ENV):
+            raise ValueError(
+                f"image_backend='openai' requires {_OPENAI_API_KEY_ENV} in the "
+                "environment (set it in .env or export it before invoking shop-gen)",
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_seed_paths(self) -> ShopGenConfig:

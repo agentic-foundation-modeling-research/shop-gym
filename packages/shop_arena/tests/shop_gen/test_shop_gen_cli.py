@@ -207,9 +207,11 @@ def test_default_run_builds_config_with_defaults(
 def test_default_run_threads_scale_and_runtime_knobs(
     tmp_path: Path,
     captured_run: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seed = _make_seed(tmp_path)
     out_dir = tmp_path / "out"
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
     rc = main(
         [
@@ -231,7 +233,7 @@ def test_default_run_threads_scale_and_runtime_knobs(
             "--images-per-product",
             str(_EXPECTED_IMAGES_PER_PRODUCT),
             "--image-backend",
-            "ai",
+            "openai",
         ],
     )
 
@@ -244,7 +246,7 @@ def test_default_run_threads_scale_and_runtime_knobs(
     assert config.catalog.collections == _EXPECTED_COLLECTIONS
     assert config.catalog.products_per_collection == _EXPECTED_PRODUCTS_PER_COLLECTION
     assert config.catalog.images_per_product == _EXPECTED_IMAGES_PER_PRODUCT
-    assert config.image_backend == "ai"
+    assert config.image_backend == "openai"
 
 
 def test_empty_model_flag_skips_runtime_default(
@@ -515,6 +517,97 @@ def test_default_run_rejects_unknown_image_backend(
         main([str(seed), "--out-dir", str(tmp_path / "out"), "--image-backend", "magic"])
     assert excinfo.value.code == EXIT_USAGE
     assert "magic" in capsys.readouterr().err
+
+
+def test_image_flags_thread_into_config(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--image-model`` / ``--image-size`` / ``--image-concurrency`` all propagate."""
+    seed = _make_seed(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--image-backend",
+            "openai",
+            "--image-model",
+            "gpt-image-2",
+            "--image-size",
+            "1024x1536",
+            "--image-concurrency",
+            "8",
+        ]
+    )
+    assert rc == EXIT_OK
+    config = captured_run["config"]
+    assert config.image_backend == "openai"
+    assert config.image_model == "gpt-image-2"
+    assert config.image_size == "1024x1536"
+    assert config.image_concurrency == 8
+
+
+def test_openai_backend_without_api_key_is_config_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--image-backend openai`` with no ``OPENAI_API_KEY`` exits ``EXIT_CONFIG``."""
+    seed = _make_seed(tmp_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--image-backend",
+            "openai",
+        ]
+    )
+    assert rc == EXIT_CONFIG
+    assert "OPENAI_API_KEY" in capsys.readouterr().err
+
+
+def test_image_size_rejects_unknown_value(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """Argparse rejects unknown ``--image-size`` values (usage error)."""
+    seed = _make_seed(tmp_path)
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(seed),
+                "--out-dir",
+                str(tmp_path / "out"),
+                "--image-size",
+                "999x999",
+            ]
+        )
+    assert excinfo.value.code == EXIT_USAGE
+    assert "999x999" in capsys.readouterr().err
+
+
+def test_image_concurrency_zero_is_config_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--image-concurrency 0`` fails pydantic's ``gt=0`` and exits ``EXIT_CONFIG``."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--image-concurrency",
+            "0",
+        ]
+    )
+    assert rc == EXIT_CONFIG
+    assert "invalid configuration" in capsys.readouterr().err
 
 
 def test_default_run_surfaces_multi_seed_without_name(
