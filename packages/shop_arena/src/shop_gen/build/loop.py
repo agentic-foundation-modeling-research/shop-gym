@@ -66,6 +66,7 @@ from harness import (
 from harness.config import FinalStatus
 from harness.workspace import Workspace
 from shop_gen.build.consolidate import ensure_consolidate_task
+from shop_gen.build.env import _CLONE_STEP_VERSION
 from shop_gen.build.prompts import (
     load_agents_md,
     load_execute_prompt,
@@ -129,15 +130,15 @@ _HYDROGEN_SENTINEL: Final[Path] = _HYDROGEN_DIR / "package.json"
 _SOURCE_STAMP: Final[Path] = Path(".shop_gen") / "source_fingerprint"
 """Run-relative path of the artifact tree's source-fingerprint stamp.
 
-Records a content hash of the ``<out_dir>/hydrogen/`` +
-``<out_dir>/data/`` trees at the time their copies were materialised
-under ``<run_dir>/artifact/``. ``_setup_run_dir`` compares this against
-the current hash on every invocation and rebuilds the artifact subtrees
-if they drift, so a refreshed template (e.g. after bumping
-``CloneTemplateStep.version``) actually reaches the tree the harness
-boots. Without this stamp the prior ``run_dir``-empty gate would skip
-the copy whenever the workspace had any content, and a re-run after a
-``clone_template`` rev would replay against the *old* artifact tree.
+Records the fingerprint of the source state (``<out_dir>/hydrogen/`` +
+``<out_dir>/data/`` content, mixed with :data:`shop_gen.build.env._CLONE_STEP_VERSION`)
+at the moment ``runs/build/`` was last materialised. ``_setup_run_dir``
+compares this stamp against the current source fingerprint on every
+invocation. A mismatch means the upstream source has changed (template
+edited, ``CloneTemplateStep.version`` bumped, or ``assemble_data``
+regenerated the data tree) and the prior ``runs/build/`` is rebuilt
+from scratch — the executor's prior plan + iters are no longer
+coherent with the new source.
 """
 
 _DATA_DIR: Final[Path] = Path("data")
@@ -469,35 +470,40 @@ class RunBuildHarnessLoopStep:
     ) -> bool:
         """Materialise the workspace and inject the mutable subtrees.
 
-        On a fresh run (``run_dir`` missing or empty) we call
-        :meth:`harness.workspace.Workspace.create` ourselves. This seeds
-        the manual into ``run_dir/artifact/`` and captures the seed
-        manifest *before* we add the mutable hydrogen + data trees, so
-        seed-immutability checks ignore them.
+        Two coherent outcomes — fast path or full reset:
 
-        On every subsequent invocation we compare the current source
-        fingerprint (a content hash of ``hydrogen_src`` + ``data_dir``)
-        against the stamp persisted at ``artifact/.shop_gen/source_fingerprint``.
-        When they match we take the fast path. When they drift —
-        because :class:`CloneTemplateStep`'s version was bumped, the
-        template was edited and re-cloned, ``assemble_data`` produced a
-        new dataset, or the stamp is missing on a workspace from before
-        this stamp existed — we wipe the artifact's ``hydrogen/`` and
-        ``data/`` subtrees and re-copy from source, then re-run
-        ``pnpm install``. Other contents under ``artifact/`` (the
-        seeded manual, ``run.json``, ``plan.md``) and the run_dir's
-        ``iters/`` tree are preserved so the executor's iteration
-        history survives a template upgrade.
+        * **Fast path**: ``run_dir`` exists, is non-empty, and the
+          persisted source fingerprint matches the current source. The
+          existing artifact tree, ``plan.md``, ``iters/`` and
+          ``run.json`` are left untouched and the harness resumes via
+          :meth:`harness.workspace.Workspace.open` against them.
+        * **Full reset**: ``run_dir`` is missing or empty (fresh
+          workspace), or the stamp differs from the current source
+          fingerprint (drift). On drift the entire ``run_dir`` is
+          torn down with ``shutil.rmtree`` so plan / iters / artifact
+          stay coherent, then a fresh :meth:`Workspace.create` seeds
+          the manual; the mutable hydrogen + data trees are layered
+          in *after* the seed manifest is captured, so seed-immutability
+          checks ignore them.
 
-        After the trees are in place we run ``pnpm install --ignore-workspace
-        --frozen-lockfile`` inside the artifact's hydrogen tree. The vendored
-        template ships a normalised ``package.json`` + ``pnpm-lock.yaml``
-        but no ``node_modules/``; the install hydrates dependencies from
-        pnpm's global content-addressable store. ``--ignore-workspace`` is
-        the load-bearing flag — without it pnpm walks up to the repo root,
-        finds ``pnpm-workspace.yaml``, fails to register the artifact
-        directory as a member, and refuses to resolve the template's
-        dependencies.
+        Drift is the right behaviour for any real source change
+        (template edit, ``CloneTemplateStep.version`` bump,
+        regenerated data) because the executor's prior plan markers
+        (``plan.md`` task statuses, ``iters/<id>/`` records) implicitly
+        assert "the artifact tree contains the work I described". Once
+        the source changes that assertion no longer holds, so the
+        cleanest recovery is to throw the prior loop away and re-plan.
+
+        After a fresh-or-reset workspace is in place we run
+        ``pnpm install --ignore-workspace --frozen-lockfile`` inside the
+        artifact's hydrogen tree. The vendored template ships a
+        normalised ``package.json`` + ``pnpm-lock.yaml`` but no
+        ``node_modules/``; the install hydrates dependencies from
+        pnpm's global content-addressable store. ``--ignore-workspace``
+        is the load-bearing flag — without it pnpm walks up to the
+        repo root, finds ``pnpm-workspace.yaml``, fails to register the
+        artifact directory as a member, and refuses to resolve the
+        template's dependencies.
 
         Returns:
             The ``force`` flag to pass to :func:`run_plan_exec_loop`. We
@@ -517,41 +523,35 @@ class RunBuildHarnessLoopStep:
         run_dir = harness_config.run_dir
         current_fp = _compute_source_fingerprint(hydrogen_src, data_dir)
 
-        if not run_dir.exists() or not any(run_dir.iterdir()):
-            run_dir.mkdir(parents=True, exist_ok=True)
-            workspace = Workspace.create(harness_config)
-            artifact_dir = workspace.artifact_dir
-            # ``Workspace.create`` writes an empty ``plan.md``; the
-            # harness then re-enters this run via ``Workspace.open``
-            # which validates the plan structure. Seed a minimal
-            # ``## Tasks`` heading so ``parse_plan`` accepts it; the
-            # planner iteration overwrites the file with the real plan.
-            workspace.plan_md.write_text(_EMPTY_PLAN_MD, encoding="utf-8")
-        else:
-            artifact_dir = run_dir / "artifact"
-            if _read_source_stamp(artifact_dir) == current_fp:
+        if run_dir.exists() and any(run_dir.iterdir()):
+            if _read_source_stamp(run_dir / _ARTIFACT_DIRNAME) == current_fp:
                 return self._force
             _log.info(
                 "build artifact source-fingerprint drift detected — "
-                "rebuilding hydrogen + data subtrees under %s",
-                artifact_dir,
+                "resetting %s",
+                run_dir,
             )
-            for sub in (_HYDROGEN_DIR.name, _DATA_DIR.name):
-                target = artifact_dir / sub
-                if target.exists():
-                    shutil.rmtree(target)
+            shutil.rmtree(run_dir)
 
-        # ``ignore=node_modules`` is defence-in-depth: ``hydrogen_src``
-        # is the output of ``CloneTemplateStep`` which already strips it,
-        # but skipping here means a hand-edited or corrupted source tree
-        # cannot leak a dereferenced ``node_modules/`` into the artifact.
-        # ``pnpm install`` below is the sole owner of the artifact's
-        # ``node_modules/``.
+        run_dir.mkdir(parents=True, exist_ok=True)
+        workspace = Workspace.create(harness_config)
+        artifact_dir = workspace.artifact_dir
+        # ``Workspace.create`` writes an empty ``plan.md``; the harness
+        # then re-enters this run via ``Workspace.open`` which validates
+        # the plan structure. Seed a minimal ``## Tasks`` heading so
+        # ``parse_plan`` accepts it; the planner iteration overwrites
+        # the file with the real plan.
+        workspace.plan_md.write_text(_EMPTY_PLAN_MD, encoding="utf-8")
+
+        # ``out_dir/hydrogen/`` is a pure source tree by contract —
+        # ``CloneTemplateStep`` is the only writer and explicitly
+        # excludes / purges ``node_modules/``. Trust that invariant
+        # here: a ``node_modules/`` showing up in ``hydrogen_src`` is a
+        # clone_template bug, not something to silently work around.
         shutil.copytree(
             hydrogen_src,
             artifact_dir / _HYDROGEN_DIR.name,
             dirs_exist_ok=False,
-            ignore=shutil.ignore_patterns("node_modules"),
         )
         shutil.copytree(
             data_dir,
@@ -590,28 +590,44 @@ class RunBuildHarnessLoopStep:
 
 
 def _compute_source_fingerprint(hydrogen_src: Path, data_dir: Path) -> str:
-    """Hash the content of the hydrogen + data trees deterministically.
+    """Hash the upstream source state into a deterministic stamp.
 
-    Walks both directories in lexicographic order, mixing each file's
-    relative path and bytes into a sha256 digest. ``node_modules/`` is
-    excluded so an environmental ``pnpm install`` inside the source
-    tree does not perturb the digest. Both trees are small (~100 files
-    for hydrogen, a handful of JSON files for data); the cost is
-    negligible compared to ``pnpm install``.
+    The digest mixes three signals:
+
+    1. :data:`shop_gen.build.env._CLONE_STEP_VERSION` so a version bump
+       always invalidates the stamp, even when ``clone_template``
+       wrote byte-identical content (the version is the canonical
+       "upstream generation changed" signal per spec §5.7.1).
+    2. Every file under ``hydrogen_src`` *except* ``node_modules/``
+       (owned by the artifact-tree's ``pnpm install``, never present
+       in source per ``CloneTemplateStep``'s contract) and ``.env``
+       (its port is reallocated on every ``write_env_file`` run —
+       incidental to the build, not a real source change).
+    3. Every file under ``data_dir``.
+
+    Files are visited in lexicographic order so the digest is stable
+    across filesystems. Both trees are small (~100 files for hydrogen,
+    a handful of JSON files for data); the cost is negligible compared
+    to ``pnpm install``.
 
     Args:
         hydrogen_src: Source hydrogen directory (``<out_dir>/hydrogen/``).
         data_dir: Source data directory (``<out_dir>/data/``).
 
     Returns:
-        Lowercase hex sha256 digest of the combined tree content.
+        Lowercase hex sha256 digest mixing the clone version + tree content.
     """
     digest = hashlib.sha256()
+    digest.update(b"clone_template_version\x00")
+    digest.update(str(_CLONE_STEP_VERSION).encode("ascii"))
+    digest.update(b"\n")
     for label, root in (("hydrogen", hydrogen_src), ("data", data_dir)):
         for path in sorted(root.rglob("*")):
             if not path.is_file():
                 continue
             if "node_modules" in path.parts:
+                continue
+            if root is hydrogen_src and path.name == ".env":
                 continue
             digest.update(label.encode("utf-8"))
             digest.update(b"\x00")

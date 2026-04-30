@@ -639,20 +639,26 @@ def test_step_run_seeds_only_manual_and_layers_hydrogen_data_after(tmp_path: Pat
     }
 
 
-def test_step_run_rebuilds_artifact_subtrees_when_source_drifts(tmp_path: Path) -> None:
-    """Mutating ``<out_dir>/hydrogen/`` between runs propagates to the artifact tree.
+def test_step_run_resets_run_dir_when_source_drifts(tmp_path: Path) -> None:
+    """Mutating ``<out_dir>/hydrogen/`` between runs tears down ``runs/build/``.
 
-    Spec §§5.5 / 5.7: ``clone_template`` and ``run_build_harness_loop`` cooperate
-    via a content-fingerprint stamp under
-    ``runs/build/artifact/.shop_gen/source_fingerprint``. When the upstream
-    tree changes — e.g. after a ``CloneTemplateStep.version`` bump —
-    ``_setup_run_dir`` wipes and re-copies the source-derived subtrees in
-    place so the fixed template actually reaches the tree the harness
-    boots. Three :meth:`step.run` invocations exercise:
+    ``_setup_run_dir`` records a fingerprint of the upstream source
+    (hydrogen + data, mixed with :data:`shop_gen.build.env._CLONE_STEP_VERSION`)
+    on every successful run. When the next invocation finds a stamp
+    mismatch — because the template was edited and re-cloned, the data
+    tree was regenerated, or the clone version was bumped — the entire
+    ``run_dir`` is wiped (including ``iters/``, ``plan.md``,
+    ``run.json``) and the workspace is recreated from scratch. This
+    keeps plan/iter/artifact state coherent: a partial wipe would leave
+    ``plan.md`` claiming tasks DONE that the artifact tree no longer
+    contains.
+
+    Three :meth:`step.run` invocations exercise:
 
     1. fresh workspace → install runs once;
-    2. no source change → fast path, no extra install;
-    3. mutated source → drift detected, artifact rebuilt, install re-runs.
+    2. no source change → fast path, executor history preserved;
+    3. mutated source → full reset, install re-runs, prior ``iters/``
+       sentinel is gone.
     """
     out_dir = tmp_path / "out"
     out_dir.mkdir()
@@ -694,6 +700,7 @@ def test_step_run_rebuilds_artifact_subtrees_when_source_drifts(tmp_path: Path) 
 
     artifact_pkg = out_dir / "runs" / "build" / "artifact" / "hydrogen" / "package.json"
     source_pkg = out_dir / "hydrogen" / "package.json"
+    iters_sentinel = out_dir / "runs" / "build" / "iters" / "executor-history.txt"
 
     with patch(
         "shop_gen.build.loop.find_shop_backend_cli",
@@ -704,22 +711,101 @@ def test_step_run_rebuilds_artifact_subtrees_when_source_drifts(tmp_path: Path) 
         assert artifact_pkg.read_text(encoding="utf-8") == '{"name":"hydrogen"}\n'
         assert len(install_invocations) == 1
 
-        # 2. No source change — fast path, no extra install.
+        # Drop a sentinel into iters/ to represent the executor's prior work.
+        iters_sentinel.write_text("prior executor record", encoding="utf-8")
+
+        # 2. No source change — fast path, executor history preserved.
         step.run(_build_ctx(out_dir))
         assert len(install_invocations) == 1, (
             "install re-ran despite no source change: "
             f"{install_invocations}"
         )
+        assert iters_sentinel.is_file(), "fast path must not touch iters/"
 
         # Mutate the source tree (simulates clone_template re-running with a
         # fixed template after a version bump).
         source_pkg.write_text('{"name":"hydrogen-v2"}\n', encoding="utf-8")
 
-        # 3. Drift detected — artifact rebuilt, install re-invoked.
+        # 3. Drift detected — entire run_dir reset, install re-invoked,
+        #    prior iters/ history is gone.
         step.run(_build_ctx(out_dir))
         assert artifact_pkg.read_text(encoding="utf-8") == '{"name":"hydrogen-v2"}\n'
         assert len(install_invocations) == 2, (  # noqa: PLR2004
             "install did not re-run after source drift: "
+            f"{install_invocations}"
+        )
+        assert not iters_sentinel.exists(), (
+            "drift reset must wipe runs/build/ entirely so plan/iters/artifact "
+            "stay coherent with the new source"
+        )
+
+
+def test_step_run_resets_run_dir_when_clone_version_bumped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A :data:`_CLONE_STEP_VERSION` bump invalidates the stamp even with byte-identical source.
+
+    The fingerprint mixes the clone-template version into the digest so
+    bumping the version number alone — e.g. when shipping a
+    template-side fix that the orchestrator records as a new generation —
+    invalidates a workspace's stamp and forces a reset on the next run.
+    Without this signal a content-only fingerprint would mark the source
+    unchanged and the artifact tree would silently lag behind the
+    bumped template generation.
+    """
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    install_invocations: list[Path] = []
+
+    def _tracking_install_runner(
+        argv: Sequence[str],
+        *,
+        cwd: Path,
+        timeout: float,
+    ) -> CompletedSubprocess:
+        del argv, timeout
+        install_invocations.append(cwd)
+        return CompletedSubprocess(returncode=0, stdout="", stderr="")
+
+    def _noop_loop_runner(
+        config: PlanExecLoopConfig,
+        runtime: AgentRuntime,
+        *,
+        force: bool,
+    ) -> PlanExecLoopResult:
+        del runtime, force
+        return PlanExecLoopResult(
+            run_dir=config.run_dir,
+            final_status=FinalStatus.COMPLETED,
+            plan_iter_count=0,
+            exec_iter_count=0,
+        )
+
+    step = RunBuildHarnessLoopStep(
+        loop_runner=_noop_loop_runner,
+        runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
+        sidecar_factory=_stub_sidecar_factory,
+        verifiers_factory=_empty_verifiers_factory,
+        install_runner=_tracking_install_runner,
+    )
+
+    with patch(
+        "shop_gen.build.loop.find_shop_backend_cli",
+        return_value=_shop_backend_cli_stub(),
+    ):
+        # Fresh run records the stamp at the current clone version.
+        step.run(_build_ctx(out_dir))
+        assert len(install_invocations) == 1
+
+        # Bump the clone-template version. Source content is byte-identical;
+        # only the version constant changed.
+        monkeypatch.setattr("shop_gen.build.loop._CLONE_STEP_VERSION", 999)
+
+        step.run(_build_ctx(out_dir))
+        assert len(install_invocations) == 2, (  # noqa: PLR2004
+            "clone-template version bump did not invalidate the stamp: "
             f"{install_invocations}"
         )
 
