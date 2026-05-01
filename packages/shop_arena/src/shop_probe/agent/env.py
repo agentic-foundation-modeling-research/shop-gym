@@ -24,10 +24,8 @@ from __future__ import annotations
 import os
 from typing import Final, Literal
 
-from dotenv import find_dotenv, load_dotenv
-
-_loaded: bool = False
-"""Module-level once-flag (cleared by :func:`reset_for_testing`)."""
+from shop_arena_util._dotenv import load_project_env
+from shop_arena_util._dotenv import reset_for_testing as _reset_project_env_for_testing
 
 _ANTHROPIC_AUTH_KEYS: Final[tuple[str, ...]] = (
     "ANTHROPIC_API_KEY",
@@ -48,21 +46,11 @@ class MissingJudgeCredentialsError(RuntimeError):
 def load_agent_env() -> None:
     """Populate ``os.environ`` from the project ``.env`` (idempotent).
 
-    Walks upward from the current working directory to find a ``.env``
-    file and loads it with ``override=False`` so values already exported
-    in the shell take precedence. Subsequent calls are no-ops.
-
-    No error is raised when the file is missing — operators may have
-    exported the variables directly. Credential validation is the
-    caller's responsibility (see :func:`require_credentials`).
+    Thin wrapper over :func:`shop_arena_util._dotenv.load_project_env`,
+    preserved so :mod:`shop_probe.agent.judge` can keep its existing
+    import surface. See the shared helper for semantics.
     """
-    global _loaded  # noqa: PLW0603 — module-scoped once-flag
-    if _loaded:
-        return
-    path = find_dotenv(usecwd=True)
-    if path:
-        load_dotenv(path, override=False)
-    _loaded = True
+    load_project_env()
 
 
 def require_credentials(provider: JudgeProvider) -> None:
@@ -97,6 +85,5 @@ def require_credentials(provider: JudgeProvider) -> None:
 
 
 def reset_for_testing() -> None:
-    """Clear the once-flag so a test can re-trigger the ``.env`` load."""
-    global _loaded  # noqa: PLW0603 — module-scoped once-flag
-    _loaded = False
+    """Clear the shared once-flag so a test can re-trigger the ``.env`` load."""
+    _reset_project_env_for_testing()

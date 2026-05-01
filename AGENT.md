@@ -20,7 +20,7 @@ IMPORTANT: Before implementing any feature, consult the specifications in `docs/
 - Check the codebase first. Before concluding something is or isn't implemented, search the actual code. Specs describe intent; code describes reality.
 - Use specs as guidance. When implementing a feature, follow the design patterns, types, and architecture defined in the relevant spec.
 - Spec index: `docs/specs/README.md` lists all specifications organized by category (core, LLM, security, etc.).
-- For designing new features, create the pure specifications in `docs/specs/<feature>.md`, and split it up with implementation plan `docs/impl/<feature>_implementation.md`
+- For designing new features, create the pure specifications in `docs/specs/<feature>.md`, and split it up with implementation plan `docs/internal/impl/<feature>_impl.md`
 
 Each specification / design doc need to follow the structure:
 

@@ -27,4 +27,4 @@ shop-explore = "shop_explore.cli:main"
 shop-probe = "shop_probe.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/shop_gen", "src/shop_explore", "src/shop_probe"]
+packages = ["src/shop_arena_util", "src/shop_gen", "src/shop_explore", "src/shop_probe"]

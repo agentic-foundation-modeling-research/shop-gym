@@ -31,6 +31,7 @@ from pydantic import ValidationError
 
 from harness.plan import TaskStatus, parse
 from harness.plan.parser import InvalidPlanError
+from shop_arena_util._dotenv import load_project_env
 from shop_gen.build.redo import RedoError, append_redo_task
 from shop_gen.config import (
     DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
@@ -90,6 +91,11 @@ def main(argv: list[str] | None = None) -> int:
     """
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    # Surface OPENAI_API_KEY / OPENAI_BASE_URL etc. from a project ``.env``
+    # before any config validation reads ``os.environ``. Shell exports still
+    # win via ``override=False`` inside the loader.
+    load_project_env()
 
     logging.basicConfig(
         level=logging.INFO,

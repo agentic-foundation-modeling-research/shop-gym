@@ -281,6 +281,8 @@ async def _run(
     evidence_root: Path,
     include_auth: bool,
     capture_judge_model: str,
+    cached_results: dict[str, ProbeResult] | None = None,
+    cached_scale: ScaleMetrics | None = None,
 ) -> ProbeReport:
     """Run every selected rubric entry and assemble the closed :class:`ProbeReport`.
 
@@ -290,14 +292,29 @@ async def _run(
     bundle-derived stats + catalog counts into a :class:`ScaleMetrics`.
     The 5-page bundle is captured once and reused across every entry
     that needs it.
+
+    Args:
+        cached_results: Per-probe results to reuse verbatim — keyed by
+            ``ProbeResult.id``. The dispatcher skips running an entry
+            whose id is in this dict; the cached :class:`ProbeResult`
+            is appended directly into the new report. Pass ``None``
+            (the default) for a clean run.
+        cached_scale: When set, skip ``compute_scale_metrics`` and
+            embed this :class:`ScaleMetrics` in the new report.
     """
     started = datetime.now(UTC)
     results: list[ProbeResult] = []
     chromium_version = "unknown"
-    scale: ScaleMetrics | None = None
+    scale: ScaleMetrics | None = cached_scale
+    cache: dict[str, ProbeResult] = cached_results or {}
     selected_entries = _select_rubric_entries(rubric, include_auth=include_auth)
-    needs_bundle = any(e.type in {"capture_judge", "scale"} for e in selected_entries)
-    needs_judge = any(e.type == "capture_judge" for e in selected_entries)
+
+    runs_capture_judge = any(
+        e.type == "capture_judge" and e.id not in cache for e in selected_entries
+    )
+    runs_scale = any(e.type == "scale" for e in selected_entries) and scale is None
+    needs_bundle = runs_capture_judge or runs_scale
+    needs_judge = runs_capture_judge
 
     async with contextlib.AsyncExitStack() as stack:
         runner = await stack.enter_async_context(ProbeRunner(evidence_root=evidence_root))
@@ -321,6 +338,9 @@ async def _run(
                 bundle_root=bundle_root,
             )
         for entry in selected_entries:
+            if entry.id in cache:
+                results.append(cache[entry.id])
+                continue
             if entry.type == "capture_judge":
                 assert bundle is not None, (
                     "capture_judge entry present but bundle was never captured"
@@ -337,6 +357,8 @@ async def _run(
                 )
                 results.append(_build_probe_result(entry.id, outcome))
             elif entry.type == "scale":
+                if scale is not None:
+                    continue
                 assert bundle is not None, (
                     "scale entry present but bundle was never captured"
                 )
@@ -544,6 +566,31 @@ def _load_cached_report(report_path: Path, *, expected_hash: str) -> ProbeReport
     return cached
 
 
+def _missing_entry_ids(
+    rubric: Rubric,
+    *,
+    include_auth: bool,
+    cached_results: dict[str, ProbeResult],
+    cached_scale: ScaleMetrics | None,
+) -> list[str]:
+    """Return rubric entry ids that need to (re)run given the cache.
+
+    A ``probe`` / ``capture_judge`` entry is missing when its id is not
+    in ``cached_results`` (caller pre-filters out ``passed is None``
+    rows). A ``scale`` entry is missing when ``cached_scale`` is
+    ``None``. Used to decide between cache-hit, partial-cache, and
+    fresh-run paths.
+    """
+    missing: list[str] = []
+    for entry in _select_rubric_entries(rubric, include_auth=include_auth):
+        if entry.type == "scale":
+            if cached_scale is None:
+                missing.append(entry.id)
+        elif entry.id not in cached_results:
+            missing.append(entry.id)
+    return missing
+
+
 def _cmd_eval(args: argparse.Namespace) -> int:
     """Handler for ``shop-probe eval``."""
     benchmark_path: Path = args.benchmark
@@ -583,10 +630,31 @@ def _cmd_eval(args: argparse.Namespace) -> int:
         stem = _target_stem(target)
         report_path = reports_dir / f"{stem}.json"
         report: ProbeReport | None = None
+        cached_results: dict[str, ProbeResult] = {}
+        cached_scale: ScaleMetrics | None = None
         if not force:
-            report = _load_cached_report(report_path, expected_hash=rubric.content_hash)
-            if report is not None:
-                print(f"shop-probe eval: cache hit {stem}")
+            cached = _load_cached_report(report_path, expected_hash=rubric.content_hash)
+            if cached is not None:
+                cached_results = {
+                    r.id: r for r in cached.probe_results if r.passed is not None
+                }
+                cached_scale = cached.scale
+                missing_ids = _missing_entry_ids(
+                    rubric,
+                    include_auth=args.include_auth,
+                    cached_results=cached_results,
+                    cached_scale=cached_scale,
+                )
+                if not missing_ids:
+                    report = cached
+                    print(f"shop-probe eval: cache hit {stem}")
+                else:
+                    total = len(_select_rubric_entries(rubric, include_auth=args.include_auth))
+                    print(
+                        f"shop-probe eval: partial cache {stem} "
+                        f"({total - len(missing_ids)}/{total} cached, "
+                        f"{len(missing_ids)} to re-run)"
+                    )
         if report is None:
             evidence_root = out_root / _EVIDENCE_SUBDIR / stem
             try:
@@ -597,6 +665,8 @@ def _cmd_eval(args: argparse.Namespace) -> int:
                         evidence_root=evidence_root,
                         include_auth=args.include_auth,
                         capture_judge_model=args.capture_judge_model,
+                        cached_results=cached_results,
+                        cached_scale=cached_scale,
                     )
                 )
             except ValidationError as err:
