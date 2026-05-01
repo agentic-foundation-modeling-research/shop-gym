@@ -23,9 +23,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import random
 import re
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -419,10 +421,15 @@ async def _chat_completions_create_with_retry_openai(
     client: object,
     *,
     model: str,
-    max_tokens: int,
+    max_completion_tokens: int,
     messages: list[dict[str, object]],
 ) -> object:
-    """OpenAI ``chat.completions.create`` with bounded retry on transient errors."""
+    """OpenAI ``chat.completions.create`` with bounded retry on transient errors.
+
+    Uses ``max_completion_tokens`` (not the deprecated ``max_tokens``)
+    so the call is compatible with gpt-5 / o-series models, which
+    reject ``max_tokens`` outright.
+    """
     from openai import (
         APIConnectionError,
         APIStatusError,
@@ -435,7 +442,7 @@ async def _chat_completions_create_with_retry_openai(
         try:
             return await client.chat.completions.create(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportAttributeAccessIssue]
                 model=model,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_completion_tokens,
                 messages=messages,  # type: ignore[arg-type]
             )
         except RateLimitError as exc:
@@ -477,7 +484,7 @@ async def _run_openai(
     response = await _chat_completions_create_with_retry_openai(
         client,
         model=bare_model,
-        max_tokens=_MAX_OUTPUT_TOKENS,
+        max_completion_tokens=_MAX_OUTPUT_TOKENS,
         messages=[{"role": "user", "content": content}],
     )
 
@@ -500,6 +507,47 @@ async def _run_openai(
 # --------------------------------------------------------------------------- #
 # Public dispatcher.
 # --------------------------------------------------------------------------- #
+
+
+@contextlib.asynccontextmanager
+async def open_judge_client(model: str) -> AsyncIterator[object]:
+    """Open one provider SDK client for the lifetime of a target's eval.
+
+    The async HTTP pool inside ``AsyncAnthropic`` / ``AsyncOpenAI`` must
+    be closed on the same event loop that opened it; otherwise the GC
+    finalizer fires after :func:`asyncio.run` has torn down the loop and
+    raises ``RuntimeError('Event loop is closed')``. Constructing the
+    client per :func:`run_capture_judge` call inside an
+    :func:`asyncio.run`-driven CLI leaks one such client per call, so we
+    surface the lifecycle to the caller as an async context manager.
+
+    Args:
+        model: Provider-prefixed model id (``"anthropic:<id>"`` or
+            ``"openai:<id>"``). Used only to pick the right SDK class.
+
+    Yields:
+        A fully-constructed ``AsyncAnthropic`` or ``AsyncOpenAI``
+        instance. Pass it to :func:`run_capture_judge` via the
+        ``client`` keyword argument.
+
+    Raises:
+        ValueError: When ``model`` is missing the provider prefix or
+            specifies an unknown provider.
+        AgentEnvError: When required credentials are absent.
+    """
+    provider, _ = _split_provider(model)
+    load_agent_env()
+    require_credentials(provider)
+    if provider == "anthropic":
+        from anthropic import AsyncAnthropic
+
+        async with AsyncAnthropic() as client:
+            yield client
+        return
+    from openai import AsyncOpenAI
+
+    async with AsyncOpenAI() as client:
+        yield client
 
 
 async def run_capture_judge(

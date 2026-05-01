@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import importlib
 import json
 import platform
@@ -40,7 +41,7 @@ from playwright.async_api import Page
 from pydantic import ValidationError
 
 from shop_probe import __version__
-from shop_probe.agent.judge import _split_provider, run_capture_judge
+from shop_probe.agent.judge import _split_provider, open_judge_client, run_capture_judge
 from shop_probe.bench import BenchLoadError, load_bench
 from shop_probe.capture import PageBundle, capture_bundle
 from shop_probe.fidelity import BenchComparison, compute_bench_comparison
@@ -212,6 +213,7 @@ async def _run_capture_judge_entry(
     bundle: PageBundle,
     bundle_root: Path,
     model: str,
+    client: object,
 ) -> ProbeOutcome:
     """Dispatch one ``level: capture_judge`` rubric entry against the bundle."""
     assert entry.capture_judge is not None, (
@@ -250,6 +252,7 @@ async def _run_capture_judge_entry(
             bundle_root,
             entry.capture_judge.judge_prompt,
             model=model,
+            client=client,
         )
     except (AnthropicError, OpenAIError) as exc:
         # ``run_capture_judge`` already retries 429 / 5xx / transport errors;
@@ -294,8 +297,15 @@ async def _run(
     scale: ScaleMetrics | None = None
     selected_entries = _select_rubric_entries(rubric, include_auth=include_auth)
     needs_bundle = any(e.type in {"capture_judge", "scale"} for e in selected_entries)
+    needs_judge = any(e.type == "capture_judge" for e in selected_entries)
 
-    async with ProbeRunner(evidence_root=evidence_root) as runner:
+    async with contextlib.AsyncExitStack() as stack:
+        runner = await stack.enter_async_context(ProbeRunner(evidence_root=evidence_root))
+        judge_client: object | None = None
+        if needs_judge:
+            judge_client = await stack.enter_async_context(
+                open_judge_client(capture_judge_model)
+            )
         chromium_version = runner.chromium_version
         sample_collection_url, sample_product_url = await _discover_sample_urls(
             runner, target.base_url
@@ -315,11 +325,15 @@ async def _run(
                 assert bundle is not None, (
                     "capture_judge entry present but bundle was never captured"
                 )
+                assert judge_client is not None, (
+                    "capture_judge entry present but judge client was never opened"
+                )
                 outcome = await _run_capture_judge_entry(
                     entry,
                     bundle=bundle,
                     bundle_root=bundle_root,
                     model=capture_judge_model,
+                    client=judge_client,
                 )
                 results.append(_build_probe_result(entry.id, outcome))
             elif entry.type == "scale":
