@@ -18,6 +18,26 @@ bucket; capability keys that belong to a different bucket are
 intentionally absent. Do not infer about pages you have not opened,
 and do not penalise the absence of features the slice does not list.
 
+## Image loading policy
+
+The generated store uses synthetic / placeholder images that load
+asynchronously. Screenshots are sometimes captured before lazy-loaded
+images finish decoding, so blank image slots in a single screenshot
+are **not** reliable evidence of a real bug.
+
+- Treat blank image slots, gradient / solid-colour placeholders, and
+  broken-image icons as **inconclusive, not as issues**.
+- Only flag an image-related finding when the **same** slot is empty
+  across **multiple** screenshots of the same page (e.g. after
+  scrolling), or when the surrounding container layout itself is
+  wrong.
+- Focus image-related findings on container layout (aspect ratio,
+  grid arrangement, alignment), not on whether a specific image
+  rendered.
+- Icons that resolve via inline SVG or CSS still count — only flag
+  missing icons when the icon container is clearly broken across
+  multiple screenshots.
+
 The driver will fan you out alongside sibling buckets in parallel —
 focus on this bucket's routes only. The merged advisory verdict that
 lands in ``final_eval.json`` aggregates every bucket's
