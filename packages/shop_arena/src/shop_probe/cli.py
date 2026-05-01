@@ -1,756 +1,361 @@
-"""Command-line entrypoint for ShopProbe.
+"""``shop-probe`` CLI driver — single ``eval`` subcommand.
 
-One subcommand, ``shop-probe eval``: takes a benchmark YAML, runs every
-target end-to-end (deterministic probes + capture-judge + bundle-derived
-scale metrics), writes one report per shop, then renders a comparative
-figure pair under ``<out>/figures/``.
+Walks a bench YAML, captures a 5-page bundle per target, runs the v1.0
+rubric (mechanical metrics + LLM judge slots + scripted transitions),
+emits a per-target ``ProbeReport``, and rolls the cohort up into the
+four ``*_fidelity.md`` markdown artifacts.
 
-The rubric is the single source of truth for what runs. Each entry's
-``type`` field selects the runner — ``probe`` (deterministic
-Playwright), ``capture_judge`` (one LLM call over the per-shop
-bundle), or ``scale`` (bundle-derived richness + catalog counts).
+Layout produced under ``--out``::
 
-Resume is per-shop. A target with an existing
-``<out>/reports/<label>__<name>.json`` whose embedded ``rubric_hash``
-matches the current rubric is skipped — adding a new shop to the YAML
-extends the existing report dir without reprocessing the others. Pass
-``--force`` to re-run everything regardless.
+    <out>/
+    ├── reports/<target_name>.json   # one ProbeReport per target
+    ├── bundles/<target_name>/       # per-target capture artifacts
+    └── figures/                     # cohort rollup
+        ├── observation_fidelity.md
+        ├── action_fidelity.md
+        ├── transition_fidelity.md
+        └── summary.md
 
-The module is import-safe: it performs no I/O at import time.
+Reports cache by ``(rubric_hash, target.name)``: re-running with the
+same rubric on the same target reuses the on-disk JSON unless
+``--force`` is passed.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import contextlib
-import importlib
-import json
 import platform
 import sys
-from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as _pkg_version
+from datetime import datetime, timezone
+from importlib import metadata
 from pathlib import Path
 from typing import Final
-from urllib.parse import urljoin
 
-from anthropic import AnthropicError
-from openai import OpenAIError
-from playwright.async_api import Page
-from pydantic import ValidationError
+from playwright.async_api import async_playwright
 
 from shop_probe import __version__
-from shop_probe.agent.judge import _split_provider, open_judge_client, run_capture_judge
-from shop_probe.bench import BenchLoadError, load_bench
-from shop_probe.capture import PageBundle, capture_bundle
-from shop_probe.fidelity import BenchComparison, compute_bench_comparison
-from shop_probe.probes._runner import (
-    PINNED_USER_AGENT,
-    VIEWPORT_HEIGHT,
-    VIEWPORT_WIDTH,
-    ProbeContext,
-    ProbeFn,
-    ProbeOutcome,
-    ProbeRunner,
-)
+from shop_probe.action.control_slots import judge_control_slots
+from shop_probe.action.space import compute_action_space
+from shop_probe.bench import load_bench
+from shop_probe.capture.bundle import capture_bundle, discover_sample_urls
+from shop_probe.fidelity import compare_cohorts
+from shop_probe.judge.client import open_judge_client
+from shop_probe.observation.info_slots import judge_info_slots
+from shop_probe.observation.shape import compute_shape
+from shop_probe.playwright_runner import PlaywrightRunner
 from shop_probe.report import (
+    ActionBlock,
     BrowserMeta,
-    CategoryScore,
-    EvidenceRef,
+    ObservationBlock,
     ProbeReport,
-    ProbeResult,
+    SlotVerdict,
+    TransitionResult,
 )
-from shop_probe.report_writer import (
-    render_group_comparison_table,
-    render_per_shop_table,
+from shop_probe.report_writer import write_figures
+from shop_probe.rubric import Rubric, load_rubric
+from shop_probe.rubric.schema import Modality, PageType
+from shop_probe.targets import Target
+from shop_probe.transition.runner import run_transitions
+
+_DEFAULT_RUBRIC: Final[Path] = (
+    Path(__file__).resolve().parent / "rubric" / "rubric.yaml"
 )
-from shop_probe.rubric import Rubric, RubricEntry, load_rubric
-from shop_probe.scale.computer import compute_scale_metrics
-from shop_probe.scale.metrics import ScaleMetrics
-from shop_probe.targets import Bench, Target
+"""Shipped rubric path (``shop_probe/rubric/rubric.yaml``)."""
 
-EXIT_OK: Final[int] = 0
-EXIT_USAGE: Final[int] = 2
-
-_PROBE_DOTTED_PREFIX: Final[str] = "probes."
-_MIN_PROBE_DOTS: Final[int] = 2
-
-_PACKAGE_RUBRIC_DIR: Final[Path] = Path(__file__).resolve().parent / "rubric"
-_RUBRIC_PATH: Final[Path] = _PACKAGE_RUBRIC_DIR / "rubric.yaml"
-"""The single rubric we ship. Pinned for reproducibility."""
-
-_DISCOVERY_PROBE_ID: Final[str] = "_discover"
-_BUNDLE_SUBDIR: Final[str] = "_bundle"
-
-_DEFAULT_CAPTURE_JUDGE_MODEL: Final[str] = "anthropic:claude-haiku-4-5"
-"""Default capture-judge model. Format: ``<provider>:<model>``."""
-
-_DEFAULT_OUT_ROOT: Final[Path] = Path("outputs/shop_probe")
-
-_REPORTS_SUBDIR: Final[str] = "reports"
-_EVIDENCE_SUBDIR: Final[str] = "evidence"
-_FIGURES_SUBDIR: Final[str] = "figures"
-
-_GROUP_COMPARISON_FILENAME: Final[str] = "group_comparison.md"
-_PER_SHOP_TABLE_FILENAME: Final[str] = "per_shop_table.md"
+_PROMPTS_ROOT: Final[Path] = Path(__file__).resolve().parent / "judge"
+"""Resolves rubric ``prompt: prompts/...`` paths."""
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the ShopProbe CLI.
-
-    Args:
-        argv: Optional argument vector. Defaults to ``sys.argv[1:]``.
-
-    Returns:
-        Process exit code. ``0`` on success, ``2`` on usage / validation
-        errors.
-    """
-    parser = _build_parser()
-    args = parser.parse_args(argv)
-    if args.command == "eval":
-        return _cmd_eval(args)
-    parser.print_help()
-    return EXIT_USAGE
-
-
-def _build_parser() -> argparse.ArgumentParser:
+    """Entry point dispatched from ``project.scripts.shop-probe``."""
     parser = argparse.ArgumentParser(
-        prog="shop-probe",
-        description="Run the shop-probe rubric over a benchmark of storefronts.",
+        prog="shop-probe", description="ShopProbe v1.0 cohort fidelity instrument"
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    eval_parser = sub.add_parser(
-        "eval",
-        help="Run rubric end-to-end against every target in a benchmark YAML.",
-    )
+    eval_parser = sub.add_parser("eval", help="Capture, judge, and roll up a bench.")
     eval_parser.add_argument(
         "--benchmark",
+        type=Path,
         required=True,
-        type=Path,
-        help="Path to a benchmark YAML.",
+        help="Path to a bench YAML (sandboxes + reals).",
     )
     eval_parser.add_argument(
-        "--out",
-        type=Path,
-        default=_DEFAULT_OUT_ROOT,
-        help=(
-            "Run-root directory. Reports land under '<out>/reports/' and figures "
-            f"under '<out>/figures/'. Defaults to '{_DEFAULT_OUT_ROOT}'."
-        ),
+        "--out", type=Path, required=True, help="Output directory."
     )
     eval_parser.add_argument(
-        "--include-auth",
-        action="store_true",
-        default=False,
-        help="Include rubric entries flagged authenticated/transactional.",
+        "--rubric",
+        type=Path,
+        default=_DEFAULT_RUBRIC,
+        help="Rubric YAML path (default: shipped rubric).",
+    )
+    eval_parser.add_argument(
+        "--judge-model",
+        default="anthropic:claude-haiku-4-5",
+        help="Provider-prefixed judge model id (default: anthropic:claude-haiku-4-5).",
     )
     eval_parser.add_argument(
         "--force",
         action="store_true",
-        default=False,
-        help="Recompute every target's report instead of using the per-shop cache.",
+        help="Ignore the per-target report cache and re-run.",
     )
     eval_parser.add_argument(
-        "--capture-judge-model",
-        default=_DEFAULT_CAPTURE_JUDGE_MODEL,
-        help=(
-            "Provider-prefixed model id for the capture-judge tier — "
-            "'anthropic:<id>' or 'openai:<id>' "
-            f"(default: {_DEFAULT_CAPTURE_JUDGE_MODEL})."
-        ),
+        "--no-judge",
+        action="store_true",
+        help="Skip LLM judge slots (mechanical + transitions only).",
     )
-    return parser
-
-
-# --------------------------------------------------------------------------- #
-# Per-shop probe execution.
-# --------------------------------------------------------------------------- #
-
-
-def _resolve_probe(dotted: str) -> ProbeFn:
-    """Resolve a rubric ``probe`` reference to a Python callable."""
-    if not dotted.startswith(_PROBE_DOTTED_PREFIX) or dotted.count(".") < _MIN_PROBE_DOTS:
-        msg = f"invalid probe reference {dotted!r}: expected '{_PROBE_DOTTED_PREFIX}<module>.<fn>'"
-        raise ValueError(msg)
-    parts = dotted.split(".")
-    module_path = "shop_probe." + ".".join(parts[:-1])
-    fn_name = parts[-1]
-    module = importlib.import_module(module_path)
-    return getattr(module, fn_name)  # type: ignore[no-any-return]
-
-
-async def _discover_sample_urls(
-    runner: ProbeRunner, base_url: str
-) -> tuple[str | None, str | None]:
-    """Walk the homepage to find sample collection + product URLs."""
-    discovered: dict[str, str | None] = {"collection": None, "product": None}
-
-    async def _discover(page: Page, ctx: ProbeContext) -> ProbeOutcome:
-        await page.goto(ctx.base_url, wait_until="domcontentloaded")
-        coll_link = page.locator('a[href*="/collections/"]').first
-        if await coll_link.count() > 0:
-            href = await coll_link.get_attribute("href")
-            if href:
-                discovered["collection"] = urljoin(ctx.base_url, href)
-        if discovered["collection"] is not None:
-            await page.goto(discovered["collection"], wait_until="domcontentloaded")
-            prod_link = page.locator('a[href*="/products/"]').first
-            if await prod_link.count() > 0:
-                href = await prod_link.get_attribute("href")
-                if href:
-                    discovered["product"] = urljoin(ctx.base_url, href)
-        return ProbeOutcome(passed=True)
-
-    await runner.run(_discover, base_url=base_url, probe_id=_DISCOVERY_PROBE_ID)
-    return discovered["collection"], discovered["product"]
-
-
-async def _run_capture_judge_entry(
-    entry: RubricEntry,
-    *,
-    bundle: PageBundle,
-    bundle_root: Path,
-    model: str,
-    client: object,
-) -> ProbeOutcome:
-    """Dispatch one ``level: capture_judge`` rubric entry against the bundle."""
-    assert entry.capture_judge is not None, (
-        f"rubric entry {entry.id!r}: capture_judge level requires inline block"
+    eval_parser.add_argument(
+        "--no-transitions",
+        action="store_true",
+        help="Skip scripted transitions.",
     )
-    requested = entry.capture_judge.pages
-    captures = tuple(c for p in requested if (c := bundle.get(p)) is not None)
-    applicable = tuple(c for c in captures if c.applicable)
-    evidence: list[EvidenceRef] = []
-    for capture in applicable:
-        if capture.screenshot_rel is not None:
-            evidence.append(
-                EvidenceRef(
-                    kind="screenshot",
-                    path=f"{_BUNDLE_SUBDIR}/{capture.screenshot_rel}",
+
+    args = parser.parse_args(argv)
+    if args.command == "eval":
+        return asyncio.run(_run_eval(args))
+    parser.error(f"unknown command {args.command!r}")
+    return 2
+
+
+async def _run_eval(args: argparse.Namespace) -> int:
+    rubric = load_rubric(args.rubric)
+    bench = load_bench(args.benchmark)
+    out: Path = args.out
+    out.mkdir(parents=True, exist_ok=True)
+    reports_dir = out / "reports"
+    bundles_dir = out / "bundles"
+    figures_dir = out / "figures"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    bundles_dir.mkdir(parents=True, exist_ok=True)
+
+    targets: tuple[Target, ...] = (*bench.sandboxes, *bench.reals)
+    if not targets:
+        print("bench is empty; nothing to do", file=sys.stderr)
+        return 1
+
+    runtime = await _resolve_runtime()
+    sandbox_reports: list[ProbeReport] = []
+    real_reports: list[ProbeReport] = []
+
+    async with PlaywrightRunner() as runner:
+        for target in targets:
+            cached = _load_cached_report(reports_dir, target, rubric, force=args.force)
+            if cached is not None:
+                print(f"  ↻ {target.name}: reusing cached report")
+            else:
+                print(f"  → {target.name}: probing")
+                cached = await _probe_target(
+                    target,
+                    rubric=rubric,
+                    runner=runner,
+                    bundles_dir=bundles_dir,
+                    runtime=runtime,
+                    judge_model=args.judge_model,
+                    skip_judge=args.no_judge,
+                    skip_transitions=args.no_transitions,
                 )
-            )
-        if capture.accessibility_rel is not None:
-            evidence.append(
-                EvidenceRef(
-                    kind="a11y_snapshot",
-                    path=f"{_BUNDLE_SUBDIR}/{capture.accessibility_rel}",
-                )
-            )
+                _write_report(reports_dir, cached)
+            (sandbox_reports if target.label == "sandbox" else real_reports).append(cached)
 
-    if not applicable:
-        return ProbeOutcome(
-            passed=None,
-            evidence=tuple(evidence),
-            notes="bundle pages unavailable",
-        )
+    if not sandbox_reports and not real_reports:
+        print("no reports produced", file=sys.stderr)
+        return 1
 
-    try:
-        verdict = await run_capture_judge(
-            captures,
-            bundle_root,
-            entry.capture_judge.judge_prompt,
-            model=model,
-            client=client,
-        )
-    except (AnthropicError, OpenAIError) as exc:
-        # ``run_capture_judge`` already retries 429 / 5xx / transport errors;
-        # if we still bubble out, the provider quota is genuinely exhausted.
-        return ProbeOutcome(
-            passed=None,
-            evidence=tuple(evidence),
-            notes=f"judge unavailable after retries: {type(exc).__name__}",
-            extra={"judge_model": model},
-        )
-    return ProbeOutcome(
-        passed=verdict.passed,
-        evidence=tuple(evidence),
-        notes=verdict.reasoning,
-        extra={
-            "judge_cost_usd": verdict.cost_usd,
-            "judge_model": verdict.model_id,
-        },
-    )
+    comparison = compare_cohorts(sandbox=sandbox_reports, real=real_reports)
+    written = write_figures(comparison, out_dir=figures_dir)
+    print(f"wrote {len(written)} figures under {figures_dir}")
+    return 0
 
 
-async def _run(
-    *,
+# ---------- Per-target probe ---------------------------------------------
+
+
+async def _probe_target(
     target: Target,
+    *,
     rubric: Rubric,
-    evidence_root: Path,
-    include_auth: bool,
-    capture_judge_model: str,
-    cached_results: dict[str, ProbeResult] | None = None,
-    cached_scale: ScaleMetrics | None = None,
+    runner: PlaywrightRunner,
+    bundles_dir: Path,
+    runtime: BrowserMeta,
+    judge_model: str,
+    skip_judge: bool,
+    skip_transitions: bool,
 ) -> ProbeReport:
-    """Run every selected rubric entry and assemble the closed :class:`ProbeReport`.
-
-    Each entry's ``type`` discriminator picks the runner: ``probe``
-    invokes the deterministic Playwright callable, ``capture_judge``
-    issues one LLM call over the per-shop bundle, ``scale`` rolls
-    bundle-derived stats + catalog counts into a :class:`ScaleMetrics`.
-    The 5-page bundle is captured once and reused across every entry
-    that needs it.
-
-    Args:
-        cached_results: Per-probe results to reuse verbatim — keyed by
-            ``ProbeResult.id``. The dispatcher skips running an entry
-            whose id is in this dict; the cached :class:`ProbeResult`
-            is appended directly into the new report. Pass ``None``
-            (the default) for a clean run.
-        cached_scale: When set, skip ``compute_scale_metrics`` and
-            embed this :class:`ScaleMetrics` in the new report.
-    """
-    started = datetime.now(UTC)
-    results: list[ProbeResult] = []
-    chromium_version = "unknown"
-    scale: ScaleMetrics | None = cached_scale
-    cache: dict[str, ProbeResult] = cached_results or {}
-    selected_entries = _select_rubric_entries(rubric, include_auth=include_auth)
-
-    runs_capture_judge = any(
-        e.type == "capture_judge" and e.id not in cache for e in selected_entries
+    """Run capture + family runners for one target and return a typed report."""
+    bundle_root = bundles_dir / target.name
+    sample_collection_url, sample_product_url = await discover_sample_urls(
+        runner, target.base_url
     )
-    runs_scale = any(e.type == "scale" for e in selected_entries) and scale is None
-    needs_bundle = runs_capture_judge or runs_scale
-    needs_judge = runs_capture_judge
+    bundle = await capture_bundle(
+        runner,
+        base_url=target.base_url,
+        sample_collection_url=sample_collection_url,
+        sample_product_url=sample_product_url,
+        bundle_root=bundle_root,
+    )
 
-    async with contextlib.AsyncExitStack() as stack:
-        runner = await stack.enter_async_context(ProbeRunner(evidence_root=evidence_root))
-        judge_client: object | None = None
-        if needs_judge:
-            judge_client = await stack.enter_async_context(
-                open_judge_client(capture_judge_model)
-            )
-        chromium_version = runner.chromium_version
-        sample_collection_url, sample_product_url = await _discover_sample_urls(
-            runner, target.base_url
-        )
-        bundle: PageBundle | None = None
-        bundle_root = evidence_root / _BUNDLE_SUBDIR
-        if needs_bundle:
-            bundle = await capture_bundle(
-                runner,
-                base_url=target.base_url,
-                sample_collection_url=sample_collection_url,
-                sample_product_url=sample_product_url,
+    # Mechanical metrics — no LLM, no Playwright re-navigation.
+    shape = compute_shape(bundle, bundle_root=bundle_root)
+    space = compute_action_space(bundle, bundle_root=bundle_root)
+
+    # Judge slots — gated by --no-judge.
+    info_slots: dict[PageType, dict[str, dict[Modality, SlotVerdict]]] = {}
+    control_slots: dict[PageType, dict[str, dict[Modality, SlotVerdict]]] = {}
+    if not skip_judge:
+        async with open_judge_client(judge_model) as client:
+            info_slots = await judge_info_slots(
+                rubric.entries,
+                bundle=bundle,
                 bundle_root=bundle_root,
+                prompts_root=_PROMPTS_ROOT,
+                model=judge_model,
+                client=client,
             )
-        for entry in selected_entries:
-            if entry.id in cache:
-                results.append(cache[entry.id])
-                continue
-            if entry.type == "capture_judge":
-                assert bundle is not None, (
-                    "capture_judge entry present but bundle was never captured"
-                )
-                assert judge_client is not None, (
-                    "capture_judge entry present but judge client was never opened"
-                )
-                outcome = await _run_capture_judge_entry(
-                    entry,
-                    bundle=bundle,
-                    bundle_root=bundle_root,
-                    model=capture_judge_model,
-                    client=judge_client,
-                )
-                results.append(_build_probe_result(entry.id, outcome))
-            elif entry.type == "scale":
-                if scale is not None:
-                    continue
-                assert bundle is not None, (
-                    "scale entry present but bundle was never captured"
-                )
-                scale = compute_scale_metrics(bundle, target.data_dir)
-            else:  # probe
-                assert entry.probe is not None, (
-                    f"rubric entry {entry.id!r} has type='probe' but no probe; "
-                    "schema validator should have caught this"
-                )
-                probe = _resolve_probe(entry.probe)
-                outcome = await runner.run(
-                    probe,
-                    base_url=target.base_url,
-                    probe_id=entry.id,
-                    sample_product_url=sample_product_url,
-                    sample_collection_url=sample_collection_url,
-                )
-                results.append(_build_probe_result(entry.id, outcome))
+            control_slots = await judge_control_slots(
+                rubric.entries,
+                bundle=bundle,
+                bundle_root=bundle_root,
+                prompts_root=_PROMPTS_ROOT,
+                model=judge_model,
+                client=client,
+            )
 
-    categories, c_core, c_modern, c_advanced, c_weighted = _aggregate_coverage(
-        selected_entries, results
-    )
-    runtime = BrowserMeta(
-        python_version=platform.python_version(),
-        playwright_version=_safe_pkg_version("playwright"),
-        chromium_version=chromium_version,
-        user_agent=PINNED_USER_AGENT,
-        viewport=(VIEWPORT_WIDTH, VIEWPORT_HEIGHT),
-        headless=True,
-    )
-    total_judge_cost_usd = _aggregate_judge_cost(results)
+    # Scripted transitions — gated by --no-transitions.
+    transition: dict[PageType, dict[str, TransitionResult]] = {}
+    if not skip_transitions:
+        transition = await run_transitions(
+            rubric.entries,
+            runner=runner,
+            base_url=target.base_url,
+            sample_collection_url=sample_collection_url,
+            sample_product_url=sample_product_url,
+        )
+
+    modality_consistency = _modality_consistency(info_slots, control_slots)
+    total_cost = _sum_cost(info_slots) + _sum_cost(control_slots)
+
     return ProbeReport(
         target=target,
         rubric_version=rubric.version,
         rubric_hash=rubric.content_hash,
         runner_version=__version__,
         runtime=runtime,
-        timestamp=started,
-        probe_results=tuple(results),
-        categories=categories,
-        coverage_core=c_core,
-        coverage_modern=c_modern,
-        coverage_advanced=c_advanced,
-        coverage_weighted=c_weighted,
-        scale=scale,
-        total_judge_cost_usd=total_judge_cost_usd,
+        timestamp=datetime.now(timezone.utc),
+        observation=ObservationBlock(shape=shape, info_slots=info_slots),
+        action=ActionBlock(space=space, control_slots=control_slots),
+        transition=transition,
+        modality_consistency=modality_consistency,
+        total_judge_cost_usd=total_cost,
     )
 
 
-def _select_rubric_entries(rubric: Rubric, *, include_auth: bool) -> tuple[RubricEntry, ...]:
-    """Filter rubric entries by the ``--include-auth`` gate.
+# ---------- Modality consistency + cost helpers ---------------------------
 
-    ``type: scale`` entries carry no ``authenticated`` / ``transactional``
-    flags (rejected by the schema), so they pass through regardless.
+
+def _modality_consistency(
+    info_slots: dict[PageType, dict[str, dict[Modality, SlotVerdict]]],
+    control_slots: dict[PageType, dict[str, dict[Modality, SlotVerdict]]],
+) -> dict[PageType, float]:
+    """Per page type, mean over slots of ``verdict_a11y == verdict_screenshot``.
+
+    Skips slots that do not carry both modalities (no signal to compare).
     """
-    if include_auth:
-        return rubric.entries
-    return tuple(
-        e for e in rubric.entries if not (e.authenticated or e.transactional)
-    )
-
-
-def _build_probe_result(probe_id: str, outcome: ProbeOutcome) -> ProbeResult:
-    """Project a :class:`ProbeOutcome` into the closed :class:`ProbeResult`."""
-    return ProbeResult(
-        id=probe_id,
-        passed=outcome.passed,
-        evidence=outcome.evidence,
-        notes=outcome.notes,
-        duration_ms=outcome.duration_ms,
-        judge_cost_usd=_extra_float(outcome.extra, "judge_cost_usd"),
-        judge_model=_extra_str(outcome.extra, "judge_model"),
-    )
-
-
-def _extra_float(extra: object, key: str) -> float | None:
-    """Return ``extra[key]`` coerced to ``float`` when present, else ``None``."""
-    if not isinstance(extra, dict):
-        return None
-    value = extra.get(key)
-    if value is None:
-        return None
-    if isinstance(value, bool):  # bool is a subclass of int; reject explicitly.
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
-
-
-def _extra_str(extra: object, key: str) -> str | None:
-    """Return ``extra[key]`` when it is a non-empty string, else ``None``."""
-    if not isinstance(extra, dict):
-        return None
-    value = extra.get(key)
-    if isinstance(value, str) and value:
-        return value
-    return None
-
-
-def _aggregate_judge_cost(results: list[ProbeResult]) -> float | None:
-    """Sum per-probe ``judge_cost_usd`` across the report.
-
-    Returns ``None`` when no probe issued a capture-judge call (preserves
-    the distinction between "no judge calls" and "all judge calls free").
-    """
-    judge_costs = [r.judge_cost_usd for r in results if r.judge_cost_usd is not None]
-    return sum(judge_costs) if judge_costs else None
-
-
-def _aggregate_coverage(
-    entries: tuple[RubricEntry, ...], results: list[ProbeResult]
-) -> tuple[tuple[CategoryScore, ...], float, float, float, float]:
-    """Compute per-category + per-level + weighted coverage.
-
-    Only ``probe`` and ``capture_judge`` entries contribute; ``scale``
-    entries produce no :class:`ProbeResult` and are skipped.
-    """
-    by_id = {r.id: r for r in results}
-    by_category: dict[str, list[float]] = {}
-    by_level: dict[str, list[float]] = {
-        "core": [0.0, 0.0],
-        "modern": [0.0, 0.0],
-        "advanced": [0.0, 0.0],
-    }
-    total_passed = 0.0
-    total_weight = 0.0
-    for entry in entries:
-        if entry.type == "scale":
+    out: dict[PageType, float] = {}
+    for page_type in (*info_slots.keys(), *control_slots.keys()):
+        if page_type in out:
             continue
-        assert entry.category is not None and entry.level is not None and entry.weight is not None, (
-            f"rubric entry {entry.id!r}: type={entry.type!r} should have category/level/weight"
-        )
-        result = by_id[entry.id]
-        if result.passed is None:
-            continue
-        weight = float(entry.weight)
-        passed = weight if result.passed else 0.0
-        cat = by_category.setdefault(entry.category, [0.0, 0.0])
-        cat[0] += passed
-        cat[1] += weight
-        lv = by_level[entry.level]
-        lv[0] += passed
-        lv[1] += weight
-        total_passed += passed
-        total_weight += weight
-
-    categories = tuple(
-        CategoryScore(
-            category=cat,
-            weight_passed=p,
-            weight_total=t,
-            coverage=_coverage(p, t),
-        )
-        for cat, (p, t) in sorted(by_category.items())
-    )
-    return (
-        categories,
-        _coverage(*by_level["core"]),
-        _coverage(*by_level["modern"]),
-        _coverage(*by_level["advanced"]),
-        _coverage(total_passed, total_weight),
-    )
+        agreements: list[bool] = []
+        for block in (info_slots, control_slots):
+            slots = block.get(page_type, {})
+            for verdicts in slots.values():
+                a11y = verdicts.get("a11y")
+                screenshot = verdicts.get("screenshot")
+                if a11y is None or screenshot is None:
+                    continue
+                agreements.append(a11y.present == screenshot.present)
+        if agreements:
+            out[page_type] = sum(agreements) / len(agreements)
+    return out
 
 
-def _coverage(weight_passed: float, weight_total: float) -> float:
-    """Weighted coverage formula. ``weight_total == 0`` → 0.0."""
-    if weight_total <= 0.0:
-        return 0.0
-    return weight_passed / weight_total
+def _sum_cost(
+    block: dict[PageType, dict[str, dict[Modality, SlotVerdict]]],
+) -> float:
+    total = 0.0
+    for slots in block.values():
+        for verdicts in slots.values():
+            for verdict in verdicts.values():
+                total += verdict.judge_cost_usd
+    return total
 
 
-def _safe_pkg_version(name: str) -> str:
-    """Return the installed version of ``name``, or ``'unknown'`` if absent."""
-    try:
-        return _pkg_version(name)
-    except PackageNotFoundError:
-        return "unknown"
+# ---------- Cache layer ---------------------------------------------------
 
 
-# --------------------------------------------------------------------------- #
-# ``shop-probe eval`` — single end-to-end driver.
-# --------------------------------------------------------------------------- #
+def _report_path(reports_dir: Path, target: Target) -> Path:
+    return reports_dir / f"{target.name}.json"
 
 
-def _target_stem(target: Target) -> str:
-    """Filename stem for a target: ``<label>__<name>``."""
-    return f"{target.label}__{target.name}"
-
-
-def _load_cached_report(report_path: Path, *, expected_hash: str) -> ProbeReport | None:
-    """Return a cached report iff its rubric hash matches ``expected_hash``.
-
-    A cached report whose rubric has changed is treated as stale — we
-    return ``None`` so the caller recomputes. A malformed JSON file is
-    also treated as a miss; on recompute we'll overwrite it.
-    """
-    if not report_path.is_file():
-        return None
-    try:
-        cached = ProbeReport.model_validate_json(report_path.read_text(encoding="utf-8"))
-    except (ValidationError, ValueError):
-        return None
-    if cached.rubric_hash != expected_hash:
-        return None
-    return cached
-
-
-def _missing_entry_ids(
+def _load_cached_report(
+    reports_dir: Path,
+    target: Target,
     rubric: Rubric,
     *,
-    include_auth: bool,
-    cached_results: dict[str, ProbeResult],
-    cached_scale: ScaleMetrics | None,
-) -> list[str]:
-    """Return rubric entry ids that need to (re)run given the cache.
-
-    A ``probe`` / ``capture_judge`` entry is missing when its id is not
-    in ``cached_results`` (caller pre-filters out ``passed is None``
-    rows). A ``scale`` entry is missing when ``cached_scale`` is
-    ``None``. Used to decide between cache-hit, partial-cache, and
-    fresh-run paths.
-    """
-    missing: list[str] = []
-    for entry in _select_rubric_entries(rubric, include_auth=include_auth):
-        if entry.type == "scale":
-            if cached_scale is None:
-                missing.append(entry.id)
-        elif entry.id not in cached_results:
-            missing.append(entry.id)
-    return missing
-
-
-def _cmd_eval(args: argparse.Namespace) -> int:
-    """Handler for ``shop-probe eval``."""
-    benchmark_path: Path = args.benchmark
-    out_root: Path = args.out
-    force: bool = args.force
-
-    try:
-        _split_provider(args.capture_judge_model)
-    except ValueError as err:
-        print(f"shop-probe: {err}", file=sys.stderr)
-        return EXIT_USAGE
-
-    try:
-        bench = load_bench(benchmark_path)
-    except FileNotFoundError as err:
-        print(f"shop-probe: benchmark not found: {err}", file=sys.stderr)
-        return EXIT_USAGE
-    except BenchLoadError as err:
-        print(f"shop-probe: {err}", file=sys.stderr)
-        return EXIT_USAGE
-
-    rubric = load_rubric(_RUBRIC_PATH)
-
-    targets: tuple[Target, ...] = (*bench.sandboxes, *bench.reals)
-    print(
-        f"shop-probe eval: benchmark={benchmark_path} targets={len(targets)} "
-        f"rubric={rubric.version}"
-    )
-
-    reports_dir = out_root / _REPORTS_SUBDIR
-    reports_dir.mkdir(parents=True, exist_ok=True)
-
-    sandbox_reports: list[ProbeReport] = []
-    real_reports: list[ProbeReport] = []
-
-    for target in targets:
-        stem = _target_stem(target)
-        report_path = reports_dir / f"{stem}.json"
-        report: ProbeReport | None = None
-        cached_results: dict[str, ProbeResult] = {}
-        cached_scale: ScaleMetrics | None = None
-        if not force:
-            cached = _load_cached_report(report_path, expected_hash=rubric.content_hash)
-            if cached is not None:
-                cached_results = {
-                    r.id: r for r in cached.probe_results if r.passed is not None
-                }
-                cached_scale = cached.scale
-                missing_ids = _missing_entry_ids(
-                    rubric,
-                    include_auth=args.include_auth,
-                    cached_results=cached_results,
-                    cached_scale=cached_scale,
-                )
-                if not missing_ids:
-                    report = cached
-                    print(f"shop-probe eval: cache hit {stem}")
-                else:
-                    total = len(_select_rubric_entries(rubric, include_auth=args.include_auth))
-                    print(
-                        f"shop-probe eval: partial cache {stem} "
-                        f"({total - len(missing_ids)}/{total} cached, "
-                        f"{len(missing_ids)} to re-run)"
-                    )
-        if report is None:
-            evidence_root = out_root / _EVIDENCE_SUBDIR / stem
-            try:
-                report = asyncio.run(
-                    _run(
-                        target=target,
-                        rubric=rubric,
-                        evidence_root=evidence_root,
-                        include_auth=args.include_auth,
-                        capture_judge_model=args.capture_judge_model,
-                        cached_results=cached_results,
-                        cached_scale=cached_scale,
-                    )
-                )
-            except ValidationError as err:
-                print(
-                    f"shop-probe eval: {target.name!r} report failed validation: {err}",
-                    file=sys.stderr,
-                )
-                return EXIT_USAGE
-            report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
-            print(
-                f"shop-probe eval: wrote {report_path} "
-                f"(coverage_weighted={report.coverage_weighted:.3f})"
-            )
-        if target.label == "sandbox":
-            sandbox_reports.append(report)
-        else:
-            real_reports.append(report)
-
-    return _render_figures(out_root, bench, sandbox_reports, real_reports)
-
-
-def _render_figures(
-    out_root: Path,
-    bench: Bench,
-    sandbox_reports: list[ProbeReport],
-    real_reports: list[ProbeReport],
-) -> int:
-    """Render the two cohort figures from the per-shop reports."""
-    if not sandbox_reports or not real_reports:
-        print(
-            "shop-probe eval: figures skipped — bench has no sandboxes or no reals "
-            f"(sandboxes={len(bench.sandboxes)}, reals={len(bench.reals)}).",
-            file=sys.stderr,
-        )
-        return EXIT_OK
-
-    try:
-        comparison = compute_bench_comparison(sandbox_reports, real_reports)
-    except ValueError as err:
-        print(f"shop-probe eval: {err}", file=sys.stderr)
-        return EXIT_USAGE
-
-    figures_dir = out_root / _FIGURES_SUBDIR
-    figures_dir.mkdir(parents=True, exist_ok=True)
-    group_path = figures_dir / _GROUP_COMPARISON_FILENAME
-    per_shop_path = figures_dir / _PER_SHOP_TABLE_FILENAME
-    group_path.write_text(render_group_comparison_table(comparison), encoding="utf-8")
-    per_shop_path.write_text(
-        render_per_shop_table(sandbox_reports, real_reports, comparison),
-        encoding="utf-8",
-    )
-    print(f"shop-probe eval: wrote {group_path}, {per_shop_path}")
-    return EXIT_OK
-
-
-def _build_bench_comparison(
-    *,
-    sandbox_reports: tuple[ProbeReport, ...],
-    real_reports: tuple[ProbeReport, ...],
-) -> BenchComparison:
-    """Aggregate sandbox + real reports into a :class:`BenchComparison`.
-
-    Convenience wrapper retained for tests; production callers go through
-    :func:`compute_bench_comparison` directly.
-    """
-    return compute_bench_comparison(sandbox_reports, real_reports)
-
-
-def _load_report(reports_dir: Path, target: Target) -> ProbeReport:
-    """Load and validate one :class:`ProbeReport` from the reports directory."""
-    path = reports_dir / f"{_target_stem(target)}.json"
+    force: bool,
+) -> ProbeReport | None:
+    if force:
+        return None
+    path = _report_path(reports_dir, target)
     if not path.is_file():
-        msg = f"missing report for target {target.name!r}: {path}"
-        raise FileNotFoundError(msg)
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    report = ProbeReport.model_validate(payload)
-    if report.target.name != target.name or report.target.label != target.label:
-        msg = (
-            f"report at {path} has target=({report.target.label}, "
-            f"{report.target.name}), expected ({target.label}, {target.name})"
-        )
-        raise ValueError(msg)
+        return None
+    try:
+        report = ProbeReport.model_validate_json(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — invalid cache → re-probe
+        return None
+    if report.rubric_hash != rubric.content_hash:
+        return None
     return report
 
 
-if __name__ == "__main__":
+def _write_report(reports_dir: Path, report: ProbeReport) -> None:
+    path = _report_path(reports_dir, report.target)
+    path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+
+
+# ---------- Runtime metadata ----------------------------------------------
+
+
+async def _resolve_runtime() -> BrowserMeta:
+    """Snap the pinned runtime metadata embedded in every report header."""
+    try:
+        playwright_version = metadata.version("playwright")
+    except metadata.PackageNotFoundError:  # pragma: no cover — playwright is a hard dep
+        playwright_version = "unknown"
+    chromium_version = await _chromium_version()
+    runner = PlaywrightRunner()  # for default UA + viewport constants
+    return BrowserMeta(
+        python_version=platform.python_version(),
+        playwright_version=playwright_version,
+        chromium_version=chromium_version,
+        user_agent=runner.user_agent,
+        viewport=runner.viewport,
+        headless=True,
+    )
+
+
+async def _chromium_version() -> str:
+    """Probe Chromium's version label via a brief Playwright launch."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        try:
+            return browser.version
+        finally:
+            await browser.close()
+
+
+__all__ = ["main"]
+
+
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

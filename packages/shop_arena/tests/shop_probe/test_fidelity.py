@@ -1,376 +1,202 @@
-"""Tests for `shop_probe.fidelity`.
+"""Smoke tests for :mod:`shop_probe.fidelity`.
 
-Covers:
+Constructs minimal in-memory ProbeReports and checks that:
 
-* :class:`GroupSummary` and :class:`BenchComparison` round-trip and
-  ``extra="forbid"``.
-* :func:`compute_bench_comparison` over synthetic reports carrying
-  :class:`ScaleMetrics`.
-* Per-category coverage gap aggregated as ``real - sandbox``.
-* Scale ratio per-metric — including parity-on-zero and rejection of
-  ``real==0, sandbox>0``.
-* Sandbox-in-real-envelope per metric per shop.
-* Group label / category mismatch errors.
+* RBC majority baseline + sandbox coverage + LOO range come out as
+  arithmetic expects.
+* Continuous-metric stats (Mann-Whitney U + Cliff's δ) line up with
+  textbook hand calculations on small samples.
+* The cohort writers consume the comparison and produce non-empty
+  markdown.
 """
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
-
-import pytest
-from pydantic import ValidationError
+from datetime import datetime, timezone
 
 from shop_probe.fidelity import (
-    BenchComparison,
-    GroupSummary,
-    compute_bench_comparison,
+    cliffs_delta_label,
+    compare_cohorts,
 )
 from shop_probe.report import (
+    ActionBlock,
     BrowserMeta,
-    CategoryScore,
+    ObservationBlock,
     ProbeReport,
+    ShapeMetrics,
+    SlotVerdict,
+    TransitionResult,
 )
-from shop_probe.scale.metrics import ScaleMetrics
-from shop_probe.targets import Target, TargetLabel
+from shop_probe.report_writer import (
+    render_action_fidelity,
+    render_observation_fidelity,
+    render_summary,
+    render_transition_fidelity,
+)
+from shop_probe.targets import Target
 
-_RUBRIC_HASH: str = "a" * 64
-_TIMESTAMP: datetime = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
-
-
-def _browser_meta() -> BrowserMeta:
-    return BrowserMeta(
-        python_version="3.11.9",
-        playwright_version="1.48.0",
-        chromium_version="129.0.6668.58",
-        user_agent="ShopProbe/0.1",
-        viewport=(1280, 800),
-        headless=True,
-    )
-
-
-def _scale(**overrides: float | int | None) -> ScaleMetrics:
-    base: dict[str, float | int | None] = {
-        "median_dom_kb_gz": 80.0,
-        "interactables_per_page_median": 30.0,
-        "form_fields_per_page_median": 4.0,
-        "accessibility_nodes_per_page_median": 400.0,
-        "catalog_products": 100,
-        "catalog_collections": 12,
-    }
-    base.update(overrides)
-    return ScaleMetrics.model_validate(base)
+_RUNTIME = BrowserMeta(
+    python_version="3.11.0",
+    playwright_version="1.48.0",
+    chromium_version="129.0.0",
+    user_agent="ShopProbe/test",
+    viewport=(1280, 800),
+    headless=True,
+)
+_HASH = "0" * 64
 
 
-def _categories(values: dict[str, float]) -> tuple[CategoryScore, ...]:
-    return tuple(
-        CategoryScore(
-            category=name,
-            weight_passed=cov * 10.0,
-            weight_total=10.0,
-            coverage=cov,
-        )
-        for name, cov in values.items()
-    )
-
-
-def _report(
-    *,
+def _make_report(
     name: str,
-    label: TargetLabel,
-    coverages: dict[str, float],
-    coverage_weighted: float,
-    scale: ScaleMetrics | None,
+    label: str,
+    *,
+    a11y_nodes: int,
+    homepage_brand_present: bool,
+    add_to_cart_present: bool,
+    cart_state_changed: bool,
 ) -> ProbeReport:
-    target = Target(name=name, base_url="http://localhost:4000", label=label)
+    target = Target(name=name, base_url=f"https://{name}.example", label=label)  # type: ignore[arg-type]
+    shape = {
+        "homepage": {
+            "a11y": ShapeMetrics(nodes=a11y_nodes, tokens=a11y_nodes * 5, actionable_count=4),
+            "screenshot": ShapeMetrics(megapixels=1.024, byte_size_kb=80.0),
+        },
+    }
+    info_verdict_a11y = SlotVerdict(
+        present=homepage_brand_present, judge_model="anthropic:test", judge_cost_usd=0.0
+    )
+    info_verdict_screen = SlotVerdict(
+        present=homepage_brand_present, judge_model="anthropic:test", judge_cost_usd=0.0
+    )
+    control_verdict = SlotVerdict(
+        present=add_to_cart_present, judge_model="anthropic:test", judge_cost_usd=0.0
+    )
+    info_slots = {
+        "homepage": {
+            "observation.homepage.brand_identity": {
+                "a11y": info_verdict_a11y,
+                "screenshot": info_verdict_screen,
+            }
+        }
+    }
+    control_slots = {
+        "product": {
+            "action.product.add_to_cart": {
+                "a11y": control_verdict,
+                "screenshot": control_verdict,
+            }
+        }
+    }
+    transition = {
+        "cart": {
+            "transition.cart.checkout": TransitionResult(
+                action_found=cart_state_changed,
+                action_executed=cart_state_changed,
+                state_changed=cart_state_changed,
+                state_changed_as_expected=cart_state_changed,
+                latency_ms=120,
+            ),
+        }
+    }
     return ProbeReport(
         target=target,
-        rubric_version="v3",
-        rubric_hash=_RUBRIC_HASH,
-        runner_version="0.0.0",
-        runtime=_browser_meta(),
-        timestamp=_TIMESTAMP,
-        categories=_categories(coverages),
-        coverage_core=coverage_weighted,
-        coverage_modern=0.0,
-        coverage_advanced=0.0,
-        coverage_weighted=coverage_weighted,
-        scale=scale,
+        rubric_version="1.0",
+        rubric_hash=_HASH,
+        runner_version="1.0.0",
+        runtime=_RUNTIME,
+        timestamp=datetime.now(timezone.utc),
+        observation=ObservationBlock(shape=shape, info_slots=info_slots),
+        action=ActionBlock(control_slots=control_slots),
+        transition=transition,
+        modality_consistency={"homepage": 1.0, "product": 1.0},
     )
 
 
-# --------------------------------------------------------------------------- #
-# Schema round-trip + extra="forbid".
-# --------------------------------------------------------------------------- #
+def _build_cohorts() -> tuple[list[ProbeReport], list[ProbeReport]]:
+    sandbox = [
+        _make_report(
+            f"sbx_{i}",
+            "sandbox",
+            a11y_nodes=200 + i * 5,
+            homepage_brand_present=True,
+            add_to_cart_present=True,
+            cart_state_changed=True,
+        )
+        for i in range(3)
+    ]
+    real = [
+        _make_report(
+            f"real_{i}",
+            "real",
+            a11y_nodes=300 + i * 10,
+            homepage_brand_present=True,
+            # 3 of 5 reals expose add-to-cart → in baseline at quorum 4 / 5? quorum_k = ⌈5/2 + 1⌉ = 4.
+            # Adjust per-shop: 3 True, 2 False → 0.6 ≥ 0.8? No → not in baseline.
+            add_to_cart_present=i < 3,
+            cart_state_changed=i < 4,
+        )
+        for i in range(5)
+    ]
+    return sandbox, real
 
 
-def _group_summary() -> GroupSummary:
-    return GroupSummary(
-        label="sandbox",
-        n_shops=2,
-        coverage_weighted_mean=0.7,
-        coverage_per_axis_mean={"product": 0.7},
-        scale_metric_means={"catalog_products": 100.0},
-        scale_metric_envelope={"catalog_products": (80.0, 120.0)},
-    )
+def test_compare_cohorts_baselines_and_rbc() -> None:
+    sandbox, real = _build_cohorts()
+    cmp_ = compare_cohorts(sandbox=sandbox, real=real)
+    assert cmp_.n_sandbox == 3
+    assert cmp_.n_real == 5
+
+    # info_slots: brand_identity passes 5/5 in real → in baseline.
+    info_baseline = [s for s in cmp_.info_slots.slots if s.in_baseline]
+    assert len(info_baseline) == 2  # one per modality
+    assert all(s.slot_id == "observation.homepage.brand_identity" for s in info_baseline)
+    # All sandbox shops also pass it → mean RBC = 1.0.
+    assert cmp_.info_slots.mean_rbc_sandbox == 1.0
+
+    # control_slots: add_to_cart real pass rate = 3/5 = 0.6 < quorum 4/5 → NOT in baseline.
+    control_in_baseline = [s for s in cmp_.control_slots.slots if s.in_baseline]
+    assert control_in_baseline == []
+    assert cmp_.control_slots.baseline_size == 0
 
 
-def test_group_summary_round_trip() -> None:
-    g = _group_summary()
-    assert GroupSummary.model_validate_json(g.model_dump_json()) == g
+def test_compare_cohorts_continuous_stats() -> None:
+    sandbox, real = _build_cohorts()
+    cmp_ = compare_cohorts(sandbox=sandbox, real=real)
+    nodes_rows = [
+        row
+        for row in cmp_.shape_stats
+        if row.metric == "nodes" and row.page_type == "homepage" and row.modality == "a11y"
+    ]
+    assert len(nodes_rows) == 1
+    row = nodes_rows[0]
+    # All sandbox values [200, 205, 210] < all real values [300, 310, 320, 330, 340].
+    # Cliff's δ for sandbox-vs-real is -1, but we passed (real, sandbox) → +1.
+    assert row.cliffs_delta == 1.0
+    assert cliffs_delta_label(row.cliffs_delta) == "large"
+    assert row.median_sandbox == 205.0
 
 
-def test_group_summary_rejects_unknown_field() -> None:
-    raw = json.loads(_group_summary().model_dump_json())
-    raw["unknown"] = 1
-    with pytest.raises(ValidationError, match="unknown"):
-        GroupSummary.model_validate(raw)
+def test_compare_cohorts_transitions_and_modality_consistency() -> None:
+    sandbox, real = _build_cohorts()
+    cmp_ = compare_cohorts(sandbox=sandbox, real=real)
+    [tr] = cmp_.transitions
+    assert tr.page_type == "cart"
+    assert tr.slot_id == "transition.cart.checkout"
+    # 4/5 reals state_changed, all 3 sandboxes state_changed.
+    assert tr.real_rates["state_changed_as_expected"] == 0.8
+    assert tr.sandbox_rates["state_changed_as_expected"] == 1.0
+    # Modality-consistency rolled up.
+    assert cmp_.mean_modality_consistency_sandbox["homepage"] == 1.0
 
 
-def test_bench_comparison_round_trip() -> None:
-    b = BenchComparison(
-        sandbox=_group_summary(),
-        real=GroupSummary(
-            label="real",
-            n_shops=3,
-            coverage_weighted_mean=0.8,
-            coverage_per_axis_mean={"product": 0.8},
-            scale_metric_means={"catalog_products": 150.0},
-            scale_metric_envelope={"catalog_products": (120.0, 180.0)},
-        ),
-        coverage_gap_weighted=0.1,
-        coverage_gap_per_axis={"product": 0.1},
-        scale_ratio={"catalog_products": 100.0 / 150.0},
-        sandbox_in_real_envelope={"shop_a": {"catalog_products": True}},
-    )
-    assert BenchComparison.model_validate_json(b.model_dump_json()) == b
-
-
-# --------------------------------------------------------------------------- #
-# compute_bench_comparison — coverage / scale arithmetic.
-# --------------------------------------------------------------------------- #
-
-
-def test_compute_bench_comparison_basic_with_scale() -> None:
-    sandbox_reports = (
-        _report(
-            name="shop_alpha",
-            label="sandbox",
-            coverages={"product": 0.6, "search": 0.5},
-            coverage_weighted=0.55,
-            scale=_scale(catalog_products=80),
-        ),
-        _report(
-            name="shop_beta",
-            label="sandbox",
-            coverages={"product": 0.8, "search": 0.7},
-            coverage_weighted=0.75,
-            scale=_scale(catalog_products=120),
-        ),
-    )
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"product": 0.9, "search": 0.8},
-            coverage_weighted=0.85,
-            scale=_scale(catalog_products=160),
-        ),
-        _report(
-            name="real_b",
-            label="real",
-            coverages={"product": 1.0, "search": 0.9},
-            coverage_weighted=0.95,
-            scale=_scale(catalog_products=200),
-        ),
-    )
-
-    comparison = compute_bench_comparison(sandbox_reports, real_reports)
-
-    assert comparison.sandbox.n_shops == 2  # noqa: PLR2004
-    assert comparison.real.n_shops == 2  # noqa: PLR2004
-    assert comparison.sandbox.coverage_weighted_mean == pytest.approx(0.65)
-    assert comparison.real.coverage_weighted_mean == pytest.approx(0.90)
-    assert comparison.coverage_gap_weighted == pytest.approx(0.25)
-    assert comparison.coverage_gap_per_axis["product"] == pytest.approx(0.25)
-    # sandbox/real means: 100/180 for catalog_products.
-    assert comparison.scale_ratio["catalog_products"] == pytest.approx(100.0 / 180.0)
-    # Both sandboxes (80, 120) fall outside the real envelope (160, 200).
-    assert comparison.sandbox_in_real_envelope["shop_alpha"]["catalog_products"] is False
-    assert comparison.sandbox_in_real_envelope["shop_beta"]["catalog_products"] is False
-
-
-def test_compute_bench_comparison_rejects_empty_sandbox() -> None:
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=None,
-        ),
-    )
-    with pytest.raises(ValueError, match="sandbox_reports must be non-empty"):
-        compute_bench_comparison((), real_reports)
-
-
-def test_compute_bench_comparison_rejects_empty_real() -> None:
-    sandbox_reports = (
-        _report(
-            name="shop_a",
-            label="sandbox",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=None,
-        ),
-    )
-    with pytest.raises(ValueError, match="real_reports must be non-empty"):
-        compute_bench_comparison(sandbox_reports, ())
-
-
-def test_compute_bench_comparison_rejects_mislabeled_target() -> None:
-    sandbox_reports = (
-        _report(
-            name="should_be_sandbox",
-            label="real",  # mislabel
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=None,
-        ),
-    )
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=None,
-        ),
-    )
-    with pytest.raises(ValueError, match="expected 'sandbox'"):
-        compute_bench_comparison(sandbox_reports, real_reports)
-
-
-def test_compute_bench_comparison_rejects_category_mismatch() -> None:
-    sandbox_reports = (
-        _report(
-            name="shop_a",
-            label="sandbox",
-            coverages={"product": 0.5},
-            coverage_weighted=0.5,
-            scale=None,
-        ),
-    )
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"search": 0.5},
-            coverage_weighted=0.5,
-            scale=None,
-        ),
-    )
-    with pytest.raises(ValueError, match="category mismatch"):
-        compute_bench_comparison(sandbox_reports, real_reports)
-
-
-def test_compute_bench_comparison_skips_missing_scale() -> None:
-    """Reports with scale=None contribute coverage but not scale aggregates."""
-    sandbox_reports = (
-        _report(
-            name="shop_a",
-            label="sandbox",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=None,
-        ),
-    )
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"x": 0.7},
-            coverage_weighted=0.7,
-            scale=_scale(),
-        ),
-    )
-    comparison = compute_bench_comparison(sandbox_reports, real_reports)
-    # Sandbox group has no scale rows → no scale_metric_means → ratio empty.
-    assert comparison.sandbox.scale_metric_means == {}
-    assert comparison.scale_ratio == {}
-    # The shop with no scale is not present in the envelope dict.
-    assert "shop_a" not in comparison.sandbox_in_real_envelope
-
-
-def test_compute_bench_comparison_scale_ratio_zero_parity() -> None:
-    sandbox_reports = (
-        _report(
-            name="shop_a",
-            label="sandbox",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=_scale(form_fields_per_page_median=0.0),
-        ),
-    )
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=_scale(form_fields_per_page_median=0.0),
-        ),
-    )
-    comparison = compute_bench_comparison(sandbox_reports, real_reports)
-    assert comparison.scale_ratio["form_fields_per_page_median"] == 1.0
-
-
-def test_compute_bench_comparison_scale_ratio_undefined_when_real_zero() -> None:
-    sandbox_reports = (
-        _report(
-            name="shop_a",
-            label="sandbox",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=_scale(form_fields_per_page_median=4.0),
-        ),
-    )
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=_scale(form_fields_per_page_median=0.0),
-        ),
-    )
-    with pytest.raises(ValueError, match="ratio is undefined"):
-        compute_bench_comparison(sandbox_reports, real_reports)
-
-
-def test_compute_bench_comparison_handles_partial_scale_fields() -> None:
-    """A metric with no samples in the sandbox group is omitted from ratio."""
-    sandbox_reports = (
-        _report(
-            name="shop_a",
-            label="sandbox",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=_scale(catalog_products=None, catalog_collections=None),
-        ),
-    )
-    real_reports = (
-        _report(
-            name="real_a",
-            label="real",
-            coverages={"x": 0.5},
-            coverage_weighted=0.5,
-            scale=_scale(catalog_products=200, catalog_collections=20),
-        ),
-    )
-    comparison = compute_bench_comparison(sandbox_reports, real_reports)
-    # Per-page metrics are populated in both groups → ratio present.
-    assert "median_dom_kb_gz" in comparison.scale_ratio
-    # Catalog metrics absent in sandbox → omitted from ratio.
-    assert "catalog_products" not in comparison.scale_ratio
-    assert "catalog_collections" not in comparison.scale_ratio
+def test_render_writers_produce_non_empty_markdown() -> None:
+    sandbox, real = _build_cohorts()
+    cmp_ = compare_cohorts(sandbox=sandbox, real=real)
+    obs_md = render_observation_fidelity(cmp_)
+    act_md = render_action_fidelity(cmp_)
+    tr_md = render_transition_fidelity(cmp_)
+    summary_md = render_summary(cmp_)
+    assert "observation fidelity" in obs_md
+    assert "action fidelity" in act_md
+    assert "cart" in tr_md
+    assert "Headline RBC" in summary_md

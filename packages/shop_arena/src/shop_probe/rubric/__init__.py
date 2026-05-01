@@ -1,4 +1,4 @@
-"""Capability-coverage rubric (axis A): schema, loader, and frozen YAML."""
+"""v1.0 rubric: family/kind discriminators, page types, modalities, loader."""
 
 from shop_probe.rubric.loader import (
     RubricLoadError,
@@ -7,21 +7,21 @@ from shop_probe.rubric.loader import (
     load_rubric_bytes,
 )
 from shop_probe.rubric.schema import (
-    CaptureJudgeTask,
-    PageRef,
+    Family,
+    Kind,
+    Modality,
+    PageType,
     Rubric,
-    RubricCategory,
     RubricEntry,
-    RubricLevel,
 )
 
 __all__ = [
-    "CaptureJudgeTask",
-    "PageRef",
+    "Family",
+    "Kind",
+    "Modality",
+    "PageType",
     "Rubric",
-    "RubricCategory",
     "RubricEntry",
-    "RubricLevel",
     "RubricLoadError",
     "compute_content_hash",
     "load_rubric",

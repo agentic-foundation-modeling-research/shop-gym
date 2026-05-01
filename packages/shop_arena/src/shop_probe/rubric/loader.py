@@ -1,24 +1,26 @@
 """Load + validate + content-hash rubric YAML.
 
-Implements the loader half of T1.3 (spec §5.3 + §5.8). The rubric YAML
-is the canonical artifact: the ``content_hash`` we compute is over the
-raw UTF-8 file bytes, not over a re-serialized normalization. That
-keeps reproducibility honest — reviewers re-hash the same file we
-shipped.
+The rubric YAML is the canonical artifact: ``content_hash`` is computed
+over the raw UTF-8 file bytes, not a re-serialized normalization, so
+reviewers can re-hash the same file we shipped.
 
-Expected YAML shape::
+Expected YAML shape (v1.0)::
 
-    version: v1
+    version: "1.0"
     entries:
-      - id: product.gallery.thumbnails
-        category: product
-        level: modern
-        weight: 2
-        probe: probes.product.gallery_has_thumbnails
-        description: PDP gallery exposes a thumbnail strip ...
-        authenticated: false
-        transactional: false
-      - ...
+      - id: observation.shape
+        family: observation
+        kind: shape
+        page_types: [homepage, collection, product, search, cart]
+        modalities: [a11y, screenshot]
+
+      - id: observation.product.title
+        family: observation
+        kind: info_slot
+        page_type: product
+        modalities: [a11y, screenshot]
+        prompt: prompts/info_slots/product_title.md
+        description: PDP exposes a clearly-identifiable product title.
 """
 
 from __future__ import annotations
