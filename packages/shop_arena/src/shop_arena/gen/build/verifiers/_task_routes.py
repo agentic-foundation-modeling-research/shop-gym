@@ -452,7 +452,7 @@ _NON_NOUN_WORDS: Final[frozenset[str]] = frozenset(
 
 
 _ADJECTIVE_SUFFIXES: Final[tuple[str, ...]] = ("less", "ish")
-"""Suffixes that reliably mark adjectives (e.g. ``tickless``, ``greenish``)."""
+"""Suffixes that reliably mark adjectives (e.g. ``wireless``, ``greenish``)."""
 
 
 _TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]+")
@@ -470,7 +470,7 @@ def _first_noun_token(title: str) -> str | None:
     :data:`_MIN_TOKEN_LEN` characters long, not in :data:`_NON_NOUN_WORDS`,
     and does not end in any of :data:`_ADJECTIVE_SUFFIXES`. The check is
     intentionally lightweight: it rejects the obvious adjective /
-    function-word leads typical of product titles (``Tickless Anti …``,
+    function-word leads typical of product titles (``Wireless Anti …``,
     ``Best Premium …``) without pulling in a full POS tagger.
 
     Returns ``None`` when no token in ``title`` qualifies, leaving the

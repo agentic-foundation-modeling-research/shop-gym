@@ -9,60 +9,60 @@
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_call",
-      "call_id": "toolu_01VnxNXeUvroApmyvLVrx9h8",
+      "call_id": "toolu_QmfOcanIecCvFc3193tbNRsR",
       "tool": "Read",
       "arguments": {
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md"
+        "file_path": "/tmp/harness-mock-workspace/plan.md"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_result",
-      "call_id": "toolu_01VnxNXeUvroApmyvLVrx9h8",
+      "call_id": "toolu_QmfOcanIecCvFc3193tbNRsR",
       "output": "1\t# Plan\n2\t\n3\t## Tasks\n4\t- [ ] homepage          [priority: 2]\n5\t- [ ] product_detail    [priority: 1]\n6\t",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_call",
-      "call_id": "toolu_01HwGFPMsHmrY37emURH8pTv",
+      "call_id": "toolu_x8j9lmMl3NgETzNVyLc6AqjN",
       "tool": "Bash",
       "arguments": {
-        "command": "ls /private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/",
+        "command": "ls /tmp/harness-mock-workspace/",
         "description": "List workspace contents"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_result",
-      "call_id": "toolu_01HwGFPMsHmrY37emURH8pTv",
+      "call_id": "toolu_x8j9lmMl3NgETzNVyLc6AqjN",
       "output": "This command requires approval",
       "is_error": true
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_call",
-      "call_id": "toolu_01AKL8B9RdPKyddtiUJJfzJf",
+      "call_id": "toolu_RD1MMjnOkNXvFPNM81plHRqd",
       "tool": "Glob",
       "arguments": {
-        "pattern": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/artifact/*"
+        "pattern": "/tmp/harness-mock-workspace/artifact/*"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_result",
-      "call_id": "toolu_01AKL8B9RdPKyddtiUJJfzJf",
+      "call_id": "toolu_RD1MMjnOkNXvFPNM81plHRqd",
       "output": "No files found",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_call",
-      "call_id": "toolu_01MHDjeRwMwEy7o4h5Domwft",
+      "call_id": "toolu_FReJaQDhRgsGUd07FWG2yMfu",
       "tool": "Edit",
       "arguments": {
         "replace_all": false,
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md",
+        "file_path": "/tmp/harness-mock-workspace/plan.md",
         "old_string": "- [ ] homepage          [priority: 2]",
         "new_string": "- [~] homepage          [priority: 2]"
       }
@@ -70,40 +70,40 @@
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_result",
-      "call_id": "toolu_01MHDjeRwMwEy7o4h5Domwft",
-      "output": "The file /private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md has been updated successfully.",
+      "call_id": "toolu_FReJaQDhRgsGUd07FWG2yMfu",
+      "output": "The file /tmp/harness-mock-workspace/plan.md has been updated successfully.",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_call",
-      "call_id": "toolu_01Cq9kn5wfJGsj1s8Y2dLnNU",
+      "call_id": "toolu_33rf6PZlkt3nI2GD5FNjYKyJ",
       "tool": "Write",
       "arguments": {
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/artifact/homepage.md",
+        "file_path": "/tmp/harness-mock-workspace/artifact/homepage.md",
         "content": "homepage: hero, nav, footer\n"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_result",
-      "call_id": "toolu_01Cq9kn5wfJGsj1s8Y2dLnNU",
-      "output": "File created successfully at: /private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/artifact/homepage.md",
+      "call_id": "toolu_33rf6PZlkt3nI2GD5FNjYKyJ",
+      "output": "File created successfully at: /tmp/harness-mock-workspace/artifact/homepage.md",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_call",
-      "call_id": "toolu_01P1VXJyMJk8pDSjsPJ4BCQy",
+      "call_id": "toolu_EDqfwj4XutcOgc87G9jtt1a0",
       "tool": "Read",
       "arguments": {
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md"
+        "file_path": "/tmp/harness-mock-workspace/plan.md"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_result",
-      "call_id": "toolu_01P1VXJyMJk8pDSjsPJ4BCQy",
+      "call_id": "toolu_EDqfwj4XutcOgc87G9jtt1a0",
       "output": "1\t# Plan\n2\t\n3\t## Tasks\n4\t- [~] homepage          [priority: 2]\n5\t- [ ] product_detail    [priority: 1]\n6\t",
       "is_error": false
     },
@@ -116,11 +116,11 @@
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_call",
-      "call_id": "toolu_01E6HMSzqjrBGjSMktNjfPqv",
+      "call_id": "toolu_uFQ6i6ZgX8noRnaZB2PqIwTx",
       "tool": "Edit",
       "arguments": {
         "replace_all": false,
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md",
+        "file_path": "/tmp/harness-mock-workspace/plan.md",
         "old_string": "- [~] homepage          [priority: 2]",
         "new_string": "- [x] homepage          [priority: 2]"
       }
@@ -128,8 +128,8 @@
     {
       "timestamp": "2026-04-25T10:42:17.574905Z",
       "kind": "tool_result",
-      "call_id": "toolu_01E6HMSzqjrBGjSMktNjfPqv",
-      "output": "The file /private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md has been updated successfully.",
+      "call_id": "toolu_uFQ6i6ZgX8noRnaZB2PqIwTx",
+      "output": "The file /tmp/harness-mock-workspace/plan.md has been updated successfully.",
       "is_error": false
     },
     {

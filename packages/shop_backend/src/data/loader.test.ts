@@ -55,7 +55,7 @@ describe('loadShopData', () => {
     expect(data.navigation['main-menu']).toHaveLength(3);
 
     expect(data.metafields.shop).toHaveLength(1);
-    expect(data.metafields.products['go-skin-and-coat-chicken-with-grains-12lb']).toHaveLength(1);
+    expect(data.metafields.products['agoracage-skin-and-coat-chicken-with-grains-12lb']).toHaveLength(1);
     expect(data.metafields.collections['dog-essentials']).toHaveLength(1);
 
     // inventory.json (since v0.2): tracked counts indexed by numeric variant id.
@@ -83,7 +83,7 @@ describe('loadShopData', () => {
 
     const sample = data.variantsByGid.get('gid://shopify/ProductVariant/47642512195758');
     expect(sample).toBeDefined();
-    expect(sample?.product.handle).toBe('tickless-anti-tick-collar');
+    expect(sample?.product.handle).toBe('aislearena-anti-tick-collar');
     expect(sample?.variant.title).toBe('Blue');
   });
 

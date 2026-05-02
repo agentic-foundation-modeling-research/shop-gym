@@ -238,7 +238,7 @@ export class CartStore {
 
   /**
    * Apply a batch of line updates. An update with `quantity <= 0` removes the
-   * matching line (Shopify behavior, exercised by the T4.3 lifecycle test).
+   * matching line.
    * Other fields (`merchandiseId`, `attributes`) are overwritten when set.
    * Updates targeting unknown line ids are skipped silently.
    */
@@ -275,8 +275,7 @@ export class CartStore {
   /**
    * Replace the cart's discount codes. v0.1 performs no validation — every
    * code is stored as-is and reported `applicable: true` by the resolver.
-   * Passing `null` clears the list (matches Shopify behavior for the
-   * `cartDiscountCodesUpdate` mutation when `discountCodes` is null).
+   * Passing `null` clears the list.
    */
   setDiscountCodes(cart: CartState, codes: readonly string[] | null): void {
     cart.discountCodes = codes === null ? [] : [...codes];
@@ -782,8 +781,7 @@ function successPayload(state: CartState, ctx: ResolverContext): CartMutationPay
 
 /**
  * Payload returned by `cartLinesAdd` / `cartLinesUpdate` / `cartLinesRemove`
- * when `cartId` does not match a cart in the store. Mirrors Shopify's
- * `INVALID` userError shape so clients can surface a recognizable message.
+ * when `cartId` does not match a cart in the store.
  */
 function cartNotFoundPayload(): CartMutationPayloadNode {
   return {

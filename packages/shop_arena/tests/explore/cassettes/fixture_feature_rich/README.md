@@ -1,6 +1,6 @@
 # `fixture_feature_rich` cassette
 
-Hand-crafted replay cassette modelling a **feature-rich** Shopify
+Hand-crafted replay cassette modelling a **feature-rich**
 storefront profile, used by `tests/explore/test_pipeline_replay.py`
 (T4.2).
 

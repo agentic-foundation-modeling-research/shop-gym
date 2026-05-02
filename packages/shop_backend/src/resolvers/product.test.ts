@@ -49,7 +49,7 @@ describe('productResolvers — Query.product', () => {
   it('returns the product node for a known handle', async () => {
     const result = await run(/* GraphQL */ `
       {
-        product(handle: "tickless-anti-tick-collar") {
+        product(handle: "aislearena-anti-tick-collar") {
           id
           handle
           title
@@ -69,8 +69,8 @@ describe('productResolvers — Query.product', () => {
     expect(result.data).toEqual({
       product: {
         id: 'gid://shopify/Product/9048676991150',
-        handle: 'tickless-anti-tick-collar',
-        title: 'Tickless Anti Tick Collar',
+        handle: 'aislearena-anti-tick-collar',
+        title: 'AisleArena Anti Tick Collar',
         vendor: 'Mock Pet Foods',
         productType: '',
         tags: ['Anti tick', 'Collar', 'Dog supplies'],
@@ -111,11 +111,11 @@ describe('productResolvers — Query.products', () => {
       products: {
         totalCount: 5,
         nodes: [
-          { handle: 'tickless-anti-tick-collar' },
-          { handle: 'fuzzyard-mushroom-dog-toys' },
-          { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-          { handle: 'applaws-mackerel-and-sardines-70g' },
-          { handle: 'bluestem-toothbrush' },
+          { handle: 'aislearena-anti-tick-collar' },
+          { handle: 'shopliseum-mushroom-dog-toys' },
+          { handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+          { handle: 'cartanvil-mackerel-and-sardines-70g' },
+          { handle: 'carthaeum-toothbrush' },
         ],
       },
     });
@@ -140,7 +140,7 @@ describe('productResolvers — Query.products', () => {
     const endCursor = result.data.products.pageInfo.endCursor;
     expect(result.data).toEqual({
       products: {
-        nodes: [{ handle: 'tickless-anti-tick-collar' }, { handle: 'fuzzyard-mushroom-dog-toys' }],
+        nodes: [{ handle: 'aislearena-anti-tick-collar' }, { handle: 'shopliseum-mushroom-dog-toys' }],
         pageInfo: {
           hasNextPage: true,
           hasPreviousPage: false,
@@ -165,8 +165,8 @@ describe('productResolvers — Query.products', () => {
     expect(next.data).toEqual({
       products: {
         nodes: [
-          { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-          { handle: 'applaws-mackerel-and-sardines-70g' },
+          { handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+          { handle: 'cartanvil-mackerel-and-sardines-70g' },
         ],
         pageInfo: { hasPreviousPage: true },
       },
@@ -187,11 +187,11 @@ describe('productResolvers — Query.products', () => {
     expect(result.data).toEqual({
       products: {
         nodes: [
-          { handle: 'applaws-mackerel-and-sardines-70g' },
-          { handle: 'bluestem-toothbrush' },
-          { handle: 'fuzzyard-mushroom-dog-toys' },
-          { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-          { handle: 'tickless-anti-tick-collar' },
+          { handle: 'cartanvil-mackerel-and-sardines-70g' },
+          { handle: 'carthaeum-toothbrush' },
+          { handle: 'shopliseum-mushroom-dog-toys' },
+          { handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+          { handle: 'aislearena-anti-tick-collar' },
         ],
       },
     });
@@ -209,11 +209,11 @@ describe('productResolvers — Query.products', () => {
     `);
     expect(result.errors).toBeUndefined();
     const expected = [
-      'Tickless Anti Tick Collar',
-      'Go! Skin and coat chicken with grains 12lb dog',
-      'Fuzzyard Mushroom Dog Toys',
-      'Bluestem Toothbrush',
-      'Applaws Mackerel and Sardines 70g',
+      'Shopliseum Mushroom Dog Toys',
+      'Carthaeum Toothbrush',
+      'Cartanvil Mackerel and Sardines 70g',
+      'AisleArena Anti Tick Collar',
+      'AgoraCage Skin and coat chicken with grains 12lb dog',
     ];
     expect(result.data).toEqual({
       products: { nodes: expected.map((title) => ({ title })) },
@@ -235,7 +235,7 @@ describe('productResolvers — Query.products', () => {
     expect(result.data).toEqual({
       products: {
         totalCount: 1,
-        nodes: [{ handle: 'tickless-anti-tick-collar' }],
+        nodes: [{ handle: 'aislearena-anti-tick-collar' }],
       },
     });
   });
@@ -297,9 +297,9 @@ describe('productResolvers — Query.collection', () => {
         products: {
           totalCount: 3,
           nodes: [
-            { handle: 'fuzzyard-mushroom-dog-toys' },
-            { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-            { handle: 'tickless-anti-tick-collar' },
+            { handle: 'shopliseum-mushroom-dog-toys' },
+            { handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+            { handle: 'aislearena-anti-tick-collar' },
           ],
         },
       },
@@ -329,11 +329,11 @@ describe('productResolvers — Query.collection', () => {
         products: {
           totalCount: 5,
           nodes: [
-            { handle: 'tickless-anti-tick-collar' },
-            { handle: 'fuzzyard-mushroom-dog-toys' },
-            { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-            { handle: 'applaws-mackerel-and-sardines-70g' },
-            { handle: 'bluestem-toothbrush' },
+            { handle: 'aislearena-anti-tick-collar' },
+            { handle: 'shopliseum-mushroom-dog-toys' },
+            { handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+            { handle: 'cartanvil-mackerel-and-sardines-70g' },
+            { handle: 'carthaeum-toothbrush' },
           ],
         },
       },
@@ -387,7 +387,7 @@ describe('productResolvers — Product.selectedOrFirstAvailableVariant', () => {
   it('returns the variant matching the supplied selectedOptions', async () => {
     const result = await run(/* GraphQL */ `
       {
-        product(handle: "tickless-anti-tick-collar") {
+        product(handle: "aislearena-anti-tick-collar") {
           selectedOrFirstAvailableVariant(
             selectedOptions: [{ name: "Blue", value: "Yellow" }]
           ) {
@@ -411,7 +411,7 @@ describe('productResolvers — Product.selectedOrFirstAvailableVariant', () => {
   it('falls back to the first available variant when selectedOptions is omitted', async () => {
     const result = await run(/* GraphQL */ `
       {
-        product(handle: "applaws-mackerel-and-sardines-70g") {
+        product(handle: "cartanvil-mackerel-and-sardines-70g") {
           selectedOrFirstAvailableVariant {
             title
             availableForSale
@@ -437,9 +437,9 @@ describe('productResolvers — ProductVariant.quantityAvailable + availableForSa
   it('exposes the tracked count via selectedOrFirstAvailableVariant', async () => {
     const result = await run(/* GraphQL */ `
       {
-        product(handle: "fuzzyard-mushroom-dog-toys") {
+        product(handle: "shopliseum-mushroom-dog-toys") {
           selectedOrFirstAvailableVariant(
-            selectedOptions: [{ name: "Giggles Mushroom", value: "Giggles Mushroom" }]
+            selectedOptions: [{ name: "Red Mushroom", value: "Red Mushroom" }]
           ) {
             title
             quantityAvailable
@@ -452,7 +452,7 @@ describe('productResolvers — ProductVariant.quantityAvailable + availableForSa
     expect(result.data).toEqual({
       product: {
         selectedOrFirstAvailableVariant: {
-          title: 'Giggles Mushroom',
+          title: 'Red Mushroom',
           quantityAvailable: 2,
           availableForSale: true,
         },
@@ -463,9 +463,9 @@ describe('productResolvers — ProductVariant.quantityAvailable + availableForSa
   it('overrides availableForSale to false when the inventory count is zero', async () => {
     const result = await run(/* GraphQL */ `
       {
-        product(handle: "fuzzyard-mushroom-dog-toys") {
+        product(handle: "shopliseum-mushroom-dog-toys") {
           selectedOrFirstAvailableVariant(
-            selectedOptions: [{ name: "Giggles Mushroom", value: "Cosmo Mushroom" }]
+            selectedOptions: [{ name: "Red Mushroom", value: "Blue Mushroom" }]
           ) {
             title
             quantityAvailable
@@ -478,7 +478,7 @@ describe('productResolvers — ProductVariant.quantityAvailable + availableForSa
     expect(result.data).toEqual({
       product: {
         selectedOrFirstAvailableVariant: {
-          title: 'Cosmo Mushroom',
+          title: 'Blue Mushroom',
           quantityAvailable: 0,
           availableForSale: false,
         },

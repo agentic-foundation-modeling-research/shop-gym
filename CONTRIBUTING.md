@@ -45,7 +45,7 @@ A useful issue includes:
    rejected PR. For new features, link the relevant spec in
    `docs/specs/` (or propose one — see *Specs* below).
 2. **Branch from `main`.** Use a short, descriptive name (e.g.
-   `mz/explore-resume-bug`).
+   `dev/explore-resume-bug`).
 3. **Keep PRs focused.** One logical change per PR. Refactors and
    feature work go in separate PRs even when you noticed the refactor
    while doing the feature.

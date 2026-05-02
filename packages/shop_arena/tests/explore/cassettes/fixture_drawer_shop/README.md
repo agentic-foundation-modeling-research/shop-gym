@@ -1,6 +1,6 @@
 # `fixture_drawer_shop` cassette
 
-Hand-crafted replay cassette covering one synthetic feature-rich Shopify
+Hand-crafted replay cassette covering one synthetic feature-rich
 storefront ("drawer shop") used by `tests/explore/test_pipeline_replay.py`
 (T2.6) and the deterministic structural validator
 `tests/explore/test_fixture_drawer_shop_cassette.py` (T2.5).

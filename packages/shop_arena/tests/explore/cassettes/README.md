@@ -31,7 +31,7 @@ the trajectory content.
 | ---------------------- | ----------------------------------------- | ------------- | ---------------------------------- | ---------------------------- |
 | `fixture_drawer_shop`  | _synthetic_ (no live source)              | feature-rich  | hand-crafted (M2)                  | ✅ committed                 |
 | `fixture_feature_rich` | _synthetic_ (no live source)              | feature-rich  | hand-crafted placeholder (T4.2)    | ✅ committed (synthetic)     |
-| `fixture_dawn_demo`    | `https://theme-dawn-demo.myshopify.com`   | minimal       | hand-crafted placeholder (T4.2)    | ✅ committed (synthetic)     |
+| `fixture_demo_storefront` | `https://demo-storefront.example.invalid` | minimal       | hand-crafted placeholder (T4.2)    | ✅ committed (synthetic)     |
 
 The **synthetic** fixture (`fixture_drawer_shop`) is the canonical
 hand-crafted cassette used by `test_pipeline_replay.py` and
@@ -84,20 +84,17 @@ against the new content.
   live-recorded fixtures — they are gitignored under
   `cassettes/fixture_feature_rich/_raw/` if generated.
 
-### `fixture_dawn_demo` — minimal
+### `fixture_demo_storefront` — minimal
 
-- **URL:** `https://theme-dawn-demo.myshopify.com`
-- **Platform:** Shopify (verified — `/cart.js`, `/products.json`,
-  `/sitemap.xml` all return 200; `x-storefront-renderer-rendered: 1`).
-- **Why minimal:** this is Shopify's own **Dawn theme preview store**
-  — the unmodified default theme installed against a demo catalog. It
+- **Why minimal:** this is a **default-theme preview store**
+  — an unmodified reference theme installed against a demo catalog. It
   exercises the *floor* of the coverage taxonomy:
   - **Site shell:** simple horizontal header, no mega menu,
     single-column footer.
   - **Homepage:** hero + 1–2 featured sections, no popup, no
     announcement bar.
   - **Collection:** grid, default sort options, no faceted filters
-    (Dawn ships sort but no out-of-the-box filter chips).
+    (the default theme ships sort but no out-of-the-box filter chips).
   - **Product:** simple gallery, basic variant pickers (when present),
     no reviews, no recommendations carousel.
   - **Cart:** drawer or notification (theme default).
@@ -106,14 +103,13 @@ against the new content.
 - **Why this exact shop:** the spec's M4 plan calls for "one feature-
   rich and one minimal" fixture so SC5 (coverage) and the
   `omitted_areas` reporting in `manifest.json` are exercised on a
-  storefront that *legitimately omits* most taxonomy areas. The
-  Shopify-owned Dawn demo is the canonical reference for what a
-  newly-installed Shopify store looks like, and it is unlikely to be
-  taken offline or radically restyled.
-- **License / fair-use stance:** the storefront is owned and operated
-  by Shopify Inc. as a public theme preview. The catalog (sample
-  products, sample copy, sample imagery) is Shopify's own demo
-  content. We treat it the same as `fixture_feature_rich` for repo
+  storefront that *legitimately omits* most taxonomy areas. A
+  newly-installed default-theme store is the canonical reference for
+  what a stock storefront looks like, and is unlikely to be taken
+  offline or radically restyled.
+- **License / fair-use stance:** the storefront is a public theme preview. 
+  The catalog (sample products, sample copy, sample imagery).
+  We treat it the same as `fixture_feature_rich` for repo
   hygiene: only anonymized cassette overlays are committed; raw
   prefetch and trajectory logs are gitignored.
 
@@ -126,9 +122,9 @@ Live cassettes are recorded by the harness, not authored by hand.
 ```bash
 # Minimal fixture
 HARNESS_RECORD=1 \
-  uv run shop-explore https://theme-dawn-demo.myshopify.com \
+  uv run shop-explore https://demo-storefront.example.invalid \
   --runtime pi \
-  --out packages/shop_arena/tests/explore/cassettes/fixture_dawn_demo
+  --out packages/shop_arena/tests/explore/cassettes/fixture_demo_storefront
 ```
 
 After recording:

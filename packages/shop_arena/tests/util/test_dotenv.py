@@ -81,6 +81,7 @@ def test_load_project_env_is_idempotent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     env_path = tmp_path / ".env"
     env_path.write_text('OPENAI_BASE_URL="https://first.example/v1"\n', encoding="utf-8")
 

@@ -234,9 +234,9 @@ class _ReplayFixture:
     sentinel_caps: tuple[tuple[tuple[str, ...], object], ...]
 
 
-_DAWN_DEMO_FIXTURE = _ReplayFixture(
-    name="fixture_dawn_demo",
-    base_url="https://dawn-demo-shop.example",
+_DEMO_STOREFRONT_FIXTURE = _ReplayFixture(
+    name="fixture_demo_storefront",
+    base_url="https://demo-storefront.example.invalid",
     tasks=("homepage_sections", "info_pages", "cart_drawer"),
     sentinel_caps=(
         (("cart", "type"), "drawer"),
@@ -262,7 +262,7 @@ _FEATURE_RICH_FIXTURE = _ReplayFixture(
     ),
 )
 
-_ALT_FIXTURES: tuple[_ReplayFixture, ...] = (_DAWN_DEMO_FIXTURE, _FEATURE_RICH_FIXTURE)
+_ALT_FIXTURES: tuple[_ReplayFixture, ...] = (_DEMO_STOREFRONT_FIXTURE, _FEATURE_RICH_FIXTURE)
 
 
 def _stub_storefront_at(mock: respx.MockRouter, base_url: str) -> None:

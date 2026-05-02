@@ -188,10 +188,14 @@ def test_resolve_target_count_ignores_non_int() -> None:
 
 _PRODUCTS_TOTAL_DEFAULT: int = 200
 _PRODUCTS_TOTAL_MAX: int = 1000
+_EXPECTED_STEP_VERSION: int = 2
+"""Mirror :data:`shop_arena.gen.data_synth.collections._STEP_VERSION` so
+test assertions name the value rather than embed a magic number."""
 
 
 def test_resolve_target_products_total_uses_stats_when_positive() -> None:
-    assert resolve_target_products_total({"products_total": 350}) == 350
+    requested = 350
+    assert resolve_target_products_total({"products_total": requested}) == requested
 
 
 def test_resolve_target_products_total_falls_back_to_default() -> None:
@@ -442,7 +446,7 @@ def test_step_metadata_for_multi_seed() -> None:
         "merge_manual_prose",
         "compute_merge_stats",
     ]
-    assert step.version == 2
+    assert step.version == _EXPECTED_STEP_VERSION
 
 
 def test_step_metadata_for_single_seed() -> None:

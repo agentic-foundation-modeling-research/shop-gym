@@ -1,8 +1,8 @@
 [
   {
     "id": 9048676991150,
-    "title": "Tickless Anti Tick Collar",
-    "handle": "tickless-anti-tick-collar",
+    "title": "AisleArena Anti Tick Collar",
+    "handle": "aislearena-anti-tick-collar",
     "description_html": "<p>Chemical-free tick repellent collar that uses ultrasonic pulses to keep ticks and fleas off your dog.</p>",
     "vendor": "Mock Pet Foods",
     "product_type": "",
@@ -55,7 +55,7 @@
     "images": [
       {
         "id": 43482199916718,
-        "src": "products/tickless-anti-tick-collar-1.jpg",
+        "src": "products/aislearena-anti-tick-collar-1.jpg",
         "alt": null,
         "width": 3264,
         "height": 2448,
@@ -63,7 +63,7 @@
       },
       {
         "id": 43482201850030,
-        "src": "products/tickless-anti-tick-collar-2.jpg",
+        "src": "products/aislearena-anti-tick-collar-2.jpg",
         "alt": null,
         "width": 3264,
         "height": 2448,
@@ -73,8 +73,8 @@
   },
   {
     "id": 8938306273454,
-    "title": "Fuzzyard Mushroom Dog Toys",
-    "handle": "fuzzyard-mushroom-dog-toys",
+    "title": "Shopliseum Mushroom Dog Toys",
+    "handle": "shopliseum-mushroom-dog-toys",
     "description_html": "<p>Plush mushroom-shaped squeaky dog toys made from durable fabric. Perfect for fetch and tug.</p>",
     "vendor": "Mock Pet Foods",
     "product_type": "Dog Toys",
@@ -88,25 +88,25 @@
     "updated_at": "2026-04-14T21:21:14-04:00",
     "options": [
       {
-        "name": "Giggles Mushroom",
+        "name": "Red Mushroom",
         "position": 1,
         "values": [
-          "Giggles Mushroom",
-          "Cosmo Mushroom",
-          "Rainbow Mushroom",
-          "Disco Randy Mushroom"
+          "Red Mushroom",
+          "Blue Mushroom",
+          "Green Mushroom",
+          "Yellow Mushroom"
         ]
       }
     ],
     "variants": [
       {
         "id": 47242666836142,
-        "title": "Giggles Mushroom",
+        "title": "Red Mushroom",
         "sku": null,
         "price": "19.99",
         "compare_at_price": null,
         "available": true,
-        "option1": "Giggles Mushroom",
+        "option1": "Red Mushroom",
         "option2": null,
         "option3": null,
         "position": 1,
@@ -114,12 +114,12 @@
       },
       {
         "id": 47242687709358,
-        "title": "Cosmo Mushroom",
+        "title": "Blue Mushroom",
         "sku": null,
         "price": "19.99",
         "compare_at_price": null,
         "available": true,
-        "option1": "Cosmo Mushroom",
+        "option1": "Blue Mushroom",
         "option2": null,
         "option3": null,
         "position": 2,
@@ -127,12 +127,12 @@
       },
       {
         "id": 47242695737518,
-        "title": "Rainbow Mushroom",
+        "title": "Green Mushroom",
         "sku": null,
         "price": "19.99",
         "compare_at_price": null,
         "available": true,
-        "option1": "Rainbow Mushroom",
+        "option1": "Green Mushroom",
         "option2": null,
         "option3": null,
         "position": 3,
@@ -140,12 +140,12 @@
       },
       {
         "id": 47242720215214,
-        "title": "Disco Randy Mushroom",
+        "title": "Yellow Mushroom",
         "sku": null,
         "price": "19.99",
         "compare_at_price": null,
         "available": true,
-        "option1": "Disco Randy Mushroom",
+        "option1": "Yellow Mushroom",
         "option2": null,
         "option3": null,
         "position": 4,
@@ -155,7 +155,7 @@
     "images": [
       {
         "id": 42308704796846,
-        "src": "products/fuzzyard-mushroom-dog-toys-1.jpg",
+        "src": "products/shopliseum-mushroom-dog-toys-1.jpg",
         "alt": null,
         "width": 3264,
         "height": 2448,
@@ -163,7 +163,7 @@
       },
       {
         "id": 42308715249838,
-        "src": "products/fuzzyard-mushroom-dog-toys-2.jpg",
+        "src": "products/shopliseum-mushroom-dog-toys-2.jpg",
         "alt": null,
         "width": 3264,
         "height": 2448,
@@ -171,7 +171,7 @@
       },
       {
         "id": 42308721082542,
-        "src": "products/fuzzyard-mushroom-dog-toys-3.jpg",
+        "src": "products/shopliseum-mushroom-dog-toys-3.jpg",
         "alt": null,
         "width": 3264,
         "height": 2448,
@@ -179,7 +179,7 @@
       },
       {
         "id": 42308754342062,
-        "src": "products/fuzzyard-mushroom-dog-toys-4.jpg",
+        "src": "products/shopliseum-mushroom-dog-toys-4.jpg",
         "alt": null,
         "width": 3264,
         "height": 2448,
@@ -189,8 +189,8 @@
   },
   {
     "id": 8251198963886,
-    "title": "Go! Skin and coat chicken with grains 12lb dog",
-    "handle": "go-skin-and-coat-chicken-with-grains-12lb",
+    "title": "AgoraCage Skin and coat chicken with grains 12lb dog",
+    "handle": "agoracage-skin-and-coat-chicken-with-grains-12lb",
     "description_html": "<p>Premium chicken-based dog food formulated to support healthy skin and a glossy coat.</p>",
     "vendor": "Mock Pet Foods",
     "product_type": "Dog food",
@@ -225,7 +225,7 @@
     "images": [
       {
         "id": 35669283274926,
-        "src": "products/go-skin-and-coat-chicken-with-grains-12lb-1.jpg",
+        "src": "products/agoracage-skin-and-coat-chicken-with-grains-12lb-1.jpg",
         "alt": null,
         "width": 3264,
         "height": 2448,
@@ -235,13 +235,13 @@
   },
   {
     "id": 9052155642030,
-    "title": "Applaws Mackerel and Sardines 70g",
-    "handle": "applaws-mackerel-and-sardines-70g",
+    "title": "Cartanvil Mackerel and Sardines 70g",
+    "handle": "cartanvil-mackerel-and-sardines-70g",
     "description_html": "<p>Natural wet cat food with mackerel and sardines in broth. Grain-free, no additives.</p>",
     "vendor": "Mock Pet Foods",
     "product_type": "",
     "tags": [
-      "Applaws",
+      "Cartanvil",
       "Mackerel",
       "wet cat food"
     ],
@@ -275,7 +275,7 @@
     "images": [
       {
         "id": 43543025057966,
-        "src": "products/applaws-mackerel-and-sardines-70g-1.jpg",
+        "src": "products/cartanvil-mackerel-and-sardines-70g-1.jpg",
         "alt": null,
         "width": 3264,
         "height": 2448,
@@ -285,8 +285,8 @@
   },
   {
     "id": 9061637816494,
-    "title": "Bluestem Toothbrush",
-    "handle": "bluestem-toothbrush",
+    "title": "Carthaeum Toothbrush",
+    "handle": "carthaeum-toothbrush",
     "description_html": "<p>Dual-headed dental toothbrush for cats and dogs. Helps reduce plaque buildup.</p>",
     "vendor": "Mock Pet Foods",
     "product_type": "",
@@ -326,7 +326,7 @@
     "images": [
       {
         "id": 43657463496878,
-        "src": "products/bluestem-toothbrush-1.jpg",
+        "src": "products/carthaeum-toothbrush-1.jpg",
         "alt": null,
         "width": 3264,
         "height": 2448,

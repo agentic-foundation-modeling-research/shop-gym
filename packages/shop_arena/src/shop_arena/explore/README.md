@@ -7,7 +7,7 @@ live storefront's UX, IA, and feature set.
 - Spec: [`docs/specs/shop_arena/shop_explore.md`](../../../../docs/specs/shop_arena/shop_explore.md)
 - Implementation plan: [`docs/impl/shop_explore_implementation.md`](../../../../docs/impl/shop_explore_implementation.md)
 - Status: **v0.1.0 released** — M1–M5 landed (tag `shop-explore-v0.1.0`).
-  v0.2 follow-ups (real-LLM synthesis, live `fixture_dawn_demo`
+  v0.2 follow-ups (real-LLM synthesis, live `fixture_demo_storefront`
   cassette, exact `products_total`) tracked in M6 of the impl plan.
 
 ---
@@ -106,7 +106,7 @@ calls, no LLM, no browser. Output lands under
 ```bash
 uv run shop-explore --prefetch-only \
     --out /tmp/shop-explore-smoke \
-    https://theme-dawn-demo.myshopify.com
+    https://demo-storefront.example.invalid
 
 # Inspect the result.
 ls /tmp/shop-explore-smoke/artifact/prefetch/
@@ -348,8 +348,8 @@ live `pi` runtime:
 
 ```bash
 # Pick the fixture slug used by tests (see tests/explore/cassettes/README.md).
-export FIXTURE=fixture_dawn_demo
-export FIXTURE_URL=https://theme-dawn-demo.myshopify.com
+export FIXTURE=fixture_demo_storefront
+export FIXTURE_URL=https://demo-storefront.example.invalid
 
 HARNESS_RECORD=1 \
   uv run shop-explore --runtime pi \

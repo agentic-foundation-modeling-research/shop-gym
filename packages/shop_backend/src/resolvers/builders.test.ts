@@ -97,13 +97,13 @@ describe('buildImageNode', () => {
 });
 
 describe('buildProductVariantNode', () => {
-  const product = productByHandle('fuzzyard-mushroom-dog-toys');
+  const product = productByHandle('shopliseum-mushroom-dog-toys');
   const variant = product.variants[1];
 
   it('maps option1/option2/option3 onto product.options by position', () => {
     if (variant === undefined) throw new Error('expected variant at index 1');
     const node = buildProductVariantNode(product, variant, data.store, BASE_URL);
-    expect(node.selectedOptions).toEqual([{ name: 'Giggles Mushroom', value: 'Cosmo Mushroom' }]);
+    expect(node.selectedOptions).toEqual([{ name: 'Red Mushroom', value: 'Blue Mushroom' }]);
   });
 
   it('exposes price + compareAtPrice in the store currency', () => {
@@ -128,7 +128,7 @@ describe('buildProductVariantNode', () => {
 });
 
 describe('buildProductVariantNode with inventory', () => {
-  const product = productByHandle('fuzzyard-mushroom-dog-toys');
+  const product = productByHandle('shopliseum-mushroom-dog-toys');
 
   function variantById(id: number) {
     const variant = product.variants.find((v) => v.id === id);
@@ -200,7 +200,7 @@ describe('buildProductVariantNode with inventory', () => {
 
 describe('buildProductNode', () => {
   it('computes priceRange across variants and exposes available variants', () => {
-    const product = productByHandle('fuzzyard-mushroom-dog-toys');
+    const product = productByHandle('shopliseum-mushroom-dog-toys');
     const node = buildProductNode(product, data.store, BASE_URL);
     expect(node.priceRange.minVariantPrice).toEqual({ amount: '19.99', currencyCode: 'CAD' });
     expect(node.priceRange.maxVariantPrice).toEqual({ amount: '19.99', currencyCode: 'CAD' });
@@ -209,13 +209,13 @@ describe('buildProductNode', () => {
   });
 
   it('reports availableForSale=false when no variant is available', () => {
-    const product = productByHandle('applaws-mackerel-and-sardines-70g');
+    const product = productByHandle('cartanvil-mackerel-and-sardines-70g');
     const node = buildProductNode(product, data.store, BASE_URL);
     expect(node.availableForSale).toBe(false);
   });
 
   it('strips HTML out of description but preserves descriptionHtml', () => {
-    const product = productByHandle('bluestem-toothbrush');
+    const product = productByHandle('carthaeum-toothbrush');
     const node = buildProductNode(product, data.store, BASE_URL);
     expect(node.description).toBe(
       'Dual-headed dental toothbrush for cats and dogs. Helps reduce plaque buildup.',
@@ -224,10 +224,10 @@ describe('buildProductNode', () => {
   });
 
   it('picks the lowest-position image as featuredImage', () => {
-    const product = productByHandle('fuzzyard-mushroom-dog-toys');
+    const product = productByHandle('shopliseum-mushroom-dog-toys');
     const node = buildProductNode(product, data.store, BASE_URL);
     expect(node.featuredImage?.url).toBe(
-      'https://shop.example/images/products/fuzzyard-mushroom-dog-toys-1.jpg',
+      'https://shop.example/images/products/shopliseum-mushroom-dog-toys-1.jpg',
     );
   });
 });

@@ -55,7 +55,7 @@ _DATA_FIXTURE_DIR: Final[Path] = (
 _BASE_URL: Final[str] = "http://127.0.0.1:54321"
 """Stub base URL the fake dev server reports."""
 
-_EXPECTED_FIRST_PRODUCT: Final[str] = "tickless-anti-tick-collar"
+_EXPECTED_FIRST_PRODUCT: Final[str] = "aislearena-anti-tick-collar"
 """First handle in the M4 ``products.json`` fixture."""
 
 _EXPECTED_FIRST_COLLECTION: Final[str] = "dog-essentials"

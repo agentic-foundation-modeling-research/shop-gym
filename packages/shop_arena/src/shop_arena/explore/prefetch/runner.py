@@ -40,7 +40,7 @@ DEFAULT_TIMEOUT_SECONDS = 30.0
 """Per-request timeout (not the global run timeout)."""
 
 PRODUCTS_PAGE_LIMIT = 250
-"""Page size requested from ``/products.json`` (Shopify storefront max).
+"""Page size requested from ``/products.json`` (storefront max).
 
 Used by :func:`_fetch_products_paginated` to walk every page of the
 public products feed. Pagination stops when a page returns fewer than

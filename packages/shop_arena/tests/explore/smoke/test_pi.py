@@ -13,8 +13,8 @@ asserts the §5.4 / §5.10 invariants:
 * every executor task in ``plan.md`` has at least one screenshot
   under ``artifact/evidence/<task_id>/`` (spec §5.7 obligation 5).
 
-The fixture URL defaults to the minimal Shopify Dawn theme preview
-shop (`https://theme-dawn-demo.myshopify.com`) per the M4 fixture
+The fixture URL defaults to a minimal default-theme preview
+shop (`https://demo-storefront.example.invalid`) per the M4 fixture
 plan; override with ``SHOP_EXPLORE_SMOKE_URL`` when iterating against
 a different live storefront.
 """
@@ -34,7 +34,7 @@ from shop_arena.explore import Capabilities, ExploreConfig, Stats, explore
 
 _SMOKE_ENV_VAR = "SHOP_EXPLORE_SMOKE_PI"
 _URL_ENV_VAR = "SHOP_EXPLORE_SMOKE_URL"
-_DEFAULT_FIXTURE_URL = "https://theme-dawn-demo.myshopify.com"
+_DEFAULT_FIXTURE_URL = "https://demo-storefront.example.invalid"
 
 _LIVE_TIMEOUT_SECONDS = 600.0
 _LIVE_MAX_ITERS = 12

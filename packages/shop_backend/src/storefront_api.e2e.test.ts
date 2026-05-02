@@ -46,9 +46,9 @@ const FIXTURE_DIR = path.resolve(
   '../tests/fixtures/sandbox_shop_v0',
 );
 
-const TICKLESS_VARIANT = 'gid://shopify/ProductVariant/47642512195758'; // $79.99
-const FUZZYARD_VARIANT = 'gid://shopify/ProductVariant/47242666836142'; // $19.99
-const BLUESTEM_VARIANT = 'gid://shopify/ProductVariant/47694728298670'; // $12.99
+const AISLEARENA_VARIANT = 'gid://shopify/ProductVariant/47642512195758'; // $79.99
+const SHOPLISEUM_VARIANT = 'gid://shopify/ProductVariant/47242666836142'; // $19.99
+const CARTHAEUM_VARIANT = 'gid://shopify/ProductVariant/47694728298670'; // $12.99
 
 interface GraphQLResponse<T> {
   readonly data?: T;
@@ -166,7 +166,7 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
           country { isoCode currency { isoCode } }
           language { isoCode }
         }
-        product(handle: "go-skin-and-coat-chicken-with-grains-12lb") {
+        product(handle: "agoracage-skin-and-coat-chicken-with-grains-12lb") {
           handle
           title
           availableForSale
@@ -251,31 +251,31 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
     expect(body.localization.language.isoCode).toBe('EN');
 
     // Product area — including metafield + image URL rewrite.
-    expect(body.product?.handle).toBe('go-skin-and-coat-chicken-with-grains-12lb');
+    expect(body.product?.handle).toBe('agoracage-skin-and-coat-chicken-with-grains-12lb');
     expect(body.product?.availableForSale).toBe(true);
     expect(body.product?.priceRange.minVariantPrice.amount).toBe('54.99');
     expect(body.product?.featuredImage?.url).toBe(
-      `${baseUrl}/images/products/go-skin-and-coat-chicken-with-grains-12lb-1.jpg`,
+      `${baseUrl}/images/products/agoracage-skin-and-coat-chicken-with-grains-12lb-1.jpg`,
     );
     expect(body.product?.metafield).toEqual({ namespace: 'specs', value: 'chicken' });
 
     expect(body.products.totalCount).toBe(5);
     expect(body.products.nodes.map((node) => node.handle)).toEqual([
-      'tickless-anti-tick-collar',
-      'fuzzyard-mushroom-dog-toys',
-      'go-skin-and-coat-chicken-with-grains-12lb',
+      'aislearena-anti-tick-collar',
+      'shopliseum-mushroom-dog-toys',
+      'agoracage-skin-and-coat-chicken-with-grains-12lb',
     ]);
 
     // productRecommendations excludes the requesting product.
     const recHandles = body.productRecommendations?.map((r) => r.handle) ?? [];
-    expect(recHandles).not.toContain('bluestem-toothbrush');
+    expect(recHandles).not.toContain('carthaeum-toothbrush');
     expect(recHandles.length).toBeGreaterThan(0);
 
     // Collection area — including order-preserving metafields with a miss.
     expect(body.collection?.handle).toBe('dog-essentials');
     expect(body.collection?.products.nodes.map((node) => node.handle)).toEqual([
-      'fuzzyard-mushroom-dog-toys',
-      'go-skin-and-coat-chicken-with-grains-12lb',
+      'shopliseum-mushroom-dog-toys',
+      'agoracage-skin-and-coat-chicken-with-grains-12lb',
     ]);
     expect(body.collection?.metafields[0]).toEqual({
       namespace: 'merch',
@@ -357,8 +357,8 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
         mutation {
           cartCreate(input: {
             lines: [
-              { merchandiseId: "${TICKLESS_VARIANT}", quantity: 1 }
-              { merchandiseId: "${FUZZYARD_VARIANT}", quantity: 2 }
+              { merchandiseId: "${AISLEARENA_VARIANT}", quantity: 1 }
+              { merchandiseId: "${SHOPLISEUM_VARIANT}", quantity: 2 }
             ]
           }) { ${cartFragment} }
         }
@@ -371,13 +371,13 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
     // 1 * 79.99 + 2 * 19.99 = 119.97.
     expect(created.cost.subtotalAmount).toEqual({ amount: '119.97', currencyCode: 'CAD' });
     expect(created.lines.nodes).toHaveLength(2);
-    const ticklessLineId = created.lines.nodes[0]?.id;
-    const fuzzyardLineId = created.lines.nodes[1]?.id;
-    if (ticklessLineId === undefined || fuzzyardLineId === undefined) {
+    const aisleArenaLineId = created.lines.nodes[0]?.id;
+    const shopliseumLineId = created.lines.nodes[1]?.id;
+    if (aisleArenaLineId === undefined || shopliseumLineId === undefined) {
       throw new Error('unreachable: cart should have two lines');
     }
 
-    // 2. cartLinesAdd: TICKLESS merges, BLUESTEM appends.
+    // 2. cartLinesAdd: AISLEARENA merges, CARTHAEUM appends.
     const add = await gql<AddPayload>(
       server.url,
       /* GraphQL */ `
@@ -385,8 +385,8 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
           cartLinesAdd(
             cartId: "${created.id}"
             lines: [
-              { merchandiseId: "${TICKLESS_VARIANT}", quantity: 2 }
-              { merchandiseId: "${BLUESTEM_VARIANT}", quantity: 1 }
+              { merchandiseId: "${AISLEARENA_VARIANT}", quantity: 2 }
+              { merchandiseId: "${CARTHAEUM_VARIANT}", quantity: 1 }
             ]
           ) { ${cartFragment} }
         }
@@ -395,21 +395,21 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
     expect(add.errors).toBeUndefined();
     const added = add.data?.cartLinesAdd.cart;
     if (!added) throw new Error('expected cart');
-    // TICKLESS qty=3, FUZZYARD qty=2, BLUESTEM qty=1.
+    // AISLEARENA qty=3, SHOPLISEUM qty=2, CARTHAEUM qty=1.
     expect(added.totalQuantity).toBe(6);
     expect(added.cost.subtotalAmount.amount).toBe('292.94');
     expect(added.lines.nodes).toHaveLength(3);
-    expect(added.lines.nodes[0]?.id).toBe(ticklessLineId); // merged keeps original id
+    expect(added.lines.nodes[0]?.id).toBe(aisleArenaLineId); // merged keeps original id
     expect(added.lines.nodes[0]?.quantity).toBe(3);
 
-    // 3. cartLinesUpdate(quantity: 0) drops FUZZYARD.
+    // 3. cartLinesUpdate(quantity: 0) drops SHOPLISEUM.
     const update = await gql<UpdatePayload>(
       server.url,
       /* GraphQL */ `
         mutation {
           cartLinesUpdate(
             cartId: "${created.id}"
-            lines: [{ id: "${fuzzyardLineId}", quantity: 0 }]
+            lines: [{ id: "${shopliseumLineId}", quantity: 0 }]
           ) { ${cartFragment} }
         }
       `,
@@ -419,14 +419,14 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
     if (!updated) throw new Error('expected cart');
     expect(updated.totalQuantity).toBe(4);
     expect(updated.lines.nodes).toHaveLength(2);
-    expect(updated.lines.nodes.some((line) => line.id === fuzzyardLineId)).toBe(false);
+    expect(updated.lines.nodes.some((line) => line.id === shopliseumLineId)).toBe(false);
 
-    // 4. cartLinesRemove drops TICKLESS.
+    // 4. cartLinesRemove drops AISLEARENA.
     const remove = await gql<RemovePayload>(
       server.url,
       /* GraphQL */ `
         mutation {
-          cartLinesRemove(cartId: "${created.id}", lineIds: ["${ticklessLineId}"]) {
+          cartLinesRemove(cartId: "${created.id}", lineIds: ["${aisleArenaLineId}"]) {
             ${cartFragment}
           }
         }
@@ -437,7 +437,7 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
     if (!removed) throw new Error('expected cart');
     expect(removed.totalQuantity).toBe(1);
     expect(removed.lines.nodes).toHaveLength(1);
-    expect(removed.lines.nodes[0]?.merchandise.id).toBe(BLUESTEM_VARIANT);
+    expect(removed.lines.nodes[0]?.merchandise.id).toBe(CARTHAEUM_VARIANT);
 
     // 5. Query.cart resolves the same id back with the surviving state.
     const lookup = await gql<CartLookupPayload>(
@@ -466,7 +466,7 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
     if (!persisted) throw new Error('expected cart');
     expect(persisted.id).toBe(created.id);
     expect(persisted.totalQuantity).toBe(1);
-    expect(persisted.lines.nodes[0]?.merchandise.id).toBe(BLUESTEM_VARIANT);
+    expect(persisted.lines.nodes[0]?.merchandise.id).toBe(CARTHAEUM_VARIANT);
   });
 
   it('serves /images/<file> with the spec MIME and cache headers (SC5)', async () => {

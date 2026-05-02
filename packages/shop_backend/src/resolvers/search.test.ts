@@ -101,25 +101,25 @@ async function search(variables: {
 
 describe('searchResolvers — Query.search filtering', () => {
   it('matches products by title', async () => {
-    const { totalCount, nodes } = await search({ q: 'tickless' });
+    const { totalCount, nodes } = await search({ q: 'aislearena' });
     expect(totalCount).toBe(1);
-    expect(nodes).toEqual([{ __typename: 'Product', handle: 'tickless-anti-tick-collar' }]);
+    expect(nodes).toEqual([{ __typename: 'Product', handle: 'aislearena-anti-tick-collar' }]);
   });
 
   it('matches products by description text', async () => {
-    // "ultrasonic" appears only in the tickless collar's description_html.
+    // "ultrasonic" appears only in the aislearena collar's description_html.
     const { totalCount, nodes } = await search({ q: 'ultrasonic' });
     expect(totalCount).toBe(1);
-    expect(nodes).toEqual([{ __typename: 'Product', handle: 'tickless-anti-tick-collar' }]);
+    expect(nodes).toEqual([{ __typename: 'Product', handle: 'aislearena-anti-tick-collar' }]);
   });
 
   it('matches products by tag', async () => {
-    // "stuffed" appears only in the fuzzyard "Stuffed animal" tag —
+    // "stuffed" appears only in the shopliseum "Stuffed animal" tag —
     // not in the title or description — exercising the tags portion of
     // the product haystack.
     const { totalCount, nodes } = await search({ q: 'stuffed' });
     expect(totalCount).toBe(1);
-    expect(nodes).toEqual([{ __typename: 'Product', handle: 'fuzzyard-mushroom-dog-toys' }]);
+    expect(nodes).toEqual([{ __typename: 'Product', handle: 'shopliseum-mushroom-dog-toys' }]);
   });
 
   it('returns mixed Product + Article results, preserving dataset + insertion order on ties', async () => {
@@ -131,11 +131,11 @@ describe('searchResolvers — Query.search filtering', () => {
     const result = await search({ q: 'mock' });
     expect(result.totalCount).toBe(6);
     expect(result.nodes).toEqual([
-      { __typename: 'Product', handle: 'tickless-anti-tick-collar' },
-      { __typename: 'Product', handle: 'fuzzyard-mushroom-dog-toys' },
-      { __typename: 'Product', handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-      { __typename: 'Product', handle: 'applaws-mackerel-and-sardines-70g' },
-      { __typename: 'Product', handle: 'bluestem-toothbrush' },
+      { __typename: 'Product', handle: 'aislearena-anti-tick-collar' },
+      { __typename: 'Product', handle: 'shopliseum-mushroom-dog-toys' },
+      { __typename: 'Product', handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+      { __typename: 'Product', handle: 'cartanvil-mackerel-and-sardines-70g' },
+      { __typename: 'Product', handle: 'carthaeum-toothbrush' },
       { __typename: 'Article', handle: 'welcome-post' },
     ]);
   });
@@ -144,11 +144,11 @@ describe('searchResolvers — Query.search filtering', () => {
     const { totalCount, nodes } = await search({ q: '' });
     expect(totalCount).toBe(7);
     expect(nodes).toEqual([
-      { __typename: 'Product', handle: 'tickless-anti-tick-collar' },
-      { __typename: 'Product', handle: 'fuzzyard-mushroom-dog-toys' },
-      { __typename: 'Product', handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-      { __typename: 'Product', handle: 'applaws-mackerel-and-sardines-70g' },
-      { __typename: 'Product', handle: 'bluestem-toothbrush' },
+      { __typename: 'Product', handle: 'aislearena-anti-tick-collar' },
+      { __typename: 'Product', handle: 'shopliseum-mushroom-dog-toys' },
+      { __typename: 'Product', handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+      { __typename: 'Product', handle: 'cartanvil-mackerel-and-sardines-70g' },
+      { __typename: 'Product', handle: 'carthaeum-toothbrush' },
       { __typename: 'Page', handle: 'about-us' },
       { __typename: 'Article', handle: 'welcome-post' },
     ]);
@@ -159,11 +159,11 @@ describe('searchResolvers — Query.search filtering', () => {
     expect(totalCount).toBe(5);
     expect(nodes.every((n) => n.__typename === 'Product')).toBe(true);
     expect(nodes).toEqual([
-      { __typename: 'Product', handle: 'tickless-anti-tick-collar' },
-      { __typename: 'Product', handle: 'fuzzyard-mushroom-dog-toys' },
-      { __typename: 'Product', handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-      { __typename: 'Product', handle: 'applaws-mackerel-and-sardines-70g' },
-      { __typename: 'Product', handle: 'bluestem-toothbrush' },
+      { __typename: 'Product', handle: 'aislearena-anti-tick-collar' },
+      { __typename: 'Product', handle: 'shopliseum-mushroom-dog-toys' },
+      { __typename: 'Product', handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+      { __typename: 'Product', handle: 'cartanvil-mackerel-and-sardines-70g' },
+      { __typename: 'Product', handle: 'carthaeum-toothbrush' },
     ]);
   });
 });
@@ -175,11 +175,11 @@ describe('searchResolvers — Query.search sort + pagination', () => {
     // articles have no price, so they trail the products.
     const { nodes } = await search({ q: '', sortKey: 'PRICE' });
     expect(nodes).toEqual([
-      { __typename: 'Product', handle: 'applaws-mackerel-and-sardines-70g' },
-      { __typename: 'Product', handle: 'bluestem-toothbrush' },
-      { __typename: 'Product', handle: 'fuzzyard-mushroom-dog-toys' },
-      { __typename: 'Product', handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-      { __typename: 'Product', handle: 'tickless-anti-tick-collar' },
+      { __typename: 'Product', handle: 'cartanvil-mackerel-and-sardines-70g' },
+      { __typename: 'Product', handle: 'carthaeum-toothbrush' },
+      { __typename: 'Product', handle: 'shopliseum-mushroom-dog-toys' },
+      { __typename: 'Product', handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+      { __typename: 'Product', handle: 'aislearena-anti-tick-collar' },
       { __typename: 'Page', handle: 'about-us' },
       { __typename: 'Article', handle: 'welcome-post' },
     ]);
@@ -295,11 +295,11 @@ describe('searchResolvers — Query.predictiveSearch', () => {
     // fan-out and the suggestion echo.
     const result = await predictiveSearch({ q: 'mock' });
     expect(result.products).toEqual([
-      { handle: 'tickless-anti-tick-collar' },
-      { handle: 'fuzzyard-mushroom-dog-toys' },
-      { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-      { handle: 'applaws-mackerel-and-sardines-70g' },
-      { handle: 'bluestem-toothbrush' },
+      { handle: 'aislearena-anti-tick-collar' },
+      { handle: 'shopliseum-mushroom-dog-toys' },
+      { handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+      { handle: 'cartanvil-mackerel-and-sardines-70g' },
+      { handle: 'carthaeum-toothbrush' },
     ]);
     expect(result.collections).toEqual([]);
     expect(result.pages).toEqual([]);
@@ -320,8 +320,8 @@ describe('searchResolvers — Query.predictiveSearch', () => {
     // 5 products match "mock"; cap to 2.
     const result = await predictiveSearch({ q: 'mock', limit: 2 });
     expect(result.products).toEqual([
-      { handle: 'tickless-anti-tick-collar' },
-      { handle: 'fuzzyard-mushroom-dog-toys' },
+      { handle: 'aislearena-anti-tick-collar' },
+      { handle: 'shopliseum-mushroom-dog-toys' },
     ]);
     expect(result.articles).toEqual([{ handle: 'welcome-post' }]);
     expect(result.queries).toHaveLength(1);
@@ -332,18 +332,18 @@ describe('searchResolvers — Query.predictiveSearch', () => {
     // 3 products and drops everything else; the suggestion is unaffected.
     const result = await predictiveSearch({ q: 'mock', limit: 3, limitScope: 'ALL' });
     expect(result.products).toEqual([
-      { handle: 'tickless-anti-tick-collar' },
-      { handle: 'fuzzyard-mushroom-dog-toys' },
-      { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
+      { handle: 'aislearena-anti-tick-collar' },
+      { handle: 'shopliseum-mushroom-dog-toys' },
+      { handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
     ]);
     expect(result.articles).toEqual([]);
     expect(result.queries).toHaveLength(1);
   });
 
   it('echoes the trimmed term in the SearchQuerySuggestion', async () => {
-    const result = await predictiveSearch({ q: '  Tickless  ', types: ['QUERY'] });
+    const result = await predictiveSearch({ q: '  AisleArena  ', types: ['QUERY'] });
     expect(result.queries).toEqual([
-      { text: 'Tickless', styledText: 'Tickless', trackingParameters: null },
+      { text: 'AisleArena', styledText: 'AisleArena', trackingParameters: null },
     ]);
     expect(result.products).toEqual([]);
   });
@@ -565,13 +565,13 @@ describe('searchResolvers — Query.productRecommendations', () => {
   it('integrates with the loader fixture — excludes the requesting product', async () => {
     // The fixture has 5 products with no shared types or tags, so every
     // candidate ties at score 0. Dataset insertion order must be preserved
-    // and the requesting product (tickless, id 9048676991150) excluded.
+    // and the requesting product (aislearena, id 9048676991150) excluded.
     const result = await recommend(yoga, 'gid://shopify/Product/9048676991150');
     expect(result).toEqual([
-      { handle: 'fuzzyard-mushroom-dog-toys' },
-      { handle: 'go-skin-and-coat-chicken-with-grains-12lb' },
-      { handle: 'applaws-mackerel-and-sardines-70g' },
-      { handle: 'bluestem-toothbrush' },
+      { handle: 'shopliseum-mushroom-dog-toys' },
+      { handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },
+      { handle: 'cartanvil-mackerel-and-sardines-70g' },
+      { handle: 'carthaeum-toothbrush' },
     ]);
   });
 });

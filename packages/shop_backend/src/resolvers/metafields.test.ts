@@ -52,7 +52,7 @@ describe('metafieldResolvers — Product.metafield', () => {
   it('returns the metafield matching namespace + key', async () => {
     const result = await run(/* GraphQL */ `
       {
-        product(handle: "go-skin-and-coat-chicken-with-grains-12lb") {
+        product(handle: "agoracage-skin-and-coat-chicken-with-grains-12lb") {
           metafield(namespace: "specs", key: "protein_source") {
             id
             namespace
@@ -67,7 +67,7 @@ describe('metafieldResolvers — Product.metafield', () => {
     expect(result.data).toEqual({
       product: {
         metafield: {
-          id: 'gid://shopify/Metafield/80b98489',
+          id: 'gid://shopify/Metafield/1c8636fb',
           namespace: 'specs',
           key: 'protein_source',
           value: 'chicken',
@@ -80,7 +80,7 @@ describe('metafieldResolvers — Product.metafield', () => {
   it('returns null when the metafield is missing', async () => {
     const result = await run(/* GraphQL */ `
       {
-        product(handle: "go-skin-and-coat-chicken-with-grains-12lb") {
+        product(handle: "agoracage-skin-and-coat-chicken-with-grains-12lb") {
           metafield(namespace: "specs", key: "missing_key") {
             value
           }
@@ -94,7 +94,7 @@ describe('metafieldResolvers — Product.metafield', () => {
   it('returns null on a product with no metafields', async () => {
     const result = await run(/* GraphQL */ `
       {
-        product(handle: "tickless-anti-tick-collar") {
+        product(handle: "aislearena-anti-tick-collar") {
           metafield(namespace: "specs", key: "protein_source") {
             value
           }
@@ -110,7 +110,7 @@ describe('metafieldResolvers — Product.metafields', () => {
   it('preserves request order and returns null for misses', async () => {
     const result = await run(/* GraphQL */ `
       {
-        product(handle: "go-skin-and-coat-chicken-with-grains-12lb") {
+        product(handle: "agoracage-skin-and-coat-chicken-with-grains-12lb") {
           metafields(
             identifiers: [
               { namespace: "specs", key: "missing" }

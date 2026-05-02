@@ -1,9 +1,6 @@
 # ShopBackend
 
-Local GraphQL server that backs **SandboxShop** sandboxes. Mirrors a useful
-subset of [Shopify's Storefront API](https://shopify.dev/docs/api/storefront)
-against a synthesized SandboxShop dataset (a directory of JSON files), so an
-agent or storefront client can talk to it as if it were a real shop.
+Local GraphQL server that backs **SandboxShop** sandboxes.
 
 Used for benchmarking shopping LLM agents and as the planned host of an RL
 environment. Spec:
@@ -44,8 +41,7 @@ The CLI prints loaded counts on startup and binds:
 | `GET /images/<path>`                | Static images under `<data-dir>/images/`.               |
 | `GET /health`                       | `200 {"status":"ok","store":"<name>"}`.                 |
 
-CORS allows `*` origins for `Content-Type` and
-`X-Shopify-Storefront-Access-Token` over `POST, OPTIONS` (spec §5.4).
+CORS allows `*` origins.
 
 ### Example query
 

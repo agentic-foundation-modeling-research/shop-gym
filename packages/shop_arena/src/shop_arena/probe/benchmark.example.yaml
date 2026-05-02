@@ -28,7 +28,7 @@ reals:
   - name: real_a
     base_url: https://real-1.example.invalid
     label: real
-    notes: Stock-leaning Online Store 2.0 / Dawn-derivative theme.
+    notes: Stock-leaning baseline default-theme storefront.
   - name: real_b
     base_url: https://real-2.example.invalid
     label: real
@@ -36,4 +36,4 @@ reals:
   - name: real_c
     base_url: https://real-3.example.invalid
     label: real
-    notes: Hydrogen-based with multi-market locale switching.
+    notes: Headless React-based storefront with multi-market locale switching.

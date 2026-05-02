@@ -1,8 +1,8 @@
-# `fixture_dawn_demo` cassette
+# `fixture_demo_storefront` cassette
 
 Hand-crafted replay cassette modelling a **minimal** storefront
-profile (the Dawn default-theme demo at
-`https://theme-dawn-demo.myshopify.com`) used by
+profile (a default-theme demo at
+`https://demo-storefront.example.invalid`) used by
 `tests/explore/test_pipeline_replay.py` (T4.2).
 
 The minimal profile exercises a different code path from
@@ -21,10 +21,10 @@ landing in `parts/`.
 ## Provenance
 
 This is a **synthetic placeholder cassette**, not a recording of the
-live `theme-dawn-demo.myshopify.com` storefront. Live recording
+live `demo-storefront.example.invalid` storefront. Live recording
 remains a manual milestone gate (see `docs/impl/shop_explore_implementation.md`
 T4.5 for the live e2e workflow). The cassette is hand-authored to
-reflect the documented profile of the Dawn theme demo so the replay
+reflect the documented profile of a minimal default-theme demo so the replay
 pipeline test exercises a minimal-storefront shape end-to-end. Refresh
 by re-running the live `pi` runtime under `HARNESS_RECORD=1` once the
 recording infrastructure (T4.2 follow-up) lands.
@@ -32,7 +32,7 @@ recording infrastructure (T4.2 follow-up) lands.
 ## Shape
 
 ```
-fixture_dawn_demo/
+fixture_demo_storefront/
 ├── plan/
 │   ├── trajectory.json
 │   └── workspace_after/plan.md

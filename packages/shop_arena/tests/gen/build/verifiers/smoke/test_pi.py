@@ -11,8 +11,8 @@ spec §5.2.1 / impl plan T6.2 invariants:
 * at least one screenshot lands under ``work/screenshots/``;
 * ``work/verdict.json`` parses against the §9.3 schema.
 
-The fixture URL defaults to the Dawn theme demo
-(`https://theme-dawn-demo.myshopify.com`); override with
+The fixture URL defaults to a default-theme demo storefront
+(`https://demo-storefront.example.invalid`); override with
 ``SHOP_GEN_VISUAL_SMOKE_URL`` when iterating against another live shop.
 """
 
@@ -34,7 +34,7 @@ from shop_arena.gen.build.verifiers.visual_judge import (
 
 _SMOKE_ENV_VAR = "SHOP_GEN_VISUAL_SMOKE_PI"
 _URL_ENV_VAR = "SHOP_GEN_VISUAL_SMOKE_URL"
-_DEFAULT_FIXTURE_URL = "https://theme-dawn-demo.myshopify.com"
+_DEFAULT_FIXTURE_URL = "https://demo-storefront.example.invalid"
 
 _LIVE_TIMEOUT_SECONDS = 600.0
 _PASS_THRESHOLD = 7.0

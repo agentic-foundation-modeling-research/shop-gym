@@ -225,8 +225,8 @@ const FIXTURE_DIR = path.resolve(
   '../../tests/fixtures/sandbox_shop_v0',
 );
 const BASE_URL = 'https://shop.example';
-const TICKLESS_VARIANT = 'gid://shopify/ProductVariant/47642512195758'; // $79.99
-const FUZZYARD_VARIANT = 'gid://shopify/ProductVariant/47242666836142'; // $19.99
+const AISLEARENA_VARIANT = 'gid://shopify/ProductVariant/47642512195758'; // $79.99
+const SHOPLISEUM_VARIANT = 'gid://shopify/ProductVariant/47242666836142'; // $19.99
 
 const resolvers: SandboxSchemaResolvers = {
   Query: cartResolvers.Query,
@@ -275,8 +275,8 @@ describe('cartResolvers — Query.cart', () => {
     const carts = new CartStore();
     const cart = carts.create({
       lines: [
-        { merchandiseId: TICKLESS_VARIANT, quantity: 2 },
-        { merchandiseId: FUZZYARD_VARIANT, quantity: 3 },
+        { merchandiseId: AISLEARENA_VARIANT, quantity: 2 },
+        { merchandiseId: SHOPLISEUM_VARIANT, quantity: 3 },
       ],
     });
     const run = runWith(carts);
@@ -349,8 +349,8 @@ describe('cartResolvers — Query.cart', () => {
                 totalAmount: { amount: '159.98' },
               },
               merchandise: {
-                id: TICKLESS_VARIANT,
-                product: { handle: 'tickless-anti-tick-collar' },
+                id: AISLEARENA_VARIANT,
+                product: { handle: 'aislearena-anti-tick-collar' },
               },
             },
             {
@@ -361,8 +361,8 @@ describe('cartResolvers — Query.cart', () => {
                 totalAmount: { amount: '59.97' },
               },
               merchandise: {
-                id: FUZZYARD_VARIANT,
-                product: { handle: 'fuzzyard-mushroom-dog-toys' },
+                id: SHOPLISEUM_VARIANT,
+                product: { handle: 'shopliseum-mushroom-dog-toys' },
               },
             },
           ],
@@ -375,8 +375,8 @@ describe('cartResolvers — Query.cart', () => {
     const carts = new CartStore();
     const cart = carts.create({
       lines: [
-        { merchandiseId: TICKLESS_VARIANT, quantity: 1 },
-        { merchandiseId: FUZZYARD_VARIANT, quantity: 1 },
+        { merchandiseId: AISLEARENA_VARIANT, quantity: 1 },
+        { merchandiseId: SHOPLISEUM_VARIANT, quantity: 1 },
       ],
     });
     const run = runWith(carts);
@@ -433,7 +433,7 @@ describe('cartResolvers — Query.cart', () => {
 
 // ── Cart mutations (T4.3) ─────────────────────────────────────────────────
 
-const BLUESTEM_VARIANT = 'gid://shopify/ProductVariant/47694728298670'; // $12.99
+const CARTHAEUM_VARIANT = 'gid://shopify/ProductVariant/47694728298670'; // $12.99
 
 interface CartLineSummary {
   readonly id: string;
@@ -524,8 +524,8 @@ describe('cartResolvers — line mutations (T4.3)', () => {
       mutation {
         cartCreate(input: {
           lines: [
-            { merchandiseId: "${TICKLESS_VARIANT}", quantity: 1 },
-            { merchandiseId: "${FUZZYARD_VARIANT}", quantity: 2 }
+            { merchandiseId: "${AISLEARENA_VARIANT}", quantity: 1 },
+            { merchandiseId: "${SHOPLISEUM_VARIANT}", quantity: 2 }
           ]
         }) {
           ${CART_PAYLOAD_FRAGMENT}
@@ -539,22 +539,22 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     // 1 * 79.99 + 2 * 19.99 = 79.99 + 39.98 = 119.97.
     expect(created.subtotal).toBe('119.97');
     expect(created.lines).toHaveLength(2);
-    const ticklessLineId = created.lines[0]?.id;
-    const fuzzyardLineId = created.lines[1]?.id;
-    if (ticklessLineId === undefined || fuzzyardLineId === undefined) {
+    const aisleArenaLineId = created.lines[0]?.id;
+    const shopliseumLineId = created.lines[1]?.id;
+    if (aisleArenaLineId === undefined || shopliseumLineId === undefined) {
       throw new Error('unreachable: cart should have two lines');
     }
-    expect(created.lines[0]?.merchandiseId).toBe(TICKLESS_VARIANT);
-    expect(created.lines[1]?.merchandiseId).toBe(FUZZYARD_VARIANT);
+    expect(created.lines[0]?.merchandiseId).toBe(AISLEARENA_VARIANT);
+    expect(created.lines[1]?.merchandiseId).toBe(SHOPLISEUM_VARIANT);
 
-    // 2. cartLinesAdd: TICKLESS merges, BLUESTEM is a new line.
+    // 2. cartLinesAdd: AISLEARENA merges, CARTHAEUM is a new line.
     const addResult = await run(/* GraphQL */ `
       mutation {
         cartLinesAdd(
           cartId: "${created.id}"
           lines: [
-            { merchandiseId: "${TICKLESS_VARIANT}", quantity: 2 }
-            { merchandiseId: "${BLUESTEM_VARIANT}", quantity: 1 }
+            { merchandiseId: "${AISLEARENA_VARIANT}", quantity: 2 }
+            { merchandiseId: "${CARTHAEUM_VARIANT}", quantity: 1 }
           ]
         ) {
           ${CART_PAYLOAD_FRAGMENT}
@@ -563,20 +563,20 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     `);
     expect(addResult.errors).toBeUndefined();
     const added = unwrapCart(addResult.data, 'cartLinesAdd');
-    // TICKLESS qty=3, FUZZYARD qty=2, BLUESTEM qty=1 → 6 total.
+    // AISLEARENA qty=3, SHOPLISEUM qty=2, CARTHAEUM qty=1 → 6 total.
     expect(added.totalQuantity).toBe(6);
     // 3 * 79.99 + 2 * 19.99 + 1 * 12.99 = 239.97 + 39.98 + 12.99 = 292.94.
     expect(added.subtotal).toBe('292.94');
     expect(added.lines).toHaveLength(3);
-    expect(added.lines[0]?.id).toBe(ticklessLineId); // merged → same id
+    expect(added.lines[0]?.id).toBe(aisleArenaLineId); // merged → same id
     expect(added.lines[0]?.quantity).toBe(3);
 
-    // 3. cartLinesUpdate with quantity: 0 removes the FUZZYARD line.
+    // 3. cartLinesUpdate with quantity: 0 removes the SHOPLISEUM line.
     const updateResult = await run(/* GraphQL */ `
       mutation {
         cartLinesUpdate(
           cartId: "${created.id}"
-          lines: [{ id: "${fuzzyardLineId}", quantity: 0 }]
+          lines: [{ id: "${shopliseumLineId}", quantity: 0 }]
         ) {
           ${CART_PAYLOAD_FRAGMENT}
         }
@@ -584,16 +584,16 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     `);
     expect(updateResult.errors).toBeUndefined();
     const updated = unwrapCart(updateResult.data, 'cartLinesUpdate');
-    expect(updated.totalQuantity).toBe(4); // 3 TICKLESS + 1 BLUESTEM
+    expect(updated.totalQuantity).toBe(4); // 3 AISLEARENA + 1 CARTHAEUM
     // 3 * 79.99 + 1 * 12.99 = 239.97 + 12.99 = 252.96.
     expect(updated.subtotal).toBe('252.96');
     expect(updated.lines).toHaveLength(2);
-    expect(updated.lines.some((l) => l.id === fuzzyardLineId)).toBe(false);
+    expect(updated.lines.some((l) => l.id === shopliseumLineId)).toBe(false);
 
-    // 4. cartLinesRemove drops the TICKLESS line.
+    // 4. cartLinesRemove drops the AISLEARENA line.
     const removeResult = await run(/* GraphQL */ `
       mutation {
-        cartLinesRemove(cartId: "${created.id}", lineIds: ["${ticklessLineId}"]) {
+        cartLinesRemove(cartId: "${created.id}", lineIds: ["${aisleArenaLineId}"]) {
           ${CART_PAYLOAD_FRAGMENT}
         }
       }
@@ -603,7 +603,7 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     expect(removed.totalQuantity).toBe(1);
     expect(removed.subtotal).toBe('12.99');
     expect(removed.lines).toHaveLength(1);
-    expect(removed.lines[0]?.merchandiseId).toBe(BLUESTEM_VARIANT);
+    expect(removed.lines[0]?.merchandiseId).toBe(CARTHAEUM_VARIANT);
   });
 
   it('cartCreate with no input allocates an empty cart', async () => {
@@ -631,7 +631,7 @@ describe('cartResolvers — line mutations (T4.3)', () => {
       mutation {
         cartLinesAdd(
           cartId: "gid://shopify/Cart/cart-999"
-          lines: [{ merchandiseId: "${TICKLESS_VARIANT}", quantity: 1 }]
+          lines: [{ merchandiseId: "${AISLEARENA_VARIANT}", quantity: 1 }]
         ) {
           cart { id }
           userErrors { code field message }

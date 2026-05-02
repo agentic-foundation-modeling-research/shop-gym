@@ -9,51 +9,51 @@
     {
       "timestamp": "2026-04-25T10:42:01.429514Z",
       "kind": "tool_call",
-      "call_id": "toolu_012ngB8RgQsemwcdwZuFB4qG",
+      "call_id": "toolu_eVY3NmZDsqgyZ9b7OLdNPykq",
       "tool": "Write",
       "arguments": {
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md",
+        "file_path": "/tmp/harness-mock-workspace/plan.md",
         "content": "# Plan\n\n## Tasks\n- [ ] homepage          [priority: 2]\n- [ ] product_detail    [priority: 1]\n"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:01.429514Z",
       "kind": "tool_result",
-      "call_id": "toolu_012ngB8RgQsemwcdwZuFB4qG",
+      "call_id": "toolu_eVY3NmZDsqgyZ9b7OLdNPykq",
       "output": "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>",
       "is_error": true
     },
     {
       "timestamp": "2026-04-25T10:42:01.429514Z",
       "kind": "tool_call",
-      "call_id": "toolu_01BFUhgCJ6F2e7ihoVGHZkYH",
+      "call_id": "toolu_yvg8qBwNUe5i86FhR2r4J07j",
       "tool": "Read",
       "arguments": {
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md"
+        "file_path": "/tmp/harness-mock-workspace/plan.md"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:01.429514Z",
       "kind": "tool_result",
-      "call_id": "toolu_01BFUhgCJ6F2e7ihoVGHZkYH",
+      "call_id": "toolu_yvg8qBwNUe5i86FhR2r4J07j",
       "output": "<system-reminder>Warning: the file exists but is shorter than the provided offset (1). The file has 1 lines.</system-reminder>",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:42:01.429514Z",
       "kind": "tool_call",
-      "call_id": "toolu_01SoW3aF2eKyoNTYFv1E3coU",
+      "call_id": "toolu_nAzLbzXopWkOl5eQPW3sgEf5",
       "tool": "Write",
       "arguments": {
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md",
+        "file_path": "/tmp/harness-mock-workspace/plan.md",
         "content": "# Plan\n\n## Tasks\n- [ ] homepage          [priority: 2]\n- [ ] product_detail    [priority: 1]\n"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:01.429514Z",
       "kind": "tool_result",
-      "call_id": "toolu_01SoW3aF2eKyoNTYFv1E3coU",
-      "output": "File created successfully at: /private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md",
+      "call_id": "toolu_nAzLbzXopWkOl5eQPW3sgEf5",
+      "output": "File created successfully at: /tmp/harness-mock-workspace/plan.md",
       "is_error": false
     },
     {

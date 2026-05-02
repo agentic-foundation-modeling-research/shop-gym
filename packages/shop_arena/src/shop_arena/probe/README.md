@@ -4,11 +4,11 @@ Reproducible measurement instrument that scores any deployed
 storefront on three independent axes — **capability coverage**, **surface
 area**, and **agent indistinguishability** — and produces group-vs-group
 fidelity numbers between a population of generated SandboxShops and a
-population of real Shopify storefronts.
+population of real storefronts.
 
 `shop-probe` is deployment-agnostic: it takes a base URL and assumes a storefront (`/`, `/collections/*`, `/products/*`, `/cart`,
 `/search`, `/policies/*`, `/pages/*`). It does not care whether the target is
-a real Shopify shop, a SandboxShop served by `shop_backend`, or another
+a real shop, a SandboxShop served by `shop_backend`, or another
 vendor's storefront. Specs:
 [`docs/specs/shop_arena/web_probe.md`](../../../../docs/specs/shop_arena/web_probe.md)
 plus the
@@ -51,7 +51,7 @@ Stage 3 (reserved): cherry-pick one shop, compare to others
 
 | Axis | What it measures | Implementation |
 | ---- | ---------------- | -------------- |
-| **A — Capability coverage** | Does it have the modern-web features a real Shopify storefront has? (predictive search, filter URL-state sync, accordion PDP, …) | ~80 deterministic Playwright probes from a versioned rubric. `core / modern / advanced` levels. `probes/`, `rubric/v1.yaml` and `v1.1.yaml`. |
+| **A — Capability coverage** | Does it have the modern-web features a real storefront has? (predictive search, filter URL-state sync, accordion PDP, …) | ~80 deterministic Playwright probes from a versioned rubric. `core / modern / advanced` levels. `probes/`, `rubric/v1.yaml` and `v1.1.yaml`. |
 | **B — Surface area** | Is the action/observation space rich enough to be non-trivial for an agent? | Crawl-derived metrics: distinct templates, interactables/template, forms/fields, routes, catalog combinatorics, DOM size. `surface/`. |
 | **C — Agent indistinguishability** | From an agent's POV, is the sandbox group distinguishable from the real-shop group? | Per-shop Turing-test classifier over anonymized agent trajectories; group-level accuracy aggregated at stage 2. `judge/`. |
 

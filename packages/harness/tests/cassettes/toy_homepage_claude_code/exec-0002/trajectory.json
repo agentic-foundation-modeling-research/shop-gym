@@ -9,27 +9,27 @@
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_call",
-      "call_id": "toolu_01FvVyDDbEiUTorDag9huMQ2",
+      "call_id": "toolu_P2Qcczl55Effg1w05liOwlHJ",
       "tool": "Read",
       "arguments": {
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md"
+        "file_path": "/tmp/harness-mock-workspace/plan.md"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_result",
-      "call_id": "toolu_01FvVyDDbEiUTorDag9huMQ2",
+      "call_id": "toolu_P2Qcczl55Effg1w05liOwlHJ",
       "output": "1\t# Plan\n2\t\n3\t## Tasks\n4\t- [x] homepage          [priority: 2]\n5\t- [ ] product_detail    [priority: 1]\n6\t",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_call",
-      "call_id": "toolu_01XzhqBwzeaTdTTur3VzgG5c",
+      "call_id": "toolu_exYzpBHToItsEyjpVGx5y5j6",
       "tool": "Edit",
       "arguments": {
         "replace_all": false,
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md",
+        "file_path": "/tmp/harness-mock-workspace/plan.md",
         "old_string": "- [ ] product_detail    [priority: 1]",
         "new_string": "- [~] product_detail    [priority: 1]"
       }
@@ -37,40 +37,40 @@
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_result",
-      "call_id": "toolu_01XzhqBwzeaTdTTur3VzgG5c",
-      "output": "The file /private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md has been updated successfully.",
+      "call_id": "toolu_exYzpBHToItsEyjpVGx5y5j6",
+      "output": "The file /tmp/harness-mock-workspace/plan.md has been updated successfully.",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_call",
-      "call_id": "toolu_01WbioySApztEoWGzrsijrSQ",
+      "call_id": "toolu_3oHiNPLt1rQKU8p2lDYA1PV5",
       "tool": "Write",
       "arguments": {
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/artifact/product_detail.md",
+        "file_path": "/tmp/harness-mock-workspace/artifact/product_detail.md",
         "content": "product_detail: gallery, title, price, variant picker, add-to-cart, description\n"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_result",
-      "call_id": "toolu_01WbioySApztEoWGzrsijrSQ",
-      "output": "File created successfully at: /private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/artifact/product_detail.md",
+      "call_id": "toolu_3oHiNPLt1rQKU8p2lDYA1PV5",
+      "output": "File created successfully at: /tmp/harness-mock-workspace/artifact/product_detail.md",
       "is_error": false
     },
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_call",
-      "call_id": "toolu_01NQtadNyypDQQHksCxXVBGA",
+      "call_id": "toolu_uYAjRtJmk15u2a55wI1NdQBG",
       "tool": "Read",
       "arguments": {
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md"
+        "file_path": "/tmp/harness-mock-workspace/plan.md"
       }
     },
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_result",
-      "call_id": "toolu_01NQtadNyypDQQHksCxXVBGA",
+      "call_id": "toolu_uYAjRtJmk15u2a55wI1NdQBG",
       "output": "1\t# Plan\n2\t\n3\t## Tasks\n4\t- [x] homepage          [priority: 2]\n5\t- [~] product_detail    [priority: 1]\n6\t",
       "is_error": false
     },
@@ -83,11 +83,11 @@
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_call",
-      "call_id": "toolu_01AKWw8YVZGqAd9vAHQs5xQA",
+      "call_id": "toolu_XR3tG7IAV9FtRICFMReysVr0",
       "tool": "Edit",
       "arguments": {
         "replace_all": false,
-        "file_path": "/private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md",
+        "file_path": "/tmp/harness-mock-workspace/plan.md",
         "old_string": "- [~] product_detail    [priority: 1]",
         "new_string": "- [x] product_detail    [priority: 1]"
       }
@@ -95,8 +95,8 @@
     {
       "timestamp": "2026-04-25T10:42:43.690895Z",
       "kind": "tool_result",
-      "call_id": "toolu_01AKWw8YVZGqAd9vAHQs5xQA",
-      "output": "The file /private/var/folders/bg/5f3l654953l_mq1pzwwctkxh0000gn/T/harness-record-claude_code-nwm47fd9/plan.md has been updated successfully.",
+      "call_id": "toolu_XR3tG7IAV9FtRICFMReysVr0",
+      "output": "The file /tmp/harness-mock-workspace/plan.md has been updated successfully.",
       "is_error": false
     },
     {

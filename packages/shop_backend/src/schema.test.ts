@@ -122,12 +122,12 @@ describe('createSandboxSchema — combined resolvers', () => {
     expect(result.data).toEqual({
       shop: { name: 'Mock Pet Foods' },
       products: {
-        nodes: [{ handle: 'tickless-anti-tick-collar' }, { handle: 'fuzzyard-mushroom-dog-toys' }],
+        nodes: [{ handle: 'aislearena-anti-tick-collar' }, { handle: 'shopliseum-mushroom-dog-toys' }],
       },
       collection: {
         handle: 'dog-essentials',
         products: {
-          nodes: [{ handle: 'fuzzyard-mushroom-dog-toys' }],
+          nodes: [{ handle: 'shopliseum-mushroom-dog-toys' }],
         },
       },
     });

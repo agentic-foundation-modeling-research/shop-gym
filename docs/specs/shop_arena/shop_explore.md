@@ -655,7 +655,7 @@ updated. Tag `shop-explore-v0.1.0`.
    toward direct for v0.1.
 2. **Run id collision policy.** Currently abort if `<out_dir>` is
    non-empty. Should we add `--force` to overwrite? Lean no.
-3. **Fixture storefronts.** Pick 2–3 public Shopify dev demo stores
+3. **Fixture storefronts.** Pick 2–3 public dev demo stores
    for the test cassettes that we have license to redistribute
    anonymized snapshots of.
 4. **Capabilities schema versioning.** Field-additive only within

@@ -65,8 +65,8 @@ def _seed_dataset(data_dir: Path) -> Path:
             for i in range(10)
         ],
         products=[
-            {"handle": "tickless-anti-tick-collar", "title": "Tickless Anti Tick Collar"},
-            {"handle": "fuzzyard-mushroom-dog-toys", "title": "Fuzzyard Mushroom Dog Toys"},
+            {"handle": "wireless-anti-tick-collar", "title": "Wireless Anti Tick Collar"},
+            {"handle": "shopliseum-mushroom-dog-toys", "title": "Shopliseum Mushroom Dog Toys"},
         ],
         pages=[{"handle": f"page-{i:02d}", "title": f"Page {i}"} for i in range(8)],
     )
@@ -161,8 +161,8 @@ def test_bucket_routes_product_uses_first_collection_first_product(tmp_path: Pat
 def test_bucket_routes_cart_search_renders_cart_and_search(tmp_path: Path) -> None:
     _seed_dataset(tmp_path)
     routes = bucket_routes("cart_search", tmp_path)
-    # First product title is ``Tickless Anti Tick Collar``; the noun-token
-    # resolver skips ``tickless`` (-less suffix) and ``anti`` (prefix word),
+    # First product title is ``AisleArena Anti Tick Collar``; the noun-token
+    # resolver skips ``wireless`` (-less suffix) and ``anti`` (prefix word),
     # landing on ``tick``. Spec §9.1 + T4.2.
     assert routes == ("/cart", "/search?q=tick")
 
@@ -194,11 +194,11 @@ def test_bucket_routes_handles_missing_data_files(tmp_path: Path) -> None:
 
 
 def test_search_token_skips_adjective_lead_then_prefix_word(tmp_path: Path) -> None:
-    """Tickless (-less suffix) and ``anti`` (prefix word) are skipped; first
+    """Wireless (-less suffix) and ``anti`` (prefix word) are skipped; first
     surviving token is ``tick``. Spec §9.1 + T4.2."""
     _write_dataset(
         tmp_path,
-        products=[{"handle": "a", "title": "Tickless Anti Tick Collar"}],
+        products=[{"handle": "a", "title": "Wireless Anti Tick Collar"}],
     )
     assert bucket_routes("cart_search", tmp_path) == ("/cart", "/search?q=tick")
 
