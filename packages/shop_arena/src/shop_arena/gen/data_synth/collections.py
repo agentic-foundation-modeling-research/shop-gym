@@ -64,7 +64,7 @@ from shop_arena.gen.steps.base import InputRef, StepContext, StepInput
 _PHASE: Final[str] = "data_synth"
 _STEP_ID: Final[str] = "synth_collections"
 _IDENTITY_UPSTREAM_ID: Final[str] = "synth_identity"
-_STEP_VERSION: Final[int] = 1
+_STEP_VERSION: Final[int] = 2
 
 _OUT_COLLECTIONS: Final[Path] = Path(".shop_gen") / "stage_cache" / "collections.json"
 _IN_IDENTITY: Final[Path] = Path("identity.json")
@@ -82,6 +82,19 @@ _TARGET_COUNT_MAX: Final[int] = 30
 
 The merged priors are noisy (median across 1-3 seeds); clamping keeps the
 catalog buildable at v0.1 scale (~200 products) regardless of seed quirks.
+"""
+
+_PRODUCTS_TOTAL_DEFAULT: Final[int] = 200
+"""Default catalog size when the merged stats do not constrain it (spec §4.1)."""
+
+_PRODUCTS_TOTAL_MAX: Final[int] = 1000
+"""Safety ceiling on the stats-derived product budget.
+
+A real seed (e.g. a 3000-SKU storefront) can carry a ``products_total``
+that would force ``synth_product_skeletons`` to bulk-emit thousands of
+records in a single completion — far past its 120 s budget. The clamp
+protects the stats-fallback path; explicit caller overrides
+(:class:`CatalogConfig` via :class:`SynthCollectionsStep`) bypass it.
 """
 
 _TITLE_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[A-Z][A-Za-z]+")
@@ -157,12 +170,38 @@ def resolve_target_count(stats: dict[str, Any]) -> int:
     return max(_TARGET_COUNT_MIN, min(_TARGET_COUNT_MAX, candidate))
 
 
+def resolve_target_products_total(stats: dict[str, Any]) -> int:
+    """Pick the catalog product budget, given the merged stats priors.
+
+    Mirrors :func:`resolve_target_count` for the ``products_total``
+    field. Uses ``stats.products_total`` when it is a positive integer,
+    otherwise falls back to :data:`_PRODUCTS_TOTAL_DEFAULT`. Always
+    clamps to ``[1, _PRODUCTS_TOTAL_MAX]`` so a real-merchant seed
+    cannot push :func:`synth_product_skeletons` past its bulk-call
+    timeout.
+
+    Args:
+        stats: Decoded ``manual/stats.json`` document.
+
+    Returns:
+        Clamped product-total budget.
+    """
+    raw: Any = stats.get("products_total", 0)
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
+        candidate = _PRODUCTS_TOTAL_DEFAULT
+    else:
+        candidate = raw
+    return max(1, min(_PRODUCTS_TOTAL_MAX, candidate))
+
+
 def synth_collections_from_identity(
     *,
     identity: dict[str, Any],
     capabilities: dict[str, Any],
     stats: dict[str, Any],
     completer: LLMCompleter,
+    target_count: int | None = None,
+    target_products_total: int | None = None,
     allowlist: Allowlist | None = None,
 ) -> list[CollectionDraft]:
     """Synthesize the storefront's collections.
@@ -177,9 +216,20 @@ def synth_collections_from_identity(
         identity: Decoded ``identity.json`` document.
         capabilities: Decoded ``manual/capabilities.json`` document.
         stats: Decoded ``manual/stats.json`` document. Drives the
-            target collection count via :func:`resolve_target_count`.
+            target collection count via :func:`resolve_target_count`
+            and the catalog product budget via
+            :func:`resolve_target_products_total` when the corresponding
+            override kwarg is ``None``.
         completer: One-shot LLM completer (typically the runtime's
             :class:`~harness.runtimes.LLMCompleter`).
+        target_count: Explicit collection count. When provided, bypasses
+            the stats-derived clamp — caller owns the value (typically
+            sourced from :class:`CatalogConfig`).
+        target_products_total: Explicit catalog product budget. When
+            provided, bypasses the stats-derived clamp; caller owns the
+            value. The patched stats payload sent to the LLM uses this
+            number for ``products_total`` so the per-collection
+            distribution adds up to the configured budget.
         allowlist: Optional pre-loaded :class:`Allowlist`. Defaults to
             the in-repo ``fake_brands.json`` (cached after first use).
 
@@ -193,12 +243,22 @@ def synth_collections_from_identity(
             count, has duplicate handles, or includes an allowlisted
             brand token in a title.
     """
-    target_count = resolve_target_count(stats)
+    resolved_count = target_count if target_count is not None else resolve_target_count(stats)
+    resolved_products = (
+        target_products_total
+        if target_products_total is not None
+        else resolve_target_products_total(stats)
+    )
+    prompt_stats = {
+        **stats,
+        "collections_total": resolved_count,
+        "products_total": resolved_products,
+    }
     prompt = load_synth_collections_template().format(
         identity=json.dumps(identity, indent=2, sort_keys=True),
         capabilities=json.dumps(capabilities, indent=2, sort_keys=True),
-        stats=json.dumps(stats, indent=2, sort_keys=True),
-        target_count=target_count,
+        stats=json.dumps(prompt_stats, indent=2, sort_keys=True),
+        target_count=resolved_count,
     )
     raw = completer.complete(prompt, timeout=_LLM_TIMEOUT_S)
     payload = parse_json_array(raw, step_id=_STEP_ID)
@@ -211,9 +271,9 @@ def synth_collections_from_identity(
             f"{_STEP_ID}: response failed CollectionDraft schema validation: {exc}",
         ) from exc
     collections = validated.root
-    if len(collections) != target_count:
+    if len(collections) != resolved_count:
         raise StageSynthError(
-            f"{_STEP_ID}: expected {target_count} collections, got {len(collections)}",
+            f"{_STEP_ID}: expected {resolved_count} collections, got {len(collections)}",
         )
     seen: set[str] = set()
     for collection in collections:
@@ -252,6 +312,12 @@ class SynthCollectionsStep:
     entry against :class:`CollectionDraft`, and writes the cached
     payload as a JSON array under
     ``.shop_gen/stage_cache/collections.json``.
+
+    Catalog scale (collection count and per-collection product budget)
+    is sourced from :attr:`ShopGenConfig.catalog` so CLI flags
+    ``--collections`` and ``--products-per-collection`` take effect
+    here. The merged stats priors only inform secondary fields (price
+    range, variant axes, etc.).
 
     Attributes:
         id: Step id (``synth_collections``).
@@ -323,11 +389,17 @@ class SynthCollectionsStep:
         capabilities = _load_json_object(capabilities_path, label="manual/capabilities.json")
         stats = _load_json_object(stats_path, label="manual/stats.json")
 
+        catalog = ctx.config.catalog
+        target_count = catalog.collections
+        target_products_total = catalog.collections * catalog.products_per_collection
+
         collections = synth_collections_from_identity(
             identity=identity,
             capabilities=capabilities,
             stats=stats,
             completer=ctx.runtime,
+            target_count=target_count,
+            target_products_total=target_products_total,
         )
 
         out_path = ctx.out_dir / _OUT_COLLECTIONS
@@ -382,5 +454,6 @@ __all__ = [
     "CollectionDraft",
     "SynthCollectionsStep",
     "resolve_target_count",
+    "resolve_target_products_total",
     "synth_collections_from_identity",
 ]

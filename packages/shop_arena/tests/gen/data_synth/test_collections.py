@@ -27,7 +27,7 @@ import pytest
 
 from harness.runtimes import LLMCompleter
 from shop_arena.gen.brands.allowlist import load_allowlist
-from shop_arena.gen.config import ShopGenConfig
+from shop_arena.gen.config import CatalogConfig, ShopGenConfig
 from shop_arena.gen.data_synth import (
     CollectionDraft,
     StageSynthError,
@@ -35,6 +35,7 @@ from shop_arena.gen.data_synth import (
 )
 from shop_arena.gen.data_synth.collections import (
     resolve_target_count,
+    resolve_target_products_total,
     synth_collections_from_identity,
 )
 from shop_arena.gen.pipeline import list_steps
@@ -179,6 +180,35 @@ def test_resolve_target_count_ignores_non_int() -> None:
     assert resolve_target_count({"collections_total": True}) == _DEFAULT_TARGET_COUNT
     assert resolve_target_count({"collections_total": "12"}) == _DEFAULT_TARGET_COUNT
     assert resolve_target_count({"collections_total": 12.5}) == _DEFAULT_TARGET_COUNT
+
+
+# --------------------------------------------------------------------------- #
+# resolve_target_products_total
+# --------------------------------------------------------------------------- #
+
+_PRODUCTS_TOTAL_DEFAULT: int = 200
+_PRODUCTS_TOTAL_MAX: int = 1000
+
+
+def test_resolve_target_products_total_uses_stats_when_positive() -> None:
+    assert resolve_target_products_total({"products_total": 350}) == 350
+
+
+def test_resolve_target_products_total_falls_back_to_default() -> None:
+    assert resolve_target_products_total({}) == _PRODUCTS_TOTAL_DEFAULT
+    assert resolve_target_products_total({"products_total": 0}) == _PRODUCTS_TOTAL_DEFAULT
+    assert resolve_target_products_total({"products_total": -1}) == _PRODUCTS_TOTAL_DEFAULT
+
+
+def test_resolve_target_products_total_clamps_real_merchant_seed() -> None:
+    """A 3000-SKU storefront would time out the bulk skeletons call; clamp it."""
+    assert resolve_target_products_total({"products_total": 3171}) == _PRODUCTS_TOTAL_MAX
+
+
+def test_resolve_target_products_total_ignores_non_int() -> None:
+    assert resolve_target_products_total({"products_total": True}) == _PRODUCTS_TOTAL_DEFAULT
+    assert resolve_target_products_total({"products_total": "200"}) == _PRODUCTS_TOTAL_DEFAULT
+    assert resolve_target_products_total({"products_total": 200.0}) == _PRODUCTS_TOTAL_DEFAULT
 
 
 # --------------------------------------------------------------------------- #
@@ -361,6 +391,35 @@ def test_synth_collections_accepts_allowlist_override() -> None:
     assert len(drafts) == _DEFAULT_TARGET_COUNT
 
 
+def test_synth_collections_explicit_targets_bypass_stats_clamp() -> None:
+    """Explicit target_count / target_products_total are forwarded verbatim.
+
+    A real-merchant stats payload (3171 products, 50 collections) would
+    otherwise be clamped down to 30 / 1000; the explicit overrides
+    represent CLI-set scale and must win.
+    """
+    real_seed_stats = {
+        **_STATS_DEFAULT_10,
+        "products_total": 3171,
+        "collections_total": 50,
+    }
+    completer = _StubCompleter(responses=[_stub_response()])
+    drafts = synth_collections_from_identity(
+        identity=_IDENTITY,
+        capabilities=_CAPABILITIES,
+        stats=real_seed_stats,
+        completer=cast(LLMCompleter, completer),
+        target_count=_DEFAULT_TARGET_COUNT,
+        target_products_total=200,
+    )
+    assert len(drafts) == _DEFAULT_TARGET_COUNT
+    prompt = completer.prompts[0]
+    # Patched stats used in the prompt — not the raw 3171 / 50.
+    assert '"products_total": 200' in prompt
+    assert '"collections_total": 10' in prompt
+    assert '"products_total": 3171' not in prompt
+
+
 # --------------------------------------------------------------------------- #
 # SynthCollectionsStep
 # --------------------------------------------------------------------------- #
@@ -383,7 +442,7 @@ def test_step_metadata_for_multi_seed() -> None:
         "merge_manual_prose",
         "compute_merge_stats",
     ]
-    assert step.version == 1
+    assert step.version == 2
 
 
 def test_step_metadata_for_single_seed() -> None:
@@ -416,6 +475,54 @@ def test_step_run_writes_stage_cache(tmp_path: Path) -> None:
     assert [CollectionDraft.model_validate(entry).handle for entry in cached] == list(
         _DEFAULT_HANDLES,
     )
+
+
+def test_step_run_uses_catalog_config_for_scale(tmp_path: Path) -> None:
+    """``--collections`` / ``--products-per-collection`` flow into the prompt.
+
+    The seed's stats report a real-merchant catalog (3171 products,
+    50 collections); :class:`CatalogConfig` overrides must beat the
+    stats and reach the LLM verbatim.
+    """
+    real_seed_stats = {
+        **_STATS_DEFAULT_10,
+        "products_total": 3171,
+        "collections_total": 50,
+    }
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "identity.json").write_text(
+        json.dumps(_IDENTITY, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    manual_dir = out_dir / "manual"
+    manual_dir.mkdir(parents=True, exist_ok=True)
+    (manual_dir / "capabilities.json").write_text(
+        json.dumps(_CAPABILITIES, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (manual_dir / "stats.json").write_text(
+        json.dumps(real_seed_stats, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    completer = _StubCompleter(responses=[_stub_response()])
+    config = ShopGenConfig(
+        seeds=(seed,),
+        out_dir=out_dir,
+        catalog=CatalogConfig(collections=10, products_per_collection=20),
+    )
+    ctx = StepContext(config=config, out_dir=out_dir, runtime=cast(LLMCompleter, completer))
+
+    step = SynthCollectionsStep(manual_step_ids=("copy_seed_manual",))
+    step.run(ctx)
+
+    prompt = completer.prompts[0]
+    assert '"products_total": 200' in prompt
+    assert '"collections_total": 10' in prompt
+    assert "10 collection" in prompt
+    assert '"products_total": 3171' not in prompt
 
 
 def test_step_run_is_deterministic(tmp_path: Path) -> None:
