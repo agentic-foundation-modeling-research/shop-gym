@@ -17,7 +17,7 @@ it exposes a graphql-yoga server hosting sandbox shop's data.
 Two design choices define the module:
 
 - **Synthesis-driven, not extraction-driven.** The server is the
-  consumer of a SandboxShop dataset that ShopArena (`shop_gen`)
+  consumer of a SandboxShop dataset that ShopArena (`shop_arena.gen`)
   synthesizes. There is no ETL, no live BigQuery dependency, no Admin
   API scrape. The dataset shape is defined by this spec; ShopArena
   promises to produce it.
@@ -38,7 +38,7 @@ GraphQL surface, and it is the planned host of an RL environment.
 
 - **SandboxShop dataset** — a directory of JSON files describing one
   synthesized storefront. Authoritative shape is defined in §8.1.
-  Produced by ShopArena `shop_gen`; consumed by this server.
+  Produced by ShopArena `shop_arena.gen`; consumed by this server.
 - **SandboxShop instance** — one running `shop_backend` server bound
   to a single dataset directory.
 - **Storefront API** — Shopify's public GraphQL surface for buyer-side
@@ -59,9 +59,9 @@ GraphQL surface, and it is the planned host of an RL environment.
   biome, exposing a placeholder `Query.ping` schema (`src/schema.ts`,
   `src/server.ts`, `src/cli.ts`). No SandboxShop schema, no resolvers,
   no dataset loader.
-- ShopArena `shop_gen` does not yet emit a SandboxShop dataset; that
+- ShopArena `shop_arena.gen` does not yet emit a SandboxShop dataset; that
   spec lives separately. This spec defines the consumer contract that
-  `shop_gen` will target.
+  `shop_arena.gen` will target.
 
 ---
 
@@ -378,7 +378,7 @@ without a second pass. Revisit if a benchmark shows resolver overhead.
 
 ### 8.1 SandboxShop dataset schema (v0.1)
 
-Source-of-truth shape that ShopArena `shop_gen` produces and
+Source-of-truth shape that ShopArena `shop_arena.gen` produces and
 `shop_backend` consumes.
 
 #### 8.1.1 Required files

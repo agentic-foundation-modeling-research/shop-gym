@@ -1,11 +1,11 @@
-# Style Library (`packages/shop_arena/src/shop_gen/style_library`)
+# Style Library (`packages/shop_arena/src/shop_arena/gen/style_library`)
 
 Status: **Spec (draft)** · Version: **0.1**
 Owners: ShopArena
 
 > A curated catalog of **style guides** — markdown design-system
 > documents (with YAML frontmatter) compiled once per Shopify theme
-> from the theme's source + live demo store, and consumed by `shop_gen`
+> from the theme's source + live demo store, and consumed by `shop_arena.gen`
 > as optional render-phase context to steer visual treatment of
 > generated Hydrogen storefronts.
 
@@ -13,7 +13,7 @@ Owners: ShopArena
 
 ## 1. Overview
 
-`shop_explore` produces an anonymized Shop Manual that captures
+`shop_arena.explore` produces an anonymized Shop Manual that captures
 **structure, IA, and feature behavior** of a live storefront. By design,
 it does **not** capture visual identity (palette, typography, density,
 imagery direction, motion) — visual identity is the most identity-
@@ -21,7 +21,7 @@ coupled signal a brand has, and the published manual must stay
 brand-free so downstream consumers can rebuild a sandbox without leaking
 the source.
 
-`shop_gen` therefore needs a *separate* source of visual identity to
+`shop_arena.gen` therefore needs a *separate* source of visual identity to
 produce a coherent Hydrogen storefront. This spec defines that source:
 a small, repo-committed library of **style guides** distilled from
 Shopify's free first-party themes. Each guide is a markdown document
@@ -33,7 +33,7 @@ Three design choices shape the module:
 
 - **Curated catalog, not per-run synthesis.** Style is a gestalt that
   does not merge cleanly across seed shops. Rather than synthesize
-  style at run time, `shop_gen` *selects* one pre-coherent guide from
+  style at run time, `shop_arena.gen` *selects* one pre-coherent guide from
   a library that Shopify designers have already curated. Selection is
   well-defined; cross-seed gestalt synthesis is not. See §6 for the
   rejected alternatives.
@@ -45,11 +45,11 @@ Three design choices shape the module:
   and the consumers are different. See §5.2.
 - **Compile-time cost, run-time near-zero.** Compilation is a one-time,
   per-theme pipeline that runs offline; the output is committed. Per
-  `shop_gen` run, style steering is just one extra context block in
+  `shop_arena.gen` run, style steering is just one extra context block in
   existing render-phase LLM prompts. The catalog is an asset, not a
   dependency.
 
-`shop_explore`'s schema, prompts, and synthesis are **not changed** by
+`shop_arena.explore`'s schema, prompts, and synthesis are **not changed** by
 this spec. The Shop Manual stays brand-free and visual-identity-free
 exactly as today.
 
@@ -62,11 +62,11 @@ exactly as today.
   section structure. Distilled from one Shopify theme.
 - **Style Library** — the committed catalog of style guides shipped
   with the repo at
-  `packages/shop_arena/src/shop_gen/style_library/presets/`.
+  `packages/shop_arena/src/shop_arena/gen/style_library/presets/`.
 - **Style Compilation** — the offline pipeline that turns a
   `(theme source, theme demo)` pair into a style guide. Implemented as
   a standalone CLI (`style-compile`).
-- **Style Steering** — `shop_gen`'s consumption of a style guide. A
+- **Style Steering** — `shop_arena.gen`'s consumption of a style guide. A
   guide is injected into render-phase LLM prompts as system-prompt
   context.
 - **Frontmatter** — the YAML header of a style guide. Closed pydantic
@@ -84,19 +84,19 @@ exactly as today.
 
 Nothing exists. Concretely:
 
-- `packages/shop_arena/src/shop_gen/templates/hydrogen/` ships a
+- `packages/shop_arena/src/shop_arena/gen/templates/hydrogen/` ships a
   default Hydrogen template; its visual surface (Tailwind config, CSS
   variables, component styling) is whatever the template ships with —
   no per-shop steering.
-- `shop_gen.config` has no `style_guide` field.
-- `shop_gen.cli` has no `--style-guide` flag.
-- `shop_explore.capabilities.Capabilities` has no `style` section, and
+- `shop_arena.gen.config` has no `style_guide` field.
+- `shop_arena.gen.cli` has no `--style-guide` flag.
+- `shop_arena.explore.capabilities.Capabilities` has no `style` section, and
   per the previous design discussion (and §6 of this spec) it stays
   that way.
 
 The closest existing surface is `shop.tone` (an anonymized list of tone
-tags captured by `shop_explore`), which this spec uses as the input to
-auto-selection. No code change to `shop_explore` is required.
+tags captured by `shop_arena.explore`), which this spec uses as the input to
+auto-selection. No code change to `shop_arena.explore` is required.
 
 ---
 
@@ -107,7 +107,7 @@ auto-selection. No code change to `shop_explore` is required.
 **Style Library** (committed asset):
 
 ```
-packages/shop_arena/src/shop_gen/style_library/
+packages/shop_arena/src/shop_arena/gen/style_library/
 ├── presets/
 │   ├── dawn.style.md
 │   ├── sense.style.md
@@ -146,7 +146,7 @@ style-compile <theme-id> \
 
 Exit 0 iff a schema-validated style guide is written.
 
-**Style Steering** (shop_gen integration):
+**Style Steering** (shop_arena.gen integration):
 
 ```
 shop-gen \
@@ -157,7 +157,7 @@ shop-gen \
 
 If `--style-guide` is set, the named file's prose body and frontmatter
 are threaded into render-phase LLM prompts as ground truth for visual
-treatment. If not set, `shop_gen` runs as today (template defaults).
+treatment. If not set, `shop_arena.gen` runs as today (template defaults).
 
 ### 4.2 Success criteria
 
@@ -210,7 +210,7 @@ Two independent halves; neither depends on the other at run time:
 
                       per-run (every shop-gen invocation)
 ┌──────────────────────────────────────────────────────────────────┐
-│  Style Steering (shop_gen render phase)                          │
+│  Style Steering (shop_arena.gen render phase)                          │
 │                                                                  │
 │   --style-guide PATH                                             │
 │           │                                                      │
@@ -283,7 +283,7 @@ imagery_style: "lifestyle"        # enum: lifestyle | studio | editorial | ugc |
 ```
 
 The frontmatter schema lives at
-`packages/shop_arena/src/shop_gen/style_library/schema.py`. All
+`packages/shop_arena/src/shop_arena/gen/style_library/schema.py`. All
 enum-typed fields use closed string enums. `palette.*` accepts `null`
 for slots the theme leaves unset; downstream consumers fall back to
 template defaults for null slots.
@@ -306,7 +306,7 @@ error.
 | `## Voice` | Screenshots (visible copy) only | Headline cadence, capitalization discipline, microcopy register. |
 
 Component H3 blocks share a fixed bullet template — the same discipline
-that makes shop_explore parts mergeable:
+that makes shop_arena.explore parts mergeable:
 
 ```markdown
 ### Buttons
@@ -319,7 +319,7 @@ that makes shop_explore parts mergeable:
 
 ### 5.3 Compile pipeline
 
-Four steps, mirroring `shop_explore`'s pattern (deterministic prefetch
+Four steps, mirroring `shop_arena.explore`'s pattern (deterministic prefetch
 → per-task LLM → synthesis):
 
 #### 5.3.1 Step 1 — Mechanical extraction (no LLM)
@@ -341,9 +341,9 @@ Inputs:
 
 - `demo` URL (e.g. `theme-dawn-demo.myshopify.com`)
 
-Reuses `pi-playwright` exactly as `shop_explore` does. Captures a
+Reuses `pi-playwright` exactly as `shop_arena.explore` does. Captures a
 **curated, style-focused interaction set** — narrower than
-shop_explore's full executor task list:
+shop_arena.explore's full executor task list:
 
 | # | State | Purpose |
 | - | ----- | ------- |
@@ -370,7 +370,7 @@ in `frontmatter.compiled_with.model` so future re-compiles are
 auditable.
 
 Each call writes `parts/<section>.md` under a temp compile workspace,
-following the same parts-style pattern shop_explore uses internally.
+following the same parts-style pattern shop_arena.explore uses internally.
 
 #### 5.3.4 Step 3 — Synthesis
 
@@ -383,7 +383,7 @@ One text-only LLM call merges `parts/*.md` into one cohesive
   name is allowed only via the `id`/`name`/`source` frontmatter slots,
   not in the prose)
 
-Prompt structure mirrors `shop_explore`'s `synthesize_manual.md`:
+Prompt structure mirrors `shop_arena.explore`'s `synthesize_manual.md`:
 inputs first (the merged frontmatter + parts), then a strict output
 contract.
 
@@ -450,9 +450,9 @@ care. Hex values from this path are still safe to commit because they
 came from a Shopify-hosted demo store the theme designer published; we
 are not exfiltrating private brand assets.
 
-### 5.6 Style Steering — `shop_gen` integration
+### 5.6 Style Steering — `shop_arena.gen` integration
 
-Pure addition to `shop_gen`. Three integration points; nothing else
+Pure addition to `shop_arena.gen`. Three integration points; nothing else
 moves:
 
 #### 5.6.1 CLI
@@ -466,11 +466,11 @@ shop-gen --style-guide PATH ...
 - Exactly one `--style-guide` is allowed. Multiple → exit 2.
   Rationale: blending two style guides re-introduces the gestalt-merge
   problem we are explicitly avoiding.
-- Default (no flag): `shop_gen` runs exactly as today.
+- Default (no flag): `shop_arena.gen` runs exactly as today.
 
 #### 5.6.2 Configuration & state
 
-`shop_gen.config.ShopGenConfig` grows one field:
+`shop_arena.gen.config.ShopGenConfig` grows one field:
 
 ```python
 style_guide_path: Path | None = None
@@ -520,7 +520,7 @@ in Phase 4.
 ### 5.7 Module layout
 
 ```
-packages/shop_arena/src/shop_gen/style_library/
+packages/shop_arena/src/shop_arena/gen/style_library/
 ├── __init__.py
 ├── schema.py          # closed frontmatter pydantic models
 ├── compile/
@@ -548,12 +548,12 @@ packages/shop_arena/src/shop_gen/style_library/
 │   └── <id>/
 │       ├── screenshots/
 │       └── snapshots/
-├── steering.py        # shop_gen integration: load + validate + render
+├── steering.py        # shop_arena.gen integration: load + validate + render
 └── README.md
 ```
 
 `schema.py`, `steering.py`, and the prompts are the public surface
-shop_gen depends on. The `compile/` subtree is offline-only; `shop_gen`
+shop_arena.gen depends on. The `compile/` subtree is offline-only; `shop_arena.gen`
 runs never import it.
 
 ### 5.8 CLI surface
@@ -596,11 +596,11 @@ Documented in §5.6.1. No other CLI changes.
 
 ## 6. Alternatives
 
-### 6.1 Capture style in `shop_explore`
+### 6.1 Capture style in `shop_arena.explore`
 
 Add a `Style` section to the closed `Capabilities` schema; add a
 canonical `visual_style` task to the planner; add a `## Visual style`
-H2 to synthesis; merge `Style` across seeds in `shop_gen`'s
+H2 to synthesis; merge `Style` across seeds in `shop_arena.gen`'s
 `merge_capabilities` step (Path 4 — single LLM "style synthesizer"
 call).
 
@@ -616,12 +616,12 @@ worse output than a curated catalog. See the design discussion log
 
 ### 6.2 Swappable themes (Liquid theme catalog)
 
-Vendor the 12 free Shopify themes wholesale; `shop_gen` picks one and
+Vendor the 12 free Shopify themes wholesale; `shop_arena.gen` picks one and
 customizes its `settings_data.json` per merged shop tone.
 
-**Rejected because:** the existing `shop_gen` target is a Hydrogen
+**Rejected because:** the existing `shop_arena.gen` target is a Hydrogen
 storefront, not a Liquid theme. Adopting Liquid as a parallel render
-target would double `shop_gen`'s output surface for a feature that, at
+target would double `shop_arena.gen`'s output surface for a feature that, at
 its essence, only needs the theme's *style information* — not its
 implementation. Extracting that information into a portable format
 (this spec's `style.md`) gets the benefit at a fraction of the cost.
@@ -633,7 +633,7 @@ slot map, font slot map, density enum) applied mechanically to the
 Hydrogen Tailwind config.
 
 **Rejected because:** JSON loses the gestalt. Hydrogen render steps in
-`shop_gen` are LLM-driven and produce substantially better output from
+`shop_arena.gen` are LLM-driven and produce substantially better output from
 prose design-system descriptions than from JSON configs they have to
 re-interpret. The hybrid prose + frontmatter format in §5.2 keeps the
 JSON-like benefits (deterministic, schema-validated, easy to consume
@@ -706,7 +706,7 @@ the same reason live-only is.
 7. **Determinism of LLM synthesis.** Steps 2 and 3 are non-deterministic
    in principle. Mitigations: low-temperature setting, a pinned model
    version in frontmatter, and (for unit tests) cassette-based replay
-   of the LLM completer the same way `shop_gen.manual_merge` tests do
+   of the LLM completer the same way `shop_arena.gen.manual_merge` tests do
    today. Catalog re-compiles are reviewed by hand before commit, so
    the asset surface stays stable.
 
@@ -737,9 +737,9 @@ the same reason live-only is.
   maximalist). One human review pass per guide before commit.
 - `style_library/LICENSES.md`.
 
-**M4 — Style steering in `shop_gen` (3–5 days, dependency: M3)**
+**M4 — Style steering in `shop_arena.gen` (3–5 days, dependency: M3)**
 
-- `shop_gen.config.ShopGenConfig.style_guide_path`.
+- `shop_arena.gen.config.ShopGenConfig.style_guide_path`.
 - `--style-guide PATH` CLI flag + validation.
 - `style_library/steering.py` — load, validate, render frontmatter to
   Hydrogen Tailwind/CSS, expose prose body for prompt injection.
@@ -897,13 +897,13 @@ in `source-only` mode. A model-level validator enforces this.
 - Free Shopify themes: <https://themes.shopify.com/themes?price=free>
 - Theme demo URL pattern: `theme-<id>-demo.myshopify.com`
 - `pi-playwright` skill: see `packages/harness/README.md`
-- `shop_explore` evidence layout (mirrored here): see
+- `shop_arena.explore` evidence layout (mirrored here): see
   [`shop_arena/shop_explore.md`](shop_explore.md) §5.4
 
 ### 9.4 Why `compile-once`, not per-shop synthesis
 
 A per-shop runtime style synthesis (the rejected Path 4 from §6.1)
-would generate a fresh style description for every `shop_gen` run
+would generate a fresh style description for every `shop_arena.gen` run
 based on merged seed signals. The compile-once approach inverts this:
 
 | Aspect | Per-shop runtime synthesis | Compile-once catalog (this spec) |
@@ -915,7 +915,7 @@ based on merged seed signals. The compile-once approach inverts this:
 | Scope of change | Touches every run's output | Only when the catalog updates |
 | Failure blast radius | Per-run | Per-theme (and caught by review) |
 
-The compile-once shape is one of `shop_gen`'s broader patterns:
+The compile-once shape is one of `shop_arena.gen`'s broader patterns:
 expensive, taste-driven decisions are compiled into committed assets
 (see `brands/fake_brands.json`, `templates/hydrogen/`). The style
 library is the same shape applied to visual identity.

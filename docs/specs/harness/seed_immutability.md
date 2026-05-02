@@ -60,7 +60,7 @@ run with the existing `PROTOCOL_VIOLATION` final status.
   (`packages/harness/src/harness/plan/protocol.py`) inspects only
   `plan.md` invariants and runs only after executor iterations
   (`loop.py:233`). The planner phase has no protocol check at all.
-- Observed failure: a planner iteration (`shop_explore`,
+- Observed failure: a planner iteration (`shop_arena.explore`,
   `outputs/shop_manuals/hexclad.com/20260426T051155Z-0178ea07/iters/plan/`)
   ran for ~10 minutes and 60 turns, mutated the seeded `prefetch/`
   subtree by `mkdir -p artifact/evidence/_planner/{snapshots,screenshots}`
@@ -265,7 +265,7 @@ cross-link, README index update.
   to [§8.2 of the parent spec](plan_exec_loop.md#82-future-directions-non-blocking)).
 - Validation of writes *outside* the seeded subtree (e.g. enforcing
   the broader "agents only write under `artifact/parts/` and
-  `artifact/evidence/`" rule from the `shop_explore` AGENTS.md). That
+  `artifact/evidence/`" rule from the `shop_arena.explore` AGENTS.md). That
   is a caller-domain rule, not a harness invariant; if a future spec
   promotes it, it lives in a separate harness check or in
   caller-side `protocol_check.json` callbacks.

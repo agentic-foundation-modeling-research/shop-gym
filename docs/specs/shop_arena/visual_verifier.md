@@ -1,4 +1,4 @@
-# Visual Verifier (`packages/shop_arena/src/shop_gen/build/verifiers` + `final_eval`)
+# Visual Verifier (`packages/shop_arena/src/shop_arena/gen/build/verifiers` + `final_eval`)
 
 Status: **v0.1** · Version: **0.1**
 Owners: ShopArena
@@ -14,7 +14,7 @@ Owners: ShopArena
 
 ## 1. Overview
 
-`shop_gen` v0.1.0 ships an exec → verify → exec loop driven by
+`shop_arena.gen` v0.1.0 ships an exec → verify → exec loop driven by
 [`harness/verifiers.md`](../harness/verifiers.md). The two LLM judges in
 the v0.1 verifier set ([shop_gen.md §5.5.3](shop_gen.md#553-43-exec--verify-loop)) —
 `quality_judge` and `cross_task_consistency` — both read **source files**
@@ -79,13 +79,13 @@ This spec **augments** the v0.1 verifier set; `quality_judge` and
 
 ## 3. Current Status
 
-- `packages/shop_arena/src/shop_gen/build/verifiers/quality_judge.py`
+- `packages/shop_arena/src/shop_arena/gen/build/verifiers/quality_judge.py`
   reads `hydrogen/app/**` source bytes and asks
   `ctx.runtime` (narrowed to `LLMCompleter`) for a verdict. No
   rendering, no browser.
 - `cross_task_consistency.py` does the same shape across the whole
   app tree, but only on `consolidate`.
-- `packages/shop_arena/src/shop_gen/final_eval/playwright_smoke.py`
+- `packages/shop_arena/src/shop_arena/gen/final_eval/playwright_smoke.py`
   drives a 5-step smoke flow (home → collection → product →
   add-to-cart → checkout-redirect) at desktop + mobile viewports.
   `final_eval/step.py` then asks an `LLMCompleter` to judge the
@@ -93,24 +93,24 @@ This spec **augments** the v0.1 verifier set; `quality_judge` and
   The driver protocol exists; production wiring (`pnpm dev` + a real
   Playwright `BrowserDriver`) is documented as deferred (see
   `_unconfigured_dev_server_factory`, `_unconfigured_browser_driver`).
-- `packages/shop_arena/src/shop_gen/build/loop.py` ships
+- `packages/shop_arena/src/shop_arena/gen/build/loop.py` ships
   `default_verifiers_factory` returning a hardcoded 8-verifier tuple.
   Library callers can pass `verifiers_factory=...` to override; no CLI
   surface for selecting which judges run.
 - The harness verifier extension (`harness/verifiers.md`) provides
   `VerifierContext.runtime: AgentRuntime` (§5.2) precisely so verifiers
   can drive the same agent runtime the parent loop uses. Every
-  existing LLM verifier in `shop_gen` happens to narrow it to
+  existing LLM verifier in `shop_arena.gen` happens to narrow it to
   `LLMCompleter` (text-only one-shot judge); no current verifier needs
   the multimodal / tool-using `run_iteration` path. The pattern itself
-  is well-trodden — `shop_explore` executor agents drive the playwright
-  skill via `run_iteration`, and the `shop_gen` build-loop executor
+  is well-trodden — `shop_arena.explore` executor agents drive the playwright
+  skill via `run_iteration`, and the `shop_arena.gen` build-loop executor
   drives code-editing tools the same way. `visual_judge` is the first
   caller to use it from a *verifier* dispatch step.
 - The harness exposes no per-task retry budget; verifier spec §7.2
   resolves `max_iters` as the only termination signal.
 - The playwright skill is already configured on the `pi` runtime
-  (anchored by `shop_explore`, spec §5.2).
+  (anchored by `shop_arena.explore`, spec §5.2).
 
 ---
 
@@ -242,7 +242,7 @@ the v0.1 `smoke` + `judge` subtrees:
 
 ### 5.2 The `visual_judge` verifier
 
-Lives at `packages/shop_arena/src/shop_gen/build/verifiers/visual_judge.py`.
+Lives at `packages/shop_arena/src/shop_arena/gen/build/verifiers/visual_judge.py`.
 
 **Scope is task-bounded.** Each invocation renders **only** the
 routes the executor's `selected_task_id` is responsible for, judged
@@ -366,7 +366,7 @@ gen_cart_search, gen_info_pages, visual_polish, consolidate
 
 #### 5.2.2 Why `run_iteration`, not `LLMCompleter`?
 
-Both shapes are part of the runtime contract; `shop_gen` already uses
+Both shapes are part of the runtime contract; `shop_arena.gen` already uses
 `run_iteration` for executor iterations and `LLMCompleter.complete`
 for one-shot text judges (existing `quality_judge` /
 `cross_task_consistency`). Visual judging needs the former because:
@@ -563,7 +563,7 @@ are not selectable in v0.1 (every one is required for a valid build).
 
 The factory runs a **one-time probe** for the `pi-playwright`
 skill before constructing `VisualJudgeVerifier`, mirroring the
-resolver already battle-tested in `shop_explore.pipeline._resolve_playwright_skill_dir`
+resolver already battle-tested in `shop_arena.explore.pipeline._resolve_playwright_skill_dir`
 (tries `pnpm root -g`, then `npm root -g`; checks `SKILL.md` +
 `scripts/pw.js` exist). Production wiring lifts that helper into a
 shared module:
@@ -711,7 +711,7 @@ debugging.
 ### 5.8 Module layout
 
 ```
-packages/shop_arena/src/shop_gen/
+packages/shop_arena/src/shop_arena/gen/
 ├── build/
 │   └── verifiers/
 │       ├── visual_judge.py                   # NEW — VisualJudgeVerifier
@@ -758,7 +758,7 @@ shop_gen.md §5.8 is unchanged.
    API the harness doesn't ship, (b) the agent can adapt the
    exploration (open mega-menu before snapping, scroll-to-bottom for
    long pages) which a fixed flow can't, (c) duplicates skill ownership
-   — we'd have one playwright stack in `shop_explore` (skill-driven)
+   — we'd have one playwright stack in `shop_arena.explore` (skill-driven)
    and another in `visual_judge` (CLI-driven).
 
 2. **Multimodal `LLMCompleter` extension on the harness.** Generalize
@@ -837,11 +837,11 @@ shop_gen.md §5.8 is unchanged.
 
 6. **Reference-screenshot grounding for the visual judge.** Today's
    visual judge grounds against `capabilities.json` only — by
-   design, since `shop_explore` strips source-store URLs to preserve
+   design, since `shop_arena.explore` strips source-store URLs to preserve
    the anonymization invariant (no `store_url` / `source_url` field
    survives synthesis). A useful future signal would attach the
    anonymized prefetched screenshots from
-   `shop_explore/prefetch/runner.py` to the nested agent's prompt
+   `shop_arena/explore/prefetch/runner.py` to the nested agent's prompt
    ("does the generated storefront feel faithful to the seed
    brand?"). Two prerequisites block this in v0.1: (a) a multimodal
    completer extension on the harness contract (§6 alt #2), and (b)
@@ -884,7 +884,7 @@ shop_gen.md §5.8 is unchanged.
 - **M6 — Production playwright wiring.** Real `DevServerFactory`
   (`pnpm dev`) + real agent-runtime path. Replaces
   `_unconfigured_dev_server_factory` in both `Routes200Verifier` and
-  the visual sweep. (This was already deferred from `shop_gen` M5/M6;
+  the visual sweep. (This was already deferred from `shop_arena.gen` M5/M6;
   this milestone closes it.)
 - **M7 — v0.1 release.** Update `shop_gen.md` cross-references; bump
   module version; add to `docs/specs/README.md` shipping table.
@@ -1035,7 +1035,7 @@ Prior verifier feedback for this task (if any):
 
 Parser is forgiving: a fenced ```json``` block or a bare top-level
 object both work (mirrors
-`shop_gen.build.verifiers._judge.dispatch_judge`).
+`shop_arena.gen.build.verifiers._judge.dispatch_judge`).
 
 **Score → verdict mapping.** The agent emits both a `verdict` token
 and a `score`; the verifier accepts the agent's binary verdict but

@@ -95,7 +95,7 @@ class VerifierContext(BaseModel):
 class Verifier(Protocol):
     """Caller-supplied check dispatched after each executor iteration.
 
-    Implementations live in caller code (e.g. ``shop_gen.build.verifiers``).
+    Implementations live in caller code (e.g. ``shop_arena.gen.build.verifiers``).
     The harness only knows the protocol and the order of registration.
 
     Attributes:

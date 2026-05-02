@@ -2,7 +2,7 @@
 
 **ShopGym** is a mono-repo for building and evaluating shopping LLM agents. It contains three packages:
 
-- `packages/shop_arena` (Python) — **ShopArena**: Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from live storefronts. Ships three top-level modules: `shop_gen` (generation pipeline), `shop_explore` (storefront exploration), and `shop_probe` (structural-fidelity measurement instrument).
+- `packages/shop_arena` (Python) — **ShopArena**: Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from live storefronts. Ships three top-level modules: `shop_arena.gen` (generation pipeline), `shop_arena.explore` (storefront exploration), and `shop_arena.probe` (structural-fidelity measurement instrument).
 - `packages/shop_guru` (Python) — **ShopGuru**: automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation, and policies to synthesize grounded evaluation tasks across 7 skill categories.
 - `packages/shop_backend` (TypeScript) — **ShopBackend**: local GraphQL API server hosting SandboxShop data; used for benchmarking and as an RL environment.
 
@@ -91,7 +91,7 @@ NO PATCHING OR HACKING FOR SHORT TERM SUCCESS.
 ### Python Coding Style
 
 - **Style guide**: Google Python Style Guide. `ruff` is the source of truth for lint + format (config in root `pyproject.toml`).
-- **Version**: Python ≥ 3.11. Use modern syntax (`list[int]`, `str | None`, `match`).
+- **Version**: Python ≥ 3.12. Use modern syntax (`list[int]`, `str | None`, `match`).
 - **Typing**: fully typed. `from __future__ import annotations` in every module. `pyright` in `strict` mode must pass. No `Any` unless justified in a comment.
 - **Layout**: `src/<package>/` layout. Each package exposes `py.typed`.
 - **Docstrings**: Google style (`Args:`, `Returns:`, `Raises:`). Every public module, class, and function has one. Skip trivial one-liners only when the name fully describes behavior.

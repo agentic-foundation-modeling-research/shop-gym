@@ -2,7 +2,7 @@
 name = "shop-gym"
 version = "0.0.0"
 description = "ShopGym: sandbox shop websites for building and evaluating shopping LLM agents."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [tool.uv.workspace]
 members = ["packages/shop_guru", "packages/shop_arena", "packages/harness"]
@@ -27,7 +27,7 @@ harness = { workspace = true }
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["packages/shop_guru/src", "packages/shop_arena/src", "packages/harness/src"]
 
 [tool.ruff.lint]
@@ -46,7 +46,7 @@ select = [
 ]
 ignore = ["PLR0913"]
 # Greek letters used in mathematical notation across packages (Spearman ρ
-# in shop_probe.judge.calibration, etc.) — keep them as written rather than
+# in shop_arena.probe.judge.calibration, etc.) — keep them as written rather than
 # masquerading as Latin look-alikes.
 allowed-confusables = ["ρ"]
 
@@ -58,13 +58,17 @@ quote-style = "double"
 
 [tool.pyright]
 include = ["packages/shop_guru/src", "packages/shop_arena/src", "packages/harness/src"]
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
 testpaths = ["packages/shop_guru/tests", "packages/shop_arena/tests", "packages/harness/tests"]
-addopts = "-ra --strict-markers"
+# importlib import mode lets sibling test dirs share basenames
+# (e.g. gen/test_public_surface.py + explore/test_public_surface.py)
+# without needing empty __init__.py files at every test root.
+# https://docs.pytest.org/en/stable/explanation/pythonpath.html#import-modes
+addopts = "-ra --strict-markers --import-mode=importlib"
 markers = [
   "smoke: live-CLI smoke tests; gated by HARNESS_SMOKE_* env vars",
 ]

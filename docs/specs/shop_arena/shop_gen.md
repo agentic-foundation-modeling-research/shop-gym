@@ -1,10 +1,10 @@
-# ShopGen (`packages/shop_arena/src/shop_gen`)
+# ShopGen (`packages/shop_arena/src/shop_arena/gen`)
 
 Status: **Spec** · Version: **0.2** (incorporates the v2 redesign of the orchestration layer — formerly tracked separately as `shop_gen_v2.md`, now archived under `docs/internal/archive/specs/`)
 Owners: ShopArena
 
 > A configurable pipeline that turns one or more anonymized **Shop
-> Manuals** (from `shop_explore`) into a complete, hostable
+> Manuals** (from `shop_arena.explore`) into a complete, hostable
 > **SandboxShop**: a synthesized dataset *and* a generated Hydrogen
 > storefront, validated end-to-end by hosting the data with
 > `shop_backend`.
@@ -13,7 +13,7 @@ Owners: ShopArena
 
 ## 1. Overview
 
-`shop_gen` is the second half of ShopArena. Given the published Shop
+`shop_arena.gen` is the second half of ShopArena. Given the published Shop
 Manual bundle for one or more seed storefronts, it produces:
 
 1. A **SandboxShop dataset** (`data/`) — JSON files matching the
@@ -26,7 +26,7 @@ Four design choices shape the module:
 
 - **Manual-driven, not extraction-driven.** All synthesis reads from
   the public `manual.md` + `capabilities.json` + `stats.json` triple
-  produced by `shop_explore`. No live storefront access, no BigQuery,
+  produced by `shop_arena.explore`. No live storefront access, no BigQuery,
   no scraping.
 - **Brand-safe by allowlist.** Generated catalogs draw all
   brand-shaped tokens (store name, vendors) from a small curated
@@ -49,10 +49,10 @@ Four design choices shape the module:
   that gates each task on a caller-owned **verifier set** (rule +
   LLM). The harness extension that powers this lives in a separate
   spec — [`harness/verifiers.md`](../harness/verifiers.md) — and
-  must land before `shop_gen` ships. `shop_gen` owns every
+  must land before `shop_arena.gen` ships. `shop_arena.gen` owns every
   verifier *implementation*; the harness only dispatches them.
 
-`shop_gen` is the first caller of both `shop_backend` (as a hosting
+`shop_arena.gen` is the first caller of both `shop_backend` (as a hosting
 sidecar) and the harness verifier extension.
 
 ---
@@ -62,18 +62,18 @@ sidecar) and the harness verifier extension.
 - **Seed Shop Manual** — the published bundle ShopExplore writes
   under `outputs/shop_manuals/<domain>/<run_id>/artifact/`
   (manual.md, capabilities.json, stats.json, manifest.json,
-  prefetch/). One or more are inputs to `shop_gen`.
+  prefetch/). One or more are inputs to `shop_arena.gen`.
 - **Composite Manual** — the merged manual produced by Phase 1 when
   `len(seeds) > 1`. Same shape as a single Shop Manual.
 - **SandboxShop dataset** — JSON files under `<out_dir>/data/`.
   Authoritative shape: shop_backend §8.1.
 - **SandboxShop site** — Hydrogen app under `<out_dir>/hydrogen/`,
   cloned from the vendored template at
-  `packages/shop_arena/src/shop_gen/templates/hydrogen/`.
+  `packages/shop_arena/src/shop_arena/gen/templates/hydrogen/`.
 - **Fake-brand allowlist** — a small static list of 8 invented
   brand tokens (Vendarena, AisleArena, Shopliseum, CartColiseum,
   StockyardArena, AgoraDome, AgoraCage, AgoraPit), shipped at
-  `packages/shop_arena/src/shop_gen/brands/fake_brands.json`. Every
+  `packages/shop_arena/src/shop_arena/gen/brands/fake_brands.json`. Every
   brand-shaped string in `data/*.json` must be drawn from this list.
 - **Node** — a named, dependency-aware unit of work in the pipeline
   DAG. Has a stable id, a `depends_on` set, an `output_paths` list,
@@ -92,7 +92,7 @@ sidecar) and the harness verifier extension.
 - **Reconciliation** — the resume-time check that compares
   `plan.json` against iter-dir filesystem state; advisory by default,
   escalable via `--force-align`.
-- **Hosting sidecar** — a `shop-backend` process started by `shop_gen`
+- **Hosting sidecar** — a `shop-backend` process started by `shop_arena.gen`
   before the build loop, serving the synthesized dataset on a local
   port for the agent to query and render against.
 - **Verifier** — a caller-owned check (rule-based or LLM-as-judge)
@@ -104,7 +104,7 @@ sidecar) and the harness verifier extension.
 ## 3. Current Status
 
 **Pipeline (legacy `Step` design — currently shipping in
-`packages/shop_arena/src/shop_gen/`):**
+`packages/shop_arena/src/shop_arena/gen/`):**
 
 - 16 step files across `data_synth/`, `manual_merge/`, `build/`,
   `final_eval/`, plus `steps/{base,runner,state}.py` (~890 LOC)
@@ -115,11 +115,11 @@ sidecar) and the harness verifier extension.
   cached intermediates at `<out_dir>/.shop_gen/stage_cache/`.
 - `cli.py` (~570 LOC) carries `--from / --only / --to`, `--status`,
   `--list-steps`, plus `_maybe_apply_redo` which imports
-  `harness.plan` + `shop_gen.build.redo` to mutate `plan.md` directly
+  `harness.plan` + `shop_arena.gen.build.redo` to mutate `plan.md` directly
   via the `<base>_redo_<N>` task-append hack.
 - `build/loop.py:RunBuildHarnessLoopStep` hardcodes
   `self._force = True`, fully overriding the harness's refusal policy
-  for `shop_gen` callers.
+  for `shop_arena.gen` callers.
 
 **Harness state (legacy):** `plan.md` (regex-parsed `[ ][~][x][!]`
 markers), `iters/<id>/trajectory.json` (immutable), `run.json`
@@ -148,7 +148,7 @@ contracts.
 
 ## 4. Desired Status
 
-A self-contained module under `packages/shop_arena/src/shop_gen/`
+A self-contained module under `packages/shop_arena/src/shop_arena/gen/`
 that, given one or more `shop_manual` directories, produces a
 complete, hostable SandboxShop with a passing data validation and a
 passing build verifier suite.
@@ -160,7 +160,7 @@ passing build verifier suite.
 | Input             | Notes                                                                                                  |
 | ----------------- | ------------------------------------------------------------------------------------------------------ |
 | `seeds`           | One or more paths to `shop_manuals/<domain>/<run_id>/`. ≥ 1 required.                                  |
-| `out_dir`         | Defaults to `outputs/shops/<name>/`. Must be empty, non-existent, or a prior `shop_gen` run dir.       |
+| `out_dir`         | Defaults to `outputs/shops/<name>/`. Must be empty, non-existent, or a prior `shop_arena.gen` run dir.       |
 | `name`            | Slug for the SandboxShop. Inferred from seed domain when single, or auto-derived when multi-seed.      |
 | `runtime`         | Agent runtime for the build loop. `pi` (default) or `claude_code`.                                     |
 | `model`           | Model id forwarded to the runtime.                                                                     |
@@ -289,7 +289,7 @@ copied verbatim into `<out_dir>/manual/` and Phase 1 is a no-op.
    (see §9.2). Booleans union (any-true → true); enum / scalar
    fields use majority + descriptor-consistency tiebreak; lists
    union with dedup. The output is validated against the same closed
-   pydantic schema `shop_explore` writes.
+   pydantic schema `shop_arena.explore` writes.
 2. **`merge_manual_prose`** — section-by-section LLM merge, treating
    the merged capabilities as ground truth (the prose must not
    contradict it).
@@ -471,7 +471,7 @@ template. **Output:** `hydrogen/`.
 
 This phase is one `harness.run_plan_exec_loop` invocation. The
 harness owns iteration lifecycle, plan parsing, and telemetry;
-`shop_gen` owns prompts, the verifier set, and the sidecar. It also
+`shop_arena.gen` owns prompts, the verifier set, and the sidecar. It also
 relies on the additive harness verifier extension —
 [`harness/verifiers.md`](../harness/verifiers.md) — which **must
 land first**.
@@ -482,7 +482,7 @@ Steps run by the orchestrator before invoking the harness:
 
 | Step              | Action                                                                        |
 | ----------------- | ----------------------------------------------------------------------------- |
-| `clone_template`  | `cp -R packages/shop_arena/src/shop_gen/templates/hydrogen <out_dir>/hydrogen` |
+| `clone_template`  | `cp -R packages/shop_arena/src/shop_arena/gen/templates/hydrogen <out_dir>/hydrogen` |
 | `write_env_file`  | Write `<out_dir>/hydrogen/.env` with `PUBLIC_STORE_DOMAIN=localhost:<port>` etc. |
 | `start_sidecar`   | Spawn `shop-backend <out_dir>/data <port>`; hold pid; install signal cleanup.  |
 
@@ -524,8 +524,8 @@ mechanism: after each executor iteration, applicable verifiers run
 sequentially; any `FAIL` rewrites `[x]` → `[~]` and feeds
 `{{verifier_feedback}}` to the next iteration's prompt.
 
-**`shop_gen` owns every verifier implementation.** They live under
-`packages/shop_arena/src/shop_gen/build/verifiers/` and are passed to
+**`shop_arena.gen` owns every verifier implementation.** They live under
+`packages/shop_arena/src/shop_arena/gen/build/verifiers/` and are passed to
 the harness via `PlanExecLoopConfig.verifiers`.
 
 **v0.1 verifier set:**
@@ -553,7 +553,7 @@ later renamed, two pages importing slightly different versions of
 a shared component, design tokens drifting between theme + cart —
 fall through that gap.
 
-`shop_gen` closes the gap with a **mandatory final task** the
+`shop_arena.gen` closes the gap with a **mandatory final task** the
 planner is *required* to emit at the lowest priority of `plan.md`.
 Its execute prompt is purpose-built:
 
@@ -598,7 +598,7 @@ We use an **allowlist** approach because a blocklist of real
 brands is never comprehensive enough.
 
 **The allowlist** is shipped at
-`packages/shop_arena/src/shop_gen/brands/fake_brands.json` as a
+`packages/shop_arena/src/shop_arena/gen/brands/fake_brands.json` as a
 static list of 8 invented brand tokens (each a TitleCase compound
 of a marketplace word + a venue word, deliberately distinctive
 and distinguishable from real brands):
@@ -695,7 +695,7 @@ neither `data/*.json` nor `hydrogen/app/**` is post-validated.
 
 The helpers (`scan_for_brand_leaks`, `BrandLeakError`,
 `_walk_strings`, `_step_for_field_path`) remain in
-`shop_gen.data_synth.assemble` and are unit-tested, so a v0.2
+`shop_arena.gen.data_synth.assemble` and are unit-tested, so a v0.2
 tokenizer (e.g. dictionary-aware: skip tokens whose lowercase form
 is in a common-English dictionary; flag only TitleCase compounds
 and ALL-CAPS abbreviations) can re-enable the scrub by restoring
@@ -981,7 +981,7 @@ completes; the output state is identical.
 ### 5.10 Module layout (informative)
 
 ```
-packages/shop_arena/src/shop_gen/
+packages/shop_arena/src/shop_arena/gen/
 ├── __init__.py
 ├── _version.py
 ├── cli.py                       # argparse + dispatch (~120 LOC; no _redo_, no --from/--only/--to)
@@ -1071,10 +1071,10 @@ Legacy modules deleted by the v2 migration:
    downstream node and re-runs them; `--force data_synth_phase`
    would just be `--force synth_identity`).
 
-4. **Fully implement verifiers inside `shop_gen` without the harness
+4. **Fully implement verifiers inside `shop_arena.gen` without the harness
    extension.** Wrap `run_plan_exec_loop` and inject verifier dispatch
    externally. Rejected: duplicates plan-parsing and state-machine
-   logic in `shop_gen`. The user's instruction is explicit:
+   logic in `shop_arena.gen`. The user's instruction is explicit:
    harness applies, caller owns implementations.
 
 5. **Embed visual fidelity comparisons against the seed storefront.**
@@ -1085,7 +1085,7 @@ Legacy modules deleted by the v2 migration:
    playground template.** Cleaner, officially maintained. Deferred:
    user instruction in this round is to vendor the playground
    template; we can swap by replacing the contents of
-   `src/shop_gen/templates/hydrogen/`.
+   `src/shop_arena/gen/templates/hydrogen/`.
 
 **Alternatives considered for the v2 orchestration redesign (§5.7–5.9):**
 
@@ -1195,7 +1195,7 @@ Legacy modules deleted by the v2 migration:
 
 **Pending (v2 orchestration redesign — §5.7–5.9):**
 
-- **M9 — `Node` protocol + runner skeleton.** Add `shop_gen/dag/
+- **M9 — `Node` protocol + runner skeleton.** Add `shop_arena/gen/dag/
   {node,runner}.py`. Migrate `final_eval` (smallest leaf) to the new
   protocol behind a feature flag; old runner still drives the rest.
   Tests cover `is_complete` / `clean` / force-closure semantics.
@@ -1235,9 +1235,9 @@ Legacy modules deleted by the v2 migration:
   [port]`) and library API. This spec depends on the v0.1 dataset
   contract.
 - `packages/harness` accepts the additive verifier extension
-  (separate spec) before `shop_gen` ships.
+  (separate spec) before `shop_arena.gen` ships.
 - The vendored Hydrogen template at
-  `packages/shop_arena/src/shop_gen/templates/hydrogen/` works
+  `packages/shop_arena/src/shop_arena/gen/templates/hydrogen/` works
   against `shop_backend`'s GraphQL surface as-is, modulo `.env`
   rewriting and minor binding tweaks the build loop performs.
 - Brand-safety via fake-brand allowlist is sufficient for v0.1;
@@ -1261,7 +1261,7 @@ Legacy modules deleted by the v2 migration:
 
 ### 9.3 Reference materials
 
-- `packages/shop_arena/src/shop_gen/templates/hydrogen/` — vendored
+- `packages/shop_arena/src/shop_arena/gen/templates/hydrogen/` — vendored
   Hydrogen template (this round).
 - [`shop_backend/storefront_api.md`](../shop_backend/storefront_api.md)
   §8.1 — dataset contract.

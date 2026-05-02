@@ -16,7 +16,7 @@ A `run_plan_exec_loop` invocation today is "all or nothing". If the
 process dies mid-run — caller `Ctrl+C`, executor `TIMEOUT`, runtime
 crash, OOM — the next invocation starts from scratch in a new
 timestamped `run_dir`: the planner re-runs (often the most expensive
-step in a `shop_explore` run, e.g. ~$5 + 6 min for `hexclad.com`), and
+step in a `shop_arena.explore` run, e.g. ~$5 + 6 min for `hexclad.com`), and
 every `[x]` task is replayed.
 
 The state needed to skip those steps is already on disk. `plan.md`
@@ -82,7 +82,7 @@ Two design choices keep the surface narrow:
 - The seed manifest produced by `snapshot_seed` (`seed.py:57`) is
   held in memory on the `Workspace` value but never written to disk.
   Resuming a seeded run after the original `artifact_seed_dir` is
-  gone (e.g. the temp dir from `shop_explore.pipeline:114`) cannot
+  gone (e.g. the temp dir from `shop_arena.explore.pipeline:114`) cannot
   recompute the manifest and therefore cannot enforce
   `seed_immutability.md` continuity across resume.
 - `run.json` is rewritten atomically on every iteration but does not

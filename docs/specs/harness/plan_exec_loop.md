@@ -24,7 +24,7 @@ Two design choices define the harness:
 - **Filesystem-as-memory.** Every iteration starts with zero context
   and reads its memory from a small, fixed set of files under `run_dir/`.
 
-The harness is initially used by `shop_explore` and `shop_gen` but is
+The harness is initially used by `shop_arena.explore` and `shop_arena.gen` but is
 coupled to neither. Its tests run against arbitrary toy tasks.
 
 ---

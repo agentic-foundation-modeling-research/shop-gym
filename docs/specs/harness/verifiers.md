@@ -34,12 +34,12 @@ iteration's prompt.
 Two design choices define the extension:
 
 - **Caller owns implementations; harness owns dispatch.** Verifier
-  classes live in caller code (e.g. `shop_gen.build.verifiers.tsc`).
+  classes live in caller code (e.g. `shop_arena.gen.build.verifiers.tsc`).
   The harness defines a protocol, a registry, a per-iteration
   dispatch lifecycle, telemetry, and a prompt-feedback slot. It
   contains zero domain logic.
 - **Additive and opt-in.** The default verifier list is empty;
-  existing v0.1 callers (`shop_explore`) see no behavior change.
+  existing v0.1 callers (`shop_arena.explore`) see no behavior change.
   Verifiers are passed via `PlanExecLoopConfig.verifiers`.
 
 ---
@@ -71,7 +71,7 @@ Two design choices define the extension:
 - `plan_exec_loop §8.2` lists "Independent evaluator phases" as a
   future direction; this spec is the v0.1 of that direction, but
   scoped narrowly to **gating** rather than parallel evaluation.
-- `shop_gen` (this spec's primary caller) is in design and *requires*
+- `shop_arena.gen` (this spec's primary caller) is in design and *requires*
   per-iteration verifiers to gate the build loop. See
   [`shop_gen.md`](../shop_arena/shop_gen.md) §5.5.
 
@@ -120,7 +120,7 @@ iters/<exec_id>/checks/
   the order the caller registered them. v0.2 may parallelize.
 - **Pre-iteration / pre-plan verifiers.** Verifiers run only after
   executor iterations in v0.1. Planner-iteration verifiers are a
-  natural follow-up but not needed by `shop_gen` v0.1.
+  natural follow-up but not needed by `shop_arena.gen` v0.1.
 - **Cross-iteration retry budget.** A verifier failing the same task
   N times does not auto-block the run. The caller's `max_iters`
   budget is the only termination signal in v0.1.
@@ -208,7 +208,7 @@ class Verifier(Protocol):
 `VerifierContext.runtime` is exposed deliberately so LLM-based
 verifiers reuse the same model + auth path the harness already drives
 its iterations with (mirrors the `LLMCompleter` adapter
-`shop_explore` uses for the synthesis call).
+`shop_arena.explore` uses for the synthesis call).
 
 ### 5.3 Dispatch lifecycle
 
@@ -317,7 +317,7 @@ All additions are non-breaking:
 - New `verifier_runs` field on `PlanExecLoopResult` defaults to `[]`.
 - New `iters/<id>/checks/verifiers/` directory only exists when
   verifiers ran.
-- Existing callers (`shop_explore`) need zero changes.
+- Existing callers (`shop_arena.explore`) need zero changes.
 
 ---
 
@@ -358,8 +358,8 @@ explicit: "harness should be able to apply them."
 - **M2 — Prompt feedback.** `{{verifier_feedback}}` slot + truncation.
   Integration test: a `FAIL` injects feedback; the next iteration
   receives it; on retry verdict is `PASS`; loop completes.
-- **M3 — `shop_gen` consumer.** Verify the API satisfies
-  `shop_gen`'s build-loop verifier set (rule + LLM mix). Tag harness
+- **M3 — `shop_arena.gen` consumer.** Verify the API satisfies
+  `shop_arena.gen`'s build-loop verifier set (rule + LLM mix). Tag harness
   v0.3.0.
 
 ---

@@ -51,7 +51,7 @@ the new 8-task canonical block.
 ## 3. Current Status
 
 - `merge_manual_prose`
-  (`packages/shop_arena/src/shop_gen/manual_merge/prose.py`) emits
+  (`packages/shop_arena/src/shop_arena/gen/manual_merge/prose.py`) emits
   ``manual/manual.md`` with the 11 canonical H2 sections.
 - `_parse_manual_sections` (private to ``prose.py``) already H2-splits
   a manual body for the merge loop. No public helper exposes the same
@@ -121,7 +121,7 @@ downstream consumers do not branch on existence.
 
 `split_manual_parts` is a pure-filesystem step (no LLM call,
 no network, no subprocess). It depends on the upstream manual
-producer and runs once per shop_gen invocation.
+producer and runs once per shop_arena.gen invocation.
 
 ```
 merge_capabilities ─┐
@@ -258,7 +258,7 @@ the broader scope.
 ### 8.1 Public surface (informative)
 
 ```python
-from shop_gen.manual_merge import (
+from shop_arena.gen.manual_merge import (
     SplitManualPartsStep,
     split_manual_into_parts,
 )
@@ -273,9 +273,9 @@ parts: dict[str, str] = split_manual_into_parts(manual_text)
 
 - `docs/specs/shop_arena/shop_gen.md` §5.2 — Phase 1 manual merge.
 - `docs/specs/shop_arena/shop_gen.md` §5.5 — Phase 4 build harness loop.
-- `packages/shop_arena/src/shop_gen/manual_merge/prose.py` —
+- `packages/shop_arena/src/shop_arena/gen/manual_merge/prose.py` —
   `_CANONICAL_SECTIONS`, `_parse_manual_sections`.
-- `packages/shop_arena/src/shop_gen/build/prompts/planner.md` —
+- `packages/shop_arena/src/shop_arena/gen/build/prompts/planner.md` —
   current 9-task canonical block.
 
 ### 8.3 Out of scope

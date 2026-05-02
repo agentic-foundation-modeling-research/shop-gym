@@ -7,7 +7,7 @@ name = "harness"
 version = "0.3.0"
 description = "Plan + Exec harness: runtime-agnostic engine for orchestrating LLM agents through a plan-then-loop flow."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [{ name = "ShopGym" }]
 license = { text = "MIT" }
 dependencies = [

@@ -1,5 +1,9 @@
 # ShopGym
 
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+
+
 Sandbox shop websites with modern features for **building and evaluating
 shopping LLM agents**. ShopGym is a mono-repo of three components that
 together produce reproducible shopping environments and evaluation datasets.
@@ -8,7 +12,7 @@ together produce reproducible shopping environments and evaluation datasets.
 
 | Package | Lang | Role |
 |---|---|---|
-| [`packages/shop_arena`](packages/shop_arena) | Python | **ShopArena** — Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from any live storefront. Ships three modules: [`shop_gen`](packages/shop_arena/src/shop_gen) (generation pipeline; **v0.1.0** — see [spec](docs/specs/shop_arena/shop_gen.md) and [impl plan](docs/impl/shop_gen_implementation.md)), [`shop_explore`](packages/shop_arena/src/shop_explore) (storefront exploration; **v0.1 in progress** — see [spec](docs/specs/shop_arena/shop_explore.md) and [impl plan](docs/impl/shop_explore_implementation.md)), and [`shop_probe`](packages/shop_arena/src/shop_probe) (structural-fidelity measurement instrument; **v0.1 (M1–M7 landed)** — see [spec](docs/specs/shop_arena/web_probe.md) and [impl plan](docs/impl/web_probe_implementation.md)). |
+| [`packages/shop_arena`](packages/shop_arena) | Python | **ShopArena** — Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from any live storefront. |
 | [`packages/shop_guru`](packages/shop_guru) | Python | **ShopGuru** — Automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation structure, and policies to synthesize grounded evaluation tasks across 7 skill categories. |
 | [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server hosting SandboxShop data. |
 
@@ -22,12 +26,12 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 
 ## Requirements
 
-- Python ≥ 3.11 with [`uv`](https://docs.astral.sh/uv/)
+- Python ≥ 3.12 with [`uv`](https://docs.astral.sh/uv/)
 - Node ≥ 20 with [`pnpm`](https://pnpm.io/) ≥ 9
-- One of the supported coding-agent CLIs (only required for v1.3
-  agent-driven `shop-probe` runs and `shop_explore`):
+- One of the supported coding-agent CLIs (required for `shop_arena.explore`
+  and the `shop_arena.gen` build loop):
   - `pi` (default agent runtime) — install per the
-    [pi CLI docs](https://www.npmjs.com/package/pi-playwright).
+    [pi coding agent docs](https://pi.dev/).
   - `claude` (Anthropic Claude Code CLI) — install per the
     [Claude Code docs](https://docs.claude.com/claude-code/).
 
@@ -36,7 +40,6 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 ```bash
 # Python workspace (shop_guru, shop_arena)
 uv sync
-uv run --package shop-arena playwright install chromium  # only if running shop-probe
 
 # TypeScript workspace (shop_backend) — also installs the
 # `pi-playwright` skill into `node_modules/`. The repo's
@@ -46,18 +49,56 @@ uv run --package shop-arena playwright install chromium  # only if running shop-
 pnpm install
 ```
 
-### Anthropic credentials (shop-probe v1.3)
-
-The v1.3 agent-driven probes call the Anthropic Messages API for the
-vision completion judge. Copy `.env.example` and fill in your key:
+`shop_arena.gen` reads `OPENAI_API_KEY` / `OPENAI_BASE_URL` from a project
+`.env` for `--image-backend openai` runs. Copy the template and fill in
+your key when needed:
 
 ```bash
 cp .env.example .env
-# then edit .env to set ANTHROPIC_API_KEY (and optionally ANTHROPIC_BASE_URL)
+# then edit .env to set OPENAI_API_KEY (or ANTHROPIC_API_KEY for claude_code runtime)
 ```
 
-`.env` is loaded automatically by `shop-probe`; values already exported
-in the shell take precedence.
+Shell exports take precedence over `.env` values.
+
+## Quick start
+
+A full ShopArena pipeline is three commands: **explore** a real
+storefront → **generate** a SandboxShop from the resulting manual →
+**serve** it locally for agents to interact with.
+
+### 1. Explore a storefront
+
+```bash
+uv run shop-explore https://example-shop.com
+# → outputs/shop_manuals/<domain>/<run_id>/manual.md (+ artifact/, run.json)
+```
+
+`<run_id>` is timestamped; the printed final line shows the exact path.
+
+### 2. Generate a SandboxShop
+
+```bash
+# Without image gen — placeholder PNGs (fast, deterministic, offline).
+uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop
+
+# With image gen — OpenAI gpt-image-1 (needs OPENAI_API_KEY in .env).
+uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop \
+    --image-backend openai
+```
+
+Output lands in `outputs/shops/mock_shop/` (`data/`, `hydrogen/`, `runs/`).
+Re-running with the same `--name` resumes from the cached state in
+`outputs/shops/mock_shop/.shop_gen/`.
+
+### 3. Serve the shop
+
+```bash
+pnpm shop:host start mock_shop          # auto-pick a free port
+# → Hydrogen on http://localhost:<port>, shop_backend on <port>+1000
+```
+
+See [Hosting a generated shop](#hosting-a-generated-shop) for
+stop / logs / list management.
 
 ## Common commands
 
@@ -89,15 +130,13 @@ optional — if omitted, a free port is auto-picked from `4100..4199` (api:
 bound by another process.
 
 ```bash
-pnpm shop:host start mock_hardware             # auto-pick a free port
-pnpm shop:host start mock_hardware 8000        # or pick explicitly
+pnpm shop:host start mock_shop             # auto-pick a free port
+pnpm shop:host start mock_shop 8000        # or pick explicitly
 # → shop_backend on http://localhost:9000, Hydrogen on http://localhost:8000
 
 pnpm shop:host list -a                      # all shops, running + available
-pnpm shop:host logs mock_hardware api       # tail shop_backend log
-pnpm shop:host logs mock_hardware hydrogen  # tail Hydrogen log
-pnpm shop:host stop mock_hardware           # or `stop all`
-pnpm shop:host restart mock_hardware
+pnpm shop:host stop mock_shop           # or `stop all`
+pnpm shop:host restart mock_shop
 ```
 
 The script picks the Hydrogen tree in this order: `HYDROGEN_DIR` env override
@@ -125,23 +164,6 @@ shop-gym/
 ├── biome.json
 └── .editorconfig
 ```
-
-## Status
-
-Early development. `shop_arena/shop_gen` is at **v0.1.0** — M0–M6
-landed (step DAG, manual merge, data synth, validation, build harness
-loop, advisory final eval). `shop_arena/shop_explore` is at **v0.1
-(in progress)** — M1–M3 plus M5 docs landed; M4 live-runtime smoke +
-final tag pending. `shop_arena/shop_probe` is at **v0.1 (M1–M7
-landed)** — three-axis fidelity measurement (capability / surface /
-judge), cohort aggregation, and paper figures all render from
-versioned reports. See
-[`docs/impl/shop_gen_implementation.md`](docs/impl/shop_gen_implementation.md),
-[`docs/impl/shop_explore_implementation.md`](docs/impl/shop_explore_implementation.md),
-and
-[`docs/impl/web_probe_implementation.md`](docs/impl/web_probe_implementation.md)
-for milestone status. Other packages contain placeholder entrypoints only.
-See `docs/specs/` for planned design.
 
 ## License
 

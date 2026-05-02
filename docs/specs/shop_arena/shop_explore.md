@@ -1,4 +1,4 @@
-# ShopExplore (`packages/shop_arena/src/shop_explore`)
+# ShopExplore (`packages/shop_arena/src/shop_arena/explore`)
 
 Status: **Spec (proposed)** · Version: **0.1**
 Owners: ShopArena
@@ -12,7 +12,7 @@ Owners: ShopArena
 
 ## 1. Overview
 
-`shop_explore` ingests one storefront URL and emits a **Shop Manual**: a
+`shop_arena.explore` ingests one storefront URL and emits a **Shop Manual**: a
 small bundle of files (markdown + JSON + raw evidence) that captures the
 shop's structure, navigation, and modern e-commerce features (cart,
 search, filters, sort, drawers, popups, etc.) in an anonymized form.
@@ -23,16 +23,16 @@ Two design choices define the module:
   `packages/harness` plan-then-exec iterations. The planner agent walks
   the shop briefly and emits a per-shop task list; executor agents work
   one task each, driving the browser through the **playwright skill**
-  (CLI). `shop_explore` owns prompts, an `AGENTS.md`, a deterministic
+  (CLI). `shop_arena.explore` owns prompts, an `AGENTS.md`, a deterministic
   prefetch step, and a post-loop synthesis step. It owns no
   orchestration, no LLM session management, and no telemetry plumbing —
   the harness owns those.
 - **Decoupled output.** A Shop Manual is a standalone artifact keyed by
   domain + run id; it is **not** tied to a sandbox shop. Downstream
-  (`shop_gen` SandboxShop builder) consumes one or more Shop Manuals as
+  (`shop_arena.gen` SandboxShop builder) consumes one or more Shop Manuals as
   input.
 
-`shop_explore` is the first non-trivial caller of `packages/harness` and
+`shop_arena.explore` is the first non-trivial caller of `packages/harness` and
 exercises its public surface end-to-end.
 
 ---
@@ -67,7 +67,7 @@ exercises its public surface end-to-end.
 
 ## 3. Current Status
 
-- `packages/shop_arena/src/shop_explore/` is a 2-line scaffold (`cli.py`
+- `packages/shop_arena/src/shop_arena/explore/` is a 2-line scaffold (`cli.py`
   prints "not implemented"). No spec, no module structure.
 - A legacy reference exists out-of-tree uses `browser_use` and one hard-coded agent per fixed page type
   (`homepage`, `collections`, `product`, `cart_and_search`,
@@ -81,7 +81,7 @@ exercises its public surface end-to-end.
 
 ## 4. Desired Status
 
-A self-contained module under `packages/shop_arena/src/shop_explore/`
+A self-contained module under `packages/shop_arena/src/shop_arena/explore/`
 that, given a storefront URL, runs one harness `plan_exec_loop` against
 it and emits a Shop Manual under
 `outputs/shop_manuals/<domain>/<run_id>/`.
@@ -109,7 +109,7 @@ layout.
 - Authenticated flows (login, account, wishlist).
 - Checkout (cart-to-payment).
 - Cross-shop merging / SandboxShop synthesis (separate spec under
-  `shop_gen`).
+  `shop_arena.gen`).
 - Sandbox shop generation, asset rewriting, GraphQL mocking.
 - Asset downloads beyond what playwright captures opportunistically.
 - Deterministic anonymization scrubber (deferred; §6).
@@ -128,7 +128,7 @@ layout.
   a test-only regex scan (the production pipeline does not enforce this
   in v0.1).
 - **SC4 — Replayable.** A test harness using `harness.runtimes.replay`
-  can drive a recorded `shop_explore` run end-to-end without network
+  can drive a recorded `shop_arena.explore` run end-to-end without network
   access.
 - **SC5 — Coverage.** On the fixture set, every coverage-taxonomy area
   that prefetch evidence indicates is present (§5.7) appears as either
@@ -142,7 +142,7 @@ layout.
 
 ```
               ┌──────────────────────────────────────────────┐
-              │                shop_explore                  │
+              │                shop_arena.explore                  │
               │  url → out_dir/{manual.md, capabilities.json,│
               │         stats.json, evidence/, …}            │
               └────────────┬───────────────────────┬─────────┘
@@ -170,9 +170,9 @@ layout.
        └──────────────────────────────────────────────────────────┘
 ```
 
-`shop_explore` is a thin façade. The harness owns the loop, telemetry,
+`shop_arena.explore` is a thin façade. The harness owns the loop, telemetry,
 and `run.json`. The agent runtime (default `pi`) owns the LLM and the
-playwright skill discovery. `shop_explore` owns three things:
+playwright skill discovery. `shop_arena.explore` owns three things:
 
 1. **Prefetch** — one deterministic Python step before the loop.
 2. **Prompt + AGENTS.md bundle** — the planner/executor instructions
@@ -243,21 +243,21 @@ from the planner's brief browse. Areas observed-absent are listed in
 ### 5.4 Output layout
 
 `out_dir == run_dir`. The harness owns the top-level structure (§5.3 of
-the harness spec); `shop_explore` owns everything under `artifact/`.
+the harness spec); `shop_arena.explore` owns everything under `artifact/`.
 
 ```
 outputs/shop_manuals/<domain>/<run_id>/
-├── AGENTS.md                 # harness-stable; written by shop_explore
+├── AGENTS.md                 # harness-stable; written by shop_arena.explore
 ├── prompts/                  # harness-stable; planner.md, execute.md
 ├── plan.md                   # harness; evolving
 ├── iters/                    # harness; per-iteration trajectories
 ├── run.json                  # harness; run summary
-└── artifact/                 # owned by shop_explore + agents
+└── artifact/                 # owned by shop_arena.explore + agents
     ├── manual.md             # PUBLISHED — prose, anonymized
     ├── capabilities.json     # PUBLISHED — structured tags, schema-validated
     ├── stats.json            # PUBLISHED — analysis statistics
     ├── manifest.json         # PUBLISHED — run summary + omitted_areas
-    ├── prefetch/             # seeded by shop_explore (no LLM)
+    ├── prefetch/             # seeded by shop_arena.explore (no LLM)
     │   ├── index.html
     │   ├── sitemap.xml
     │   ├── robots.txt
@@ -279,7 +279,7 @@ outputs/shop_manuals/<domain>/<run_id>/
 
 The five **published** files (`manual.md`, `capabilities.json`,
 `stats.json`, `manifest.json`, plus the `prefetch/` directory) form the
-contract consumed by downstream `shop_gen`. Everything else
+contract consumed by downstream `shop_arena.gen`. Everything else
 (`parts/`, `evidence/`, harness telemetry) is debugging context and may
 be excluded by tooling that ships manuals around.
 
@@ -290,7 +290,7 @@ of the same shop.
 ### 5.5 Capabilities schema
 
 `capabilities.json` is a single pydantic v2 model owned by
-`shop_explore.capabilities`. It is **closed** (extra fields rejected)
+`shop_arena.explore.capabilities`. It is **closed** (extra fields rejected)
 so schema drift is loud. Top-level shape:
 
 ```json
@@ -367,7 +367,7 @@ deep-merge with the rule: **last writer wins per leaf**, except lists
 
 ### 5.6 Stats schema
 
-`stats.json` is computed deterministically by `shop_explore.stats` from
+`stats.json` is computed deterministically by `shop_arena.explore.stats` from
 `prefetch/` + `capabilities.json`. No LLM. Shape:
 
 ```json
@@ -428,7 +428,7 @@ The planner emits `plan.md` tasks of the form:
 
 ### 5.8 Prompts and AGENTS.md
 
-Three caller-owned files live under `packages/shop_arena/src/shop_explore/prompts/`:
+Three caller-owned files live under `packages/shop_arena/src/shop_arena/explore/prompts/`:
 
 - `agents.md` — project constitution. Anonymization rules (verbatim
   from the legacy `anonymization_rules.md`, lightly extended), how to
@@ -446,7 +446,7 @@ v0.1.
 
 ### 5.9 Prefetch
 
-`shop_explore.prefetch.run(url) -> PrefetchResult` performs a fixed,
+`shop_arena.explore.prefetch.run(url) -> PrefetchResult` performs a fixed,
 small fetch using `httpx`:
 
 ```
@@ -484,12 +484,12 @@ Behavior:
 - Output is written verbatim plus a `prefetch.json` summary listing
   `url → status, content_type, bytes`.
 
-Prefetch is the only network code in `shop_explore`. The agents do all
+Prefetch is the only network code in `shop_arena.explore`. The agents do all
 further browsing through playwright.
 
 ### 5.10 Synthesis
 
-After the harness loop returns, `shop_explore.synthesize(run_dir)`
+After the harness loop returns, `shop_arena.explore.synthesize(run_dir)`
 runs (no further harness involvement):
 
 1. **Capabilities merge** (deterministic). Read every
@@ -520,7 +520,7 @@ Synthesis failure modes (loud — no silent fallback):
   `complete()`) → exit non-zero, no `manual.md` / `manifest.json`
   emitted. Runtimes that do not implement `harness.runtimes.LLMCompleter`
   (e.g. `replay`) require an explicit `llm=` argument to
-  `shop_explore.pipeline.explore`.
+  `shop_arena.explore.pipeline.explore`.
 
 ### 5.11 CLI surface
 
@@ -537,7 +537,7 @@ shop-explore <url> [--out PATH] [--runtime {pi,claude_code}]
 Library equivalent:
 
 ```python
-from shop_explore import explore, ExploreConfig
+from shop_arena.explore import explore, ExploreConfig
 
 result = explore(ExploreConfig(url="https://example-shop.com",
                                 runtime="pi"))
@@ -547,7 +547,7 @@ assert result.manual_path.exists()
 ### 5.12 Module layout
 
 ```
-packages/shop_arena/src/shop_explore/
+packages/shop_arena/src/shop_arena/explore/
 ├── __init__.py            # public re-exports: explore, ExploreConfig, ExploreResult
 ├── cli.py                 # thin argparse → explore()
 ├── config.py              # ExploreConfig, ExploreResult (pydantic v2)
@@ -563,13 +563,13 @@ packages/shop_arena/src/shop_explore/
 └── py.typed
 ```
 
-Tests live under `packages/shop_arena/tests/shop_explore/` and exercise:
+Tests live under `packages/shop_arena/tests/explore/` and exercise:
 
 - Prefetch against a recorded `respx`/`httpx` cassette.
 - Capabilities schema round-trip + merge edge cases.
 - Stats computation against fixture prefetches.
 - A full harness e2e using `harness.runtimes.replay` against a
-  recorded `shop_explore` cassette (one fixture storefront).
+  recorded `shop_arena.explore` cassette (one fixture storefront).
 - Anonymization regex scan over the synthesized manual.
 
 ---
@@ -636,9 +636,9 @@ updated. Tag `shop-explore-v0.1.0`.
 
 ### 8.1 Public surface (informative)
 
-- **Types** (`shop_explore.config`): `ExploreConfig`,
+- **Types** (`shop_arena.explore.config`): `ExploreConfig`,
   `ExploreResult`, `RuntimeName`.
-- **Schemas** (`shop_explore.capabilities`, `shop_explore.stats`):
+- **Schemas** (`shop_arena.explore.capabilities`, `shop_arena.explore.stats`):
   `Capabilities` (pydantic v2), `Stats`.
 - **Functions**: `explore(config) -> ExploreResult`,
   `prefetch.run(url) -> PrefetchResult`,
@@ -673,7 +673,7 @@ updated. Tag `shop-explore-v0.1.0`.
 
 - **Deterministic anonymization scrubber** (Alternative E) as a
   hard gate before publishing.
-- **Cross-shop manual diff/merge** in `shop_gen` consuming N
+- **Cross-shop manual diff/merge** in `shop_arena.gen` consuming N
   manuals.
 - **Mobile viewport pass** as a second planner (currently desktop
   1440×900 only).

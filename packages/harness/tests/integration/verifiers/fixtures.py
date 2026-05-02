@@ -14,7 +14,7 @@ need to exercise the dispatch lifecycle:
 
 The fixtures live under ``tests/integration/verifiers/`` (rather than
 ``tests/unit/``) to match spec §9.2's "consumer fixtures" framing.
-``shop_gen`` and other downstream callers import from this module via
+``shop_arena.gen`` and other downstream callers import from this module via
 the test-only path.
 """
 

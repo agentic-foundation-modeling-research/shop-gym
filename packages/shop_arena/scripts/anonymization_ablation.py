@@ -12,7 +12,7 @@ two artifacts under ``outputs/web_probe/anonymization_ablation/``:
 
 The script is **import-safe** — module load does no I/O; the audit
 runs from ``main()``. Re-run after any change to
-``shop_probe.judge.anonymize`` or to the leak-vector inventory below.
+``shop_arena.probe.judge.anonymize`` or to the leak-vector inventory below.
 
 Usage:
 
@@ -32,7 +32,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from shop_probe.judge.anonymize import (
+from shop_arena.probe.judge.anonymize import (
     REDACTED_BRAND,
     REDACTED_HOST,
     REDACTED_THEME,
@@ -40,14 +40,14 @@ from shop_probe.judge.anonymize import (
     anonymize_trajectory,
     hash_token,
 )
-from shop_probe.judge.trajectory import (
+from shop_arena.probe.judge.trajectory import (
     Trajectory,
     TrajectoryAction,
     TrajectoryObservation,
     TrajectoryStep,
 )
-from shop_probe.report import BrowserMeta, EvidenceRef
-from shop_probe.targets import Target
+from shop_arena.probe.report import BrowserMeta, EvidenceRef
+from shop_arena.probe.targets import Target
 
 # --------------------------------------------------------------------------- #
 # Fixture — the brand-loaded hardware trajectory used by the unit tests.
@@ -424,7 +424,7 @@ def _render_markdown_report(audit: AblationAudit) -> str:
         f"Generated: `{audit.generated_at}`\n"
         "\n"
         "This report quantifies whether structural-only anonymization (the v1\n"
-        "`shop_probe.judge.anonymize` rewrites, spec §5.5 step 3) is sufficient\n"
+        "`shop_arena.probe.judge.anonymize` rewrites, spec §5.5 step 3) is sufficient\n"
         "to defeat brand-recognition by a frontier judge model on the closed\n"
         "leak-vector inventory it is designed to cover. It is the gate\n"
         "deliverable for spec §8.5 open question 4 / T5.1.\n"

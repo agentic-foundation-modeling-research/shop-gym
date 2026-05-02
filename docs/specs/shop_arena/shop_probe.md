@@ -1,4 +1,4 @@
-# ShopProbe (`packages/shop_arena/src/shop_probe`)
+# ShopProbe (`packages/shop_arena/src/shop_arena/probe`)
 
 Status: **Spec (proposed)** · Version: **1.0**
 Owners: ShopGym
@@ -384,19 +384,19 @@ entries:
 ```
 
 The shipped rubric will live at
-`packages/shop_arena/src/shop_probe/rubric/rubric.yaml`. The loader
+`packages/shop_arena/src/shop_arena/probe/rubric/rubric.yaml`. The loader
 hashes raw bytes; the digest is embedded in every report and is the
 cache key.
 
 ### 5.7 What carries over from v0.4
 
-- The capture infrastructure (`shop_probe.capture.bundle`) — already
+- The capture infrastructure (`shop_arena.probe.capture.bundle`) — already
   snapshots screenshot + DOM per canonical page; needs only an a11y
   tree dump (`page.accessibility.snapshot()`) added.
-- The Playwright runner (`shop_probe.probes._runner`) — extends
+- The Playwright runner (`shop_arena.probe.probes._runner`) — extends
   naturally to scripted transitions.
 - The judge harness (Anthropic + OpenAI clients in
-  `shop_probe.agent`) — retargeted at modality-specific inputs.
+  `shop_arena.probe.agent`) — retargeted at modality-specific inputs.
 - The CLI shape: one `eval` subcommand, per-shop file cache, content-
   addressed rubric-hash invalidation.
 
@@ -449,7 +449,7 @@ incremental value is the entire fidelity headline.
 ### 8.1 Layout
 
 ```
-packages/shop_arena/src/shop_probe/
+packages/shop_arena/src/shop_arena/probe/
 ├── cli.py                  # `eval` subcommand, per-shop cache
 ├── report.py               # ProbeReport + ObservationBlock / ActionBlock / TransitionResult
 ├── targets.py              # Bench, Target schemas
@@ -501,8 +501,8 @@ CliffDelta)`. Effect-size thresholds: `|δ| < 0.147` negligible,
 
 ```bash
 cd packages/shop_arena
-uv run pyright src/shop_probe                       # 0 errors expected
-uv run pytest tests/shop_probe                      # green
+uv run pyright src/shop_arena/probe                       # 0 errors expected
+uv run pytest tests/probe                      # green
 
 # Smoke run: produces N reports + per-family figures.
 uv run --package shop-arena shop-probe eval \

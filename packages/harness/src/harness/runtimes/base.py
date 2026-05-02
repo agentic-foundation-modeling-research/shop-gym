@@ -11,7 +11,7 @@ and the workspace state machine *between* iterations. See
 `docs/specs/harness/plan_exec_loop.md` §5.6 and §5.7.
 
 This module also defines the optional `LLMCompleter` sub-protocol, used
-by callers (notably `shop_explore` synthesis, spec §5.10) that need a
+by callers (notably `shop_arena.explore` synthesis, spec §5.10) that need a
 single non-agent LLM completion against the same model the runtime drives
 its iterations with. Runtime adapters are free to implement it; harness
 itself does not call it.
@@ -96,7 +96,7 @@ class LLMCompleter(Protocol):
     Implementations run a single non-agent prompt → text call against the
     same underlying model the runtime drives iterations with — no tools,
     no AGENTS.md context, no session persistence. Callers (notably
-    `shop_explore` synthesis, spec §5.10) use it to delegate the
+    `shop_arena.explore` synthesis, spec §5.10) use it to delegate the
     one-shot manual-merge LLM call to the configured runtime instead of
     instantiating a separate provider SDK.
 
