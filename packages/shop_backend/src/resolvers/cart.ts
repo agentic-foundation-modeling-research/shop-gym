@@ -664,10 +664,15 @@ export const cartResolvers = {
       args: MutationCartLinesAddArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
-      const state = ctx.carts.get(args.cartId);
-      if (state === undefined) return cartNotFoundPayload();
-      ctx.carts.addLines(state, args.lines);
-      return successPayload(state, ctx);
+      // Stale cartId (e.g. client cookie outlived an in-memory store): bootstrap
+      // a fresh cart with the requested lines so the client can refresh its id
+      // from the response.
+      const existing = ctx.carts.get(args.cartId);
+      if (existing === undefined) {
+        return successPayload(ctx.carts.create({ lines: args.lines }), ctx);
+      }
+      ctx.carts.addLines(existing, args.lines);
+      return successPayload(existing, ctx);
     },
 
     cartLinesUpdate: (

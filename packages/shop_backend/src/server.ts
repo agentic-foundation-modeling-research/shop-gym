@@ -13,7 +13,7 @@
  *   - `GET /health` — `{ status: "ok", store }` JSON.
  *
  * CORS follows spec §5.4: `Access-Control-Allow-Origin: *`, methods
- * `POST, OPTIONS`, headers `Content-Type, X-Shopify-Storefront-Access-Token`.
+ * `POST, OPTIONS`, headers `Content-Type`.
  *
  * Each call allocates its own `CartStore`, so concurrent server instances —
  * including parallel test suites — never share cart ids. `close()` shuts
@@ -34,7 +34,7 @@ import { createSandboxSchema } from './schema.js';
 const CORS: CORSOptions = {
   origin: '*',
   methods: ['POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-Shopify-Storefront-Access-Token'],
+  allowedHeaders: ['Content-Type'],
 };
 
 export interface ServerOptions {

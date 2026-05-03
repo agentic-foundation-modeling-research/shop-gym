@@ -624,7 +624,10 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     expect(created.lines).toEqual([]);
   });
 
-  it('returns a cartId userError when cartLinesAdd targets an unknown cart', async () => {
+  it('cartLinesAdd bootstraps a fresh cart when the cartId is unknown', async () => {
+    // A stale client cookie can outlive an in-memory cart store across server
+    // restarts. Auto-bootstrap so `Add to cart` recovers without a user-visible
+    // failure; the response carries the new id for the client to refresh.
     const carts = new CartStore();
     const run = runWith(carts);
     const result = await run(/* GraphQL */ `
@@ -633,18 +636,16 @@ describe('cartResolvers — line mutations (T4.3)', () => {
           cartId: "gid://shopify/Cart/cart-999"
           lines: [{ merchandiseId: "${AISLEARENA_VARIANT}", quantity: 1 }]
         ) {
-          cart { id }
-          userErrors { code field message }
+          ${CART_PAYLOAD_FRAGMENT}
         }
       }
     `);
     expect(result.errors).toBeUndefined();
-    expect(result.data).toEqual({
-      cartLinesAdd: {
-        cart: null,
-        userErrors: [{ code: 'INVALID', field: ['cartId'], message: 'Cart not found' }],
-      },
-    });
+    const cart = unwrapCart(result.data, 'cartLinesAdd');
+    expect(cart.id).toBe('gid://shopify/Cart/cart-1');
+    expect(cart.totalQuantity).toBe(1);
+    expect(cart.lines).toHaveLength(1);
+    expect(cart.lines[0]?.merchandiseId).toBe(AISLEARENA_VARIANT);
   });
 });
 
