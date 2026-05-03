@@ -1,9 +1,9 @@
 """Project-level ``.env`` loader shared across shop_arena CLIs.
 
-Both :mod:`shop_arena.gen.cli` and :mod:`shop_arena.probe.agent.env` need to honour
-a project-root ``.env`` so operators do not have to ``export`` API keys
-and routing URLs (``OPENAI_API_KEY``, ``OPENAI_BASE_URL``,
-``ANTHROPIC_API_KEY``, ``ANTHROPIC_BASE_URL``) on every invocation.
+:mod:`shop_arena.gen.cli` honours a project-root ``.env`` so operators do
+not have to ``export`` API keys and routing URLs (``OPENAI_API_KEY``,
+``OPENAI_BASE_URL``, ``ANTHROPIC_API_KEY``, ``ANTHROPIC_BASE_URL``) on
+every invocation.
 
 The loader is import-safe (no I/O at import time) and idempotent — the
 first call walks upward from the current working directory to find a

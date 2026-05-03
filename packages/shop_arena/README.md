@@ -3,7 +3,7 @@
 Environment Factory that generates deterministic, self-contained sandbox shops
 (**SandboxShops**) from any live storefront using modern web development stacks.
 
-The `shop-arena` distribution ships three tightly-coupled submodules under the
+The `shop-arena` distribution ships two tightly-coupled submodules under the
 `shop_arena` namespace:
 
 - **`shop_arena.gen`** — main SandboxShop generation pipeline. *v0.1.0* —
@@ -17,12 +17,6 @@ The `shop-arena` distribution ships three tightly-coupled submodules under the
   runtime smoke + release tasks are pending. See
   [`src/shop_arena/explore/README.md`](src/shop_arena/explore/README.md) for module-level
   docs.
-- **`shop_arena.probe`** — structural-fidelity measurement instrument. *v0.1
-  (M1–M7 landed)* — Playwright capability probes (axis A), surface-area
-  crawl (axis B), and a blinded LLM judge over agent trajectories (axis C),
-  with cohort aggregation and paper figures. See
-  [`src/shop_arena/probe/README.md`](src/shop_arena/probe/README.md) for module-level
-  docs.
 
 ## Install (dev)
 
@@ -35,17 +29,12 @@ uv sync
 ```bash
 uv run shop-gen --help        # functional v0.1 surface
 uv run shop-explore --help    # functional v0.1 surface
-uv run shop-probe --help      # functional v0.1 surface
 ```
 
 `shop-explore` exposes the full pipeline plus `--prefetch-only` and
 `--synthesize-only` shortcuts; see the
 [`shop_arena.explore` README](src/shop_arena/explore/README.md#usage) for details and the
 output layout.
-
-`shop-probe` ships three subcommands (`run` / `aggregate-reruns` / `report`)
-and requires `playwright install chromium`; see the
-[`shop_arena.probe` README](src/shop_arena/probe/README.md#usage) for details.
 
 ## Tests
 
@@ -57,7 +46,3 @@ uv run pytest packages/shop_arena/tests
 cassettes — no network or LLM access required. The cassette record workflow
 is documented in
 [`src/shop_arena/explore/README.md`](src/shop_arena/explore/README.md#record-cassette-workflow).
-
-`shop_arena.probe` tests are hermetic: probe / surface / judge tests run against
-an in-process sandbox storefront (`tests/probe/_sandbox.py`); no
-network or LLM access required.

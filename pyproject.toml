@@ -45,10 +45,6 @@ select = [
   "RUF",               # ruff-specific
 ]
 ignore = ["PLR0913"]
-# Greek letters used in mathematical notation across packages (Spearman ρ
-# in shop_arena.probe.judge.calibration, etc.) — keep them as written rather than
-# masquerading as Latin look-alikes.
-allowed-confusables = ["ρ"]
 
 [tool.ruff.lint.per-file-ignores]
 # Files dominated by natural-language prompt content sent to LLMs.

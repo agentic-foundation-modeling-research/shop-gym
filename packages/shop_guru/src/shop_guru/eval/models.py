@@ -18,8 +18,7 @@ the subclass rebuilds ``anthropic.Anthropic`` with an explicit
 When ``base_url`` is ``None`` (the default), the SDK reads
 ``OPENAI_BASE_URL`` / ``ANTHROPIC_BASE_URL`` from the environment.
 Operators populate those via the project ``.env`` (see
-:mod:`shop_guru._dotenv`) — the same convention
-:mod:`shop_arena.probe.judge.client` follows.
+:mod:`shop_guru._dotenv`).
 
 ``MODEL_CHOICES`` / ``DEFAULT_MODEL`` stay as plain strings so
 ``run.py`` can reference them at argparse time without triggering

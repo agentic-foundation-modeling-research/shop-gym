@@ -24,7 +24,6 @@ dependencies = [
 [project.scripts]
 shop-gen = "shop_arena.gen.cli:main"
 shop-explore = "shop_arena.explore.cli:main"
-shop-probe = "shop_arena.probe.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/shop_arena"]
