@@ -11,6 +11,13 @@ from typing import Any
 from shop_guru.config import Shop
 from shop_guru.emit import make_id
 
+# Bounds on title length used to filter products into the candidate pool:
+# titles shorter than this are usually placeholders or test fixtures, and
+# titles longer than this are usually descriptions, not names — neither
+# makes a good "search by name" target.
+_MIN_PRODUCT_TITLE_LEN = 4
+_MAX_PRODUCT_TITLE_LEN = 120
+
 
 def generate(shop: Shop, data: dict[str, Any], seed: int = 0, count: int = 5) -> list[dict]:
     """Emit up to ``count`` exact-search tasks for ``shop``.
@@ -76,7 +83,7 @@ def _is_task_candidate(product: dict) -> bool:
     something permanently out of stock).
     """
     title = product.get("title") or ""
-    if not title or len(title) < 4 or len(title) > 120:
+    if not title or len(title) < _MIN_PRODUCT_TITLE_LEN or len(title) > _MAX_PRODUCT_TITLE_LEN:
         return False
     if product.get("is_gift_card"):
         return False

@@ -36,6 +36,9 @@ from typing import Any
 
 import anthropic
 import openai
+from agentlab.agents import dynamic_prompting as dp
+from agentlab.agents.generic_agent.generic_agent import GenericAgentArgs
+from agentlab.agents.generic_agent.tmlr_config import BASE_FLAGS
 from agentlab.llm import tracking
 from agentlab.llm.base_api import BaseModelArgs
 from agentlab.llm.chat_api import (
@@ -46,11 +49,8 @@ from agentlab.llm.chat_api import (
     handle_error,
 )
 from agentlab.llm.llm_utils import AIMessage
-from openai import OpenAI
-from agentlab.agents import dynamic_prompting as dp
-from agentlab.agents.generic_agent.generic_agent import GenericAgentArgs
-from agentlab.agents.generic_agent.tmlr_config import BASE_FLAGS
 from bgym import HighLevelActionSetArgs
+from openai import OpenAI
 
 MODEL_CHOICES: tuple[str, ...] = (
     "gpt-5",
@@ -98,7 +98,7 @@ class CustomAIChatModel(ChatModel):
         if max_tokens is None:
             # Upstream OpenAIChatModel swaps None -> NOT_GIVEN here so
             # the SDK leaves the limit unset. Keep the same behavior.
-            from openai import NOT_GIVEN
+            from openai import NOT_GIVEN  # noqa: PLC0415
 
             max_tokens = NOT_GIVEN
         super().__init__(
@@ -146,7 +146,8 @@ class CustomAIChatModel(ChatModel):
 
                 if completion.usage is None:
                     raise OpenRouterError(
-                        "The completion object does not contain usage information. This is likely a bug in the OpenRouter API."
+                        "The completion object does not contain usage information. "
+                        "This is likely a bug in the OpenRouter API."
                     )
 
                 self.success = True
@@ -345,8 +346,8 @@ def build_agent(model: str, base_url: str | None = None) -> Any:
 
 
 __all__ = [
-    "MODEL_CHOICES",
     "DEFAULT_MODEL",
+    "MODEL_CHOICES",
     "CustomAIChatModel",
     "CustomAIModelArgs",
     "CustomAnthropicChatModel",

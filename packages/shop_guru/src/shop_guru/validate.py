@@ -67,6 +67,16 @@ _FILTER_INTENT_RE = re.compile(
     r"use the (?P<dim>[^\s]+(?:\s+[^\s]+){0,3}?) filter \(e\.g\. (?P<value>[^)]+?)\)"
 )
 
+# Minimum product/collection title length used to gate substring-mention
+# checks. Shorter strings (e.g. "Hat") cause spurious matches against
+# unrelated intent text.
+_MIN_TITLE_LEN_FOR_MENTION = 4
+
+# Cap on word count when treating an intent token as an option name.
+# Longer multi-word tokens are almost always product nouns or descriptive
+# prose, not actual option names like "Color" or "Format".
+_MAX_OPTION_NAME_WORDS = 2
+
 
 @dataclass(frozen=True)
 class Issue:
@@ -224,7 +234,7 @@ def _check_url_contains(task: dict, task_id: str, indexes: _Indexes) -> list[Iss
     return []
 
 
-def _check_filter_feasibility(
+def _check_filter_feasibility(  # noqa: PLR0911  # short-circuit returns are easier to read than nested branches
     task: dict, task_id: str, indexes: _Indexes
 ) -> list[Issue]:
     if not _FILTER_ID_RE.match(task_id):
@@ -362,7 +372,9 @@ _OPTION_STOPWORDS: frozenset[str] = frozenset({
 })
 
 
-def _check_option_mismatch(task: dict, task_id: str, indexes: _Indexes) -> list[Issue]:
+def _check_option_mismatch(  # noqa: PLR0912  # rule covers several intent-shape branches; splitting hides them
+    task: dict, task_id: str, indexes: _Indexes
+) -> list[Issue]:
     """Flag intents that ask for a variant option a product doesn't have.
 
     Example failure caught: an intent saying "select the appropriate Color and
@@ -385,7 +397,7 @@ def _check_option_mismatch(task: dict, task_id: str, indexes: _Indexes) -> list[
     mentioned_products: list[dict] = []
     for product in indexes.products_by_handle.values():
         title = (product.get("title") or "").strip()
-        if title and len(title) > 4 and title in intent:
+        if title and len(title) > _MIN_TITLE_LEN_FOR_MENTION and title in intent:
             mentioned_products.append(product)
     if not mentioned_products:
         return []
@@ -430,7 +442,7 @@ def _check_option_mismatch(task: dict, task_id: str, indexes: _Indexes) -> list[
             continue
         # Skip tokens that look like product nouns (more than two whitespace
         # words usually means it's a product description, not an option).
-        if len(token.split()) > 2:
+        if len(token.split()) > _MAX_OPTION_NAME_WORDS:
             continue
         product_titles = [p.get("title") for p in mentioned_products]
         issues.append(
@@ -472,7 +484,7 @@ def _check_single_sku_value_selection(
     mentioned: list[dict] = []
     for product in indexes.products_by_handle.values():
         title = (product.get("title") or "").strip()
-        if title and len(title) > 4 and title in intent:
+        if title and len(title) > _MIN_TITLE_LEN_FOR_MENTION and title in intent:
             mentioned.append(product)
     if not mentioned:
         return []
@@ -532,7 +544,7 @@ def _check_product_in_collection(task: dict, task_id: str, indexes: _Indexes) ->
     for _handle, p in indexes.products_by_handle.items():
         title = p.get("title")
         # only check if title is a reasonably long string to avoid spurious matches
-        if title and len(title) > 4 and title in intent:
+        if title and len(title) > _MIN_TITLE_LEN_FOR_MENTION and title in intent:
             mentioned_products.append(p)
 
     if not mentioned_collections or not mentioned_products:
@@ -549,8 +561,8 @@ def _check_product_in_collection(task: dict, task_id: str, indexes: _Indexes) ->
                 break
 
         if not found_in_any:
-            # We warn rather than error because some valid multi-step tasks might mention
-            # a collection just for context or as a detour (e.g., "Go to Mens, then search for Women's Hat").
+            # Warn rather than error: valid multi-step tasks may mention a collection just
+            # for context or as a detour (e.g. "Go to Mens, then search for Women's Hat").
             issues.append(
                 Issue(
                     rule="product-not-in-collection",
@@ -579,7 +591,11 @@ def _extract_handle(url_value: str) -> tuple[str | None, str | None]:
     ``/collections/<handle>``, ``/products/<handle>``, or
     ``/pages/<handle>`` shape — those are out of scope for this rule.
     """
-    for kind, prefix in (("collection", "/collections/"), ("product", "/products/"), ("page", "/pages/")):
+    for kind, prefix in (
+        ("collection", "/collections/"),
+        ("product", "/products/"),
+        ("page", "/pages/"),
+    ):
         if url_value.startswith(prefix):
             handle = url_value[len(prefix):].split("?", 1)[0].split("/", 1)[0].strip()
             if handle:

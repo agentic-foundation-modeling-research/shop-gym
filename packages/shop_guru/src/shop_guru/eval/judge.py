@@ -44,7 +44,8 @@ def _resize_b64_png(b64_png: str, scale: float = 0.5) -> str:
     if not b64_png or scale <= 0 or scale >= 1:
         return b64_png
     try:
-        from PIL import Image
+        # Pillow is an optional dep; deferred so eval imports succeed without it.
+        from PIL import Image  # noqa: PLC0415
 
         raw = base64.b64decode(b64_png)
         with Image.open(io.BytesIO(raw)) as img:
@@ -302,7 +303,7 @@ Evaluate this agent execution given the criteria and respond with the exact JSON
     ]
 
 
-def judge_trace(
+def judge_trace(  # noqa: PLR0915  # single linear retry/score path; splitting hides control flow
     task: str,
     final_result: str,
     agent_steps: list[str],
@@ -329,7 +330,7 @@ def judge_trace(
     """
     # Imported lazily so the eval subpackage stays importable even if the
     # openai wheel isn't installed (e.g. during the shop_guru-build path).
-    from openai import OpenAI
+    from openai import OpenAI  # noqa: PLC0415
 
     # Resize once upfront — downscaled images cut tokens across every
     # retry without re-doing the PIL work each attempt. Skip entirely

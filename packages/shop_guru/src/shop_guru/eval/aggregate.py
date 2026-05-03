@@ -7,7 +7,7 @@ carries ``shop_slug`` and ``skill``), and writes two artifacts into the
 study directory:
 
 - ``results.json`` — canonical envelope
-  (``{study, shop, variant, config, counts, results[]}``) with one row
+  (``{study, shop, config, counts, results[]}``) with one row
   per task. Row shape is produced by
   :func:`shop_guru.eval.score.build_result_row` and matches what
   :mod:`shop_guru.eval.rejudge` emits, so the two files can be diffed
@@ -125,7 +125,6 @@ def write_results_summary(
     tasks: list[dict[str, Any]],
     *,
     shop: str,
-    variant: str,
     config: dict[str, Any],
 ) -> tuple[Path, Path]:
     """Write ``results.json`` and ``aggregate.json`` into ``study_dir``.
@@ -133,8 +132,8 @@ def write_results_summary(
     Returns the pair of paths. Safe to call on a study dir that has no
     summary files yet — it will produce an aggregate with ``total: 0``.
 
-    ``shop`` / ``variant`` / ``config`` populate the shared envelope so
-    ``results.json`` has the same top-level shape as a rejudge file.
+    ``shop`` / ``config`` populate the shared envelope so ``results.json``
+    has the same top-level shape as a rejudge file.
     """
     study_dir = Path(study_dir)
     task_index = _index_tasks(tasks)
@@ -174,7 +173,6 @@ def write_results_summary(
     envelope = build_results_envelope(
         study=str(study_dir),
         shop=shop,
-        variant=variant,
         config=config,
         rows=results,
         elapsed_s=round(time.time() - start, 2),

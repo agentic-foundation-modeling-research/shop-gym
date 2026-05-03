@@ -92,8 +92,7 @@ uv run python -m shop_guru
    shops:
      - slug: mystore
        name: My Store
-       real_url: https://mystore.example
-       sandbox_url: https://my-sandbox.run.app/?token=secret
+       shop_url: https://my-sandbox.run.app/?token=secret
        data_dir: outputs/shops/mystore
        country: US
        currency: USD
@@ -108,17 +107,16 @@ uv run python -m shop_guru
    uv run shop-guru
    ```
 
-   Outputs land in `<repo>/outputs/shop_guru/<slug>/benchmarks/`
-   (per-shop, one file per skill, real/sandbox pair). Add
-   `--flat-out outputs/benchmarks` to additionally write a flat
-   SimGym-compatible mirror.
+   Outputs land in `<repo>/outputs/shop_guru/<slug>/benchmarks/` —
+   one file per skill, per shop. Add `--flat-out outputs/benchmarks`
+   to additionally write a flat SimGym-compatible mirror.
 
 4. **Run the benchmark with SimGym** (or any shop_guru-compatible agent
    runner):
 
    ```bash
    pnpm benchmark run -a 8.6 \
-     --dataset outputs/shop_guru/mock_clothing/benchmarks/ShopGuru_e2e_featured_v1_sandbox.json \
+     --dataset outputs/shop_guru/mock_clothing/benchmarks/ShopGuru_e2e_featured_v1.json \
      -c app/lib/agents/v8_6/config/v1_vision.yaml
    ```
 
@@ -128,7 +126,7 @@ uv run python -m shop_guru
 shop-guru [--config PATH]
           [--flat-out PATH] [--no-per-shop]
           [--data-sources-dir PATH] [--shop SLUG]
-          [--skip-real] [--only-auto | --only-manual]
+          [--only-auto | --only-manual]
           [--no-validate]
 ```
 
@@ -139,7 +137,6 @@ shop-guru [--config PATH]
 | `--no-per-shop`      | Skip per-shop writes (requires `--flat-out`)                                        |
 | `--data-sources-dir` | Hand-authored source JSONs (default: `data_sources/`)                               |
 | `--shop SLUG`        | Only build this shop                                                                |
-| `--skip-real`        | Skip generating `_real.json` (useful for synthetic shops)                           |
 | `--only-auto`        | Skip hand-authored sources                                                          |
 | `--only-manual`      | Skip automated generators                                                           |
 | `--no-validate`      | Skip the post-generation consistency validator (default: validate, exit non-zero on errors) |
@@ -196,8 +193,8 @@ trajectory, and writes per-task + aggregate results to disk. Two CLIs:
 
 ### Prerequisites
 
-1. SandboxShop URLs must be live — benchmarks were emitted against the
-   `sandbox_url` for each entry in `configs/featured_v1.yml`.
+1. Storefront URLs must be live — benchmarks were emitted against the
+   `shop_url` for each entry in `configs/featured_v1.yml`.
 2. API tokens for accessing OPENAI APIs
 
    ```bash
@@ -251,15 +248,14 @@ uv run python -m shop_guru.eval.run_all --shop mock_clothing --verbose
 ### Output layout
 
 Each run creates a timestamped study directory nested under its shop
-slug. The study name carries the variant (`sandbox` or `real`) and — if
-`--skill` is passed — the skill filter(s), so sibling runs on the same
-shop are self-describing. Override the top-level root with
-`--results-dir`:
+slug. The study name carries the `--skill` filter (if any) so sibling
+runs on the same shop are self-describing. Override the top-level root
+with `--results-dir`:
 
 ```
 outputs/shop_guru/
 └── <shop>/                                               one dir per shop
-    └── <timestamp>_<agent>_on_shop_guru_<variant>[_<skill>...]/
+    └── <timestamp>_<agent>_on_shop_guru_[<skill>...]/
         ├── <episode_dir>/
         │   ├── summary_info.json       per-episode metrics + judge verdict
         │   ├── step_*.pkl.gz           full step trace (observation, action, screenshot)
@@ -274,11 +270,10 @@ Examples:
 
 | Invocation                                          | Study folder                                  |
 | --------------------------------------------------- | --------------------------------------------- |
-| `... --shop mock_clothing`                          | `..._on_shop_guru_sandbox/`                       |
-| `... --shop mock_clothing --variant real`           | `..._on_shop_guru_real/`                       |
-| `... --shop mock_clothing --skill e2e`              | `..._on_shop_guru_sandbox_e2e/`                   |
-| `... --shop mock_clothing --skill e2e --skill exact`| `..._on_shop_guru_sandbox_e2e_exact/` (sorted)   |
-| `... --shop mock_clothing --skill all`              | `..._on_shop_guru_sandbox_all/` (every skill)     |
+| `... --shop mock_clothing`                          | `..._on_shop_guru_/`                       |
+| `... --shop mock_clothing --skill e2e`              | `..._on_shop_guru_e2e/`                   |
+| `... --shop mock_clothing --skill e2e --skill exact`| `..._on_shop_guru_e2e_exact/` (sorted)   |
+| `... --shop mock_clothing --skill all`              | `..._on_shop_guru_all/` (every skill)     |
 
 `--skill all` is a sentinel value: it loads every skill for the shop
 (same effect as omitting `--skill`) and tags the study folder `_all` so
@@ -305,7 +300,6 @@ scripted sweeps can pass a uniform `--skill` value every iteration.
 | Flag                      | Default                       | Purpose                                                                                              |
 | ------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `--config`                | `configs/featured_v1.yml`      | Shops YAML                                                                                           |
-| `--variant`               | `sandbox`                     | `sandbox` or `real` — which URL set to target                                                        |
 | `--shop`                  | *required*                    | Shop slug to evaluate (exactly one; run the CLI per shop to sweep)                                   |
 | `--skill`                 | *all*                         | Restrict to one or more skill names (repeatable). Pass `--skill all` to run every skill and tag the folder `_all` |
 | `--max-steps`             | `30`                          | Hard cap on agent steps per episode                                                                  |
@@ -373,7 +367,7 @@ packages/shop_guru/
     ├── config.py           Shop dataclass + YAML loader
     ├── io.py               load_shop_data (with raw_data/ stats fallback), load_json
     ├── filters.py          Generic-collection skip-list, word-boundary page matcher
-    ├── emit.py             emit_pair, make_id (paired _real/_sandbox writer)
+    ├── emit.py             emit_tasks, make_id (single-file per-skill writer)
     ├── validate.py         Post-generation consistency rules (Issue, validate_tasks, has_errors)
     ├── pipeline.py         build, build_all, validate_all, GeneratorSpec, per_shop_out_dir
     ├── _dotenv.py          Project-root .env loader for LLM credentials

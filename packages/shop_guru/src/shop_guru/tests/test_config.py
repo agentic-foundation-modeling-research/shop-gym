@@ -22,8 +22,7 @@ def test_load_shops_basic(tmp_path: Path) -> None:
                 {
                     "slug": "a",
                     "name": "Alpha",
-                    "real_url": "https://a.example/",
-                    "sandbox_url": "https://sandbox-a.example/?token=abc",
+                    "shop_url": "https://a.example/",
                     "data_dir": "outputs/shops/a",
                     "country": "US",
                     "currency": "USD",
@@ -37,11 +36,10 @@ def test_load_shops_basic(tmp_path: Path) -> None:
     assert len(shops) == 1
     s = shops[0]
     assert s.slug == "a"
-    assert s.real_url == "https://a.example"  # trailing slash stripped
-    assert s.sandbox_url == "https://sandbox-a.example/?token=abc"
+    assert s.shop_url == "https://a.example"  # trailing slash stripped
 
 
-def test_load_shops_tbd_sandbox(tmp_path: Path) -> None:
+def test_load_shops_rejects_legacy_keys(tmp_path: Path) -> None:
     path = tmp_path / "shops.yml"
     _write_yaml(
         path,
@@ -51,7 +49,7 @@ def test_load_shops_tbd_sandbox(tmp_path: Path) -> None:
                     "slug": "a",
                     "name": "Alpha",
                     "real_url": "https://a.example",
-                    "sandbox_url": "TBD",
+                    "sandbox_url": "https://sandbox-a.example",
                     "data_dir": "outputs/shops/a",
                     "country": "US",
                     "currency": "USD",
@@ -61,8 +59,8 @@ def test_load_shops_tbd_sandbox(tmp_path: Path) -> None:
             ]
         },
     )
-    shops = load_shops(path)
-    assert shops[0].sandbox_url is None
+    with pytest.raises(ValueError, match="legacy keys"):
+        load_shops(path)
 
 
 def test_load_shops_missing_file(tmp_path: Path) -> None:

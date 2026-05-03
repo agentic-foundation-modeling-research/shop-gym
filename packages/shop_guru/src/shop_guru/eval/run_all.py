@@ -125,7 +125,6 @@ def main(argv: list[str] | None = None) -> int:
         study_dir,
         tasks,
         shop=args.shop,
-        variant=args.variant,
         config=judge_config,
     )
     return 0

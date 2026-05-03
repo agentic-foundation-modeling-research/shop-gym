@@ -70,7 +70,7 @@ class ShopGuruBrowserTask(AbstractBrowserTask):
         }
         return goal, info
 
-    def teardown(self) -> None:  # noqa: D401 — mirrors parent signature
+    def teardown(self) -> None:
         return None
 
     def _terminal_signal(
@@ -111,7 +111,7 @@ class ShopGuruBrowserTask(AbstractBrowserTask):
 
     def validate(
         self,
-        page: playwright.sync_api.Page,  # noqa: ARG002 — required by parent signature
+        page: playwright.sync_api.Page,
         chat_messages: list[dict[str, Any]],
     ) -> tuple[float, bool, str, dict]:
         self._n_validate_calls += 1

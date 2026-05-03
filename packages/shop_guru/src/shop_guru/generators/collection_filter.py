@@ -57,7 +57,7 @@ PRIORITY_DIMENSIONS: tuple[str, ...] = (
 # Universal-safe fallbacks: top-level product fields that storefront filter
 # UIs almost always surface. ``Vendor`` first because it's exposed by
 # every shop we've audited, while  ``ProductType`` is occasionally absent
-# from the rendered filter UI even when the data exists. 
+# from the rendered filter UI even when the data exists.
 # We try priority variant dims first so tasks are
 # diverse, then fall back to these to maximize feasibility.
 UNIVERSAL_DIMENSIONS: tuple[str, ...] = ("Vendor", "ProductType")

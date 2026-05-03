@@ -50,6 +50,18 @@ ignore = ["PLR0913"]
 # masquerading as Latin look-alikes.
 allowed-confusables = ["ρ"]
 
+[tool.ruff.lint.per-file-ignores]
+# Files dominated by natural-language prompt content sent to LLMs.
+# Reformatting these would change the prompt text or hurt readability.
+"**/eval/judge.py" = ["E501"]
+"**/generators/e2e.py" = ["E501"]
+# Lazy imports inside the eval CLI keep `--help` / arg parsing fast by
+# deferring heavy deps (browsergym, agentlab, ray) to the actual run path.
+"**/eval/run.py" = ["PLC0415"]
+# Tests routinely use literal counts/sizes in assertions (PLR2004) and
+# import modules inside fixtures for monkeypatching (PLC0415).
+"**/tests/*.py" = ["PLR2004", "PLC0415"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

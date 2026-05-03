@@ -35,7 +35,7 @@ from typing import Any
 
 from shop_guru._paths import repo_root
 from shop_guru.config import Shop, load_shops
-from shop_guru.emit import emit_pair
+from shop_guru.emit import emit_tasks
 from shop_guru.generators import (
     collection_browse,
     collection_filter,
@@ -125,7 +125,6 @@ def build(
     data: dict[str, Any],
     out_dirs: Sequence[str | Path],
     generators: Sequence[GeneratorSpec] | None = None,
-    skip_real: bool = False,
     logger: Callable[[str], None] | None = None,
 ) -> None:
     """Run every generator in ``generators`` for a single ``shop``.
@@ -139,7 +138,6 @@ def build(
             shops across calls).
         generators: Custom generator list. Defaults to
             :func:`default_generators`.
-        skip_real: If True, do not emit ``_real.json`` variants.
         logger: Optional status-line callback. Defaults to ``print``.
     """
     log = logger or print
@@ -154,7 +152,7 @@ def build(
             continue
         written_names: list[str] = []
         for out_dir in dirs:
-            written = emit_pair(tasks, shop, out_dir, spec.filename_stem, skip_real=skip_real)
+            written = emit_tasks(tasks, shop, out_dir, spec.filename_stem)
             written_names.extend(p.name for p in written)
         log(
             f"  [ok]  {spec.filename_stem} ({len(tasks)} tasks) \u2192 "
@@ -170,7 +168,6 @@ def build_all(
     shop_filter: str | None = None,
     skip_auto: bool = False,
     skip_manual: bool = False,
-    skip_real: bool = False,
     data_sources_dir: str | Path | None = None,
     manual_sources: dict[str, str] | None = None,
     generators: Sequence[GeneratorSpec] | None = None,
@@ -189,7 +186,6 @@ def build_all(
         shop_filter: If set, only build the shop with this slug.
         skip_auto: Skip automated generators.
         skip_manual: Skip hand-authored data sources.
-        skip_real: Skip generating ``_real.json`` benchmarks.
         data_sources_dir: Directory containing hand-authored source JSONs.
         manual_sources: Override the default ``{source_stem: out_stem}`` map.
         generators: Override the default generator list.
@@ -231,7 +227,7 @@ def build_all(
                 out_dirs.append(per_shop_out_dir(shop))
             if flat_out_path is not None:
                 out_dirs.append(flat_out_path)
-            build(shop, data, out_dirs, generators=gens, skip_real=skip_real, logger=log)
+            build(shop, data, out_dirs, generators=gens, logger=log)
 
     if not skip_manual:
         sources_dir = Path(data_sources_dir) if data_sources_dir else None
@@ -241,7 +237,6 @@ def build_all(
                 sources_dir=sources_dir,
                 flat_out=flat_out_path,
                 skip_per_shop=skip_per_shop,
-                skip_real=skip_real,
                 manual_sources=manual_sources or DEFAULT_MANUAL_SOURCES,
                 shop_filter=shop_filter,
                 logger=log,
@@ -383,7 +378,6 @@ def _emit_manual_sources(
     sources_dir: Path,
     flat_out: Path | None,
     skip_per_shop: bool,
-    skip_real: bool,
     manual_sources: dict[str, str],
     shop_filter: str | None,
     logger: Callable[[str], None],
@@ -422,10 +416,10 @@ def _emit_manual_sources(
             written_names: list[str] = []
             if not skip_per_shop:
                 out_dir = per_shop_out_dir(shop)
-                for p in emit_pair(shop_tasks, shop, out_dir, out_stem, skip_real=skip_real):
+                for p in emit_tasks(shop_tasks, shop, out_dir, out_stem):
                     written_names.append(p.name)
             if flat_out is not None:
-                for p in emit_pair(shop_tasks, shop, flat_out, out_stem, skip_real=skip_real):
+                for p in emit_tasks(shop_tasks, shop, flat_out, out_stem):
                     written_names.append(p.name)
             logger(
                 f"  [ok]  {shop.slug}: {len(shop_tasks)} tasks \u2192 "

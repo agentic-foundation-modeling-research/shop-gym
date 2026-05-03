@@ -125,15 +125,6 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--variant",
-        choices=("sandbox", "real"),
-        default=None,
-        help=(
-            "Benchmark variant. Default: infer from the study folder name "
-            "(looks for '_sandbox' or '_real'); falls back to 'sandbox'."
-        ),
-    )
-    parser.add_argument(
         "--task-id",
         action="append",
         default=None,
@@ -200,17 +191,9 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _infer_shop_and_variant(study: Path, explicit_shop: str | None) -> tuple[str, str]:
-    """Recover (shop, variant) from ``outputs/shop_guru/<shop>/<study>``."""
-    shop = explicit_shop or study.parent.name
-    name = study.name
-    if "real" in name:
-        variant = "real"
-    elif "sandbox" in name:
-        variant = "sandbox"
-    else:
-        variant = "sandbox"
-    return shop, variant
+def _infer_shop(study: Path, explicit_shop: str | None) -> str:
+    """Recover the shop slug from ``outputs/shop_guru/<shop>/<study>``."""
+    return explicit_shop or study.parent.name
 
 
 def _default_output(study: Path, config: JudgeConfig, suffix: str | None = None) -> Path:
@@ -225,7 +208,7 @@ def _default_output(study: Path, config: JudgeConfig, suffix: str | None = None)
     return study / f"{stem}.json"
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915  # CLI dispatch is intentionally linear
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -244,15 +227,12 @@ def main(argv: list[str] | None = None) -> int:
     if not config_path.exists():
         parser.error(f"config file not found: {config_path}")
 
-    shop, variant = _infer_shop_and_variant(study, args.shop)
-    if args.variant is not None:
-        variant = args.variant
-    logger.info("inferred shop=%s variant=%s", shop, variant)
+    shop = _infer_shop(study, args.shop)
+    logger.info("inferred shop=%s", shop)
 
     benchmark_tasks = load_shopguru_tasks(
         config_path=config_path,
         benchmarks_root=repo_root() / "outputs" / "shop_guru",
-        variant=variant,
         shops=[shop],
     )
     logger.info("loaded %d benchmark task(s) for shop=%s", len(benchmark_tasks), shop)
@@ -406,7 +386,6 @@ def main(argv: list[str] | None = None) -> int:
     envelope = build_results_envelope(
         study=str(study),
         shop=shop,
-        variant=variant,
         config={
             "model": config.model,
             "max_images": config.max_images,

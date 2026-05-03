@@ -74,19 +74,13 @@ def tiny_shop() -> Shop:
     return Shop(
         slug="tiny",
         name="Tiny Shop",
-        real_url="https://tiny.example",
-        sandbox_url="https://sandbox.example/?token=abc",
+        shop_url="https://tiny.example",
         data_dir="outputs/shops/tiny.example",
         country="US",
         currency="USD",
         language="en",
         image_tag="tiny-main",
     )
-
-
-@pytest.fixture
-def tiny_shop_no_sandbox(tiny_shop: Shop) -> Shop:
-    return Shop(**{**tiny_shop.__dict__, "sandbox_url": None})
 
 
 _TINY_STORE = {

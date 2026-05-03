@@ -18,8 +18,7 @@ def _write_config(path: Path) -> None:
                     {
                         "slug": "tiny",
                         "name": "Tiny Shop",
-                        "real_url": "https://tiny.example",
-                        "sandbox_url": "https://sandbox.example/?token=abc",
+                        "shop_url": "https://tiny.example",
                         "data_dir": "outputs/shops/tiny.example",
                         "country": "US",
                         "currency": "USD",
@@ -47,15 +46,16 @@ def test_per_shop_default(tmp_path: Path, tiny_shop_arena_root: Path) -> None:
     per_shop_dir = tiny_shop_arena_root / "outputs/shop_guru/tiny/benchmarks"
     assert per_shop_dir.exists()
     emitted = sorted(p.name for p in per_shop_dir.glob("*.json"))
-    assert any(name.endswith("_real.json") for name in emitted)
-    assert any(name.endswith("_sandbox.json") for name in emitted)
+    assert emitted, "expected at least one .json file"
+    # No paired _real / _sandbox split — every file is a single .json.
+    assert not any("_real.json" in name or "_sandbox.json" in name for name in emitted)
 
     for json_path in per_shop_dir.glob("*.json"):
         tasks = json.loads(json_path.read_text())
         assert tasks
         for t in tasks:
             assert t["id"].startswith("tiny-")
-            assert t["url"].startswith("https://")
+            assert t["url"] == "https://tiny.example"
 
 
 def test_flat_mirror_additionally(tmp_path: Path, tiny_shop_arena_root: Path) -> None:
@@ -72,8 +72,8 @@ def test_flat_mirror_additionally(tmp_path: Path, tiny_shop_arena_root: Path) ->
     )
 
     per_shop_dir = tiny_shop_arena_root / "outputs/shop_guru/tiny/benchmarks"
-    assert any(per_shop_dir.glob("*_real.json"))
-    assert any(flat.glob("*_real.json"))
+    assert any(per_shop_dir.glob("*.json"))
+    assert any(flat.glob("*.json"))
 
 
 def test_no_per_shop_requires_flat_out(tmp_path: Path, tiny_shop_arena_root: Path) -> None:
@@ -102,7 +102,7 @@ def test_flat_only(tmp_path: Path, tiny_shop_arena_root: Path) -> None:
         logger=lambda _msg: None,
     )
 
-    assert any(flat.glob("*_real.json"))
+    assert any(flat.glob("*.json"))
     per_shop_dir = tiny_shop_arena_root / "outputs/shop_guru/tiny/benchmarks"
     # Per-shop dir may not exist or may be empty from this run.
     if per_shop_dir.exists():
@@ -149,24 +149,6 @@ def test_build_all_runs_validator_by_default(
     assert errors == [], f"unexpected validation errors: {errors}"
 
 
-def test_build_all_skip_real(tmp_path: Path, tiny_shop_arena_root: Path) -> None:
-    config = tmp_path / "shops.yml"
-    _write_config(config)
-
-    build_all(
-        config=config,
-        skip_manual=True,
-        skip_real=True,
-        logger=lambda _msg: None,
-    )
-
-    per_shop_dir = tiny_shop_arena_root / "outputs/shop_guru/tiny/benchmarks"
-    assert per_shop_dir.exists()
-    emitted = sorted(p.name for p in per_shop_dir.glob("*.json"))
-    assert not any(name.endswith("_real.json") for name in emitted)
-    assert any(name.endswith("_sandbox.json") for name in emitted)
-
-
 def test_build_all_validate_false_returns_empty(
     tmp_path: Path, tiny_shop_arena_root: Path
 ) -> None:
@@ -194,9 +176,8 @@ def test_build_all_validator_flags_corrupted_benchmarks(
     bench_dir.mkdir(parents=True, exist_ok=True)
     # Pre-seed a manually-edited benchmark file that references a product
     # that doesn't exist. The build will overwrite the *generator* outputs
-    # but a custom file like ShopGuru_e2e_featured_v1_real.json (manual
-    # source name) survives untouched.
-    bad_path = bench_dir / "ShopGuru_e2e_featured_v1_real.json"
+    # but a hand-authored file with a different stem survives untouched.
+    bad_path = bench_dir / "ShopGuru_e2e_handauthored.json"
     bad_path.write_text(
         json.dumps(
             [

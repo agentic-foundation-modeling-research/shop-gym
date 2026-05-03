@@ -96,7 +96,6 @@ def main(argv: list[str] | None = None) -> int:
         shop_filter=args.shop,
         skip_auto=args.only_manual,
         skip_manual=args.only_auto,
-        skip_real=args.skip_real,
         data_sources_dir=args.data_sources_dir.resolve() if args.data_sources_dir else None,
         validate=not args.no_validate,
     )
@@ -144,11 +143,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--shop",
         default=None,
         help="Only build the shop with this slug (default: build all)",
-    )
-    parser.add_argument(
-        "--skip-real",
-        action="store_true",
-        help="Skip generating _real.json benchmark files (useful for synthetic shops)",
     )
     parser.add_argument(
         "--only-auto",

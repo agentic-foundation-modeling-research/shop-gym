@@ -1,7 +1,7 @@
 """Load ShopGuru benchmark task dicts from the bundled per-shop JSON files.
 
 Walks ``<benchmarks_root>/<shop.slug>/benchmarks/`` for files matching
-``ShopGuru_<skill>_<config_stem>_<variant>.json`` and applies optional
+``ShopGuru_<skill>_<config_stem>.json`` and applies optional
 shop / skill / task-id filters. The returned list is a flat sequence of
 task dicts ready to feed into ``register_shopguru_tasks``.
 
@@ -29,11 +29,11 @@ def _benchmark_dir(benchmarks_root: Path, shop: Shop) -> Path:
     return Path(benchmarks_root) / shop.slug / "benchmarks"
 
 
-def _bench_pattern(config_stem: str, variant: str) -> re.Pattern[str]:
-    # Matches e.g. ShopGuru_prod_discovery_exact_featured_v1_sandbox.json →
+def _bench_pattern(config_stem: str) -> re.Pattern[str]:
+    # Matches e.g. ShopGuru_prod_discovery_exact_featured_v1.json →
     # captures "prod_discovery_exact" as skill.
     return re.compile(
-        rf"^{re.escape(BENCH_PREFIX)}(?P<skill>.+)_{re.escape(config_stem)}_{re.escape(variant)}\.json$"
+        rf"^{re.escape(BENCH_PREFIX)}(?P<skill>.+)_{re.escape(config_stem)}\.json$"
     )
 
 
@@ -41,7 +41,6 @@ def _iter_shop_benchmarks(
     benchmarks_root: Path,
     shop: Shop,
     config_stem: str,
-    variant: str,
     skill_filter: set[str] | None,
 ) -> list[tuple[str, Path]]:
     """Return ``[(skill, path), ...]`` for every benchmark file of this shop."""
@@ -50,7 +49,7 @@ def _iter_shop_benchmarks(
         logger.warning("no benchmarks dir for shop %s at %s", shop.slug, bench_dir)
         return []
 
-    pattern = _bench_pattern(config_stem, variant)
+    pattern = _bench_pattern(config_stem)
     out: list[tuple[str, Path]] = []
     for entry in sorted(bench_dir.iterdir()):
         if not entry.is_file():
@@ -68,7 +67,6 @@ def _iter_shop_benchmarks(
 def load_shopguru_tasks(
     config_path: Path,
     benchmarks_root: Path,
-    variant: str = "sandbox",
     shops: list[str] | None = None,
     skills: list[str] | None = None,
     task_ids: list[str] | None = None,
@@ -80,8 +78,6 @@ def load_shopguru_tasks(
         benchmarks_root: Directory containing ``<shop.slug>/ShopGuru_*.json``.
             Required — callers anchor this (typically
             ``<repo>/outputs/shop_guru``) and pass it in.
-        variant: ``"sandbox"`` or ``"real"`` — selects which benchmark file
-            variant to load.
         shops: Optional allow-list of shop slugs.
         skills: Optional allow-list of skill names (file stem pieces like
             ``"e2e"``, ``"prod_discovery_exact"``, ``"find_policy_shipping"``).
@@ -92,9 +88,6 @@ def load_shopguru_tasks(
         ``type``, optional ``success_criteria``, plus the injected
         ``shop_slug`` and ``skill`` fields for downstream bookkeeping.
     """
-    if variant not in {"sandbox", "real"}:
-        raise ValueError(f"variant must be 'sandbox' or 'real', got {variant!r}")
-
     config_path = Path(config_path).resolve()
     benchmarks_root = Path(benchmarks_root).resolve()
     config_stem = config_path.stem  # e.g. "featured_v1"
@@ -114,7 +107,7 @@ def load_shopguru_tasks(
     tasks: list[dict[str, Any]] = []
     for shop in picked_shops:
         for skill, path in _iter_shop_benchmarks(
-            benchmarks_root, shop, config_stem, variant, skill_filter
+            benchmarks_root, shop, config_stem, skill_filter
         ):
             raw = json.loads(path.read_text())
             if not isinstance(raw, list):

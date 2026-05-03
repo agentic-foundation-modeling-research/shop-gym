@@ -38,31 +38,25 @@ def _write_bench(dir_: Path, filename: str, tasks: list[dict[str, Any]]) -> None
 
 @pytest.fixture
 def agentlab_fixture(tmp_path: Path) -> dict[str, Any]:
-    """Two shops, two skills each, one real + one sandbox variant per skill."""
+    """Two shops, two skills each — one benchmark file per skill."""
     benchmarks_root = tmp_path / "root"
     shop_a_bench = benchmarks_root / "alpha" / "benchmarks"
     shop_b_bench = benchmarks_root / "beta" / "benchmarks"
 
     _write_bench(
         shop_a_bench,
-        "ShopGuru_e2e_featured_v1_sandbox.json",
+        "ShopGuru_e2e_featured_v1.json",
         [{"id": "a-e2e-1", "intent": "buy hat", "url": "https://a.example", "type": "e2e"}],
     )
     _write_bench(
         shop_a_bench,
-        "ShopGuru_prod_discovery_exact_featured_v1_sandbox.json",
+        "ShopGuru_prod_discovery_exact_featured_v1.json",
         [{"id": "a-pde-1", "intent": "find hat", "url": "https://a.example", "type": "pde"}],
     )
     _write_bench(
         shop_b_bench,
-        "ShopGuru_e2e_featured_v1_sandbox.json",
+        "ShopGuru_e2e_featured_v1.json",
         [{"id": "b-e2e-1", "intent": "buy scarf", "url": "https://b.example", "type": "e2e"}],
-    )
-    # Variant='real' file — should be skipped when filtering for sandbox.
-    _write_bench(
-        shop_a_bench,
-        "ShopGuru_e2e_featured_v1_real.json",
-        [{"id": "a-e2e-real", "intent": "buy hat real", "url": "https://a.example", "type": "e2e"}],
     )
 
     config_path = tmp_path / "featured_v1.yml"
@@ -72,8 +66,7 @@ def agentlab_fixture(tmp_path: Path) -> dict[str, Any]:
             {
                 "slug": "alpha",
                 "name": "Alpha",
-                "real_url": "https://a-real.example",
-                "sandbox_url": "https://a.example",
+                "shop_url": "https://a.example",
                 "data_dir": "outputs/shops/a.example",
                 "country": "US",
                 "currency": "USD",
@@ -83,8 +76,7 @@ def agentlab_fixture(tmp_path: Path) -> dict[str, Any]:
             {
                 "slug": "beta",
                 "name": "Beta",
-                "real_url": "https://b-real.example",
-                "sandbox_url": "https://b.example",
+                "shop_url": "https://b.example",
                 "data_dir": "outputs/shops/b.example",
                 "country": "US",
                 "currency": "USD",
@@ -97,11 +89,10 @@ def agentlab_fixture(tmp_path: Path) -> dict[str, Any]:
 
 
 def test_loader_filters_by_shop_skill(agentlab_fixture: dict[str, Any]) -> None:
-    # No filters: both shops, both skills → 3 sandbox tasks.
+    # No filters: both shops, both skills → 3 tasks.
     all_tasks = load_shopguru_tasks(
         config_path=agentlab_fixture["config"],
         benchmarks_root=agentlab_fixture["root"],
-        variant="sandbox",
     )
     assert {t["id"] for t in all_tasks} == {"a-e2e-1", "a-pde-1", "b-e2e-1"}
     assert all(t["shop_slug"] in {"alpha", "beta"} for t in all_tasks)
@@ -122,14 +113,6 @@ def test_loader_filters_by_shop_skill(agentlab_fixture: dict[str, Any]) -> None:
     )
     assert {t["id"] for t in e2e_only} == {"a-e2e-1", "b-e2e-1"}
     assert all(t["skill"] == "e2e" for t in e2e_only)
-
-    # Variant=real produces only the one 'real' file.
-    real_only = load_shopguru_tasks(
-        config_path=agentlab_fixture["config"],
-        benchmarks_root=agentlab_fixture["root"],
-        variant="real",
-    )
-    assert {t["id"] for t in real_only} == {"a-e2e-real"}
 
 
 def test_loader_raises_on_unknown_task_id(agentlab_fixture: dict[str, Any]) -> None:
@@ -276,7 +259,7 @@ class _FakePage:
     def __init__(self) -> None:
         self.goto_url: str | None = None
 
-    def goto(self, url: str, timeout: int = 0) -> None:  # noqa: ARG002
+    def goto(self, url: str, timeout: int = 0) -> None:
         self.goto_url = url
 
 

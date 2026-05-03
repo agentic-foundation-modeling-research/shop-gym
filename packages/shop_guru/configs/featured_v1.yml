@@ -1,22 +1,18 @@
-# Featured-shops benchmark: seed real ↔ SandboxShop URL mapping.
+# Featured-shops benchmark: one entry per shop.
 #
-# real_url:    production seed storefront (authoritative, live data)
-# sandbox_url: SandboxShop deployment (Cloud Run) — includes auth token in
-#              the query string; the sandbox sets a session cookie on first
-#              visit so subsequent navigation works without the token.
-# data_dir:    path (relative to shop-arena repo root) to extracted data
-# image_tag:   Artifact Registry tag in us-central1-docker.pkg.dev/
-#              s5y-sidekick-52ee/docker-images/shop-arena:<tag>
-#
-# Before releasing the benchmark, replace the shared dev token with a
-# per-shop, long-lived benchmark token so public reruns are reproducible
-# without leaking internal credentials.
+# shop_url:  storefront URL — real merchant or SandboxShop deployment.
+#            Trailing slash is stripped at load time. Include any required
+#            auth token in the query string; SandboxShops set a session
+#            cookie on first visit so subsequent navigation works without
+#            the token.
+# data_dir:  path (relative to repo root) to extracted shop-arena data
+# image_tag: Artifact Registry tag in us-central1-docker.pkg.dev/
+#            s5y-sidekick-52ee/docker-images/shop-arena:<tag>
 
 shops:
   - slug: mock_clothing
     name: Mock Clothing
-    real_url: https://example.com/mock_clothing
-    sandbox_url: https://shop-arena-96c172e4-kqqx5567kq-uc.a.run.app
+    shop_url: https://shop-arena-96c172e4-kqqx5567kq-uc.a.run.app
     data_dir: outputs/shops/mock_clothing
     country: US
     currency: USD
@@ -25,8 +21,7 @@ shops:
 
   - slug: mock_cookware
     name: Mock Cookware
-    real_url: https://example.com/mock_cookware
-    sandbox_url: https://shop-arena-7e92090d-kqqx5567kq-uc.a.run.app
+    shop_url: https://shop-arena-7e92090d-kqqx5567kq-uc.a.run.app
     data_dir: outputs/shops/mock_cookware
     country: US
     currency: USD
@@ -35,8 +30,7 @@ shops:
 
   - slug: mock_hardware
     name: Mock Hardware
-    real_url: https://example.com/mock_hardware
-    sandbox_url: https://shop-arena-53473e65-kqqx5567kq-uc.a.run.app
+    shop_url: https://shop-arena-53473e65-kqqx5567kq-uc.a.run.app
     data_dir: outputs/shops/mock_hardware
     country: US
     currency: USD

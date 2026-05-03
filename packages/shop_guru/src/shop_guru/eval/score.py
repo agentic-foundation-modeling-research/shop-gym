@@ -732,7 +732,6 @@ def build_results_envelope(
     *,
     study: str,
     shop: str,
-    variant: str,
     config: dict[str, Any],
     rows: list[dict[str, Any]],
     elapsed_s: float | None = None,
@@ -758,7 +757,6 @@ def build_results_envelope(
     envelope: dict[str, Any] = {
         "study": study,
         "shop": shop,
-        "variant": variant,
         "config": config,
         "counts": counts,
     }

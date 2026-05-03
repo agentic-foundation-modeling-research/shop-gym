@@ -36,6 +36,10 @@ except ImportError:
 # flagged.
 _POLISH_MAX_ROUNDS = 2
 
+# Cap how many option values are inlined into the prompt per option to
+# keep the per-product line readable.
+_MAX_OPTION_VALUES_IN_PROMPT = 4
+
 SYSTEM_PROMPT = """You are an expert at designing evaluation tasks for e-commerce web agents.
 Your job is to author realistic end-to-end shopping journeys that mirror how
 real human buyers actually browse and transact on online stores.
@@ -102,7 +106,7 @@ not applicable to this store.
 Name: {store_name}
 Description: {store_description}
 Country: {country}, Currency: {currency}, Language: {language}
-Domain: {real_url}
+Domain: {shop_url}
 
 ### Top collections (title \u2014 handle)
 {collections_list}
@@ -223,7 +227,11 @@ def generate(shop: Shop, data: dict[str, Any], seed: int = 0, count: int = 16) -
     model = os.environ.get("SHOPGURU_E2E_MODEL", "openai/google:gemini-3.1-pro-preview")
     api_base = os.environ.get("OPENAI_BASE_URL")
     log.info(
-        f"Generating {count} E2E tasks for {shop.slug} using model {model} via {api_base or '<default>'}..."
+        "Generating %d E2E tasks for %s using model %s via %s...",
+        count,
+        shop.slug,
+        model,
+        api_base or "<default>",
     )
 
     context = _build_prompt_context(shop, data, seed=seed, count=count)
@@ -375,7 +383,7 @@ def _build_prompt_context(
         "country": shop.country,
         "currency": shop.currency,
         "language": shop.language,
-        "real_url": shop.real_url,
+        "shop_url": shop.shop_url,
         "collections_list": col_str,
         "product_types_list": ptype_str,
         "products_list": prod_str,
@@ -402,8 +410,9 @@ def _format_product_with_options(product: dict) -> str:
         if not name or name.lower() in {"title", "default"}:
             continue
         values = [str(v).strip() for v in (opt.get("values") or [])]
-        # Cap displayed values to keep the prompt reasonable.
-        sample_vals = ", ".join(values[:4]) + ("…" if len(values) > 4 else "")
+        sample_vals = ", ".join(values[:_MAX_OPTION_VALUES_IN_PROMPT]) + (
+            "…" if len(values) > _MAX_OPTION_VALUES_IN_PROMPT else ""
+        )
         options.append(f"{name}=[{sample_vals}]")
     opt_str = f" (Options: {'; '.join(options)})" if options else " (no variant options)"
     return f"- {title} \u2014 {handle}{opt_str}"
@@ -443,7 +452,7 @@ def _llm_generate(
         )
         content = response.choices[0].message.content
         return json.loads(content).get("tasks", []) or []
-    except Exception as exc:  # noqa: BLE001 - we want to fail soft for any LLM error
+    except Exception as exc:
         log.error(f"LLM call failed: {exc}")
         return []
 

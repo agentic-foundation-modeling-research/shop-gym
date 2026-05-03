@@ -110,7 +110,11 @@ def _build_task_lookup(tasks: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
     return {t["id"]: t for t in tasks if t.get("id")}
 
 
-def _to_shopguru_exp_args(exp_args: Any, args: argparse.Namespace, task_lookup: dict[str, dict[str, Any]]) -> Any:
+def _to_shopguru_exp_args(
+    exp_args: Any,
+    args: argparse.Namespace,
+    task_lookup: dict[str, dict[str, Any]],
+) -> Any:
     """Wrap a plain ``ExpArgs`` in our :class:`ShopGuruExpArgs` subclass.
 
     Preserves every field Study set on the original (agent_args,
@@ -238,12 +242,6 @@ def _build_parser(
         type=Path,
         default=_default_config(),
         help="Shops YAML (default: bundled featured_v1.yml).",
-    )
-    parser.add_argument(
-        "--variant",
-        choices=("sandbox", "real"),
-        default="sandbox",
-        help="Benchmark variant to load.",
     )
     parser.add_argument(
         "--shop",
@@ -421,8 +419,7 @@ def _resolve_environment(
     results_root = (
         args.results_dir or repo_root() / "outputs" / "shop_guru"
     ).resolve()
-    # One subdir per shop so studies across shops don't interleave timestamps;
-    # the variant (sandbox/real) is carried in the study folder name via suffix.
+    # One subdir per shop so studies across shops don't interleave timestamps.
     results_dir = results_root / args.shop
     results_dir.mkdir(parents=True, exist_ok=True)
     os.environ["AGENTLAB_EXP_ROOT"] = str(results_dir)
@@ -446,7 +443,6 @@ def _prepare_tasks(
     tasks = load_shopguru_tasks(
         config_path=config_path,
         benchmarks_root=repo_root() / "outputs" / "shop_guru",
-        variant=args.variant,
         shops=[args.shop],
         skills=args.skill_filter,
         task_ids=getattr(args, "task_id", None),
@@ -455,8 +451,9 @@ def _prepare_tasks(
         raise SystemExit("no tasks matched the given filters — nothing to run")
 
     # Persist the task list so worker processes can re-register by reading
-    # the env vars that shop_guru.eval.__init__ watches.
-    spec_file = tempfile.NamedTemporaryFile(
+    # the env vars that shop_guru.eval.__init__ watches. delete=False is
+    # required so the file survives until workers read it.
+    spec_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
         mode="w",
         suffix=".json",
         prefix="shopguru_tasks_",
@@ -525,11 +522,11 @@ def _execute_study(
 
     agent_args = _configure_shopguru_agent(build_agent(args.model))
 
-    # Study folder carries the variant plus any --skill filter so sibling
-    # runs on the same shop are self-describing. `args.skill_tokens` is
-    # [] when no filter was passed, ["all"] for the explicit sentinel, or
-    # the sorted skill names otherwise.
-    study_suffix = "_".join([args.variant, *args.skill_tokens])
+    # Study folder carries any --skill filter so sibling runs on the same
+    # shop are self-describing. `args.skill_tokens` is [] when no filter
+    # was passed, ["all"] for the explicit sentinel, or the sorted skill
+    # names otherwise.
+    study_suffix = "_".join(args.skill_tokens)
 
     study = Study(
         agent_args=[agent_args],
@@ -553,11 +550,11 @@ def _execute_study(
     # be reaped after avg_step_timeout * max_steps.
     parallel_backend = "sequential" if args.n_jobs == 1 else "ray"
 
-    run_kwargs = dict(
-        n_jobs=args.n_jobs,
-        parallel_backend=parallel_backend,
-        n_relaunch=args.n_relaunch,
-    )
+    run_kwargs = {
+        "n_jobs": args.n_jobs,
+        "parallel_backend": parallel_backend,
+        "n_relaunch": args.n_relaunch,
+    }
 
     if not show_progress:
         study.run(**run_kwargs)

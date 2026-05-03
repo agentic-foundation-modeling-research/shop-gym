@@ -1,9 +1,9 @@
 """Shop configuration loading.
 
 A `shops.yml` file is the single source of truth for which storefronts the
-benchmark covers and how to reach both the production seed site and its
-SandboxShop deployment. See `shops.yml` at the repo root for the expected
-schema.
+benchmark covers and how to reach each one. Each entry maps to exactly one
+storefront via ``shop_url`` — real merchant or SandboxShop deployment makes
+no difference to the schema. See `configs/featured_v1.yml` for an example.
 """
 from __future__ import annotations
 
@@ -18,28 +18,26 @@ from shop_guru._paths import repo_root
 
 @dataclass(frozen=True)
 class Shop:
-    """A single featured storefront.
+    """A single storefront.
 
     Attributes:
         slug: Short identifier used as a prefix in task IDs (e.g. ``mock_shop``).
         name: Human-readable store name.
-        real_url: Production seed storefront URL (no trailing slash).
-        sandbox_url: SandboxShop URL with any required auth query string (no
-            trailing slash), or ``None`` if not yet deployed.
+        shop_url: Storefront URL with any required auth query string (no
+            trailing slash). Real merchant or sandbox deployment alike.
         data_dir: Path to the extracted shop directory. Relative paths are
             anchored at the repo root (e.g. ``outputs/shops/<domain>`` —
             written there by ``shop_arena``); absolute paths are used as-is.
-        country: ISO 3166-1 alpha-2 country code of the seed store.
+        country: ISO 3166-1 alpha-2 country code of the store.
         currency: ISO 4217 currency code.
-        language: ISO 639-1 language code of the seed store.
+        language: ISO 639-1 language code of the store.
         image_tag: Artifact Registry tag for the SandboxShop Docker image.
         notes: Free-form merchant-specific commentary.
     """
 
     slug: str
     name: str
-    real_url: str
-    sandbox_url: str | None
+    shop_url: str
     data_dir: str
     country: str
     currency: str
@@ -62,9 +60,9 @@ class Shop:
 def load_shops(path: str | Path) -> list[Shop]:
     """Parse a `shops.yml` file and return a list of :class:`Shop` records.
 
-    ``sandbox_url: TBD`` is interpreted as "SandboxShop not yet deployed" and
-    becomes ``None``. All URLs have any trailing slash stripped so callers
-    can concatenate paths safely.
+    Trailing slashes on ``shop_url`` are stripped so callers can concatenate
+    paths safely. The legacy ``real_url`` / ``sandbox_url`` keys are rejected
+    with a migration hint.
     """
     doc = _load_yaml(Path(path))
     shops_section = doc.get("shops")
@@ -78,17 +76,17 @@ def load_shops(path: str | Path) -> list[Shop]:
 
 
 def _shop_from_dict(entry: dict[str, Any]) -> Shop:
-    sandbox = entry.get("sandbox_url")
-    if sandbox in (None, "", "TBD"):
-        sandbox_normalized: str | None = None
-    else:
-        sandbox_normalized = str(sandbox).rstrip("/")
+    legacy = [k for k in ("real_url", "sandbox_url") if k in entry]
+    if legacy:
+        raise ValueError(
+            f"shop {entry.get('slug', '?')!r}: legacy keys {legacy} are no "
+            f"longer supported. Replace them with a single `shop_url:` field."
+        )
 
     return Shop(
         slug=entry["slug"],
         name=entry["name"],
-        real_url=str(entry["real_url"]).rstrip("/"),
-        sandbox_url=sandbox_normalized,
+        shop_url=str(entry["shop_url"]).rstrip("/"),
         data_dir=entry["data_dir"],
         country=entry["country"],
         currency=entry["currency"],

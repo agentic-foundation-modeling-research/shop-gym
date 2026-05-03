@@ -1,4 +1,4 @@
-"""Write generated tasks to disk as paired ``_real`` / ``_sandbox`` files."""
+"""Write generated tasks to disk as a single per-skill JSON file."""
 from __future__ import annotations
 
 import json
@@ -13,56 +13,30 @@ def make_id(shop_slug: str, skill_slug: str, index: int) -> str:
     return f"{shop_slug}-{skill_slug}-{index}"
 
 
-def emit_pair(
+def emit_tasks(
     tasks: list[dict],
     shop: Shop,
     out_dir: str | Path,
     filename_stem: str,
-    skip_real: bool = False,
 ) -> list[Path]:
-    """Write paired ``_real.json`` and ``_sandbox.json`` benchmark files.
+    """Write a single ``{filename_stem}.json`` benchmark file.
 
     Each task dict is expected to have an ``id`` and no ``url`` field; the
-    ``url`` is attached per variant from :attr:`Shop.real_url` and
-    :attr:`Shop.sandbox_url` respectively.
-
-    When ``skip_real`` is True, the ``_real.json`` file generation is
-    skipped entirely.
-
-    When the shop's ``sandbox_url`` is missing, a ``_sandbox.TBD`` sentinel
-    file is written instead so ``build_all`` surfaces the skip clearly.
+    ``url`` is attached from :attr:`Shop.shop_url`.
 
     Tasks are merged with any existing file contents by task ID, keeping the
-    incoming task when IDs collide. This makes `emit_pair` safe to call per
+    incoming task when IDs collide. This makes ``emit_tasks`` safe to call per
     shop without overwriting other shops' tasks in the same file.
 
-    Returns a list of paths that were written (real file if not skipped, plus
-    either sandbox file or TBD sentinel).
+    Returns a list with the single path that was written.
     """
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
-    written: list[Path] = []
-
-    if not skip_real:
-        real_tasks = [dict(t, url=shop.real_url) for t in tasks]
-        real_file = out_path / f"{filename_stem}_real.json"
-        _merge_and_write(real_file, real_tasks)
-        written.append(real_file)
-
-    if shop.sandbox_url:
-        sandbox_tasks = [dict(t, url=shop.sandbox_url) for t in tasks]
-        sandbox_file = out_path / f"{filename_stem}_sandbox.json"
-        _merge_and_write(sandbox_file, sandbox_tasks)
-        written.append(sandbox_file)
-    else:
-        sentinel = out_path / f"{filename_stem}_sandbox.TBD"
-        sentinel.write_text(
-            f"sandbox URL for shop {shop.slug} is TBD; rerun after shops.yml is updated\n"
-        )
-        written.append(sentinel)
-
-    return written
+    enriched = [dict(t, url=shop.shop_url) for t in tasks]
+    target = out_path / f"{filename_stem}.json"
+    _merge_and_write(target, enriched)
+    return [target]
 
 
 def _merge_and_write(path: Path, new_tasks: list[dict]) -> None:
