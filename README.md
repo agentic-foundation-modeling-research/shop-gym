@@ -80,15 +80,9 @@ uv run shop-explore https://example-shop.com
 ```bash
 # Without image gen — placeholder PNGs (fast, deterministic, offline).
 uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop
-
-# With image gen — OpenAI gpt-image-1 (needs OPENAI_API_KEY in .env).
-uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop \
-    --image-backend openai
 ```
 
-Output lands in `outputs/shops/mock_shop/` (`data/`, `hydrogen/`, `runs/`).
-Re-running with the same `--name` resumes from the cached state in
-`outputs/shops/mock_shop/.shop_gen/`.
+Output lands in `outputs/shops/mock_shop/`. Re-running with the same `--name` resumes from the cached state.
 
 ### 3. Serve the shop
 
@@ -96,15 +90,12 @@ Re-running with the same `--name` resumes from the cached state in
 pnpm shop:host start mock_shop 4000  # hosting the mock_shop on localhost:4000
 ```
 
-See [Hosting a generated shop](#hosting-a-generated-shop) for
-stop / logs / list management.
+See [Hosting a generated shop](#hosting-a-generated-shop) for stop / logs / list management.
 
 ### 4. Generate a benchmark for the shop
 
-Add the shop to a `shop_guru` config (see
-[`packages/shop_guru/configs/default.yaml`](packages/shop_guru/configs/default.yaml)
-for the format — `shop_url` should match the Hydrogen URL printed in
-step 3), then:
+Add the shop to a `shop_guru` config (see [`packages/shop_guru/configs/default.yaml`](packages/shop_guru/configs/default.yaml)
+for the format — `shop_url` should match the Hydrogen URL printed in step 3), then:
 
 ```bash
 uv run shop-guru build --shop mock_shop
@@ -113,9 +104,8 @@ uv run shop-guru build --shop mock_shop
 
 ### 5. Run evaluation against the shop
 
-Requires `OPENAI_API_KEY` in `.env` and Playwright's Chromium
-(`uv run playwright install chromium`). The shop from step 3 must be
-running.
+Requires `OPENAI_API_KEY` in `.env` and Playwright's Chromium (`uv run playwright install chromium`). 
+The shop from step 3 must be running.
 
 ```bash
 uv run shop-guru eval --shop mock_shop
