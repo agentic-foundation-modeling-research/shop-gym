@@ -108,17 +108,7 @@ uv run python -m shop_guru
    ```
 
    Outputs land in `<repo>/outputs/shop_guru/<slug>/benchmarks/` —
-   one file per skill, per shop. Add `--flat-out outputs/benchmarks`
-   to additionally write a flat SimGym-compatible mirror.
-
-4. **Run the benchmark with SimGym** (or any shop_guru-compatible agent
-   runner):
-
-   ```bash
-   pnpm benchmark run -a 8.6 \
-     --dataset outputs/shop_guru/mock_clothing/benchmarks/ShopGuru_e2e_featured_v1.json \
-     -c app/lib/agents/v8_6/config/v1_vision.yaml
-   ```
+   one file per skill, per shop.
 
 ## CLI
 
@@ -143,8 +133,7 @@ shop-guru [--config PATH]
 
 Default output layout: `<repo>/outputs/shop_guru/<slug>/benchmarks/`. Shop
 data is read from `<repo>/<shop.data_dir>/data/`, where `shop_arena`
-extracts storefronts (typically `outputs/shops/<domain>/`). Pass
-`--flat-out` to additionally emit a flat SimGym-compatible mirror.
+extracts storefronts (typically `outputs/shops/<domain>/`).
 
 Alternative entry: `uv run python -m shop_guru ...` (same arguments).
 

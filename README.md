@@ -93,12 +93,37 @@ Re-running with the same `--name` resumes from the cached state in
 ### 3. Serve the shop
 
 ```bash
-pnpm shop:host start mock_shop          # auto-pick a free port
-# → Hydrogen on http://localhost:<port>, shop_backend on <port>+1000
+pnpm shop:host start mock_shop 4000  # hosting the mock_shop on localhost:4000
 ```
 
 See [Hosting a generated shop](#hosting-a-generated-shop) for
 stop / logs / list management.
+
+### 4. Generate a benchmark for the shop
+
+Add the shop to a `shop_guru` config (see
+[`packages/shop_guru/configs/featured_v1.yml`](packages/shop_guru/configs/featured_v1.yml)
+for the format — `shop_url` should match the Hydrogen URL printed in
+step 3), then:
+
+```bash
+uv run shop-guru --shop mock_shop
+# → outputs/shop_guru/mock_shop/benchmarks/ — one file per skill
+```
+
+### 5. Run evaluation against the shop
+
+Requires `OPENAI_API_KEY` in `.env` and Playwright's Chromium
+(`uv run playwright install chromium`). The shop from step 3 must be
+running.
+
+```bash
+uv run python -m shop_guru.eval.run_all --shop mock_shop
+# → outputs/shop_guru/mock_shop/<timestamp>_.../aggregate.json
+```
+
+See [`packages/shop_guru/README.md`](packages/shop_guru/README.md) for
+single-task debugging, skill filters, and the full output layout.
 
 ## Common commands
 

@@ -444,7 +444,7 @@ predictable path under it.
 │   ├── pages.json
 │   ├── policies.json
 │   └── images/                 # placeholder SVGs (v0.1) or generated images (v0.2)
-├── hydrogen/                   # PUBLISHED — generated Hydrogen app
+├── hydrogen/                   # PUBLISHED — Hydrogen template + .env (build-loop seed; see note below)
 ├── data_validation.json        # PUBLISHED — schema + hosting check verdict
 ├── sidecar.json                # PUBLISHED — start_sidecar pre-flight verdict
 ├── final_eval.json             # PUBLISHED — advisory quality verdict (never blocks)
@@ -465,6 +465,14 @@ predictable path under it.
 the seven published artifacts. Inspecting the disk for partial results
 is supported: `result.data_dir.exists()` etc. tells you which steps
 the current run actually completed.
+
+Note on `hydrogen/`: today `<out_dir>/hydrogen/` holds only the unmodified
+Hydrogen template plus `.env` — the seed `clone_template` writes once and
+no step writes back to. The converged storefront produced by the build
+harness loop lives at `<out_dir>/runs/build/artifact/hydrogen/`. The
+planned `publish_hydrogen` step (see
+`docs/specs/shop_arena/hydrogen_publish.md`) will rsync the converged
+tree back so this path means the converged shop.
 
 ---
 
