@@ -102,12 +102,12 @@ stop / logs / list management.
 ### 4. Generate a benchmark for the shop
 
 Add the shop to a `shop_guru` config (see
-[`packages/shop_guru/configs/featured_v1.yml`](packages/shop_guru/configs/featured_v1.yml)
+[`packages/shop_guru/configs/default.yaml`](packages/shop_guru/configs/default.yaml)
 for the format — `shop_url` should match the Hydrogen URL printed in
 step 3), then:
 
 ```bash
-uv run shop-guru --shop mock_shop
+uv run shop-guru build --shop mock_shop
 # → outputs/shop_guru/mock_shop/benchmarks/ — one file per skill
 ```
 
@@ -118,7 +118,7 @@ Requires `OPENAI_API_KEY` in `.env` and Playwright's Chromium
 running.
 
 ```bash
-uv run python -m shop_guru.eval.run_all --shop mock_shop
+uv run shop-guru eval --shop mock_shop
 # → outputs/shop_guru/mock_shop/<timestamp>_.../aggregate.json
 ```
 

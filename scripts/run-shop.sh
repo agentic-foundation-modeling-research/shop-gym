@@ -16,9 +16,8 @@
 #   outputs/shops/<shop-name>/hydrogen/   — published Hydrogen storefront (no deps)
 #   outputs/shops/<shop-name>/runs/build/artifact/hydrogen/   — build-loop tree (deps installed)
 #
-# The script prefers <name>/hydrogen if it has node_modules; otherwise it falls
-# back to the build-loop artifact tree. The build loop only hydrates the artifact
-# tree, so post-build that's where deps live.
+# The script always hosts from runs/build/artifact/hydrogen (the only tree with
+# deps installed). Override with HYDROGEN_DIR=<path> if you need a different tree.
 #
 # Port convention: Hydrogen runs on <port>, shop_backend on <port>+1000.
 # Example: start mock_hardware 3001  → API:4001, Hydrogen:3001
@@ -123,26 +122,21 @@ cmd_start() {
   local api_port=$((port + 1000))
   local shop_root="$REPO_ROOT/outputs/shops/$name"
   local data_dir="$shop_root/data"
-  local canonical="$shop_root/hydrogen"
   local artifact="$shop_root/runs/build/artifact/hydrogen"
   [ -d "$data_dir" ] || { echo "❌ Data dir not found: $data_dir" >&2; exit 1; }
 
-  # HYDROGEN_DIR override > canonical-with-deps > artifact-with-deps > error.
+  # HYDROGEN_DIR override > artifact tree > error.
   local hyd_dir=""
   if [ -n "${HYDROGEN_DIR:-}" ]; then
     hyd_dir="$HYDROGEN_DIR"
     [ -d "$hyd_dir" ] || { echo "❌ HYDROGEN_DIR not a directory: $hyd_dir" >&2; exit 1; }
-  elif [ -d "$canonical/node_modules" ]; then
-    hyd_dir="$canonical"
   elif [ -d "$artifact/node_modules" ]; then
     hyd_dir="$artifact"
-    echo "ℹ Using build-loop artifact tree: $hyd_dir"
   else
     {
       echo "❌ No hydrated Hydrogen tree found for '$name'. Tried:"
-      echo "    $canonical/node_modules"
       echo "    $artifact/node_modules"
-      echo "  Hydrate one with: (cd <tree> && pnpm install)"
+      echo "  Hydrate it with: (cd '$artifact' && pnpm install)"
       echo "  Or override: HYDROGEN_DIR=<path> $0 start $name $port"
     } >&2
     exit 1
@@ -311,7 +305,7 @@ cmd_list() {
       local sname; sname="$(basename "$dir")"
       [ "$sname" = "template" ] && continue
       [ -d "$dir/data" ] || continue
-      [ -d "$dir/hydrogen" ] || [ -d "$dir/runs/build/artifact/hydrogen" ] || continue
+      [ -d "$dir/runs/build/artifact/hydrogen" ] || continue
       case "$tracked" in *" $sname "*) continue ;; esac
       printf "%-35s %-8s %-8s %-10s %-10s %s\n" "$sname" "-" "-" "-" "-" "available"
     done

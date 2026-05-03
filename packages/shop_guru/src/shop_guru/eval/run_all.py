@@ -58,9 +58,9 @@ def _silence_noisy_loggers() -> None:
         logging.getLogger(name).setLevel(logging.WARNING)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, prog: str = "shop_guru-agentlab-all") -> int:
     parser = _build_parser(
-        prog="shop_guru-agentlab-all",
+        prog=prog,
         description=(
             "Run every ShopGuru task in one study and write per-task + "
             "aggregate result JSONs."

@@ -69,12 +69,12 @@ Requires Python ≥ 3.12.
 
 ### Ad-hoc run
 
-From the repo root (uses `configs/featured_v1.yml` by default):
+From the repo root (uses `configs/default.yaml` by default):
 
 ```bash
-uv run shop-guru
+uv run shop-guru build
 # or
-uv run python -m shop_guru
+uv run python -m shop_guru build
 ```
 
 ## Quickstart
@@ -85,7 +85,7 @@ uv run python -m shop_guru
    `collections.json`, etc.
 
 2. **Describe the shops** in a YAML config. See
-   [`configs/featured_v1.yml`](./configs/featured_v1.yml) for the
+   [`configs/default.yaml`](./configs/default.yaml) for the
    three-shop reference config:
 
    ```yaml
@@ -103,8 +103,8 @@ uv run python -m shop_guru
 3. **Generate benchmarks:**
 
    ```bash
-   # From repo root — uses configs/featured_v1.yml by default
-   uv run shop-guru
+   # From repo root — uses configs/default.yaml by default
+   uv run shop-guru build
    ```
 
    Outputs land in `<repo>/outputs/shop_guru/<slug>/benchmarks/` —
@@ -112,17 +112,29 @@ uv run python -m shop_guru
 
 ## CLI
 
+`shop-guru` exposes two subcommands. `build` synthesizes benchmark
+JSONs; `eval` drives an agent against those benchmarks. Each has its
+own flag set — see `--help` for either subcommand.
+
 ```
-shop-guru [--config PATH]
-          [--flat-out PATH] [--no-per-shop]
-          [--data-sources-dir PATH] [--shop SLUG]
-          [--only-auto | --only-manual]
-          [--no-validate]
+shop-guru build [--config PATH]
+                [--flat-out PATH] [--no-per-shop]
+                [--data-sources-dir PATH] [--shop SLUG]
+                [--only-auto | --only-manual]
+                [--no-validate]
+
+shop-guru eval  --shop SLUG
+                [--config PATH] [--skill SKILL ...]
+                [--max-steps N] [--n-jobs N] [--judge-model MODEL]
+                [--headless | --headed] [--results-dir PATH]
+                [--verbose]
 ```
+
+### `shop-guru build` flags
 
 | Flag                 | Description                                                                         |
 | -------------------- | ----------------------------------------------------------------------------------- |
-| `--config`           | Path to shops YAML (default: `configs/featured_v1.yml`)                              |
+| `--config`           | Path to shops YAML (default: `configs/default.yaml`)                              |
 | `--flat-out PATH`    | Optional. Additionally emit a flat mirror at `PATH` with all shops merged per skill |
 | `--no-per-shop`      | Skip per-shop writes (requires `--flat-out`)                                        |
 | `--data-sources-dir` | Hand-authored source JSONs (default: `data_sources/`)                               |
@@ -135,7 +147,7 @@ Default output layout: `<repo>/outputs/shop_guru/<slug>/benchmarks/`. Shop
 data is read from `<repo>/<shop.data_dir>/data/`, where `shop_arena`
 extracts storefronts (typically `outputs/shops/<domain>/`).
 
-Alternative entry: `uv run python -m shop_guru ...` (same arguments).
+Alternative entry: `uv run python -m shop_guru build ...` (same arguments).
 
 ### Post-generation validator
 
@@ -175,15 +187,15 @@ shop_guru ships an AgentLab + BrowserGym harness that runs a browsing agent
 against the generated benchmarks, asks an LLM judge to score each
 trajectory, and writes per-task + aggregate results to disk. Two CLIs:
 
-| Script                  | Use when                                                                                |
-| ----------------------- | --------------------------------------------------------------------------------------- |
-| `shop_guru.eval.run`     | You want to drive **one or a few tasks** (debugging, spot-check, demo).                 |
-| `shop_guru.eval.run_all` | You want to run **every task** matching your filters and get an aggregate success rate. |
+| Command                                | Use when                                                                                |
+| -------------------------------------- | --------------------------------------------------------------------------------------- |
+| `python -m shop_guru.eval.run`          | You want to drive **one or a few tasks** (debugging, spot-check, demo).                 |
+| `shop-guru eval` (or `shop_guru.eval.run_all`) | You want to run **every task** matching your filters and get an aggregate success rate. |
 
 ### Prerequisites
 
 1. Storefront URLs must be live — benchmarks were emitted against the
-   `shop_url` for each entry in `configs/featured_v1.yml`.
+   `shop_url` for each entry in `configs/default.yaml`.
 2. API tokens for accessing OPENAI APIs
 
    ```bash
@@ -221,17 +233,17 @@ the CPU count, capped at 8) and writes a tqdm progress bar to the
 terminal:
 
 ```bash
-uv run python -m shop_guru.eval.run_all --shop mock_clothing
+uv run shop-guru eval --shop mock_clothing
 # → shop_guru tasks:  42%|████▎     | 20/48 [03:14<04:22,  9.37s/task]
 
 # Narrow scope further by skill
-uv run python -m shop_guru.eval.run_all --shop mock_clothing --skill e2e
+uv run shop-guru eval --shop mock_clothing --skill e2e
 
 # Tune parallelism (1 = sequential, useful for debugging)
-uv run python -m shop_guru.eval.run_all --shop mock_clothing --n-jobs 4
+uv run shop-guru eval --shop mock_clothing --n-jobs 4
 
 # Restore full INFO-level logs (disables the progress bar)
-uv run python -m shop_guru.eval.run_all --shop mock_clothing --verbose
+uv run shop-guru eval --shop mock_clothing --verbose
 ```
 
 ### Output layout
@@ -288,7 +300,7 @@ scripted sweeps can pass a uniform `--skill` value every iteration.
 
 | Flag                      | Default                       | Purpose                                                                                              |
 | ------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `--config`                | `configs/featured_v1.yml`      | Shops YAML                                                                                           |
+| `--config`                | `configs/default.yaml`      | Shops YAML                                                                                           |
 | `--shop`                  | *required*                    | Shop slug to evaluate (exactly one; run the CLI per shop to sweep)                                   |
 | `--skill`                 | *all*                         | Restrict to one or more skill names (repeatable). Pass `--skill all` to run every skill and tag the folder `_all` |
 | `--max-steps`             | `30`                          | Hard cap on agent steps per episode                                                                  |
@@ -300,14 +312,14 @@ scripted sweeps can pass a uniform `--skill` value every iteration.
 `run.py` additionally accepts `--task-id` (repeatable). `run_all.py`
 additionally accepts `--verbose` (disables the quiet progress bar).
 
-Full list: `uv run python -m shop_guru.eval.run_all --help`.
+Full list: `uv run shop-guru eval --help`.
 
 ## Python API
 
 ```python
 from shop_guru import load_shops, load_shop_data, build, per_shop_out_dir
 
-shops = load_shops("packages/shop_guru/configs/featured_v1.yml")
+shops = load_shops("packages/shop_guru/configs/default.yaml")
 for shop in shops:
     data = load_shop_data(shop)
     out_dir = per_shop_out_dir(shop)
@@ -336,7 +348,7 @@ End-to-end `build_all`:
 from shop_guru import build_all
 
 build_all(
-    config="packages/shop_guru/configs/featured_v1.yml",
+    config="packages/shop_guru/configs/default.yaml",
     flat_out="outputs/benchmarks",  # optional
 )
 ```
@@ -348,7 +360,7 @@ packages/shop_guru/
 ├── pyproject.toml          Installable as `shop-guru` with CLI entry point
 ├── README.md               This file
 ├── configs/
-│   └── featured_v1.yml      Default shops config (3 mock shops)
+│   └── default.yaml        Default shops config (3 mock shops)
 └── src/shop_guru/
     ├── __init__.py         Public API
     ├── __main__.py         python -m shop_guru

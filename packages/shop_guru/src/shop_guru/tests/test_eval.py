@@ -45,21 +45,21 @@ def agentlab_fixture(tmp_path: Path) -> dict[str, Any]:
 
     _write_bench(
         shop_a_bench,
-        "ShopGuru_e2e_featured_v1.json",
+        "ShopGuru_e2e_default.json",
         [{"id": "a-e2e-1", "intent": "buy hat", "url": "https://a.example", "type": "e2e"}],
     )
     _write_bench(
         shop_a_bench,
-        "ShopGuru_prod_discovery_exact_featured_v1.json",
+        "ShopGuru_prod_discovery_exact_default.json",
         [{"id": "a-pde-1", "intent": "find hat", "url": "https://a.example", "type": "pde"}],
     )
     _write_bench(
         shop_b_bench,
-        "ShopGuru_e2e_featured_v1.json",
+        "ShopGuru_e2e_default.json",
         [{"id": "b-e2e-1", "intent": "buy scarf", "url": "https://b.example", "type": "e2e"}],
     )
 
-    config_path = tmp_path / "featured_v1.yml"
+    config_path = tmp_path / "default.yaml"
     _write_shops_yml(
         config_path,
         [

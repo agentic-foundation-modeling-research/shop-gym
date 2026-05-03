@@ -264,11 +264,9 @@ def generate(shop: Shop, data: dict[str, Any], seed: int = 0, count: int = 16) -
             context=context,
         )
 
-    log.warning(
-        f"\n{'!' * 60}\nGenerated {len(tasks)} E2E tasks for {shop.slug} using LLM "
+    log.info(
+        f"Generated {len(tasks)} E2E tasks for {shop.slug} using LLM "
         f"(after up to {_POLISH_MAX_ROUNDS} polish rounds).\n"
-        f"These MUST still be manually reviewed and tested before evaluation use!\n"
-        f"{'!' * 60}\n"
     )
     return tasks
 

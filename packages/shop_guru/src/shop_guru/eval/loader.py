@@ -30,7 +30,7 @@ def _benchmark_dir(benchmarks_root: Path, shop: Shop) -> Path:
 
 
 def _bench_pattern(config_stem: str) -> re.Pattern[str]:
-    # Matches e.g. ShopGuru_prod_discovery_exact_featured_v1.json →
+    # Matches e.g. ShopGuru_prod_discovery_exact_default.json →
     # captures "prod_discovery_exact" as skill.
     return re.compile(
         rf"^{re.escape(BENCH_PREFIX)}(?P<skill>.+)_{re.escape(config_stem)}\.json$"
@@ -74,7 +74,7 @@ def load_shopguru_tasks(
     """Load + filter every ShopGuru task across the featured shops.
 
     Args:
-        config_path: Path to a shops YAML (e.g. ``configs/featured_v1.yml``).
+        config_path: Path to a shops YAML (e.g. ``configs/default.yaml``).
         benchmarks_root: Directory containing ``<shop.slug>/ShopGuru_*.json``.
             Required — callers anchor this (typically
             ``<repo>/outputs/shop_guru``) and pass it in.
@@ -90,7 +90,7 @@ def load_shopguru_tasks(
     """
     config_path = Path(config_path).resolve()
     benchmarks_root = Path(benchmarks_root).resolve()
-    config_stem = config_path.stem  # e.g. "featured_v1"
+    config_stem = config_path.stem  # e.g. "default"
 
     all_shops = load_shops(config_path)
     shop_filter = set(shops) if shops else None

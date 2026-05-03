@@ -3,15 +3,14 @@
 Given one or more storefronts that have been used to build a
 SandboxShop via `shop-arena`, this package reads the extracted catalog,
 collection, and page data and synthesizes a diverse, grounded set of
-web-agent evaluation tasks that match the ShopGuru task schema used by
-SimGym.
+web-agent evaluation tasks.
 
 Public API::
 
     from shop_guru import Shop, load_shops, load_shop_data, build
     from shop_guru.pipeline import per_shop_out_dir
 
-    shops = load_shops("configs/featured_v1.yml")
+    shops = load_shops("configs/default.yaml")
     for shop in shops:
         data = load_shop_data(shop)
         out_dir = per_shop_out_dir(shop)

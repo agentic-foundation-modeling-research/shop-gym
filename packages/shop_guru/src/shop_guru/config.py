@@ -3,7 +3,7 @@
 A `shops.yml` file is the single source of truth for which storefronts the
 benchmark covers and how to reach each one. Each entry maps to exactly one
 storefront via ``shop_url`` — real merchant or SandboxShop deployment makes
-no difference to the schema. See `configs/featured_v1.yml` for an example.
+no difference to the schema. See `configs/default.yaml` for an example.
 """
 from __future__ import annotations
 

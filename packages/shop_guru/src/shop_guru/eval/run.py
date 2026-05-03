@@ -241,7 +241,7 @@ def _build_parser(
         "--config",
         type=Path,
         default=_default_config(),
-        help="Shops YAML (default: bundled featured_v1.yml).",
+        help="Shops YAML (default: bundled default.yaml).",
     )
     parser.add_argument(
         "--shop",

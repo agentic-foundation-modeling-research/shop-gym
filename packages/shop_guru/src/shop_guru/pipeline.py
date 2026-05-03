@@ -2,7 +2,7 @@
 
 The headline entry point is :func:`build` which takes a single shop and emits
 every enabled benchmark for it. :func:`build_all` iterates across every shop
-in a config file (default ``configs/featured_v1.yml``) and also processes
+in a config file (default ``configs/default.yaml``) and also processes
 hand-authored source files.
 
 Output layout
@@ -19,8 +19,6 @@ Benchmarks are written to one of two locations, or both:
 
 - **Flat mirror** (optional): every shop's tasks are merged into a single
   file per skill at a user-supplied path (e.g. ``outputs/benchmarks/``).
-  This is the drop-in-replacement layout for the existing SimGym ShopGuru
-  datasets — one file per skill, all shops combined.
 
 The CLI enables per-shop by default; pass ``--flat-out PATH`` to also
 emit the flat mirror. Pass ``--no-per-shop`` to skip per-shop writes.
@@ -67,37 +65,37 @@ def default_generators() -> list[GeneratorSpec]:
     """
     return [
         GeneratorSpec(
-            "ShopGuru_prod_discovery_exact_featured_v1",
+            "ShopGuru_prod_discovery_exact_default",
             exact_search.generate,
             {"count": 5},
         ),
         GeneratorSpec(
-            "ShopGuru_prod_discovery_substitute_featured_v1",
+            "ShopGuru_prod_discovery_substitute_default",
             substitute_search.generate,
             {"count": 5},
         ),
         GeneratorSpec(
-            "ShopGuru_collection_browse_featured_v1",
+            "ShopGuru_collection_browse_default",
             collection_browse.generate,
             {"count": 5},
         ),
         GeneratorSpec(
-            "ShopGuru_collection_filter_featured_v1",
+            "ShopGuru_collection_filter_default",
             collection_filter.generate,
             {"count": 3},
         ),
         GeneratorSpec(
-            "ShopGuru_find_policy_shipping_featured_v1",
+            "ShopGuru_find_policy_shipping_default",
             find_policy.generate_shipping,
             {},
         ),
         GeneratorSpec(
-            "ShopGuru_find_policy_returns_featured_v1",
+            "ShopGuru_find_policy_returns_default",
             find_policy.generate_returns,
             {},
         ),
         GeneratorSpec(
-            "ShopGuru_e2e_featured_v1",
+            "ShopGuru_e2e_default",
             e2e.generate,
             {"count": 16},
         ),
@@ -106,8 +104,8 @@ def default_generators() -> list[GeneratorSpec]:
 
 # Maps a data_sources/<name>.json file to the emitted benchmark filename stem.
 DEFAULT_MANUAL_SOURCES: dict[str, str] = {
-    "smoke_test": "ShopGuru_smoke_test_featured_v1",
-    "e2e_v1": "ShopGuru_e2e_featured_v1",
+    "smoke_test": "ShopGuru_smoke_test_default",
+    "e2e_v1": "ShopGuru_e2e_default",
 }
 
 
@@ -177,10 +175,9 @@ def build_all(
     """Build every benchmark file for every shop in ``config``.
 
     Args:
-        config: Path to a shops YAML config (e.g. ``configs/featured_v1.yml``).
+        config: Path to a shops YAML config (e.g. ``configs/default.yaml``).
         flat_out: Optional directory to additionally write a flat,
-            all-shops-merged mirror into. Enables the drop-in-replacement
-            SimGym layout.
+            all-shops-merged mirror into..
         skip_per_shop: If True, do not write to the default per-shop
             location. Requires ``flat_out`` to be set.
         shop_filter: If set, only build the shop with this slug.
