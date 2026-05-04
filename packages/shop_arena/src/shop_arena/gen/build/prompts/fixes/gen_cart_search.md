@@ -9,7 +9,7 @@ checkoutUrl="/checkout" />` — a hard-coded link to the local
 `app/routes/checkout.tsx` page that ships with the template. **Do not
 replace that literal with `cart?.checkoutUrl`** when you re-author
 `CartSummary.tsx`. The sandbox Storefront API returns `"#"` for
-`cart.checkoutUrl` (there is no remote Shopify checkout for a
+`cart.checkoutUrl` (there is no remote hosted checkout for a
 SandboxShop), so swapping in the dynamic value silently degrades the
 button to `<a href="#">` — clicking it does nothing and the bug is
 invisible to `tsc` / `build` / route-200 verifiers (the link still

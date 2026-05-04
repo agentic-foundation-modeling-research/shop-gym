@@ -45,6 +45,12 @@ uv sync
 pnpm install
 ```
 
+Storefront templates live under
+`packages/shop_arena/src/shop_arena/gen/templates/`. The generation build
+step expects a Hydrogen-compatible template at
+`packages/shop_arena/src/shop_arena/gen/templates/hydrogen/`; an open-source
+template can be adapted there to bootstrap generated shops.
+
 `shop_arena.gen` reads `OPENAI_API_KEY` / `OPENAI_BASE_URL` from a project
 `.env` for `--image-backend openai` runs. Copy the template and fill in
 your key when needed:

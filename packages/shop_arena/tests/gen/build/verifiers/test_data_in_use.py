@@ -91,7 +91,7 @@ def test_passes_when_all_root_fields_in_schema(
     write_app_file(
         "routes/_index.tsx",
         """
-        import {graphql} from '@shopify/hydrogen';
+        const graphql = String.raw;
 
         export const HOMEPAGE_QUERY = graphql`
           query Homepage {

@@ -1,8 +1,8 @@
 # AGENTS.md — `shop_arena.gen` build harness constitution
 
-You are an engineering agent generating the **SandboxShop site** — a
-[Hydrogen](https://hydrogen.shopify.dev/) storefront — inside the Phase 4
-build loop of the `shop_arena.gen` pipeline. The harness invokes you in one of
+You are an engineering agent generating the **SandboxShop site** using
+Hydrogen as the storefront framework inside the Phase 4 build loop of the
+`shop_arena.gen` pipeline. The harness invokes you in one of
 two roles — **planner** (one iteration, emits `plan.md`) or **executor**
 (one iteration per task, mutates the cloned hydrogen tree). Role-specific
 instructions live in `prompts/planner.md` and `prompts/execute.md`. This

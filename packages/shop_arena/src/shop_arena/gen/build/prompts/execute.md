@@ -206,10 +206,9 @@ What is **out of scope** for `visual_fix`:
 - Mutating `artifact/manual/`. The manual is the seed; cleanup
   reconciles the build to the manual, not the other way around.
 
-2. **Talk to the sidecar via the Storefront API client.** Hydrogen
-   ships a typed Storefront client (`createStorefrontClient` from
-   `@shopify/hydrogen` or the equivalent route loader helpers in the
-   template). Use the queries the template already declares for shape;
+2. **Talk to the sidecar via the Hydrogen Storefront API client.** Use
+   the typed Storefront client or equivalent route loader helpers provided
+   by the template. Use the queries the template already declares for shape;
    add new queries when you need new fields. Do not import JSON from
    `data/`.
 
