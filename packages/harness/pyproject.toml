@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "harness"
+version = "0.3.0"
+description = "Plan + Exec harness: runtime-agnostic engine for orchestrating LLM agents through a plan-then-loop flow."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "ShopGym" }]
+license = { text = "MIT" }
+dependencies = [
+  "pydantic>=2.8",
+  "python-dotenv>=1.0",
+]
+
+[project.scripts]
+inspect = "harness.tools.inspect_native_log:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/harness"]
