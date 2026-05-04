@@ -68,7 +68,7 @@ describe('productResolvers — Query.product', () => {
     expect(result.errors).toBeUndefined();
     expect(result.data).toEqual({
       product: {
-        id: 'gid://shopify/Product/9048676991150',
+        id: 'gid://shopgym/Product/9048676991150',
         handle: 'aislearena-anti-tick-collar',
         title: 'AisleArena Anti Tick Collar',
         vendor: 'Mock Pet Foods',
@@ -257,7 +257,7 @@ describe('productResolvers — Query.collection', () => {
     expect(result.errors).toBeUndefined();
     expect(result.data).toEqual({
       collection: {
-        id: 'gid://shopify/Collection/295460700334',
+        id: 'gid://shopgym/Collection/295460700334',
         handle: 'dog-essentials',
         title: 'Dog Essentials',
         description: 'Everything your dog needs - food, toys, and care products.',
@@ -401,7 +401,7 @@ describe('productResolvers — Product.selectedOrFirstAvailableVariant', () => {
     expect(result.data).toEqual({
       product: {
         selectedOrFirstAvailableVariant: {
-          id: 'gid://shopify/ProductVariant/47642514456750',
+          id: 'gid://shopgym/ProductVariant/47642514456750',
           title: 'Yellow',
         },
       },

@@ -11,14 +11,14 @@ import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
 import { CartStore, InvalidCartStoreFileError, cartResolvers } from './cart.js';
 import type { ResolverContext } from './index.js';
 
-const VARIANT_A = 'gid://shopify/ProductVariant/100';
-const VARIANT_B = 'gid://shopify/ProductVariant/200';
+const VARIANT_A = 'gid://shopgym/ProductVariant/100';
+const VARIANT_B = 'gid://shopgym/ProductVariant/200';
 
 describe('CartStore.create', () => {
   it('allocates a deterministic cart-<n> GID with empty lines', () => {
     const store = new CartStore();
     const cart = store.create();
-    expect(cart.id).toBe('gid://shopify/Cart/cart-1');
+    expect(cart.id).toBe('gid://shopgym/Cart/cart-1');
     expect(cart.lines).toEqual([]);
   });
 
@@ -26,8 +26,8 @@ describe('CartStore.create', () => {
     const store = new CartStore();
     const first = store.create();
     const second = store.create();
-    expect(first.id).toBe('gid://shopify/Cart/cart-1');
-    expect(second.id).toBe('gid://shopify/Cart/cart-2');
+    expect(first.id).toBe('gid://shopgym/Cart/cart-1');
+    expect(second.id).toBe('gid://shopgym/Cart/cart-2');
   });
 
   it('honors initial lines and merges duplicates', () => {
@@ -66,7 +66,7 @@ describe('CartStore.get', () => {
 
   it('returns undefined for unknown cart ids', () => {
     const store = new CartStore();
-    expect(store.get('gid://shopify/Cart/cart-999')).toBeUndefined();
+    expect(store.get('gid://shopgym/Cart/cart-999')).toBeUndefined();
   });
 });
 
@@ -77,8 +77,8 @@ describe('CartStore.addLines', () => {
     store.addLines(cart, [{ merchandiseId: VARIANT_A, quantity: 2 }]);
     store.addLines(cart, [{ merchandiseId: VARIANT_B, quantity: 1 }]);
     expect(cart.lines).toHaveLength(2);
-    expect(cart.lines[0]?.id).toBe('gid://shopify/CartLine/cart-1-line-1');
-    expect(cart.lines[1]?.id).toBe('gid://shopify/CartLine/cart-1-line-2');
+    expect(cart.lines[0]?.id).toBe('gid://shopgym/CartLine/cart-1-line-1');
+    expect(cart.lines[1]?.id).toBe('gid://shopgym/CartLine/cart-1-line-2');
   });
 
   it('merges duplicate merchandiseIds by summing quantities', () => {
@@ -89,7 +89,7 @@ describe('CartStore.addLines', () => {
     expect(cart.lines).toHaveLength(1);
     expect(cart.lines[0]?.quantity).toBe(5);
     // The merged line keeps its original id.
-    expect(cart.lines[0]?.id).toBe('gid://shopify/CartLine/cart-1-line-1');
+    expect(cart.lines[0]?.id).toBe('gid://shopgym/CartLine/cart-1-line-1');
   });
 
   it('defaults quantity to 1 when omitted', () => {
@@ -135,7 +135,7 @@ describe('CartStore.updateLines', () => {
   it('ignores updates targeting unknown line ids', () => {
     const store = new CartStore();
     const cart = store.create({ lines: [{ merchandiseId: VARIANT_A, quantity: 1 }] });
-    store.updateLines(cart, [{ id: 'gid://shopify/CartLine/missing', quantity: 9 }]);
+    store.updateLines(cart, [{ id: 'gid://shopgym/CartLine/missing', quantity: 9 }]);
     expect(cart.lines).toHaveLength(1);
     expect(cart.lines[0]?.quantity).toBe(1);
   });
@@ -177,7 +177,7 @@ describe('CartStore.removeLines', () => {
   it('is a no-op for unknown ids', () => {
     const store = new CartStore();
     const cart = store.create({ lines: [{ merchandiseId: VARIANT_A, quantity: 1 }] });
-    store.removeLines(cart, ['gid://shopify/CartLine/missing']);
+    store.removeLines(cart, ['gid://shopgym/CartLine/missing']);
     expect(cart.lines).toHaveLength(1);
   });
 });
@@ -214,7 +214,7 @@ describe('CartStore.clear', () => {
     store.clear();
     expect(store.get(first.id)).toBeUndefined();
     const fresh = store.create();
-    expect(fresh.id).toBe('gid://shopify/Cart/cart-1');
+    expect(fresh.id).toBe('gid://shopgym/Cart/cart-1');
   });
 });
 
@@ -225,8 +225,8 @@ const FIXTURE_DIR = path.resolve(
   '../../tests/fixtures/sandbox_shop_v0',
 );
 const BASE_URL = 'https://shop.example';
-const AISLEARENA_VARIANT = 'gid://shopify/ProductVariant/47642512195758'; // $79.99
-const SHOPLISEUM_VARIANT = 'gid://shopify/ProductVariant/47242666836142'; // $19.99
+const AISLEARENA_VARIANT = 'gid://shopgym/ProductVariant/47642512195758'; // $79.99
+const SHOPLISEUM_VARIANT = 'gid://shopgym/ProductVariant/47242666836142'; // $19.99
 
 const resolvers: SandboxSchemaResolvers = {
   Query: cartResolvers.Query,
@@ -262,7 +262,7 @@ describe('cartResolvers — Query.cart', () => {
     const run = runWith(new CartStore());
     const result = await run(/* GraphQL */ `
       {
-        cart(id: "gid://shopify/Cart/cart-999") {
+        cart(id: "gid://shopgym/Cart/cart-999") {
           id
         }
       }
@@ -342,7 +342,7 @@ describe('cartResolvers — Query.cart', () => {
         lines: {
           nodes: [
             {
-              id: 'gid://shopify/CartLine/cart-1-line-1',
+              id: 'gid://shopgym/CartLine/cart-1-line-1',
               quantity: 2,
               cost: {
                 amountPerQuantity: { amount: '79.99' },
@@ -354,7 +354,7 @@ describe('cartResolvers — Query.cart', () => {
               },
             },
             {
-              id: 'gid://shopify/CartLine/cart-1-line-2',
+              id: 'gid://shopgym/CartLine/cart-1-line-2',
               quantity: 3,
               cost: {
                 amountPerQuantity: { amount: '19.99' },
@@ -433,7 +433,7 @@ describe('cartResolvers — Query.cart', () => {
 
 // ── Cart mutations (T4.3) ─────────────────────────────────────────────────
 
-const CARTHAEUM_VARIANT = 'gid://shopify/ProductVariant/47694728298670'; // $12.99
+const CARTHAEUM_VARIANT = 'gid://shopgym/ProductVariant/47694728298670'; // $12.99
 
 interface CartLineSummary {
   readonly id: string;
@@ -534,7 +534,7 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     `);
     expect(createResult.errors).toBeUndefined();
     const created = unwrapCart(createResult.data, 'cartCreate');
-    expect(created.id).toBe('gid://shopify/Cart/cart-1');
+    expect(created.id).toBe('gid://shopgym/Cart/cart-1');
     expect(created.totalQuantity).toBe(3);
     // 1 * 79.99 + 2 * 19.99 = 79.99 + 39.98 = 119.97.
     expect(created.subtotal).toBe('119.97');
@@ -618,7 +618,7 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     `);
     expect(result.errors).toBeUndefined();
     const created = unwrapCart(result.data, 'cartCreate');
-    expect(created.id).toBe('gid://shopify/Cart/cart-1');
+    expect(created.id).toBe('gid://shopgym/Cart/cart-1');
     expect(created.totalQuantity).toBe(0);
     expect(created.subtotal).toBe('0.00');
     expect(created.lines).toEqual([]);
@@ -633,7 +633,7 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     const result = await run(/* GraphQL */ `
       mutation {
         cartLinesAdd(
-          cartId: "gid://shopify/Cart/cart-999"
+          cartId: "gid://shopgym/Cart/cart-999"
           lines: [{ merchandiseId: "${AISLEARENA_VARIANT}", quantity: 1 }]
         ) {
           ${CART_PAYLOAD_FRAGMENT}
@@ -642,7 +642,7 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     `);
     expect(result.errors).toBeUndefined();
     const cart = unwrapCart(result.data, 'cartLinesAdd');
-    expect(cart.id).toBe('gid://shopify/Cart/cart-1');
+    expect(cart.id).toBe('gid://shopgym/Cart/cart-1');
     expect(cart.totalQuantity).toBe(1);
     expect(cart.lines).toHaveLength(1);
     expect(cart.lines[0]?.merchandiseId).toBe(AISLEARENA_VARIANT);
@@ -851,7 +851,7 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
     expect(extras.appliedGiftCards).toHaveLength(2);
     expect(extras.appliedGiftCards[0]?.lastCharacters).toBe('1234');
     expect(extras.appliedGiftCards[1]?.lastCharacters).toBe('AB');
-    expect(extras.appliedGiftCards[0]?.id).toMatch(/^gid:\/\/shopify\/AppliedGiftCard\/[0-9a-f]{8}$/);
+    expect(extras.appliedGiftCards[0]?.id).toMatch(/^gid:\/\/shopgym\/AppliedGiftCard\/[0-9a-f]{8}$/);
     // GIDs are deterministic per code.
     expect(extras.appliedGiftCards[0]?.id).not.toBe(extras.appliedGiftCards[1]?.id);
   });
@@ -861,7 +861,7 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
     const run = runWith(carts);
     const result = await run(/* GraphQL */ `
       mutation {
-        cartNoteUpdate(cartId: "gid://shopify/Cart/cart-999", note: "ignored") {
+        cartNoteUpdate(cartId: "gid://shopgym/Cart/cart-999", note: "ignored") {
           cart { id }
           userErrors { code field message }
         }
@@ -963,10 +963,10 @@ describe('CartStore — persistence (T7.4)', () => {
     const runA = new CartStore({ persistencePath: filePath });
     runA.create();
     runA.create();
-    expect(runA.create().id).toBe('gid://shopify/Cart/cart-3');
+    expect(runA.create().id).toBe('gid://shopgym/Cart/cart-3');
 
     const runB = new CartStore({ persistencePath: filePath });
-    expect(runB.create().id).toBe('gid://shopify/Cart/cart-4');
+    expect(runB.create().id).toBe('gid://shopgym/Cart/cart-4');
   });
 
   it('preserves line counters so re-loaded carts mint distinct line ids', () => {
@@ -983,7 +983,7 @@ describe('CartStore — persistence (T7.4)', () => {
     runB.addLines(seen, [{ merchandiseId: VARIANT_B, quantity: 1 }]);
     expect(seen.lines).toHaveLength(2);
     expect(seen.lines[1]?.id).not.toBe(firstLineId);
-    expect(seen.lines[1]?.id).toBe('gid://shopify/CartLine/cart-1-line-2');
+    expect(seen.lines[1]?.id).toBe('gid://shopgym/CartLine/cart-1-line-2');
   });
 
   it('clear() resets in-memory state without deleting the persistence file', () => {
@@ -1012,7 +1012,7 @@ describe('CartStore — persistence (T7.4)', () => {
     const filePath = path.join(tmpDir, 'does-not-exist.json');
     expect(fs.existsSync(filePath)).toBe(false);
     const store = new CartStore({ persistencePath: filePath });
-    expect(store.create().id).toBe('gid://shopify/Cart/cart-1');
+    expect(store.create().id).toBe('gid://shopgym/Cart/cart-1');
   });
 
   it('throws InvalidCartStoreFileError on malformed JSON', () => {
@@ -1041,10 +1041,10 @@ describe('CartStore — persistence (T7.4)', () => {
       JSON.stringify({
         version: 1,
         cartCounter: 1,
-        lineCounters: { 'gid://shopify/Cart/cart-1': 0 },
+        lineCounters: { 'gid://shopgym/Cart/cart-1': 0 },
         carts: {
-          'gid://shopify/Cart/cart-1': {
-            id: 'gid://shopify/Cart/cart-99',
+          'gid://shopgym/Cart/cart-1': {
+            id: 'gid://shopgym/Cart/cart-99',
             lines: [],
             discountCodes: [],
             giftCardCodes: [],

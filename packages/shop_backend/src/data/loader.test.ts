@@ -81,7 +81,7 @@ describe('loadShopData', () => {
     const expectedCount = data.products.reduce((sum, p) => sum + p.variants.length, 0);
     expect(data.variantsByGid.size).toBe(expectedCount);
 
-    const sample = data.variantsByGid.get('gid://shopify/ProductVariant/47642512195758');
+    const sample = data.variantsByGid.get('gid://shopgym/ProductVariant/47642512195758');
     expect(sample).toBeDefined();
     expect(sample?.product.handle).toBe('aislearena-anti-tick-collar');
     expect(sample?.variant.title).toBe('Blue');

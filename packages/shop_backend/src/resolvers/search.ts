@@ -14,7 +14,7 @@
  *   - For `Query.search`, `types` filters which of `PRODUCT` / `PAGE` /
  *     `ARTICLE` are surfaced. When omitted (or `null`), all three are
  *     returned. Results are a `SearchResultItem` union connection; the
- *     `__resolveType` resolver discriminates on the `gid://shopify/<Type>/...`
+ *     `__resolveType` resolver discriminates on the `gid://shopgym/<Type>/...`
  *     prefix produced by the per-area builders.
  *   - Sort keys (per spec §5.3 / SDL `SearchSortKeys`):
  *       - `RELEVANCE` (default): descending match score. Score weights title
@@ -112,8 +112,8 @@ const DEFAULT_PREDICTIVE_TYPES: readonly PredictiveSearchType[] = [
  */
 const DEFAULT_PREDICTIVE_LIMIT = 10;
 
-const PRODUCT_GID_PREFIX = 'gid://shopify/Product/';
-const PAGE_GID_PREFIX = 'gid://shopify/Page/';
+const PRODUCT_GID_PREFIX = 'gid://shopgym/Product/';
+const PAGE_GID_PREFIX = 'gid://shopgym/Page/';
 
 /** Maximum number of recommendations returned by `Query.productRecommendations`. */
 const MAX_RECOMMENDATIONS = 4;
@@ -328,7 +328,7 @@ function normalizeTypes(types: QuerySearchArgs['types']): ReadonlySet<SearchType
 // ── Product recommendation helpers ────────────────────────────────────────
 
 /**
- * Look up a product by its Storefront-API GID (`gid://shopify/Product/<id>`).
+ * Look up a product by its Storefront-API GID (`gid://shopgym/Product/<id>`).
  * Returns `null` when the prefix does not match, the suffix is not a positive
  * integer, or no product in the dataset has that id.
  */

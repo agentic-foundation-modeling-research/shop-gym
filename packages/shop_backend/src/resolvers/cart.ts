@@ -9,9 +9,9 @@
  * reference so concurrent server instances (e.g. parallel tests) stay
  * isolated.
  *
- * GIDs follow the spec §5.3 / T4.1 convention `gid://shopify/Cart/cart-<n>`,
+ * GIDs follow the spec §5.3 / T4.1 convention `gid://shopgym/Cart/cart-<n>`,
  * where `<n>` is the per-store creation counter. Cart line ids share that
- * scope (`gid://shopify/CartLine/cart-<n>-line-<m>`) so they remain readable
+ * scope (`gid://shopgym/CartLine/cart-<n>-line-<m>`) so they remain readable
  * in tests and stable for the lifetime of one server.
  *
  * The state types are intentionally mutable: every method either appends to
@@ -164,7 +164,7 @@ export class CartStore {
 
   /**
    * Allocate a new cart and register it under a fresh
-   * `gid://shopify/Cart/cart-<n>` id. Initial `input.lines`, if any, are
+   * `gid://shopgym/Cart/cart-<n>` id. Initial `input.lines`, if any, are
    * inserted via `addLines` so duplicate `merchandiseId`s merge the same way
    * a follow-up `cartLinesAdd` would. Other `CartInput` fields
    * (`discountCodes`, `attributes`, `note`, `buyerIdentity`) are stored
@@ -172,7 +172,7 @@ export class CartStore {
    */
   create(input?: CartInput | null): CartState {
     this.cartCounter += 1;
-    const id = `gid://shopify/Cart/cart-${this.cartCounter}`;
+    const id = `gid://shopgym/Cart/cart-${this.cartCounter}`;
     const cart: CartState = {
       id,
       lines: [],
@@ -333,7 +333,7 @@ export class CartStore {
     const next = (this.lineCounters.get(cartId) ?? 0) + 1;
     this.lineCounters.set(cartId, next);
     const cartSuffix = cartId.slice(cartId.lastIndexOf('/') + 1);
-    return `gid://shopify/CartLine/${cartSuffix}-line-${next}`;
+    return `gid://shopgym/CartLine/${cartSuffix}-line-${next}`;
   }
 
   /**

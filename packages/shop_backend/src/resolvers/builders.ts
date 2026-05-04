@@ -150,7 +150,7 @@ export interface ShopPolicyNode {
 
 // ── GID ────────────────────────────────────────────────────────────────────
 
-const GID_PREFIX = 'gid://shopify';
+const GID_PREFIX = 'gid://shopgym';
 
 /**
  * Build a GID. Numeric ids are pasted in as-is; string keys are

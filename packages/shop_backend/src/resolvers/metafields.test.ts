@@ -67,7 +67,7 @@ describe('metafieldResolvers — Product.metafield', () => {
     expect(result.data).toEqual({
       product: {
         metafield: {
-          id: 'gid://shopify/Metafield/1c8636fb',
+          id: 'gid://shopgym/Metafield/1c8636fb',
           namespace: 'specs',
           key: 'protein_source',
           value: 'chicken',

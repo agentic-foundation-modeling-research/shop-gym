@@ -46,9 +46,9 @@ const FIXTURE_DIR = path.resolve(
   '../tests/fixtures/sandbox_shop_v0',
 );
 
-const AISLEARENA_VARIANT = 'gid://shopify/ProductVariant/47642512195758'; // $79.99
-const SHOPLISEUM_VARIANT = 'gid://shopify/ProductVariant/47242666836142'; // $19.99
-const CARTHAEUM_VARIANT = 'gid://shopify/ProductVariant/47694728298670'; // $12.99
+const AISLEARENA_VARIANT = 'gid://shopgym/ProductVariant/47642512195758'; // $79.99
+const SHOPLISEUM_VARIANT = 'gid://shopgym/ProductVariant/47242666836142'; // $19.99
+const CARTHAEUM_VARIANT = 'gid://shopgym/ProductVariant/47694728298670'; // $12.99
 
 interface GraphQLResponse<T> {
   readonly data?: T;
@@ -181,7 +181,7 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
           totalCount
           nodes { handle }
         }
-        productRecommendations(productId: "gid://shopify/Product/9061637816494") {
+        productRecommendations(productId: "gid://shopgym/Product/9061637816494") {
           handle
         }
         collection(handle: "dog-essentials") {

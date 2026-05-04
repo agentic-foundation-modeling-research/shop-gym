@@ -66,7 +66,7 @@ describe('contentResolvers — Query.page', () => {
     expect(result.errors).toBeUndefined();
     expect(result.data).toEqual({
       page: {
-        id: 'gid://shopify/Page/15e2c5a5',
+        id: 'gid://shopgym/Page/15e2c5a5',
         handle: 'about-us',
         title: 'Our Story',
         body: '<p>At Mock Pet Foods we believe in the long-term health of your pet. We focus on quality, locally-sourced products for cats, dogs, birds, small animals and fish.</p><p>Owner-operated and proud to support our community.</p>',

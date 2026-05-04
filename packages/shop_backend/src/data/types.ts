@@ -216,7 +216,7 @@ export interface SandboxShopData {
   readonly inventory: InventoryFile;
   /** `handle` → product. */
   readonly productsByHandle: ReadonlyMap<string, Product>;
-  /** `gid://shopify/ProductVariant/<id>` → owning product + variant. */
+  /** `gid://shopgym/ProductVariant/<id>` → owning product + variant. */
   readonly variantsByGid: ReadonlyMap<string, VariantLookup>;
   /** Numeric variant id → inventory entry. Empty when `inventory.json` is absent. */
   readonly inventoryByVariantId: ReadonlyMap<number, InventoryEntry>;

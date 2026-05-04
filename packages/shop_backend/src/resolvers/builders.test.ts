@@ -34,9 +34,9 @@ function productByHandle(handle: string) {
 
 describe('gid', () => {
   it('formats numeric ids verbatim', () => {
-    expect(gid('Product', 9061637816494)).toBe('gid://shopify/Product/9061637816494');
+    expect(gid('Product', 9061637816494)).toBe('gid://shopgym/Product/9061637816494');
     expect(gid('ProductVariant', 47642512195758)).toBe(
-      'gid://shopify/ProductVariant/47642512195758',
+      'gid://shopgym/ProductVariant/47642512195758',
     );
   });
 
@@ -44,7 +44,7 @@ describe('gid', () => {
     const first = gid('Menu', 'main-menu');
     const second = gid('Menu', 'main-menu');
     expect(first).toBe(second);
-    expect(first).toMatch(/^gid:\/\/shopify\/Menu\/[0-9a-f]{8}$/);
+    expect(first).toMatch(/^gid:\/\/shopgym\/Menu\/[0-9a-f]{8}$/);
   });
 
   it('produces distinct hashes for distinct keys', () => {
@@ -122,8 +122,8 @@ describe('buildProductVariantNode', () => {
   it('mints stable variant + product GIDs', () => {
     if (variant === undefined) throw new Error('expected variant at index 1');
     const node = buildProductVariantNode(product, variant, data.store, BASE_URL);
-    expect(node.id).toBe(`gid://shopify/ProductVariant/${variant.id}`);
-    expect(node.product.id).toBe(`gid://shopify/Product/${product.id}`);
+    expect(node.id).toBe(`gid://shopgym/ProductVariant/${variant.id}`);
+    expect(node.product.id).toBe(`gid://shopgym/Product/${product.id}`);
   });
 });
 
@@ -237,7 +237,7 @@ describe('buildCollectionNode', () => {
     const collection = data.collections[0];
     if (collection === undefined) throw new Error('fixture missing collection');
     const node = buildCollectionNode(collection, BASE_URL);
-    expect(node.id).toBe(`gid://shopify/Collection/${collection.id}`);
+    expect(node.id).toBe(`gid://shopgym/Collection/${collection.id}`);
     expect(node.title).toBe(collection.title);
     expect(typeof node.description).toBe('string');
     expect(typeof node.descriptionHtml).toBe('string');
@@ -251,7 +251,7 @@ describe('buildMenuItemNode', () => {
       throw new Error('fixture missing main-menu[0]');
     }
     const node = buildMenuItemNode(main[0]);
-    expect(node.id).toMatch(/^gid:\/\/shopify\/MenuItem\/[0-9a-f]{8}$/);
+    expect(node.id).toMatch(/^gid:\/\/shopgym\/MenuItem\/[0-9a-f]{8}$/);
     expect(node.title).toBe(main[0].title);
     expect(node.items).toHaveLength(main[0].children.length);
   });

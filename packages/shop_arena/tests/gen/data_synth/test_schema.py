@@ -106,7 +106,7 @@ def test_navigation_round_trip_without_loss() -> None:
 
 def test_store_rejects_extra_top_level_field() -> None:
     raw = cast("dict[str, Any]", _load("store.json"))
-    raw_with_extra = {**raw, "myshopify_domain": "leak.example"}
+    raw_with_extra = {**raw, "example_domain": "example.com"}
 
     with pytest.raises(ValidationError):
         Store.model_validate(raw_with_extra)

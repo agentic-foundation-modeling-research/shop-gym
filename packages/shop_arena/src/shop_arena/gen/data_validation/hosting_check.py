@@ -116,9 +116,9 @@ _CART_TOTAL_AFTER_REMOVE: Final[int] = 0
 _MIN_DISTINCT_VARIANTS: Final[int] = 2
 """Cart-lifecycle check needs two distinct variants to exercise add/update/remove."""
 
-# Storefront API GIDs use ``gid://shopify/<Type>/<numeric-id>`` for numeric
+# Storefront API GIDs use ``gid://shopgym/<Type>/<numeric-id>`` for numeric
 # dataset ids (see ``packages/shop_backend/src/resolvers/builders.ts``).
-_VARIANT_GID_TEMPLATE: Final[str] = "gid://shopify/ProductVariant/{id}"
+_VARIANT_GID_TEMPLATE: Final[str] = "gid://shopgym/ProductVariant/{id}"
 
 _TITLE_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]{3,}")
 """Pick the first 3+-character alphabetic word as a deterministic search token."""

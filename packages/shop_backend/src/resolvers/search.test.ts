@@ -488,7 +488,7 @@ describe('searchResolvers — Query.productRecommendations', () => {
   });
 
   it('prefers same-type products, then tag overlap, then dataset order', async () => {
-    const result = await recommend(syntheticYoga, 'gid://shopify/Product/1');
+    const result = await recommend(syntheticYoga, 'gid://shopgym/Product/1');
     expect(result).toEqual([
       { handle: 'beta' },
       { handle: 'epsilon' },
@@ -498,7 +498,7 @@ describe('searchResolvers — Query.productRecommendations', () => {
   });
 
   it('excludes the requesting product even when it would otherwise rank', async () => {
-    const result = await recommend(syntheticYoga, 'gid://shopify/Product/1');
+    const result = await recommend(syntheticYoga, 'gid://shopgym/Product/1');
     const handles = (result ?? []).map((p) => p.handle);
     expect(handles).not.toContain('alpha');
   });
@@ -512,7 +512,7 @@ describe('searchResolvers — Query.productRecommendations', () => {
       schema: createSandboxSchema(resolvers),
       context: (): ResolverContext => ({ data: sixProductData, carts, baseUrl: BASE_URL }),
     });
-    const result = await recommend(sixYoga, 'gid://shopify/Product/1');
+    const result = await recommend(sixYoga, 'gid://shopgym/Product/1');
     expect(result).toEqual([
       { handle: 'zeta' },
       { handle: 'beta' },
@@ -531,7 +531,7 @@ describe('searchResolvers — Query.productRecommendations', () => {
       schema: createSandboxSchema(resolvers),
       context: (): ResolverContext => ({ data: tinyData, carts, baseUrl: BASE_URL }),
     });
-    const result = await recommend(tinyYoga, 'gid://shopify/Product/1');
+    const result = await recommend(tinyYoga, 'gid://shopgym/Product/1');
     expect(result).toEqual([{ handle: 'beta' }, { handle: 'gamma' }]);
   });
 
@@ -548,12 +548,12 @@ describe('searchResolvers — Query.productRecommendations', () => {
       schema: createSandboxSchema(resolvers),
       context: (): ResolverContext => ({ data, carts, baseUrl: BASE_URL }),
     });
-    const result = await recommend(targetYoga, 'gid://shopify/Product/1');
+    const result = await recommend(targetYoga, 'gid://shopgym/Product/1');
     expect(result).toEqual([{ handle: 'beta' }, { handle: 'gamma' }]);
   });
 
   it('returns null for an unknown product GID', async () => {
-    const result = await recommend(syntheticYoga, 'gid://shopify/Product/999');
+    const result = await recommend(syntheticYoga, 'gid://shopgym/Product/999');
     expect(result).toBeNull();
   });
 
@@ -566,7 +566,7 @@ describe('searchResolvers — Query.productRecommendations', () => {
     // The fixture has 5 products with no shared types or tags, so every
     // candidate ties at score 0. Dataset insertion order must be preserved
     // and the requesting product (aislearena, id 9048676991150) excluded.
-    const result = await recommend(yoga, 'gid://shopify/Product/9048676991150');
+    const result = await recommend(yoga, 'gid://shopgym/Product/9048676991150');
     expect(result).toEqual([
       { handle: 'shopliseum-mushroom-dog-toys' },
       { handle: 'agoracage-skin-and-coat-chicken-with-grains-12lb' },

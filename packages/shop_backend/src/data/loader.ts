@@ -533,7 +533,7 @@ function buildVariantsByGid(products: readonly Product[]): ReadonlyMap<string, V
   const map = new Map<string, VariantLookup>();
   for (const product of products) {
     for (const variant of product.variants) {
-      map.set(`gid://shopify/ProductVariant/${variant.id}`, { product, variant });
+      map.set(`gid://shopgym/ProductVariant/${variant.id}`, { product, variant });
     }
   }
   return map;
