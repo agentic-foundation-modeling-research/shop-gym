@@ -1,0 +1,56 @@
+[
+  {
+    "handle": "about",
+    "title": "About Us",
+    "body_html": "<p><strong>Mock storefront notice:</strong> this site is a synthetic Hydrogen storefront generated for AI research and benchmarking. It is not a real merchant and does not process real orders, payments, or warranty claims.</p><p>The illustrative brand on this site sells point-of-sale hardware to small and mid-sized retailers, cafe and restaurant owners, market sellers, and growing brands. Product photography, copy, and policies are placeholders intended to make the page look realistic to an automated shopping agent.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "contact",
+    "title": "Support",
+    "body_html": "<p>Get in touch with our (illustrative) team. The contact form below is non-functional and any data you submit will be discarded by the mock storefront.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "faq",
+    "title": "Frequently Asked Questions",
+    "body_html": "<p>Find answers to common questions about ordering, shipping, returns, and order issues for the illustrative POS hardware shown on this mock storefront.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "hardware-rental-program",
+    "title": "Hardware Rental Program",
+    "body_html": "<p>Renting POS hardware is a quick way to staff a pop-up shop, a market booth, or a one-day event without buying equipment outright.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "pos-compatibility",
+    "title": "Compatible devices",
+    "body_html": "<p>Devices that work with the illustrative POS platform on this mock storefront, organized by category.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "shopify-products-warranty",
+    "title": "Hardware Warranty",
+    "body_html": "<p>Illustrative warranty terms for first-party and third-party hardware listed on this mock storefront.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "gift-cards",
+    "title": "Gift Cards",
+    "body_html": "<p>Sell physical gift cards from your retail counter to keep customers coming back.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "return-policy",
+    "title": "Returns",
+    "body_html": "<p>Illustrative US returns center for hardware orders placed on the mock storefront.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "order-support-request",
+    "title": "Order support request",
+    "body_html": "<p>Submit a request and our (illustrative) support team will follow up. The form on this page is non-functional and exists only for UI completeness on this research-only mock storefront.</p>",
+    "published_at": null
+  }
+]

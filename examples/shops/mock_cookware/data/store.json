@@ -1,0 +1,36 @@
+{
+  "shop_id": 99999,
+  "name": "Mock Cookware",
+  "domain": "mock-cookware.example",
+  "description": "A fictional cookware store for research benchmarks.",
+  "currency_code": "USD",
+  "country_code": "US",
+  "myshopify_domain": "mock-cookware.myshopify.com",
+  "published_products_count": null,
+  "published_collections_count": null,
+  "payment_settings": {
+    "accepted_card_brands": [
+      "VISA",
+      "MASTERCARD",
+      "AMEX"
+    ],
+    "supports_3d_secure": true
+  },
+  "contact": {
+    "email": "contact@mock-shop.example",
+    "phone": "+1-555-0100",
+    "address": {
+      "street": "123 Example Street",
+      "city": "Sample City",
+      "postal_code": "A0A 0A0"
+    }
+  },
+  "brand": {
+    "logo_url": null,
+    "colors": {
+      "primary": "#000000",
+      "secondary": "#ffffff"
+    },
+    "social_links": {}
+  }
+}

@@ -1,0 +1,64 @@
+[
+  {
+    "handle": "journal",
+    "title": "Journal",
+    "articles": [
+      {
+        "handle": "cast-iron-sunday-roast-chicken",
+        "title": "Cast-Iron Sunday Roast Chicken",
+        "content_html": "<p>Cast-Iron Sunday Roast Chicken.</p>",
+        "author": null,
+        "published_at": null
+      },
+      {
+        "handle": "one-pan-lemon-garlic-salmon",
+        "title": "One-Pan Lemon Garlic Salmon",
+        "content_html": "<p>One-Pan Lemon Garlic Salmon.</p>",
+        "author": null,
+        "published_at": null
+      },
+      {
+        "handle": "slow-braised-short-ribs",
+        "title": "Slow-Braised Short Ribs",
+        "content_html": "<p>Slow-Braised Short Ribs.</p>",
+        "author": null,
+        "published_at": null
+      },
+      {
+        "handle": "weeknight-stir-fried-beef-and-broccoli",
+        "title": "Weeknight Stir-Fried Beef and Broccoli",
+        "content_html": "<p>Weeknight Stir-Fried Beef and Broccoli.</p>",
+        "author": null,
+        "published_at": null
+      },
+      {
+        "handle": "how-to-season-carbon-steel-like-a-pro",
+        "title": "How to season carbon steel like a pro",
+        "content_html": "<p>How to season carbon steel like a pro.</p>",
+        "author": null,
+        "published_at": null
+      },
+      {
+        "handle": "choosing-the-right-chefs-knife-size",
+        "title": "Choosing the right chef\u2019s knife size",
+        "content_html": "<p>Choosing the right chef\u2019s knife size.</p>",
+        "author": null,
+        "published_at": null
+      },
+      {
+        "handle": "why-we-still-build-with-tri-ply-stainless",
+        "title": "Why we still build with tri-ply stainless",
+        "content_html": "<p>Why we still build with tri-ply stainless.</p>",
+        "author": null,
+        "published_at": null
+      },
+      {
+        "handle": "a-kitchen-built-around-a-single-pan",
+        "title": "A kitchen built around a single pan",
+        "content_html": "<p>A kitchen built around a single pan.</p>",
+        "author": null,
+        "published_at": null
+      }
+    ]
+  }
+]

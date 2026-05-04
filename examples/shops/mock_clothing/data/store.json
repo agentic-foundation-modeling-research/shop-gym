@@ -1,0 +1,25 @@
+{
+  "shop_id": 99999,
+  "name": "Mock Clothing",
+  "domain": "velorra.example.com",
+  "description": "Mock Clothing is a mid-premium lifestyle brand offering personalised jewellery, everyday watches, and activewear-adjacent essentials positioned as go-to gifts for modern, active consumers.",
+  "currency_code": "USD",
+  "country_code": "US",
+  "published_products_count": null,
+  "published_collections_count": null,
+  "payment_settings": {
+    "accepted_card_brands": [
+      "VISA",
+      "MASTERCARD",
+      "AMEX"
+    ],
+    "supports_3d_secure": true
+  },
+  "brand": {
+    "logo_url": null,
+    "colors": {
+      "primary": "#000000",
+      "secondary": "#ffffff"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "shop_id": 99999,
+  "name": "Mock Hardware",
+  "domain": "mock-hardware.example",
+  "description": "A fictional store created for research benchmarks.",
+  "currency_code": "USD",
+  "country_code": "US",
+  "myshopify_domain": "mock-hardware.myshopify.com",
+  "published_products_count": null,
+  "published_collections_count": null,
+  "payment_settings": {
+    "accepted_card_brands": [
+      "VISA",
+      "MASTERCARD",
+      "AMEX"
+    ],
+    "supports_3d_secure": true
+  },
+  "brand": {
+    "logo_url": null,
+    "colors": {
+      "primary": "#000000",
+      "secondary": "#ffffff"
+    }
+  }
+}

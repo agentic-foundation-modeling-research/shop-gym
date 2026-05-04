@@ -86,6 +86,20 @@ uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop
 
 Output lands in `outputs/shops/mock_shop/`. Re-running with the same `--name` resumes from the cached state.
 
+To skip exploration / shop generation and use one of the checked-in example shops,
+copy it from `examples/shops/` into the hostable output layout:
+
+```bash
+mkdir -p outputs/shops
+cp -R examples/shops/mock_clothing outputs/shops/
+
+# If you are on a fresh git checkout, hydrate the example storefront deps once.
+(cd outputs/shops/mock_clothing/runs/build/artifact/hydrogen && pnpm install)
+```
+
+After that, continue with the same `shop:host` commands using the copied shop name
+(for example, `mock_clothing`).
+
 ### 3. Serve the shop
 
 ```bash

@@ -1,0 +1,38 @@
+[
+  {
+    "handle": "about",
+    "title": "About Mock Cookware",
+    "body_html": "<p>Welcome to Mock Cookware. We are a fictional store created for research purposes.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "contact",
+    "title": "Contact Us",
+    "body_html": "<p>Get in touch with Mock Cookware.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "faq",
+    "title": "Frequently Asked Questions",
+    "body_html": "<p>Find answers to common questions about our products and services.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "shipping",
+    "title": "Shipping Information",
+    "body_html": "<p>We offer worldwide shipping on all orders.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "returns",
+    "title": "Returns & Exchanges",
+    "body_html": "<p>We accept returns within 30 days of purchase.</p>",
+    "published_at": null
+  },
+  {
+    "handle": "size-guide",
+    "title": "Size Guide",
+    "body_html": "<p>Use our size guide to find your perfect fit.</p>",
+    "published_at": null
+  }
+]

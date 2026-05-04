@@ -8,7 +8,7 @@ __pycache__/
 .coverage
 htmlcov/
 dist/
-build/
+/build
 # Re-include shop_gen Phase 4 build steps (legitimate package code; the
 # blanket ``build/`` rule above targets Python build artifacts).
 !packages/shop_arena/src/shop_gen/build/
@@ -30,6 +30,8 @@ dist/
 
 # Generated Outputs
 outputs/
+.run
+images/
 
 # Internal
 docs/internal/
