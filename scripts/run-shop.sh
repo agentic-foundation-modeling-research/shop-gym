@@ -136,7 +136,7 @@ cmd_start() {
     {
       echo "❌ No hydrated Hydrogen tree found for '$name'. Tried:"
       echo "    $artifact/node_modules"
-      echo "  Hydrate it with: (cd '$artifact' && pnpm install)"
+      echo "  Hydrate it with: (cd '$artifact' && pnpm install --ignore-workspace)"
       echo "  Or override: HYDROGEN_DIR=<path> $0 start $name $port"
     } >&2
     exit 1

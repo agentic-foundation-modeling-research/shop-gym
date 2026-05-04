@@ -80,29 +80,24 @@ uv run shop-explore https://example-shop.com
 ### 2. Generate a SandboxShop
 
 ```bash
+# copy an example shop as the template
+cp -R examples/shops/mock_hardware/runs/build/artifact/hydrogen packages/shop_arena/src/shop_arena/gen/templates/
+# Or, start fresh by use a open sourced storefront template (e.g. https://github.com/Shopify/hydrogen/tree/main/templates/skeleton)
+
 # Without image gen — placeholder PNGs (fast, deterministic, offline).
 uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop
 ```
 
-Output lands in `outputs/shops/mock_shop/`. Re-running with the same `--name` resumes from the cached state.
-
-To skip exploration / shop generation and use one of the checked-in example shops,
-copy it from `examples/shops/` into the hostable output layout:
-
-```bash
-mkdir -p outputs/shops
-cp -R examples/shops/mock_clothing outputs/shops/
-
-# If you are on a fresh git checkout, hydrate the example storefront deps once.
-(cd outputs/shops/mock_clothing/runs/build/artifact/hydrogen && pnpm install)
-```
-
-After that, continue with the same `shop:host` commands using the copied shop name
-(for example, `mock_clothing`).
-
 ### 3. Serve the shop
 
 ```bash
+# try hosting an example shop:
+mkdir -p outputs/shops
+cp -R examples/shops/mock_clothing outputs/shops/
+cd outputs/shops/mock_clothing/runs/build/artifact/hydrogen && pnpm install --ignore-workspace
+pnpm shop:host start mock_clothing 4000
+
+# or, host a shop you generated
 pnpm shop:host start mock_shop 4000  # hosting the mock_shop on localhost:4000
 ```
 
