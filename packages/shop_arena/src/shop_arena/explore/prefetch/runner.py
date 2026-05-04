@@ -30,7 +30,7 @@ from shop_arena.explore.prefetch.models import (
     ShopUnreachableError,
 )
 
-DEFAULT_USER_AGENT = f"ShopExplore/{__version__} (+https://github.com/agentic-foundation-modeling-research/shop-gym)"
+DEFAULT_USER_AGENT = f"ShopExplore/{__version__}"
 """Default User-Agent sent on every prefetch request (spec §5.9)."""
 
 DEFAULT_RATE_LIMIT_MS = 500

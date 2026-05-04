@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "shop-arena"
 version = "0.1.0"
 description = "ShopArena: Environment Factory that generates deterministic sandbox SandboxShops from live storefronts."
-readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "ShopGym" }]
 license = { text = "MIT" }

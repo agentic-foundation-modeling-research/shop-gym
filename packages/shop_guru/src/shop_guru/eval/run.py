@@ -415,7 +415,7 @@ def _resolve_environment(
         args.skill_tokens = sorted(raw_skills)
 
     # Default results land in the repo-wide outputs/ tree (already gitignored)
-    # alongside other generated artifacts (outputs/shops/, outputs/shop_probe/, ...).
+    # alongside other generated artifacts (outputs/shops/, ...).
     results_root = (
         args.results_dir or repo_root() / "outputs" / "shop_guru"
     ).resolve()

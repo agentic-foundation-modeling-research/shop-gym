@@ -6,8 +6,8 @@
 #            cookie on first visit so subsequent navigation works without
 #            the token.
 # data_dir:  path (relative to repo root) to extracted shop-arena data
-# image_tag: Artifact Registry tag in us-central1-docker.pkg.dev/
-#            s5y-sidekick-52ee/docker-images/shop-arena:<tag>
+# image_tag: container image tag for the SandboxShop Docker image
+#            (used by your container registry of choice).
 
 shops:
   - slug: mock_shop

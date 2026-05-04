@@ -28,12 +28,10 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 
 - Python ≥ 3.12 with [`uv`](https://docs.astral.sh/uv/)
 - Node ≥ 20 with [`pnpm`](https://pnpm.io/) ≥ 9
-- One of the supported coding-agent CLIs (required for `shop_arena.explore`
-  and the `shop_arena.gen` build loop):
-  - `pi` (default agent runtime) — install per the
-    [pi coding agent docs](https://pi.dev/).
-  - `claude` (Anthropic Claude Code CLI) — install per the
-    [Claude Code docs](https://docs.claude.com/claude-code/).
+- A coding-agent CLI is required for `shop_arena.explore` and the
+  `shop_arena.gen` build loop. The runtime is pluggable; any CLI that
+  accepts a single `-p <prompt>` argument and writes a structured trace
+  to disk can be wired in via `harness.runtimes`.
 
 ## Setup
 
@@ -42,10 +40,8 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 uv sync
 
 # TypeScript workspace (shop_backend) — also installs the
-# `pi-playwright` skill into `node_modules/`. The repo's
-# `.claude/skills/playwright-browser` symlink exposes that same skill
-# tree to Claude Code; the `pi` runtime discovers it via a workspace
-# walk-up. No extra global install is needed.
+# Playwright skill used by `shop_arena.explore` and the build loop's
+# visual verifier (no extra global install needed).
 pnpm install
 ```
 
@@ -55,7 +51,7 @@ your key when needed:
 
 ```bash
 cp .env.example .env
-# then edit .env to set OPENAI_API_KEY (or ANTHROPIC_API_KEY for claude_code runtime)
+# then edit .env to set OPENAI_API_KEY and/or ANTHROPIC_API_KEY
 ```
 
 Shell exports take precedence over `.env` values.
@@ -112,9 +108,6 @@ uv run shop-guru eval --shop mock_shop
 # → outputs/shop_guru/mock_shop/<timestamp>_.../aggregate.json
 ```
 
-See [`packages/shop_guru/README.md`](packages/shop_guru/README.md) for
-single-task debugging, skill filters, and the full output layout.
-
 ## Common commands
 
 ```bash
@@ -163,11 +156,7 @@ where deps live by default).
 
 ```
 shop-gym/
-├── AGENT.md                    # agent behavior + coding guidelines
-├── CLAUDE.md -> AGENT.md
 ├── README.md
-├── docs/
-│   └── specs/                  # design specifications (intent, not reality)
 ├── packages/
 │   ├── shop_arena/             # Python: SandboxShop factory
 │   ├── shop_guru/              # Python: dataset generation

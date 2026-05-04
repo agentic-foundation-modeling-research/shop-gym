@@ -78,7 +78,7 @@ describe('buildImageNode', () => {
   });
 
   it('passes an absolute http(s) src through unchanged', () => {
-    const cdn = 'https://cdn.shopify.com/foo.jpg';
+    const cdn = 'https://cdn.example.com/foo.jpg';
     const node = buildImageNode(
       { id: 1, src: cdn, alt: 'cover', width: 100, height: 200, position: 1 },
       BASE_URL,

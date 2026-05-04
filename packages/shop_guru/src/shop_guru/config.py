@@ -31,7 +31,7 @@ class Shop:
         country: ISO 3166-1 alpha-2 country code of the store.
         currency: ISO 4217 currency code.
         language: ISO 639-1 language code of the store.
-        image_tag: Artifact Registry tag for the SandboxShop Docker image.
+        image_tag: Container image tag for the SandboxShop Docker image.
         notes: Free-form merchant-specific commentary.
     """
 
