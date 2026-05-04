@@ -93,9 +93,12 @@ uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop
 ```bash
 # try hosting an example shop:
 mkdir -p outputs/shops
-cp -R examples/shops/mock_clothing outputs/shops/
-cd outputs/shops/mock_clothing/runs/build/artifact/hydrogen && pnpm install --ignore-workspace
-pnpm shop:host start mock_clothing 4000
+cp -R examples/shops/mock_clothing outputs/shops/mock_shop
+(
+  cd outputs/shops/mock_shop/runs/build/artifact/hydrogen &&
+  pnpm install --ignore-workspace
+)
+pnpm shop:host start mock_shop 4000
 
 # or, host a shop you generated
 pnpm shop:host start mock_shop 4000  # hosting the mock_shop on localhost:4000
