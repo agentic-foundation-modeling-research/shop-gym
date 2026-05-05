@@ -1,0 +1,9 @@
+{"type":"system","subtype":"init","session_id":"sess_abc","model":"claude-sonnet-4","tools":["Bash","Read"]}
+{"type":"assistant","session_id":"sess_abc","message":{"id":"msg_1","role":"assistant","content":[{"type":"thinking","thinking":"Need to inspect plan.md."},{"type":"text","text":"Reading plan.md to find the next task."}]}}
+{"type":"assistant","session_id":"sess_abc","message":{"id":"msg_2","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"cat plan.md"}}]}}
+{"type":"user","session_id":"sess_abc","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"# Plan\n\n## Tasks\n- [ ] homepage\n"}]}}
+{"type":"assistant","session_id":"sess_abc","message":{"id":"msg_3","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"false"}}]}}
+{"type":"user","session_id":"sess_abc","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_2","content":[{"type":"text","text":"command failed"}],"is_error":true}]}}
+this line is not json — should be skipped
+{"type":"assistant","session_id":"sess_abc","message":{"id":"msg_4","role":"assistant","content":[{"type":"text","text":"Done."}]}}
+{"type":"result","subtype":"success","session_id":"sess_abc","is_error":false,"result":"ok"}
