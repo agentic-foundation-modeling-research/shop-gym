@@ -54,7 +54,6 @@ from openai import OpenAI
 MODEL_CHOICES: tuple[str, ...] = (
     "gpt-5",
     "gpt-5-mini",
-    "gemini-3-flash",
     "gemini-3-pro",
     "claude-haiku-4.5",
     "claude-sonnet-4.6",
@@ -64,7 +63,7 @@ DEFAULT_MODEL: str = "gpt-5-mini"
 
 def _zero_pricing(model_name: str) -> dict[str, dict[str, float]]:
     # litellm's registry doesn't cover our internal model slugs (e.g.
-    # googlevertexai-global:gemini-3-flash-preview), and upstream's
+    # gemini-3-flash-preview), and upstream's
     # get_pricing_litellm lets None costs leak through, which blows up
     # the cost multiplication in ChatModel.__call__. Skip pricing entirely.
     return {model_name: {"prompt": 0.0, "completion": 0.0}}
@@ -300,15 +299,6 @@ def build_agent(model: str, base_url: str | None = None) -> Any:
                 max_input_tokens=400_000 - 4_000,
                 max_new_tokens=4_000,
                 temperature=1,  # gpt-5 family rejects other values
-                vision_support=True,
-            )
-        case "gemini-3-flash":
-            chat_model_args = CustomAIModelArgs(
-                model_name="googlevertexai-global:gemini-3-flash-preview",
-                base_url=base_url,
-                max_total_tokens=1_000_000,
-                max_input_tokens=1_000_000 - 8_192,
-                max_new_tokens=8_192,
                 vision_support=True,
             )
         case "gemini-3-pro":

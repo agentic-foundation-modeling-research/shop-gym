@@ -102,28 +102,6 @@ def _h2_section_names(body: str) -> list[str]:
     return [match.group(1).strip() for match in re.finditer(r"^##\s+(.+)$", body, re.MULTILINE)]
 
 
-# A small, *not* exhaustive denylist of real brand names. Used only as a
-# negative-evidence smoke test for the brand-leak rule (spec §5.6); the
-# full allowlist scanner lands in T3.1 and is out of scope here.
-_REAL_BRAND_DENYLIST: tuple[str, ...] = (
-    "Apple",
-    "Nike",
-    "Adidas",
-    "Levi",
-    "HexClad",
-    "Lululemon",
-    "Patagonia",
-    "Tesla",
-    "Amazon",
-)
-
-
-def _assert_no_real_brand_leaks(body: str) -> None:
-    """Assert ``body`` does not mention any real-brand denylist token."""
-    for token in _REAL_BRAND_DENYLIST:
-        assert token not in body, f"real brand {token!r} leaked into merged manual"
-
-
 # --------------------------------------------------------------------------- #
 # merge_manual_prose_seeds — core merge logic
 # --------------------------------------------------------------------------- #

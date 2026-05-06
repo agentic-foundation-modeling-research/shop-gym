@@ -1,7 +1,7 @@
 """OpenAI-compatible image generation backend (spec §5.1).
 
 One backend class covers the official OpenAI API and any drop-in
-compatible vendor (e.g. an internal proxy) — selected purely via the
+compatible vendor — selected purely via the
 ``OPENAI_API_KEY`` and ``OPENAI_BASE_URL`` environment variables, the
 SDK's own conventions. No vendor-specific code lives in this repo.
 

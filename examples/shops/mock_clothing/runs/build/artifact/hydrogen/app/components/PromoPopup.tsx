@@ -32,14 +32,14 @@ export function PromoPopup() {
     if (!email.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await fetch('/api/klaviyo', {
+      await fetch('/api/newsletter', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({email}),
       });
     } catch (err) {
       // Mock endpoint — failures are non-fatal.
-      console.error('Klaviyo signup error', err);
+      console.error('signup error', err);
     }
     window.localStorage.setItem(STORAGE_KEY, 'subscribed');
     setSubmitted(true);

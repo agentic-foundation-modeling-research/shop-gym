@@ -1,5 +1,5 @@
 import {data} from 'react-router';
-import type {Route} from './+types/api.klaviyo';
+import type {Route} from './+types/api.newsletter';
 
 export async function action({request}: Route.ActionArgs) {
   try {

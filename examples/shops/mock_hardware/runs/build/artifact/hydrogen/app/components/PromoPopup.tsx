@@ -94,7 +94,7 @@ export function PromoPopup() {
             </p>
             <fetcher.Form
               method="post"
-              action="/api/klaviyo"
+              action="/api/newsletter"
               className="promo-popup-form"
             >
               <label htmlFor="promo-popup-email" className="sr-only">

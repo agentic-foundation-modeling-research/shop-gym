@@ -501,7 +501,7 @@ def test_fixture_seeds_produce_stable_priors(tmp_path: Path) -> None:
     visible in one assertion block.
     """
     seed_a = _write_seed_stats(
-        tmp_path / "morenutrition",
+        tmp_path / "a",
         {
             "products_total": 220,
             "collections_total": 12,
@@ -521,7 +521,7 @@ def test_fixture_seeds_produce_stable_priors(tmp_path: Path) -> None:
         },
     )
     seed_b = _write_seed_stats(
-        tmp_path / "hexclad",
+        tmp_path / "b",
         {
             "products_total": 164,
             "collections_total": 50,

@@ -20,11 +20,10 @@ Brand-safety hard constraints (apply to every image):
 1. Render NO text, glyphs, letters, numbers, or wordmarks of any kind
    on, near, or behind the product. Plain unbranded surfaces only.
 2. Avoid every recognizable third-party logo, badge, monogram, or
-   trademark (e.g. Nike swoosh, Apple bitten apple, Coca-Cola serif,
-   Adidas trefoil). When in doubt, omit.
+   trademark. When in doubt, omit.
 3. Treat any apparent brand name surfaced from the product title as a
    generic placeholder and replace it with an unbranded equivalent
-   (a generic athletic shoe, not a Nike Air Max).
+   (a generic athletic shoe).
 4. Avoid identifiable real-world products (e.g. iPhone, Coca-Cola
    bottle, IKEA Billy bookshelf) and use a generic equivalent of the
    same product category instead.

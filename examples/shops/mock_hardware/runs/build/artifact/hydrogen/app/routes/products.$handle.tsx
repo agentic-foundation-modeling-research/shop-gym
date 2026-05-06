@@ -241,7 +241,6 @@ function buildAccordionSections({
       label: 'Compatibility',
       content: (
         <ul className="product-accordion-bullets">
-          <li>Works with Shopify POS on iPad and iPhone</li>
           <li>Compatible with most major countertop POS systems</li>
           <li>USB-C and Bluetooth pairing options where supported</li>
           <li>No proprietary lock-in — open standards throughout</li>

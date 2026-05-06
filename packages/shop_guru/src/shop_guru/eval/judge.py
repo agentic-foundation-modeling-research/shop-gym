@@ -21,9 +21,8 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
-# Transient proxy/LLM failures worth retrying (e.g. Cloudflare 1102
-# from a private gateway surfaces as InternalServerError). Name-based
-# match so the openai import stays lazy.
+# Transient proxy/LLM failures worth retrying (e.g. InternalServerError).
+# Name-based match so the openai import stays lazy.
 _RETRIABLE_EXC_NAMES = frozenset(
     {
         "InternalServerError",
@@ -323,8 +322,7 @@ def judge_trace(  # noqa: PLR0915  # single linear retry/score path; splitting h
     output, returns a ``verdict=False`` result with the error captured
     in ``failure_reason``.
 
-    On transient proxy/LLM errors (e.g. Cloudflare 1102 "Worker
-    exceeded resource limits" from a private gateway), retries with
+    On transient proxy/LLM errors, retries with
     ``max_images`` reduced by 2 each attempt until the call succeeds
     or the image budget is exhausted.
     """

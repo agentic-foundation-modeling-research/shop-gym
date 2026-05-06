@@ -918,14 +918,14 @@ function GiftCardsPage() {
             },
             {
               id: 'pos-setup',
-              label: 'Set up your gift cards in Shopify POS',
+              label: 'Set up your gift cards',
               content: (
                 <div className="info-prose">
                   <p>
                     Once cards arrive, link the card numbers to your store
                     using the POS app. See the{' '}
                     <a
-                      href="https://help.shopify.com/manual/products/gift-cards"
+                      href="https://example.com/manual/products/gift-cards"
                       target="_blank"
                       rel="noopener noreferrer"
                     >

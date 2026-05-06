@@ -60,7 +60,7 @@ export function PromoPopup() {
     const formData = new FormData(form);
     const email = String(formData.get('email') || '').trim();
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) return;
-    fetcher.submit(formData, {method: 'POST', action: '/api/klaviyo'});
+    fetcher.submit(formData, {method: 'POST', action: '/api/newsletter'});
     setSubmitted(true);
     window.setTimeout(() => dismiss(), 1500);
   }

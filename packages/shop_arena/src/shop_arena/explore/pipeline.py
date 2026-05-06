@@ -430,7 +430,7 @@ def _preopen_browser(skill_dir: Path, *, session: str) -> None:
     Eliminates the ~10 s cold-start the planner iteration otherwise pays
     on its first ``pw.js goto`` and prevents the agent from misfiring on
     "Browser '<session>' is not open" errors that cost 5+ tool calls per
-    misstep (observed in ``hexclad`` exec-0001).
+    misstep.
     """
     pw_js = skill_dir / "scripts" / "pw.js"
     if not pw_js.is_file():

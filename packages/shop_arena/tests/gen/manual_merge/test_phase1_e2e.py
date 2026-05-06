@@ -53,18 +53,6 @@ from shop_arena.gen.steps.state import read_state
 # Fixture helpers
 # --------------------------------------------------------------------------- #
 
-_REAL_BRAND_DENYLIST: tuple[str, ...] = (
-    "Apple",
-    "Nike",
-    "Adidas",
-    "Levi",
-    "HexClad",
-    "Lululemon",
-    "Patagonia",
-    "Tesla",
-    "Amazon",
-)
-
 
 @dataclass
 class _StubCompleter:
@@ -111,13 +99,6 @@ def _seed_manual(descriptor: str, *, sections: dict[str, str]) -> str:
         pieces.append(body.rstrip())
         pieces.append("")
     return "\n".join(pieces).rstrip() + "\n"
-
-
-def _assert_no_real_brand_leaks(body: str) -> None:
-    """Assert ``body`` does not mention any real-brand denylist token."""
-    for token in _REAL_BRAND_DENYLIST:
-        assert token not in body, f"real brand {token!r} leaked into merged manual"
-
 
 def _assert_phase1_outputs_present(out_dir: Path) -> None:
     """Assert every Phase 1 artifact exists and validates against its schema."""

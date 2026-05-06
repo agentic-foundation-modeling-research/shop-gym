@@ -8,9 +8,7 @@ ran so subsequent calls are cheap.
 The shop_guru CLIs (``shop_guru.eval.run``, ``shop_guru.eval.rejudge``,
 the ``e2e`` generator) call :func:`load_project_env` before constructing
 any LLM SDK client. The OpenAI and Anthropic SDKs read
-``OPENAI_BASE_URL`` / ``ANTHROPIC_BASE_URL`` from the environment, so
-operators can route every shop_guru LLM call through an internal proxy
-by editing ``.env`` rather than passing CLI flags.
+``OPENAI_BASE_URL`` / ``ANTHROPIC_BASE_URL`` rather than CLI flags.
 """
 
 from __future__ import annotations
