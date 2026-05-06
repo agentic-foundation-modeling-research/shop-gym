@@ -4,25 +4,18 @@
 [![python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 
 
-Sandbox shop websites with modern features for **building and evaluating
-shopping LLM agents**. ShopGym is a mono-repo of three components that
-together produce reproducible shopping environments and evaluation datasets.
+ShopGym is an integrated framework for realistic simulation and scalable benchmarking of e-commerce web agents, functions as both as a simulation environment and as a benchmark construction pipeline.
 
-## Components
+![shop-gym-pipeline](docs/imgs/shop-gym-pipeline.png)
+
+The package is a mono-repo of three components:
 
 | Package | Lang | Role |
 |---|---|---|
-| [`packages/shop_arena`](packages/shop_arena) | Python | **ShopArena** — Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from any live storefront. |
+| [`packages/shop_arena`](packages/shop_arena) | Python | **ShopArena** — the simulation layer that converts one or more live seed storefronts into self-contained **simulation environment** through anonymized shop specifications and a staged validated generation process |
 | [`packages/shop_guru`](packages/shop_guru) | Python | **ShopGuru** — Automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation structure, and policies to synthesize grounded evaluation tasks across 7 skill categories. |
 | [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server hosting SandboxShop data. |
 
-A typical loop:
-
-```
-ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
-                                ↓
-                             ShopGuru  →  Evaluation dataset
-```
 
 ## Requirements
 
@@ -79,10 +72,12 @@ uv run shop-explore https://example-shop.com
 
 ### 2. Generate a SandboxShop
 
+We used the open sourced [Hydrogen](https://github.com/Shopify/hydrogen) to bootstrapping our shop generation as it's a good starter template.
+
 ```bash
 # copy an example shop as the template
 cp -R examples/shops/mock_hardware/runs/build/artifact/hydrogen packages/shop_arena/src/shop_arena/gen/templates/
-# Or, start fresh by use a open sourced storefront template (e.g. https://github.com/Shopify/hydrogen/tree/main/templates/skeleton)
+# Or, start fresh from an open sourced template (e.g. https://github.com/Shopify/hydrogen/tree/main/templates/skeleton)
 
 # Without image gen — placeholder PNGs (fast, deterministic, offline).
 uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop
