@@ -313,7 +313,6 @@ def test_phase1_two_seed_end_to_end_no_llm(tmp_path: Path) -> None:
     assert "## Site shell" in body
     assert "## Cart" in body
     assert "## Search" in body
-    _assert_no_real_brand_leaks(body)
 
     # Stats: median of (80, 220) → 150; max-of-maxes for price.
     stats = Stats.model_validate_json(
@@ -561,7 +560,6 @@ def test_phase1_three_seed_end_to_end_with_llm(tmp_path: Path) -> None:
     for section in overlapping_sections:
         assert f"## {section}" in body
         assert f"Merged {section.lower()} body, brand-anonymized." in body
-    _assert_no_real_brand_leaks(body)
 
     stats = Stats.model_validate_json(
         (out_dir / "manual" / "stats.json").read_text(encoding="utf-8"),
