@@ -1,0 +1,17 @@
+{
+  "site_shell": {
+    "has_announcement_bar": true,
+    "header_style": "horizontal",
+    "footer_groups": 4
+  },
+  "homepage": {
+    "section_types": [
+      "hero_carousel",
+      "featured_collection",
+      "editorial_banner",
+      "newsletter"
+    ],
+    "section_count": 6,
+    "has_popup_modal": false
+  }
+}

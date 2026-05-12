@@ -1,0 +1,15 @@
+{
+  "collection": {
+    "layout": "grid",
+    "columns_desktop": 4,
+    "filters": ["size", "color", "material", "price"],
+    "sort": ["featured", "price_asc", "price_desc", "newest", "best_selling"],
+    "pagination": "load_more"
+  },
+  "search": {
+    "trigger": "header_icon",
+    "has_predictive": true,
+    "predictive_types": ["products", "collections"],
+    "results_layout": "grid_with_filters"
+  }
+}
