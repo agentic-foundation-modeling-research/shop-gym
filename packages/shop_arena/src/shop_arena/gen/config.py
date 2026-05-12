@@ -1,0 +1,475 @@
+"""Public configuration and result types for ``shop_arena.gen``.
+
+This module defines the typed I/O contract documented in
+``docs/specs/shop_arena/shop_arena.gen.md`` §4.1:
+
+* :class:`CatalogConfig` — scale knobs for Phase 2 data synthesis
+  (collection / product / image counts).
+* :class:`ShopGenConfig` — the inputs accepted by :func:`shop_arena.gen.run`
+  and the ``shop-gen`` CLI.
+* :class:`ShopGenResult` — the published artifact paths returned to
+  callers after a successful (or partial) run.
+* :data:`RuntimeName` and :data:`ImageBackend` — closed-set literals for
+  the agent runtime and image-generation backend.
+
+The module is import-safe: it performs no I/O at import time. Filesystem
+checks happen only when a config is *constructed*.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Iterable, Mapping
+from pathlib import Path
+from typing import Final, Literal, cast
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from harness.runtimes import validate_model_grammar
+
+RuntimeName = Literal["pi", "claude_code"]
+"""Name of the agent runtime to drive the build-loop plan/exec phase."""
+
+ImageBackend = Literal["placeholder", "openai"]
+"""Image-generation backend selector.
+
+``placeholder`` (default) emits deterministic SVGs from the synthesis
+stage. ``openai`` selects the OpenAI-compatible photorealistic backend
+(:class:`shop_arena.gen.data_synth.images.OpenAIImageBackend`) and reads
+``OPENAI_API_KEY`` (required) and ``OPENAI_BASE_URL`` (optional) from
+the environment — any drop-in compatible vendor (e.g. an internal
+proxy) works without ``shop_arena.gen``-specific code.
+"""
+
+IMAGE_SIZES: Final[frozenset[str]] = frozenset(
+    {"1024x1024", "1024x1536", "1536x1024", "auto"},
+)
+"""Closed set of accepted ``--image-size`` values (spec §4.1)."""
+
+DEFAULT_IMAGE_SIZE: Final[str] = "1024x1024"
+"""Default canvas size forwarded to the OpenAI backend (spec §4.1)."""
+
+DEFAULT_IMAGE_CONCURRENCY: Final[int] = 5
+"""Default in-flight cap for the bounded async image-render semaphore (spec §4.1)."""
+
+_OPENAI_API_KEY_ENV: Final[str] = "OPENAI_API_KEY"
+
+DEFAULT_RUNTIME: Final[RuntimeName] = "pi"
+"""Default agent runtime forwarded to the build harness loop."""
+
+DEFAULT_MODEL_BY_RUNTIME: Final[Mapping[RuntimeName, str]] = {
+    "pi": "anthropic/claude-opus-4-7",
+    "claude_code": "opus",
+}
+"""Per-runtime default model identifier in each runtime's native grammar.
+
+``pi`` uses provider-prefixed IDs (``anthropic/...``); the ``claude_code``
+CLI uses bare aliases (``opus``, ``sonnet``) or pinned IDs
+(``claude-opus-4-5``). The mapping pins the same Opus tier across both,
+expressed in the grammar each runtime expects — a single-grammar default
+would silently break the other runtime's CLI three layers downstream.
+
+Pinned at the application layer (not the harness runtimes) so the
+repo-wide defaults are visible at the user-facing entrypoint and the
+harness package stays unopinionated about which model each runtime
+drives. Override per-run via :attr:`ShopGenConfig.model` or the
+``--model`` CLI flag; pass ``--model ""`` to skip the flag and let the
+runtime apply its own default.
+"""
+
+
+def default_model_for(runtime: RuntimeName) -> str:
+    """Return the repo-wide default agent model for ``runtime``.
+
+    Args:
+        runtime: Target agent runtime name.
+
+    Returns:
+        The default model identifier in ``runtime``'s native grammar.
+    """
+    return DEFAULT_MODEL_BY_RUNTIME[runtime]
+
+
+def _to_absolute(path: Path) -> Path:
+    """Return ``path`` made absolute against the cwd; absolute paths pass through.
+
+    Uses :meth:`pathlib.Path.absolute` rather than
+    :meth:`pathlib.Path.resolve` because we only need the path to *be*
+    absolute (so :func:`shop_arena.gen.steps.state._resolve_input_path` does
+    not re-root it under ``out_dir``). We do not want symlink
+    dereferencing or ``..`` normalisation here — that would rewrite
+    user-typed paths in surprising ways (e.g. macOS ``/tmp`` →
+    ``/private/tmp``) and require filesystem access at config-construction
+    time.
+    """
+    return path if path.is_absolute() else path.absolute()
+
+
+DEFAULT_MAX_ITERS: Final[int] = 30
+"""Default executor budget for the build-loop (spec §4.1)."""
+
+DEFAULT_IMAGE_BACKEND: Final[ImageBackend] = "placeholder"
+"""Default image backend (spec §4.1)."""
+
+DEFAULT_COLLECTIONS: Final[int] = 10
+"""Default number of synthesised collections (spec §4.1)."""
+
+DEFAULT_PRODUCTS_PER_COLLECTION: Final[int] = 20
+"""Default products per collection (spec §4.1, v0.1 small scale)."""
+
+DEFAULT_IMAGES_PER_PRODUCT: Final[int] = 2
+"""Default images per product (spec §4.1, v0.1 small scale)."""
+
+DEFAULT_VISUAL_RETRY_BUDGET: Final[int] = 3
+"""Default per-task ``visual_judge`` retry budget (spec §5.4).
+
+Caps the number of consecutive ``visual_judge`` FAILs the verifier
+tolerates against the same task before downgrading to ADVISORY. ``0``
+disables the budget entirely.
+"""
+
+DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD: Final[float] = 7.0
+"""Default ``visual_judge`` score-coercion floor (spec §9.3).
+
+An agent-emitted ``pass`` verdict is coerced to ``fail`` when the
+overall ``score`` is strictly below this threshold. The default of
+``7.0`` matches the spec table entry in §4.1.
+"""
+
+DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY: Final[int] = 3
+"""Default page-bucket fan-out worker count (spec §5.2.1 step 5, §5.6).
+
+Caps the ``ThreadPoolExecutor`` width used by the ``visual_fix``
+page-bucket fan-out and the final-eval visual sweep. Values must
+be strictly positive.
+"""
+
+DEFAULT_FINAL_EVAL_MAX_COLLECTIONS: Final[int] = 8
+"""Default cap on collections sampled by the final-eval visual sweep (spec §5.6.1).
+
+Drives the ``/collections/<handle>`` route count. Must be strictly positive.
+"""
+
+DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION: Final[int] = 1
+"""Default cap on products sampled per collection (spec §5.6.1).
+
+Drives the ``/products/<handle>`` route count. Must be strictly positive.
+"""
+
+DEFAULT_FINAL_EVAL_MAX_PAGES: Final[int] = 6
+"""Default cap on info pages sampled by the final-eval visual sweep (spec §5.6.1).
+
+Drives the ``/pages/<handle>`` route count. Must be strictly positive.
+"""
+
+DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S: Final[float] = 1200.0
+"""Default per-bucket wall-clock budget for the final-eval visual sweep (spec §5.6).
+
+Caps each ``runtime.run_iteration`` call inside the page-bucket fan-out;
+the sweep wall-clock therefore scales with the longest bucket, not the sum.
+Must be strictly positive.
+"""
+
+KNOWN_JUDGES: Final[frozenset[str]] = frozenset(
+    {"visual_judge", "quality_judge", "cross_task_consistency"},
+)
+"""Closed set of LLM-judge verifier names selectable via
+``ShopGenConfig.judges`` (spec §5.5). Rule verifiers are not
+selectable in v0.1 — every one is required for a valid build.
+"""
+
+DEFAULT_JUDGES: Final[frozenset[str]] = KNOWN_JUDGES
+"""Default judge set: every known LLM judge enabled (spec §5.5)."""
+
+
+class CatalogConfig(BaseModel):
+    """Scale knobs for Phase 2 data synthesis.
+
+    Defaults match spec §4.1 v0.1 small scale (200 products / 400
+    images). All counts are strictly positive; pydantic raises
+    ``ValidationError`` on zero or negative values.
+
+    Attributes:
+        collections: Number of collections to synthesise. Default 10.
+        products_per_collection: Products synthesised per collection.
+            Default 20. Total catalog size is
+            ``collections * products_per_collection``.
+        images_per_product: Image / alt-text pairs generated per
+            product. Default 2.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    collections: int = Field(default=DEFAULT_COLLECTIONS, gt=0)
+    products_per_collection: int = Field(default=DEFAULT_PRODUCTS_PER_COLLECTION, gt=0)
+    images_per_product: int = Field(default=DEFAULT_IMAGES_PER_PRODUCT, gt=0)
+
+
+class ShopGenConfig(BaseModel):
+    """Inputs for one ``shop_arena.gen`` run.
+
+    Mirrors the I/O contract in spec §4.1.
+
+    Attributes:
+        seeds: One or more paths to ``shop_manuals/<domain>/<run_id>/``
+            directories. At least one seed is required; a single seed
+            takes the manual-merge fast path (§5.2).
+        out_dir: Run workspace directory. ``None`` (default) lets the
+            pipeline compute ``outputs/shops/<name>/``. When supplied,
+            the directory must be empty, non-existent, or a prior
+            ``shop_arena.gen`` run dir (validated by the orchestrator at run
+            time, not here).
+        name: Slug for the SandboxShop. ``None`` (default) lets the
+            pipeline derive a name from the seed domain (single seed)
+            or from ``identity.descriptor`` (multi-seed).
+        runtime: Agent runtime to drive the Phase 4 build loop.
+        model: Model identifier forwarded to the runtime as ``--model``.
+            ``None`` (the default) means "skip the flag and let the
+            runtime apply its own default". The CLI fills in
+            :func:`default_model_for` per ``runtime`` when ``--model`` is
+            omitted; programmatic callers can do the same or pass an
+            explicit value. Grammar is runtime-specific (see
+            :data:`DEFAULT_MODEL_BY_RUNTIME`); supplying a ``pi``-grammar
+            string with ``runtime="claude_code"`` (or vice versa) raises
+            ``ValidationError`` at config-construction time.
+        catalog: Scale knobs (see :class:`CatalogConfig`).
+        max_iters: Executor iteration budget for the build loop.
+            Strictly positive.
+        image_backend: ``placeholder`` (default) emits deterministic
+            SVGs; ``openai`` calls an OpenAI-compatible image API.
+        image_model: Model id forwarded to the backend. ``None`` →
+            backend default (``gpt-image-1`` for ``openai``). Accepts
+            org-prefixed ids to support compatible vendors.
+        image_size: Canvas size forwarded to ``images.generate(size=...)``.
+            One of :data:`IMAGE_SIZES`.
+        image_concurrency: In-flight cap for the bounded async semaphore
+            in :class:`~shop_arena.gen.data_synth.images.GenImagesStep`. Strictly
+            positive.
+        visual_retry_budget: Per-task cap on consecutive ``visual_judge``
+            FAILs before the verifier downgrades to ADVISORY (spec
+            §5.4). ``0`` disables the budget entirely. Non-negative.
+        judges: Set of LLM-judge verifier names to enable for the run
+            (spec §5.5). Defaults to :data:`DEFAULT_JUDGES` (every
+            known judge). Unknown tokens raise ``ValidationError`` at
+            config-construction time. Pass ``frozenset()`` to disable
+            every LLM judge; rule verifiers always run.
+        visual_judge_pass_threshold: Score floor below which an agent-
+            emitted ``visual_judge`` ``pass`` verdict is coerced to
+            ``fail`` (spec §9.3). Defaults to
+            :data:`DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD`. Must be
+            non-negative.
+        visual_judge_max_concurrency: Page-bucket fan-out worker count
+            for the ``visual_fix`` task and the final-eval visual sweep
+            (spec §5.2.1 step 5, §5.6). Defaults to
+            :data:`DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY`. Strictly
+            positive.
+        final_eval_max_collections: Per-bucket cap on collections sampled by
+            the final-eval visual sweep (spec §5.6.1). Drives the
+            ``/collections/<handle>`` route count. Defaults to
+            :data:`DEFAULT_FINAL_EVAL_MAX_COLLECTIONS`. Strictly positive.
+        final_eval_products_per_collection: Per-bucket cap on products
+            sampled per collection by the final-eval visual sweep (spec
+            §5.6.1). Defaults to
+            :data:`DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION`. Strictly
+            positive.
+        final_eval_max_pages: Per-bucket cap on info pages sampled by the
+            final-eval visual sweep (spec §5.6.1). Defaults to
+            :data:`DEFAULT_FINAL_EVAL_MAX_PAGES`. Strictly positive.
+        final_eval_visual_timeout_s: Per-bucket wall-clock budget for the
+            final-eval visual sweep's nested ``runtime.run_iteration``
+            calls (spec §5.6). Defaults to
+            :data:`DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S`. Strictly
+            positive.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    seeds: tuple[Path, ...] = Field(min_length=1)
+    out_dir: Path | None = None
+    name: str | None = None
+    runtime: RuntimeName = DEFAULT_RUNTIME
+    model: str | None = None
+    catalog: CatalogConfig = Field(default_factory=CatalogConfig)
+    max_iters: int = Field(default=DEFAULT_MAX_ITERS, gt=0)
+    image_backend: ImageBackend = DEFAULT_IMAGE_BACKEND
+    image_model: str | None = None
+    image_size: str = DEFAULT_IMAGE_SIZE
+    image_concurrency: int = Field(default=DEFAULT_IMAGE_CONCURRENCY, gt=0)
+    visual_retry_budget: int = Field(default=DEFAULT_VISUAL_RETRY_BUDGET, ge=0)
+    judges: frozenset[str] = Field(default=DEFAULT_JUDGES)
+    visual_judge_pass_threshold: float = Field(
+        default=DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
+        ge=0,
+    )
+    visual_judge_max_concurrency: int = Field(
+        default=DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
+        gt=0,
+    )
+    final_eval_max_collections: int = Field(
+        default=DEFAULT_FINAL_EVAL_MAX_COLLECTIONS,
+        gt=0,
+    )
+    final_eval_products_per_collection: int = Field(
+        default=DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION,
+        gt=0,
+    )
+    final_eval_max_pages: int = Field(
+        default=DEFAULT_FINAL_EVAL_MAX_PAGES,
+        gt=0,
+    )
+    final_eval_visual_timeout_s: float = Field(
+        default=DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
+        gt=0,
+    )
+
+    @field_validator("seeds", mode="before")
+    @classmethod
+    def _coerce_seeds(cls, value: object) -> object:
+        """Accept a single ``Path`` / ``str`` or any iterable of them.
+
+        Tuples are required for hashability under ``frozen=True``;
+        coerce lists/tuples/iterables of ``str``/``Path`` into a
+        ``tuple[Path, ...]``. Pydantic enforces ``min_length=1``.
+
+        Relative paths are made absolute against the caller's cwd at
+        construction time (see :func:`_to_absolute`) so
+        :func:`shop_arena.gen.steps.state._resolve_input_path` does not later
+        re-join them onto ``out_dir`` (which would yield
+        ``<out_dir>/<relative seed>`` and crash at fingerprint time).
+        """
+
+        def _coerce_one(item: object) -> object:
+            return _to_absolute(Path(item)) if isinstance(item, (str, Path)) else item
+
+        if value is None:
+            return value
+        if isinstance(value, (str, Path)):
+            return (_coerce_one(value),)
+        if isinstance(value, (list, tuple)):
+            items: list[object] = list(value)  # type: ignore[arg-type]
+            return tuple(_coerce_one(item) for item in items)
+        return value
+
+    @field_validator("judges", mode="before")
+    @classmethod
+    def _coerce_judges(cls, value: object) -> object:
+        """Accept any iterable of judge names; coerce to ``frozenset[str]``.
+
+        ``frozenset`` is required for hashability under ``frozen=True``.
+        Pydantic's default coercion rejects ``set``/``list`` inputs for
+        ``frozenset[str]`` fields under strict mode, so coerce eagerly.
+        """
+        if value is None:
+            return value
+        if isinstance(value, frozenset):
+            return cast(frozenset[str], value)
+        if isinstance(value, (set, list, tuple)):
+            return frozenset(cast(Iterable[str], value))
+        return value
+
+    @field_validator("judges")
+    @classmethod
+    def _validate_judges(cls, value: frozenset[str]) -> frozenset[str]:
+        """Reject unknown judge names against :data:`KNOWN_JUDGES`.
+
+        Spec §5.5: only the closed set of LLM-judge verifier names
+        is selectable. The error message names the offending tokens
+        so CLI / library callers see exactly which entry is wrong.
+        """
+        unknown = value - KNOWN_JUDGES
+        if unknown:
+            offending = ", ".join(sorted(unknown))
+            raise ValueError(
+                f"unknown judge name(s): {offending}; known judges are {sorted(KNOWN_JUDGES)}",
+            )
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str | None) -> str | None:
+        """Reject an empty / whitespace-only ``name``."""
+        if value is None:
+            return value
+        if not value.strip():
+            raise ValueError("name must be non-empty when provided")
+        return value
+
+    @field_validator("image_size")
+    @classmethod
+    def _validate_image_size(cls, value: str) -> str:
+        """Reject ``image_size`` outside the closed :data:`IMAGE_SIZES` set."""
+        if value not in IMAGE_SIZES:
+            allowed = ", ".join(sorted(IMAGE_SIZES))
+            raise ValueError(
+                f"image_size must be one of {{{allowed}}}, got {value!r}",
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _validate_openai_env(self) -> ShopGenConfig:
+        """Require ``OPENAI_API_KEY`` in the environment for the openai backend."""
+        if self.image_backend == "openai" and not os.environ.get(_OPENAI_API_KEY_ENV):
+            raise ValueError(
+                f"image_backend='openai' requires {_OPENAI_API_KEY_ENV} in the "
+                "environment (set it in .env or export it before invoking shop-gen)",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_seed_paths(self) -> ShopGenConfig:
+        """Reject seed paths that point at a regular file.
+
+        A missing path is allowed at construction time (the orchestrator
+        re-checks before reading), but a path that exists *and* is not a
+        directory is unrecoverable and fails fast.
+        """
+        for seed in self.seeds:
+            if seed.exists() and not seed.is_dir():
+                raise ValueError(f"seed must be a directory, got file: {seed}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_model_grammar(self) -> ShopGenConfig:
+        """Reject ``model`` strings that don't match ``runtime``'s grammar.
+
+        Catches the common foot-gun of pairing a ``pi``-grammar model
+        (``anthropic/...``) with ``--runtime claude_code`` — the `claude`
+        CLI silently rejects the provider prefix three layers downstream.
+        Delegates to :func:`harness.runtimes.validate_model_grammar`.
+        """
+        validate_model_grammar(self.model, self.runtime)
+        return self
+
+
+class ShopGenResult(BaseModel):
+    """Published outputs of one ``shop_arena.gen`` run.
+
+    All paths are absolute. They point at artifacts on disk after the
+    pipeline's stale steps run to completion. Callers that only need a
+    subset of artifacts can ignore the rest.
+
+    Attributes:
+        out_dir: Run workspace, equal to the resolved
+            :attr:`ShopGenConfig.out_dir`.
+        manual_dir: ``<out_dir>/manual/`` — composite-or-passthrough
+            manual fed into the build loop.
+        identity_path: ``<out_dir>/identity.json``.
+        data_dir: ``<out_dir>/data/`` — SandboxShop dataset accepted by
+            ``shop_backend.loadShopData``.
+        hydrogen_dir: ``<out_dir>/hydrogen/`` — generated Hydrogen app.
+        data_validation_path: ``<out_dir>/data_validation.json``.
+        final_eval_path: ``<out_dir>/final_eval.json`` — advisory.
+        build_run_dir: ``<out_dir>/runs/build/`` — harness run workspace
+            for the build phase (debugging surface).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    out_dir: Path
+    manual_dir: Path
+    identity_path: Path
+    data_dir: Path
+    hydrogen_dir: Path
+    data_validation_path: Path
+    final_eval_path: Path
+    build_run_dir: Path
