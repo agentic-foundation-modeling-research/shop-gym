@@ -1,0 +1,33 @@
+[
+  {
+    "id": 295460700334,
+    "title": "Dog Essentials",
+    "handle": "dog-essentials",
+    "description": "Everything your dog needs - food, toys, and care products.",
+    "description_html": "<p>Everything your dog needs - food, toys, and care products.</p>",
+    "image": null,
+    "published_at": "2024-01-15T10:00:00-05:00",
+    "updated_at": "2026-04-14T07:16:31-04:00",
+    "sort_order": "manual",
+    "product_handles": [
+      "shopliseum-mushroom-dog-toys",
+      "agoracage-skin-and-coat-chicken-with-grains-12lb",
+      "aislearena-anti-tick-collar"
+    ]
+  },
+  {
+    "id": 295460962478,
+    "title": "Cat Care",
+    "handle": "cat-care",
+    "description": "Wholesome food and dental care for cats.",
+    "description_html": "<p>Wholesome food and dental care for cats.</p>",
+    "image": null,
+    "published_at": "2024-01-15T10:00:00-05:00",
+    "updated_at": "2026-02-06T15:22:05-05:00",
+    "sort_order": "best-selling",
+    "product_handles": [
+      "cartanvil-mackerel-and-sardines-70g",
+      "carthaeum-toothbrush"
+    ]
+  }
+]
