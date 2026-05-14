@@ -1,0 +1,7 @@
+/* gen_theme — synthetic design tokens captured by the cassette. */
+:root {
+  --color-bg: #fbfaf6;
+  --color-fg: #161413;
+  --color-accent: #4f46e5;
+  --font-display: "Inter", system-ui, sans-serif;
+}

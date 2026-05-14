@@ -1,0 +1,50 @@
+{
+  "iter_id": "exec-0004",
+  "runtime": "replay",
+  "started_at": "2026-04-25T10:44:00.000000+00:00",
+  "ended_at": "2026-04-25T10:44:30.000000+00:00",
+  "exit_code": 0,
+  "prompt_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "steps": [
+    {
+      "timestamp": "2026-04-25T10:44:00.000000+00:00",
+      "kind": "message",
+      "role": "user",
+      "text": "<<<harness-control>>>\nselected_task_id: visual_fix\n<<<end>>>\n\nExecute the visual_fix task."
+    },
+    {
+      "timestamp": "2026-04-25T10:44:05.000000+00:00",
+      "kind": "tool_call",
+      "call_id": "exec4-write-log",
+      "tool": "write",
+      "arguments": {"path": "artifact/hydrogen/VISUAL_FIX.md"}
+    },
+    {
+      "timestamp": "2026-04-25T10:44:10.000000+00:00",
+      "kind": "tool_result",
+      "call_id": "exec4-write-log",
+      "output": "Documented the cross-task cleanup pass.",
+      "is_error": false
+    },
+    {
+      "timestamp": "2026-04-25T10:44:25.000000+00:00",
+      "kind": "tool_call",
+      "call_id": "exec4-write-plan",
+      "tool": "write",
+      "arguments": {"path": "plan.md"}
+    },
+    {
+      "timestamp": "2026-04-25T10:44:28.000000+00:00",
+      "kind": "tool_result",
+      "call_id": "exec4-write-plan",
+      "output": "Flipped visual_fix to [x].",
+      "is_error": false
+    },
+    {
+      "timestamp": "2026-04-25T10:44:30.000000+00:00",
+      "kind": "message",
+      "role": "assistant",
+      "text": "visual_fix: cleanup pass complete; visual_fix [x]."
+    }
+  ]
+}
