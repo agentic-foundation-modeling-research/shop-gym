@@ -1,0 +1,180 @@
+{
+  "https://replay-shop.example/": {
+    "nodes": [
+      {
+        "nodeId": "1",
+        "role": {"value": "RootWebArea"},
+        "name": {"value": "Replay Shop"},
+        "childIds": ["2", "3", "4", "5"]
+      },
+      {
+        "nodeId": "2",
+        "role": {"value": "link"},
+        "name": {"value": "Shop everything"},
+        "childIds": [],
+        "browsergym_id": "a1"
+      },
+      {
+        "nodeId": "3",
+        "role": {"value": "link"},
+        "name": {"value": "Refund policy"},
+        "childIds": [],
+        "browsergym_id": "a2"
+      },
+      {
+        "nodeId": "4",
+        "role": {"value": "button"},
+        "name": {"value": "Add hero coat to cart"},
+        "childIds": [],
+        "browsergym_id": "b1"
+      },
+      {
+        "nodeId": "5",
+        "role": {"value": "textbox"},
+        "name": {"value": "Email signup"},
+        "childIds": [],
+        "browsergym_id": "i1"
+      }
+    ]
+  },
+  "https://replay-shop.example/collections/everything": {
+    "nodes": [
+      {
+        "nodeId": "1",
+        "role": {"value": "RootWebArea"},
+        "name": {"value": "Everything Collection"},
+        "childIds": ["2", "3", "4"]
+      },
+      {
+        "nodeId": "2",
+        "role": {"value": "link"},
+        "name": {"value": "Sample Coat"},
+        "childIds": [],
+        "browsergym_id": "a1"
+      },
+      {
+        "nodeId": "3",
+        "role": {"value": "button"},
+        "name": {"value": "Sort by price"},
+        "childIds": [],
+        "browsergym_id": "b1"
+      },
+      {
+        "nodeId": "4",
+        "role": {"value": "combobox"},
+        "name": {"value": "Filter category"},
+        "childIds": [],
+        "browsergym_id": "c1"
+      }
+    ]
+  },
+  "https://replay-shop.example/products/sample-coat": {
+    "nodes": [
+      {
+        "nodeId": "1",
+        "role": {"value": "RootWebArea"},
+        "name": {"value": "Sample Coat"},
+        "childIds": ["2", "3", "4"]
+      },
+      {
+        "nodeId": "2",
+        "role": {"value": "button"},
+        "name": {"value": "Add to cart"},
+        "childIds": [],
+        "browsergym_id": "b1"
+      },
+      {
+        "nodeId": "3",
+        "role": {"value": "link"},
+        "name": {"value": "Care instructions"},
+        "childIds": [],
+        "browsergym_id": "a1"
+      },
+      {
+        "nodeId": "4",
+        "role": {"value": "radio"},
+        "name": {"value": "Size: medium"},
+        "childIds": [],
+        "browsergym_id": "r1"
+      }
+    ]
+  },
+  "https://replay-shop.example/policies/refund-policy": {
+    "nodes": [
+      {
+        "nodeId": "1",
+        "role": {"value": "RootWebArea"},
+        "name": {"value": "Refund Policy"},
+        "childIds": ["2", "3"]
+      },
+      {
+        "nodeId": "2",
+        "role": {"value": "heading"},
+        "name": {"value": "Returns within 30 days"},
+        "childIds": []
+      },
+      {
+        "nodeId": "3",
+        "role": {"value": "link"},
+        "name": {"value": "Contact support"},
+        "childIds": [],
+        "browsergym_id": "a1"
+      }
+    ]
+  },
+  "https://replay-shop.example/cart": {
+    "nodes": [
+      {
+        "nodeId": "1",
+        "role": {"value": "RootWebArea"},
+        "name": {"value": "Cart"},
+        "childIds": ["2", "3"]
+      },
+      {
+        "nodeId": "2",
+        "role": {"value": "button"},
+        "name": {"value": "Checkout"},
+        "childIds": [],
+        "browsergym_id": "b1"
+      },
+      {
+        "nodeId": "3",
+        "role": {"value": "link"},
+        "name": {"value": "Continue shopping"},
+        "childIds": [],
+        "browsergym_id": "a1"
+      }
+    ]
+  },
+  "https://replay-shop.example/search?q=coat": {
+    "nodes": [
+      {
+        "nodeId": "1",
+        "role": {"value": "RootWebArea"},
+        "name": {"value": "Search results: coat"},
+        "childIds": ["2", "3", "4"]
+      },
+      {
+        "nodeId": "2",
+        "role": {"value": "searchbox"},
+        "name": {"value": "Search"},
+        "childIds": [],
+        "browsergym_id": "i1"
+      },
+      {
+        "nodeId": "3",
+        "role": {"value": "link"},
+        "name": {"value": "Sample Coat"},
+        "childIds": [],
+        "browsergym_id": "a1"
+      },
+      {
+        "nodeId": "4",
+        "role": {"value": "link"},
+        "name": {"value": "Heavy Coat"},
+        "childIds": [],
+        "browsergym_id": "a2"
+      }
+    ]
+  }
+}

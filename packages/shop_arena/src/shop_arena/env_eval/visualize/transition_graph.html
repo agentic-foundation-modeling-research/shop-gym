@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>EnvEval transition graph — __ENV_EVAL_TITLE__</title>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; font-family: ui-sans-serif, system-ui, sans-serif; background: #0d1117; color: #e6edf3; }
+  #header { padding: 10px 14px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  #header h1 { font-size: 14px; font-weight: 600; margin: 0; }
+  #header .meta { font-size: 12px; color: #8b949e; }
+  #header .legend { font-size: 12px; display: flex; gap: 14px; align-items: center; }
+  #header .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  #net { width: 100%; height: calc(100vh - 52px); }
+</style>
+</head>
+<body>
+  <div id="header">
+    <div>
+      <h1>EnvEval transition graph</h1>
+      <div class="meta" id="meta">__ENV_EVAL_TITLE__ &middot; shop_arena.env_eval __ENV_EVAL_VERSION__</div>
+    </div>
+    <div class="legend">
+      <span><span class="swatch" style="background:#f78166"></span>seed (measured)</span>
+      <span><span class="swatch" style="background:#58a6ff"></span>discovered URL</span>
+      <span><span class="swatch" style="background:#a371f7"></span>state</span>
+      <span style="color:#8b949e">drag &middot; scroll to zoom &middot; hover edges for action</span>
+    </div>
+  </div>
+  <div id="net"></div>
+<script>
+const GRAPH = __ENV_EVAL_GRAPH_JSON__;
+const SEEDS = new Set(GRAPH.seeds || []);
+
+const meta = document.getElementById("meta");
+meta.textContent =
+  meta.textContent +
+  " · " + GRAPH.nodes.length + " nodes" +
+  " · " + GRAPH.edges.length + " edges" +
+  " · " + (GRAPH.seeds || []).length + " seeds";
+
+const idx = new Map();
+GRAPH.nodes.forEach((n, i) => idx.set(n.canonical_id, i + 1));
+
+const colorFor = (n) => {
+  if (n.kind === "state") {
+    return { background: "#a371f7", border: "#d2a8ff", highlight: { background: "#d2a8ff", border: "#eddeff" } };
+  }
+  if (SEEDS.has(n.canonical_id)) {
+    return { background: "#f78166", border: "#ffa28b", highlight: { background: "#ffa28b", border: "#ffd1c2" } };
+  }
+  return { background: "#1f6feb", border: "#58a6ff", highlight: { background: "#58a6ff", border: "#a8c7fa" } };
+};
+
+const labelFor = (n) =>
+  n.kind === "state" && n.state_name ? n.canonical_id + "\n[" + n.state_name + "]" : n.canonical_id;
+
+const nodes = new vis.DataSet(GRAPH.nodes.map((n, i) => ({
+  id: i + 1,
+  label: labelFor(n),
+  title: n.representative_url || n.canonical_id,
+  color: colorFor(n),
+  font: { color: "#0d1117", face: "ui-monospace, SFMono-Regular, monospace", size: 12 },
+  shape: "box",
+  margin: 6,
+  borderWidth: 1.5,
+})));
+
+const edges = new vis.DataSet(
+  GRAPH.edges
+    .filter((e) => idx.has(e.source) && idx.has(e.target))
+    .map((e, i) => ({
+      id: i + 1,
+      from: idx.get(e.source),
+      to: idx.get(e.target),
+      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+      color: { color: "rgba(139,148,158,0.45)", highlight: "#f78166", hover: "#58a6ff" },
+      smooth: e.source === e.target ? false : { enabled: true, type: "dynamic" },
+      selfReference: { size: 18, angle: Math.PI / 4 },
+      width: 1,
+      title: e.label || (e.source + " → " + e.target),
+    }))
+);
+
+const network = new vis.Network(document.getElementById("net"), { nodes, edges }, {
+  physics: {
+    solver: "forceAtlas2Based",
+    forceAtlas2Based: { gravitationalConstant: -120, springLength: 140, springConstant: 0.05, damping: 0.6, avoidOverlap: 0.7 },
+    stabilization: { iterations: 400 },
+  },
+  interaction: { hover: true, tooltipDelay: 100, dragNodes: true, multiselect: true },
+  edges: { arrowStrikethrough: false },
+  nodes: { shadow: false },
+});
+network.once("stabilizationIterationsDone", () => network.setOptions({ physics: false }));
+</script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "homepage": {
+    "nav": 4,
+    "hero": 1,
+    "cta_button": 2,
+    "secondary_button": 1,
+    "footer": 1,
+    "search_bar": 1
+  },
+  "collection": {
+    "nav": 3,
+    "filter_chip": 5,
+    "product_card": 12,
+    "breadcrumb": 1,
+    "footer": 1
+  },
+  "policy": {
+    "nav": 3,
+    "text_block": 6,
+    "footer": 1
+  },
+  "cart_and_search.cart": {
+    "nav": 2,
+    "cta_button": 1,
+    "secondary_button": 1,
+    "footer": 1
+  },
+  "cart_and_search.search": {
+    "nav": 2,
+    "search_bar": 1,
+    "product_card": 8,
+    "footer": 1
+  }
+}

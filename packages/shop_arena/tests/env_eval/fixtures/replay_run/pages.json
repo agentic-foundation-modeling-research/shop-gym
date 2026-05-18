@@ -1,0 +1,35 @@
+{
+  "base_url": "https://replay-shop.example/",
+  "homepage": {
+    "url": "/",
+    "canonical_url": null,
+    "selected_by": "input"
+  },
+  "collection": {
+    "url": "/collections/everything",
+    "canonical_url": "/collections/<*>",
+    "selected_by": "first_href"
+  },
+  "product": {
+    "status": "not_found",
+    "reason": "no_product_link"
+  },
+  "policy": {
+    "url": "/policies/refund-policy",
+    "canonical_url": "/policies/<*>",
+    "selected_by": "convention"
+  },
+  "cart_and_search": {
+    "cart": {
+      "url": "/cart",
+      "canonical_url": null,
+      "selected_by": "convention"
+    },
+    "search": {
+      "url": "/search?q=coat",
+      "query": "coat",
+      "selected_by": "product_title",
+      "raw_source": "Sample Coat"
+    }
+  }
+}
