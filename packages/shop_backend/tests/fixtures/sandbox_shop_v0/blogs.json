@@ -1,0 +1,15 @@
+[
+  {
+    "handle": "news",
+    "title": "Mock Pet Foods News",
+    "articles": [
+      {
+        "handle": "welcome-post",
+        "title": "Welcome to Mock Pet Foods",
+        "content_html": "<p>We are excited to share product news, store updates, and pet care tips here on our blog. Stay tuned for posts on nutrition, training, and seasonal care.</p>",
+        "author": "Sarah",
+        "published_at": "2024-03-01T12:00:00-05:00"
+      }
+    ]
+  }
+]
