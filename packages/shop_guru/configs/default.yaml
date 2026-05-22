@@ -1,0 +1,48 @@
+# Featured-shops benchmark: one entry per shop.
+#
+# shop_url:  storefront URL — real merchant or SandboxShop deployment.
+#            Trailing slash is stripped at load time. Include any required
+#            auth token in the query string; SandboxShops set a session
+#            cookie on first visit so subsequent navigation works without
+#            the token.
+# data_dir:  path (relative to repo root) to extracted shop-arena data
+# image_tag: Container image tag for the SandboxShop runtime image.
+
+shops:
+  - slug: mock_shop
+    name: Mock Shop
+    shop_url: http://localhost:4000/
+    data_dir: outputs/shops/mock_shop
+    country: US
+    currency: USD
+    language: en
+    image_tag: mock-clothing
+
+  # Add additional shops
+
+  - slug: mock_clothing
+    name: Mock Clothing
+    shop_url: http://localhost:4100/
+    data_dir: outputs/shops/mock_clothing
+    country: US
+    currency: USD
+    language: en
+    image_tag: mock-clothing
+
+  # - slug: mock_cookware
+  #   name: Mock Cookware
+  #   shop_url: http://localhost:4002/
+  #   data_dir: outputs/shops/mock_cookware
+  #   country: US
+  #   currency: USD
+  #   language: en
+  #   image_tag: mock-cookware
+
+  # - slug: mock_hardware
+  #   name: Mock Hardware
+  #   shop_url: http://localhost:4003/
+  #   data_dir: outputs/shops/mock_hardware
+  #   country: US
+  #   currency: USD
+  #   language: en
+  #   image_tag: mock-hardware
