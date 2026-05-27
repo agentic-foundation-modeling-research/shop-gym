@@ -7,11 +7,21 @@ name = "shop-guru"
 version = "0.0.0"
 description = "ShopGuru: automated dataset generation for shopping LLM agent evaluation."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [{ name = "ShopGym" }]
 license = { text = "MIT" }
 dependencies = [
   "pydantic>=2.8",
+  "agentlab==0.4.2",
+  "browsergym==0.14.3",
+  # agentlab-xray's gr.Markdown(show_copy_button=True) call was removed in
+  # Gradio 6. Upstream AgentLab docs recommend 5.5.
+  "gradio>=5.5,<6",
+  "openai>=1",
+  "pillow>=10",
+  "pyyaml>=6.0",
+  "ray>=2.55.0",
+  "python-dotenv>=1.0",
 ]
 
 [project.scripts]
