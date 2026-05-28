@@ -2,10 +2,10 @@
 name = "shop-gym"
 version = "0.0.0"
 description = "ShopGym: sandbox shop websites for building and evaluating shopping LLM agents."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["packages/shop_guru", "packages/shop_arena"]
+members = ["packages/shop_guru", "packages/shop_arena", "packages/harness"]
 
 [dependency-groups]
 dev = [
@@ -13,12 +13,22 @@ dev = [
   "pytest-cov>=5.0",
   "ruff>=0.6",
   "pyright>=1.1.380",
+  "respx>=0.21",
+  "httpx>=0.27",
+  "shop-arena",
+  "shop-guru",
+  "harness",
 ]
+
+[tool.uv.sources]
+shop-arena = { workspace = true }
+shop-guru = { workspace = true }
+harness = { workspace = true }
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
-src = ["packages/shop_guru/src", "packages/shop_arena/src"]
+target-version = "py312"
+src = ["packages/shop_guru/src", "packages/shop_arena/src", "packages/harness/src"]
 
 [tool.ruff.lint]
 select = [
@@ -36,6 +46,18 @@ select = [
 ]
 ignore = ["PLR0913"]
 
+[tool.ruff.lint.per-file-ignores]
+# Files dominated by natural-language prompt content sent to LLMs.
+# Reformatting these would change the prompt text or hurt readability.
+"**/eval/judge.py" = ["E501"]
+"**/generators/e2e.py" = ["E501"]
+# Lazy imports inside the eval CLI keep `--help` / arg parsing fast by
+# deferring heavy deps (browsergym, agentlab, ray) to the actual run path.
+"**/eval/run.py" = ["PLC0415"]
+# Tests routinely use literal counts/sizes in assertions (PLR2004) and
+# import modules inside fixtures for monkeypatching (PLC0415).
+"**/tests/*.py" = ["PLR2004", "PLC0415"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
@@ -43,11 +65,18 @@ convention = "google"
 quote-style = "double"
 
 [tool.pyright]
-include = ["packages/shop_guru/src", "packages/shop_arena/src"]
-pythonVersion = "3.11"
+include = ["packages/shop_guru/src", "packages/shop_arena/src", "packages/harness/src"]
+pythonVersion = "3.12"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
-testpaths = ["packages/shop_guru/tests", "packages/shop_arena/tests"]
-addopts = "-ra --strict-markers"
+testpaths = ["packages/shop_guru/tests", "packages/shop_arena/tests", "packages/harness/tests"]
+# importlib import mode lets sibling test dirs share basenames
+# (e.g. gen/test_public_surface.py + explore/test_public_surface.py)
+# without needing empty __init__.py files at every test root.
+# https://docs.pytest.org/en/stable/explanation/pythonpath.html#import-modes
+addopts = "-ra --strict-markers --import-mode=importlib"
+markers = [
+  "smoke: live-CLI smoke tests; gated by HARNESS_SMOKE_* env vars",
+]
