@@ -24,8 +24,7 @@ shop-gym/
 │   ├── shop_backend/           # TypeScript — GraphQL API server for SandboxShops
 │   └── harness/                # Python — runtime-agnostic plan-then-loop agent engine
 ├── docs/
-│   ├── specs/                  # design specifications (intent — see `docs/specs/README.md`)
-│   └── internal/impl/          # implementation plans paired with specs
+│   └── specs/                  # design specifications (intent — see `docs/specs/README.md`)
 ├── scripts/                    # repo-wide helpers (e.g. `run-shop.sh`)
 ├── notebooks/                  # exploratory analysis
 ├── outputs/                    # generated artifacts: shop_manuals, shops, shop_guru, shop_env_evals
@@ -47,7 +46,7 @@ IMPORTANT: Before implementing any feature, consult the specifications in `docs/
 - Check the codebase first. Before concluding something is or isn't implemented, search the actual code. Specs describe intent; code describes reality.
 - Use specs as guidance. When implementing a feature, follow the design patterns, types, and architecture defined in the relevant spec.
 - Spec index: `docs/specs/README.md` lists all specifications organized by category (core, LLM, security, etc.).
-- For designing new features, create the pure specifications in `docs/specs/<feature>.md`, and split it up with implementation plan `docs/internal/impl/<feature>_impl.md`
+- For designing new features, create the pure specifications in `docs/specs/<feature>.md`, and track implementation plans in issues or pull requests.
 - During implementation, make docstrings self-contained and DO NOT refer to the specs.
 
 Each specification / design doc need to follow the structure:

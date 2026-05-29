@@ -6,20 +6,14 @@ on:
   pull_request:
   workflow_dispatch:
 
-# T4.3 closes M4 by ensuring the Phase 3 hosting check (SC2) runs against a
-# real `shop_backend` build in CI. The hosting-validation integration tests
-# (`packages/shop_arena/tests/shop_gen/data_validation/test_hosting_check.py`)
-# skip themselves when `packages/shop_backend/dist/cli.js` is missing, so we
-# build the TypeScript backend first, then run pytest.
 jobs:
-  hosting-validation:
-    name: shop_gen Phase 3 hosting validation (SC2)
+  python:
+    name: Python
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------- TypeScript toolchain + shop_backend build ----------
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -37,7 +31,6 @@ jobs:
       - name: Build shop_backend
         run: pnpm --filter @shop-gym/shop-backend build
 
-      # ---------- Python toolchain + shop_arena tests ----------
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -49,11 +42,41 @@ jobs:
       - name: Sync uv workspace
         run: uv sync
 
-      - name: Run Phase 3 hosting validation tests
-        run: >-
-          uv run pytest
-          packages/shop_arena/tests/shop_gen/data_validation
-          -v
+      - name: Lint
+        run: uv run ruff check .
 
-      - name: Run full shop_arena test suite
-        run: uv run pytest packages/shop_arena/tests
+      - name: Typecheck
+        run: uv run pyright
+
+      - name: Test
+        run: uv run pytest
+
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install pnpm workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Test
+        run: pnpm -r test
+
+      - name: Lint
+        run: pnpm lint

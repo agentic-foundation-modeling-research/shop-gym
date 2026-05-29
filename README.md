@@ -238,6 +238,12 @@ shop-gym/
 └── .editorconfig
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, coding standards, tests, and
+pull request expectations. External contributions must pass the Shopify CLA
+check, and all project spaces follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
 ## License
 
 MIT

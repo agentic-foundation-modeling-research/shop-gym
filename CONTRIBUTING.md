@@ -6,7 +6,7 @@ quality is, and how PRs flow.
 
 For project structure and the daily commands you'll actually type, the
 [README](./README.md) is the source of truth — start there. For the
-deeper "how we think about code" rules, see [AGENT.md](./AGENT.md); the
+deeper "how we think about code" rules, see [AGENTS.md](./AGENTS.md); the
 guidelines apply to humans and agents alike.
 
 ## Getting set up
@@ -61,16 +61,16 @@ being implemented. The split is:
 - **`docs/specs/<feature>.md`** — the pure specification: what the
   feature is, what it must do, and the contracts it exposes. Stable
   reference material.
-- **`docs/internal/impl/<feature>_impl.md`** — the implementation plan:
-  milestones, task breakdown, status. Mutable.
+- **Issues and pull requests** — the implementation plan: milestones,
+  task breakdown, status, and review context. Mutable.
 
 If you're adding a feature that doesn't fit cleanly into existing specs,
 please draft the spec and link it from your PR. Use the structure
-documented in [AGENT.md → Use Specifications](./AGENT.md#use-specifications).
+documented in [AGENTS.md → Use Specifications](./AGENTS.md#use-specifications).
 
 ## Coding standards
 
-[AGENT.md](./AGENT.md) is the binding reference. The short version:
+[AGENTS.md](./AGENTS.md) is the binding reference. The short version:
 
 - **Python.** Google style, fully typed, `pyright --strict` clean,
   `ruff` clean, Python ≥ 3.12 syntax. Google-style docstrings on every
@@ -119,6 +119,20 @@ PR — don't leave it for someone else.
 - **Don't squash before review.** Maintainers squash on merge so
   individual commits aid review.
 
+## Contributor License Agreement
+
+External contributors must sign Shopify's Contributor License Agreement
+before their pull requests can be merged. The CLA check is automated by
+[`.github/workflows/cla.yml`](./.github/workflows/cla.yml).
+
+Comment `signed` on the pull request if the CLA action asks you to do so
+after signing.
+
+## Code of Conduct
+
+All project spaces follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
+Report concerns to `opensource@shopify.com`.
+
 ## Required checks
 
 The following must pass before a PR can land:
@@ -131,7 +145,18 @@ The following must pass before a PR can land:
 - `pnpm lint` (TypeScript lint)
 
 CI runs the hosting-validation integration tests against a real
-`shop_backend` build (see [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)).
+`shop_backend` build as part of `uv run pytest` after building the TypeScript
+backend (see [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)).
+
+## Maintainers
+
+Code ownership is tracked in [`.github/CODEOWNERS`](./.github/CODEOWNERS).
+Maintainers triage issues, review pull requests, keep CI healthy, and update
+the public docs when workflows change.
+
+Repository admins should protect the default branch with code-owner review,
+the CI jobs, and the CLA check as required status checks. The CLA workflow also
+requires the repository secret `CLA_TOKEN`.
 
 ## License
 
