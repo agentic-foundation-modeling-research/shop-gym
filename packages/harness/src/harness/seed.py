@@ -31,7 +31,7 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, cast
 
 from harness.trajectory import ProtocolCheckResult
 
@@ -91,9 +91,16 @@ class SeedManifest:
             raise SeedError(f"seed manifest missing key: {exc.args[0]!r}") from exc
         if not isinstance(roots_raw, list) or not isinstance(files_raw, dict):
             raise SeedError("seed manifest has wrong shape (expected list + dict)")
-        seeded_roots = frozenset(PurePosixPath(r) for r in roots_raw)
+        roots_payload = cast("list[object]", roots_raw)
+        files_payload = cast("dict[object, object]", files_raw)
+        roots: list[str] = []
+        for root in roots_payload:
+            if not isinstance(root, str):
+                raise SeedError("seed manifest rooted entries must be strings")
+            roots.append(root)
+        seeded_roots = frozenset(PurePosixPath(root) for root in roots)
         files: dict[PurePosixPath, str] = {}
-        for rel, digest in files_raw.items():
+        for rel, digest in files_payload.items():
             if not isinstance(rel, str) or not isinstance(digest, str):
                 raise SeedError("seed manifest entries must be string→string")
             files[PurePosixPath(rel)] = digest

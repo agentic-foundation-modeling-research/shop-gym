@@ -522,7 +522,7 @@ def test_run_visual_sweep_uses_sweep_caps_by_default(
 
     by_bucket = {entry["bucket"]: entry for entry in report["per_bucket"]}
     # SWEEP_CAPS allows up to 8 collections * 1 product/coll = 4 PDPs.
-    assert len(by_bucket["product"]["routes"]) == 4  # noqa: PLR2004 -- mirrors SWEEP_CAPS
+    assert len(by_bucket["product"]["routes"]) == 4
     # Tight `DEFAULT_CAPS` would have capped at 1; the override is observable.
 
 
@@ -549,7 +549,7 @@ def test_run_visual_sweep_caps_override_observable(
     by_bucket = {entry["bucket"]: entry for entry in report["per_bucket"]}
     # tight caps → exactly 1 collection route under `/collections/<handle>`
     # plus the `/collections` index, so 2 routes total.
-    assert len(by_bucket["collections"]["routes"]) == 2  # noqa: PLR2004 -- /collections + 1 handle
+    assert len(by_bucket["collections"]["routes"]) == 2
 
 
 # --------------------------------------------------------------------------- #

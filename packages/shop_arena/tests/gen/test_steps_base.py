@@ -86,7 +86,7 @@ def test_input_refs_are_hashable_for_dedup() -> None:
         FileInput(path=Path("/a")),
         StepInput(step_id="up"),
     }
-    assert len(refs) == 2  # noqa: PLR2004
+    assert len(refs) == 2
 
 
 def test_input_ref_union_accepts_both_arms() -> None:

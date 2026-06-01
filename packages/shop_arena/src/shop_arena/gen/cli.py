@@ -31,7 +31,6 @@ from pydantic import ValidationError
 
 from harness.plan import TaskStatus, parse
 from harness.plan.parser import InvalidPlanError
-from shop_arena.util._dotenv import load_project_env
 from shop_arena.gen.build.redo import RedoError, append_redo_task
 from shop_arena.gen.config import (
     DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
@@ -62,6 +61,7 @@ from shop_arena.gen.pipeline import (
     status,
 )
 from shop_arena.gen.steps.runner import CycleError, MissingDependencyError
+from shop_arena.util._dotenv import load_project_env
 
 EXIT_OK = 0
 """Successful run."""
@@ -117,7 +117,10 @@ def _build_parser() -> argparse.ArgumentParser:
     """Build the argparse parser described in spec §5.8."""
     parser = argparse.ArgumentParser(
         prog="shop-gen",
-        description=("Generate a SandboxShop from one or more ``shop_arena.explore`` seed manuals."),
+        description=(
+            "Generate a SandboxShop from one or more ``shop_arena.explore`` "
+            "seed manuals."
+        ),
     )
     parser.add_argument(
         "seeds",

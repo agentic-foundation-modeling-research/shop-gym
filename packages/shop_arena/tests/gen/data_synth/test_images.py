@@ -44,7 +44,7 @@ from shop_arena.gen.steps.base import StepContext
 # Fixtures
 # --------------------------------------------------------------------------- #
 
-# 1×1 transparent PNG — minimum valid PNG payload, used as canned bytes.
+# 1x1 transparent PNG — minimum valid PNG payload, used as canned bytes.
 _PNG_BYTES: bytes = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=",
 )
@@ -262,9 +262,9 @@ class _FakeAsyncOpenAI:
 def _fake_response_error(status_code: int, message: str) -> Exception:
     """Build an error matching the openai SDK constructor shape used in v2.x."""
     response = _FakeHttpxResponse(status_code)
-    if status_code == 400:  # noqa: PLR2004 — the SDK's content-policy code
+    if status_code == 400:
         return BadRequestError(message=message, response=response, body=None)  # type: ignore[arg-type]
-    if status_code == 429:  # noqa: PLR2004
+    if status_code == 429:
         return RateLimitError(message=message, response=response, body=None)  # type: ignore[arg-type]
     raise ValueError(f"unsupported test status_code {status_code}")
 
@@ -428,7 +428,7 @@ def test_openai_backend_cache_key_changes_with_size(tmp_path: Path) -> None:
     asyncio.run(a.render_async(**args))
     asyncio.run(b.render_async(**args))
     # Different size → different cache key → two API calls, no hit.
-    assert len(fake.images.calls) == 2  # noqa: PLR2004
+    assert len(fake.images.calls) == 2
 
 
 def test_openai_backend_retries_on_transient_then_succeeds(
@@ -671,7 +671,7 @@ def test_step_run_openai_backend_uses_async_dispatch(
     The v0.2 prompt only varies by ``(title, category)``, so every image
     slot of a given product shares one cache key. Running serially gives
     deterministic dedup: ``N`` products → ``N`` upstream calls, with the
-    remaining ``(images_per_product - 1) × N`` slots served from cache.
+    remaining ``(images_per_product - 1) x N`` slots served from cache.
     """
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     seed = _make_seed(tmp_path)
@@ -704,9 +704,8 @@ def test_step_run_openai_backend_uses_async_dispatch(
     for path in images_dir.iterdir():
         assert path.read_bytes() == _PNG_BYTES
 
-    manifest = json.loads(
-        (out_dir / ".shop_gen" / "stage_cache" / "images_manifest.json").read_text(encoding="utf-8"),
-    )
+    manifest_path = out_dir / ".shop_gen" / "stage_cache" / "images_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["backend"] == "openai"
     assert manifest["extension"] == ".png"
     n_products = len(_ALL_SKELETONS)
@@ -749,7 +748,7 @@ def test_step_run_openai_backend_concurrency_cap(
     assert fake.images.max_in_flight <= cap
     # Sanity: 8 jobs vs. cap=3 with a 50ms per-call delay should saturate
     # the semaphore (under cooperative scheduling, ≥2 in-flight at peak).
-    assert fake.images.max_in_flight >= 2  # noqa: PLR2004
+    assert fake.images.max_in_flight >= 2
 
 
 def test_step_run_openai_backend_second_run_is_all_cache_hits(
@@ -786,9 +785,8 @@ def test_step_run_openai_backend_second_run_is_all_cache_hits(
     # Second run: every entry hits the cache, so no new API calls.
     assert len(fake.images.calls) == first_call_count
 
-    manifest = json.loads(
-        (out_dir / ".shop_gen" / "stage_cache" / "images_manifest.json").read_text(encoding="utf-8"),
-    )
+    manifest_path = out_dir / ".shop_gen" / "stage_cache" / "images_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["cache_hits"] == _EXPECTED_TOTAL_IMAGES
     assert manifest["cache_misses"] == 0
     for entry in manifest["entries"]:

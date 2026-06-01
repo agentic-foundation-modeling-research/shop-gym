@@ -9,8 +9,8 @@ The step dispatches sync vs. async based on the backend's protocol:
 
 * :class:`PlaceholderBackend` (sync) → serial in-process render.
 * :class:`OpenAIImageBackend` (async) → bounded ``asyncio.Semaphore``
-  fan-out so the catalog renders in ``ceil(n / concurrency)`` × per-call
-  latency wall-time instead of ``n × per-call``.
+  fan-out so the catalog renders in ``ceil(n / concurrency)`` x per-call
+  latency wall-time instead of ``n x per-call``.
 
 Module is import-safe: no I/O, no env reads, no side effects at import.
 """

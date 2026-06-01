@@ -512,11 +512,18 @@ function parseBuyerIdentity(
   raw: unknown,
 ): CartBuyerIdentityState {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new InvalidCartStoreFileError(filePath, `carts.${cartId}.buyerIdentity must be an object`);
+    throw new InvalidCartStoreFileError(
+      filePath,
+      `carts.${cartId}.buyerIdentity must be an object`,
+    );
   }
   const obj = raw as Record<string, unknown>;
   return {
-    countryCode: parseStringOrNull(filePath, `carts.${cartId}.buyerIdentity.countryCode`, obj.countryCode),
+    countryCode: parseStringOrNull(
+      filePath,
+      `carts.${cartId}.buyerIdentity.countryCode`,
+      obj.countryCode,
+    ),
     email: parseStringOrNull(filePath, `carts.${cartId}.buyerIdentity.email`, obj.email),
     phone: parseStringOrNull(filePath, `carts.${cartId}.buyerIdentity.phone`, obj.phone),
   };

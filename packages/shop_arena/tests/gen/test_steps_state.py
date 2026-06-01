@@ -306,7 +306,7 @@ def test_fingerprint_combines_files_steps_and_version(tmp_path: Path) -> None:
         compute_fingerprint(_as_step(plus_step), state, run_root=tmp_path),
     }
     # All three differ.
-    assert len(fps) == 3  # noqa: PLR2004
+    assert len(fps) == 3
 
 
 def test_fingerprint_resolves_relative_paths_against_run_root(tmp_path: Path) -> None:

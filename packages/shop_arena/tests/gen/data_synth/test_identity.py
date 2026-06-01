@@ -189,7 +189,7 @@ def test_pick_name_changes_with_descriptor(tmp_path: Path) -> None:
     # Every pick is in the allowlist and at least two distinct descriptors
     # should disagree at the v0.1 allowlist size (10 brands).
     assert picks <= set(allowlist.brands)
-    assert len(picks) >= 2  # noqa: PLR2004
+    assert len(picks) >= 2
 
 
 def test_pick_name_changes_with_seeds(tmp_path: Path) -> None:
@@ -202,7 +202,7 @@ def test_pick_name_changes_with_seeds(tmp_path: Path) -> None:
             pick_name_from_allowlist(seeds=seeds, descriptor=descriptor, allowlist=allowlist),
         )
     assert distinct_picks <= set(allowlist.brands)
-    assert len(distinct_picks) >= 2  # noqa: PLR2004
+    assert len(distinct_picks) >= 2
 
 
 def test_pick_name_rejects_empty_allowlist(tmp_path: Path) -> None:

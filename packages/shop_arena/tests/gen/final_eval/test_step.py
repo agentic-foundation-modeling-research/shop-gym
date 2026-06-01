@@ -524,9 +524,9 @@ def test_final_eval_step_writes_visual_subtree_on_pass(tmp_path: Path) -> None:
     visual = report["visual"]
     assert visual["ok"] is True
     assert visual["verdict"] == "pass"
-    assert visual["score"] == 8.5  # noqa: PLR2004 -- mirrors stub payload
+    assert visual["score"] == 8.5
     assert visual["category_scores"] == {"structure": 8.0, "components": 9.0}
-    assert visual["pages_judged"] == 2  # noqa: PLR2004 -- mirrors stub payload
+    assert visual["pages_judged"] == 2
     assert visual["report_path"] == "visual_eval/report.md"
     assert visual["error"] is None
     # The advisory artifacts are on disk where reviewers expect them.
@@ -592,7 +592,7 @@ def test_final_eval_step_threads_visual_caps_into_sweep_runner(tmp_path: Path) -
     step.run(_build_ctx(out_dir, runtime=runtime))
 
     assert captured["caps"] == custom_caps
-    assert captured["timeout_s"] == 42.0  # noqa: PLR2004 -- explicit override
+    assert captured["timeout_s"] == 42.0
 
 
 def test_final_eval_step_visual_error_when_skill_unavailable(

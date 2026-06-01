@@ -425,7 +425,7 @@ def test_phase4_e2e_replay_produces_working_hydrogen_with_no_blocking_verifier(
     # mutation landed on the work surface, and the dataset survived.
     assert summary["final_status"] == "completed"
     assert summary["plan_iter_count"] == 1
-    assert summary["exec_iter_count"] == 4  # noqa: PLR2004 — cassette task count
+    assert summary["exec_iter_count"] == 4
     artifact = run_dir / "artifact"
     for relative in _EXPECTED_HYDROGEN_FILES:
         path = artifact / "hydrogen" / relative

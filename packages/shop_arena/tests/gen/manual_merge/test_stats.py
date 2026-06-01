@@ -93,7 +93,7 @@ def test_products_total_is_median_across_seeds(tmp_path: Path) -> None:
         _write_seed_stats(tmp_path / "c", _stats_payload(products_total=150)),
     ]
     merged = merge_stats_seeds(seeds, capabilities=_capabilities())
-    assert merged.products_total == 150  # noqa: PLR2004
+    assert merged.products_total == 150
 
 
 def test_collections_total_is_median_across_seeds(tmp_path: Path) -> None:
@@ -103,7 +103,7 @@ def test_collections_total_is_median_across_seeds(tmp_path: Path) -> None:
     ]
     # median([4, 10]) = 7.0 → round → 7
     merged = merge_stats_seeds(seeds, capabilities=_capabilities())
-    assert merged.collections_total == 7  # noqa: PLR2004
+    assert merged.collections_total == 7
 
 
 def test_products_per_collection_aggregates_avg_median_max(tmp_path: Path) -> None:
@@ -122,9 +122,9 @@ def test_products_per_collection_aggregates_avg_median_max(tmp_path: Path) -> No
         ),
     ]
     merged = merge_stats_seeds(seeds, capabilities=_capabilities())
-    assert merged.products_per_collection.avg == 20.0  # noqa: PLR2004
-    assert merged.products_per_collection.median == 18.0  # noqa: PLR2004
-    assert merged.products_per_collection.max == 50  # noqa: PLR2004
+    assert merged.products_per_collection.avg == 20.0
+    assert merged.products_per_collection.median == 18.0
+    assert merged.products_per_collection.max == 50
 
 
 def test_price_aggregates_min_max_median(tmp_path: Path) -> None:
@@ -143,9 +143,9 @@ def test_price_aggregates_min_max_median(tmp_path: Path) -> None:
         ),
     ]
     merged = merge_stats_seeds(seeds, capabilities=_capabilities())
-    assert merged.price.min == 5.0  # noqa: PLR2004
-    assert merged.price.max == 250.0  # noqa: PLR2004
-    assert merged.price.median == 50.0  # noqa: PLR2004
+    assert merged.price.min == 5.0
+    assert merged.price.max == 250.0
+    assert merged.price.median == 50.0
     assert merged.price.currency == "USD"
 
 
@@ -166,9 +166,9 @@ def test_price_skips_seeds_with_no_price_signal(tmp_path: Path) -> None:
         ),
     ]
     merged = merge_stats_seeds(seeds, capabilities=_capabilities(shop={"currency": ""}))
-    assert merged.price.min == 9.99  # noqa: PLR2004
-    assert merged.price.max == 49.99  # noqa: PLR2004
-    assert merged.price.median == 19.99  # noqa: PLR2004
+    assert merged.price.min == 9.99
+    assert merged.price.max == 49.99
+    assert merged.price.median == 19.99
 
 
 def test_price_currency_prefers_capabilities(tmp_path: Path) -> None:
@@ -248,7 +248,7 @@ def test_navigation_depth_max_comes_from_capabilities(tmp_path: Path) -> None:
     ]
     caps = _capabilities(site_shell={"nav_depth": 4})
     merged = merge_stats_seeds(seeds, capabilities=caps)
-    assert merged.navigation_depth_max == 4  # noqa: PLR2004
+    assert merged.navigation_depth_max == 4
 
 
 def test_homepage_section_count_comes_from_capabilities(tmp_path: Path) -> None:
@@ -257,7 +257,7 @@ def test_homepage_section_count_comes_from_capabilities(tmp_path: Path) -> None:
     ]
     caps = _capabilities(homepage={"section_count": 5, "section_types": ["hero"]})
     merged = merge_stats_seeds(seeds, capabilities=caps)
-    assert merged.homepage_section_count == 5  # noqa: PLR2004
+    assert merged.homepage_section_count == 5
 
 
 def test_info_pages_count_comes_from_capabilities(tmp_path: Path) -> None:
@@ -266,7 +266,7 @@ def test_info_pages_count_comes_from_capabilities(tmp_path: Path) -> None:
     ]
     caps = _capabilities(info_pages_present=["about", "contact", "shipping", "faq"])
     merged = merge_stats_seeds(seeds, capabilities=caps)
-    assert merged.info_pages_count == 4  # noqa: PLR2004
+    assert merged.info_pages_count == 4
 
 
 def test_feature_count_recomputes_from_capabilities(tmp_path: Path) -> None:
@@ -284,7 +284,7 @@ def test_feature_count_recomputes_from_capabilities(tmp_path: Path) -> None:
         },
     )
     merged = merge_stats_seeds(seeds, capabilities=caps)
-    assert merged.feature_count == 3  # noqa: PLR2004
+    assert merged.feature_count == 3
 
 
 def test_capability_leaves_default_to_zero_when_unset(tmp_path: Path) -> None:
@@ -365,10 +365,10 @@ def test_single_seed_passthrough(tmp_path: Path) -> None:
         ),
     )
     merged = merge_stats_seeds([seed], capabilities=_capabilities())
-    assert merged.products_total == 42  # noqa: PLR2004
-    assert merged.collections_total == 3  # noqa: PLR2004
-    assert merged.products_per_collection.avg == 14.0  # noqa: PLR2004
-    assert merged.price.min == 1.99  # noqa: PLR2004
+    assert merged.products_total == 42
+    assert merged.collections_total == 3
+    assert merged.products_per_collection.avg == 14.0
+    assert merged.price.min == 1.99
     assert merged.products_with_variants_pct == pytest.approx(0.4)
     assert merged.variant_axes_observed == ["size", "color"]
 
@@ -433,15 +433,15 @@ def test_step_run_writes_stats_json(tmp_path: Path) -> None:
 
     merged = Stats.model_validate_json(stats_path.read_text(encoding="utf-8"))
     # median(80, 180) = 130 → round → 130
-    assert merged.products_total == 130  # noqa: PLR2004
+    assert merged.products_total == 130
     # min-of-mins / max-of-maxes / median-of-medians.
-    assert merged.price.min == 5.0  # noqa: PLR2004
-    assert merged.price.max == 200.0  # noqa: PLR2004
-    assert merged.price.median == 50.0  # noqa: PLR2004
+    assert merged.price.min == 5.0
+    assert merged.price.max == 200.0
+    assert merged.price.median == 50.0
     # Capability-derived leaves come from the pre-populated caps.
-    assert merged.navigation_depth_max == 3  # noqa: PLR2004
-    assert merged.homepage_section_count == 7  # noqa: PLR2004
-    assert merged.info_pages_count == 2  # noqa: PLR2004
+    assert merged.navigation_depth_max == 3
+    assert merged.homepage_section_count == 7
+    assert merged.info_pages_count == 2
 
 
 def test_step_run_requires_upstream_capabilities(tmp_path: Path) -> None:
@@ -550,17 +550,17 @@ def test_fixture_seeds_produce_stable_priors(tmp_path: Path) -> None:
     merged = merge_stats_seeds([seed_a, seed_b], capabilities=caps)
 
     # Median of (220, 164) = 192 → round → 192.
-    assert merged.products_total == 192  # noqa: PLR2004
+    assert merged.products_total == 192
     # Median of (12, 50) = 31.
-    assert merged.collections_total == 31  # noqa: PLR2004
+    assert merged.collections_total == 31
     # Per-collection: avg = mean(18.5, 15.42); median = median of medians;
     # max = max of maxes.
     assert merged.products_per_collection.avg == pytest.approx(16.96)
-    assert merged.products_per_collection.median == 12.0  # noqa: PLR2004
-    assert merged.products_per_collection.max == 179  # noqa: PLR2004
+    assert merged.products_per_collection.median == 12.0
+    assert merged.products_per_collection.max == 179
     # Price: min-of-mins / max-of-maxes / median-of-medians.
-    assert merged.price.min == 0.98  # noqa: PLR2004
-    assert merged.price.max == 5499.0  # noqa: PLR2004
+    assert merged.price.min == 0.98
+    assert merged.price.max == 5499.0
     assert merged.price.median == pytest.approx(42.49)
     # Currency wins from capabilities, not from either seed individually.
     assert merged.price.currency == "USD"
@@ -570,6 +570,6 @@ def test_fixture_seeds_produce_stable_priors(tmp_path: Path) -> None:
     assert merged.variant_axes_observed == ["flavor", "size", "title"]
     # Capability-derived leaves come from the merged caps, not from either
     # seed's `navigation_depth_max=2` / `homepage_section_count=9|16` / etc.
-    assert merged.navigation_depth_max == 3  # noqa: PLR2004
-    assert merged.homepage_section_count == 12  # noqa: PLR2004
-    assert merged.info_pages_count == 5  # noqa: PLR2004
+    assert merged.navigation_depth_max == 3
+    assert merged.homepage_section_count == 12
+    assert merged.info_pages_count == 5

@@ -36,7 +36,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -386,7 +386,7 @@ def _derive_playwright_session(run_dir: Path) -> str:
 
 
 @contextmanager
-def _playwright_session(skill_dir: Path | None, *, session: str) -> Iterator[None]:
+def _playwright_session(skill_dir: Path | None, *, session: str) -> Generator[None, None, None]:
     """Pin ``$PLAYWRIGHT_CLI_SESSION`` and pre-open / post-close a browser.
 
     Sets ``PLAYWRIGHT_CLI_SESSION`` for the duration of the block so

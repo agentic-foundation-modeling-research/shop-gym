@@ -851,7 +851,9 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
     expect(extras.appliedGiftCards).toHaveLength(2);
     expect(extras.appliedGiftCards[0]?.lastCharacters).toBe('1234');
     expect(extras.appliedGiftCards[1]?.lastCharacters).toBe('AB');
-    expect(extras.appliedGiftCards[0]?.id).toMatch(/^gid:\/\/shopify\/AppliedGiftCard\/[0-9a-f]{8}$/);
+    expect(extras.appliedGiftCards[0]?.id).toMatch(
+      /^gid:\/\/shopify\/AppliedGiftCard\/[0-9a-f]{8}$/,
+    );
     // GIDs are deterministic per code.
     expect(extras.appliedGiftCards[0]?.id).not.toBe(extras.appliedGiftCards[1]?.id);
   });

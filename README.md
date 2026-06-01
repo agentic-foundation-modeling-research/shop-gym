@@ -167,7 +167,7 @@ single-task debugging, skill filters, and the full output layout.
 uv run pytest                    # run all Python tests
 uv run ruff check .              # lint
 uv run ruff format .             # format
-uv run pyright                   # typecheck
+uv run pyright                   # typecheck strict-clean Python packages
 
 # ShopArena env-eval (measure an environment)
 uv run shop-env-eval run <url> --no-rubric    # one-shot measurement → outputs/shop_env_evals/<host>/<run_id>/
@@ -177,7 +177,7 @@ uv run shop-env-eval visualize <run_dir>      # render the transition graph as i
 pnpm -r build                    # build all TS packages
 pnpm -r test                     # test all TS packages
 pnpm --filter @shop-gym/shop-backend dev   # run the GraphQL server
-pnpm lint                        # biome lint
+pnpm lint                        # biome lint for shop_backend
 pnpm format                      # biome format
 ```
 

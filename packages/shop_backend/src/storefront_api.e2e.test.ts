@@ -105,7 +105,10 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
         readonly items: ReadonlyArray<{ readonly title: string; readonly type: string }>;
       } | null;
       readonly localization: {
-        readonly country: { readonly isoCode: string; readonly currency: { readonly isoCode: string } };
+        readonly country: {
+          readonly isoCode: string;
+          readonly currency: { readonly isoCode: string };
+        };
         readonly language: { readonly isoCode: string };
       };
       readonly product: {
@@ -313,7 +316,9 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
     interface CartSummary {
       readonly id: string;
       readonly totalQuantity: number;
-      readonly cost: { readonly subtotalAmount: { readonly amount: string; readonly currencyCode: string } };
+      readonly cost: {
+        readonly subtotalAmount: { readonly amount: string; readonly currencyCode: string };
+      };
       readonly lines: { readonly nodes: readonly CartLineSummary[] };
     }
 

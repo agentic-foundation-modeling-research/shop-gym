@@ -140,7 +140,10 @@ describe('productResolvers — Query.products', () => {
     const endCursor = result.data.products.pageInfo.endCursor;
     expect(result.data).toEqual({
       products: {
-        nodes: [{ handle: 'aislearena-anti-tick-collar' }, { handle: 'shopliseum-mushroom-dog-toys' }],
+        nodes: [
+          { handle: 'aislearena-anti-tick-collar' },
+          { handle: 'shopliseum-mushroom-dog-toys' },
+        ],
         pageInfo: {
           hasNextPage: true,
           hasPreviousPage: false,

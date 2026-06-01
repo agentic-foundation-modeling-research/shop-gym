@@ -25,9 +25,6 @@
     "published_at": "2024-01-15T10:00:00-05:00",
     "updated_at": "2026-02-06T15:22:05-05:00",
     "sort_order": "best-selling",
-    "product_handles": [
-      "cartanvil-mackerel-and-sardines-70g",
-      "carthaeum-toothbrush"
-    ]
+    "product_handles": ["cartanvil-mackerel-and-sardines-70g", "carthaeum-toothbrush"]
   }
 ]

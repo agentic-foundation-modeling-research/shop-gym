@@ -131,7 +131,7 @@ def test_every_capabilities_leaf_has_a_merge_rule() -> None:
     The merged document must include ``version`` (set to ``"0.1"`` by
     construction), so it is not part of the rule table.
     """
-    from shop_arena.gen.manual_merge.capabilities import _RULES  # noqa: PLC0415
+    from shop_arena.gen.manual_merge.capabilities import _RULES
 
     leaves = _enumerate_capability_leaves(Capabilities) - {"version"}
     assert leaves == set(_RULES.keys())
@@ -340,7 +340,7 @@ def test_nav_depth_takes_max_across_seeds(tmp_path: Path) -> None:
         _seed_payload(site_shell={"nav_depth": 2}),
     )
     merged, conflicts = merge_capabilities_seeds([seed_a, seed_b, seed_c])
-    assert merged.site_shell.nav_depth == 3  # noqa: PLR2004
+    assert merged.site_shell.nav_depth == 3
     [conflict] = [c for c in conflicts if c.path == "site_shell.nav_depth"]
     assert conflict.tiebreak == "max"
 
@@ -627,7 +627,7 @@ def test_step_run_writes_capabilities_and_conflicts(tmp_path: Path) -> None:
     # Capabilities round-trip cleanly through the closed schema.
     merged = Capabilities.model_validate_json(caps_path.read_text(encoding="utf-8"))
     assert merged.cart.has_promo_input is True
-    assert merged.site_shell.nav_depth == 5  # noqa: PLR2004
+    assert merged.site_shell.nav_depth == 5
 
     # Conflicts sidecar is a JSON array of MergeConflict records.
     raw_conflicts = json.loads(conflicts_path.read_text(encoding="utf-8"))

@@ -193,7 +193,7 @@ def test_fail_rewrites_marker_and_next_prompt_sees_feedback(tmp_path: Path) -> N
     result = run_plan_exec_loop(cfg, runtime)
 
     assert result.final_status is FinalStatus.COMPLETED
-    assert result.exec_iter_count == 2  # noqa: PLR2004 — fail-then-pass cycle
+    assert result.exec_iter_count == 2
 
     # First iteration's verifier was FAIL; second was PASS.
     verdicts = tuple(r.verdict for r in result.verifier_runs)

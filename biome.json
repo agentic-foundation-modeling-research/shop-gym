@@ -24,6 +24,13 @@
     }
   },
   "files": {
-    "ignore": ["**/dist/**", "**/node_modules/**", "**/.venv/**", "**/*.generated.ts", "outputs/**"]
+    "ignore": [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/.venv/**",
+      "**/*.generated.ts",
+      "**/__generated__/**",
+      "outputs/**"
+    ]
   }
 }

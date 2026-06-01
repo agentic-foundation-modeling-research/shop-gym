@@ -171,7 +171,7 @@ def test_multi_seed_merge_calls_llm_per_overlapping_section(tmp_path: Path) -> N
     )
 
     # Two overlapping sections (Overview, Site shell) → two LLM calls.
-    assert len(completer.prompts) == 2  # noqa: PLR2004 - matches the two overlapping sections
+    assert len(completer.prompts) == 2
     # Canonical order: Overview, Site shell, Cart, Search (Floating UX etc. absent).
     assert _h2_section_names(body) == ["Overview", "Site shell", "Cart", "Search"]
     assert "Merged overview prose." in body

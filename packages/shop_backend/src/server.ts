@@ -85,7 +85,9 @@ export interface SandboxServer {
 export function createSandboxServer(options: ServerOptions): SandboxServer {
   const { data, dataDir, port = 4000, host = '127.0.0.1', cartStorePath } = options;
   const carts =
-    cartStorePath === undefined ? new CartStore() : new CartStore({ persistencePath: cartStorePath });
+    cartStorePath === undefined
+      ? new CartStore()
+      : new CartStore({ persistencePath: cartStorePath });
   const schema = createSandboxSchema();
 
   let resolvedUrl = formatBaseUrl(host, port);

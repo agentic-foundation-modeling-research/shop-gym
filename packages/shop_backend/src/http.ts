@@ -22,8 +22,8 @@
  * untouched.
  */
 
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { type Stats, createReadStream } from 'node:fs';
+import { stat as statPath } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
 
@@ -51,7 +51,7 @@ const IMMUTABLE_CACHE = 'public, max-age=31536000';
 export type GraphQLRequestHandler = (
   req: IncomingMessage,
   res: ServerResponse,
-) => void | Promise<unknown>;
+) => undefined | Promise<unknown>;
 
 /** Options accepted by `buildHttpHandler`. */
 export interface HttpHandlerOptions {
@@ -114,11 +114,7 @@ function respondHealth(res: ServerResponse, storeName: string): void {
   res.end(body);
 }
 
-async function serveImage(
-  res: ServerResponse,
-  imagesRoot: string,
-  relPath: string,
-): Promise<void> {
+async function serveImage(res: ServerResponse, imagesRoot: string, relPath: string): Promise<void> {
   let decoded: string;
   try {
     decoded = decodeURIComponent(relPath);
@@ -145,9 +141,9 @@ async function serveImage(
     return;
   }
 
-  let stats;
+  let stats: Stats;
   try {
-    stats = await stat(resolved);
+    stats = await statPath(resolved);
   } catch {
     notFound(res);
     return;

@@ -149,7 +149,7 @@ def test_shop_gen_config_accepts_claude_code_aliases(tmp_path: Path) -> None:
 
 def test_shop_gen_config_default_max_iters_is_30() -> None:
     """Spec §4.1: build-loop budget defaults to 30."""
-    assert DEFAULT_MAX_ITERS == 30  # noqa: PLR2004
+    assert DEFAULT_MAX_ITERS == 30
 
 
 def test_shop_gen_config_default_image_backend_is_placeholder() -> None:

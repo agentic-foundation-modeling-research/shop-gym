@@ -6,11 +6,7 @@
     "description_html": "<p>Chemical-free tick repellent collar that uses ultrasonic pulses to keep ticks and fleas off your dog.</p>",
     "vendor": "Mock Pet Foods",
     "product_type": "",
-    "tags": [
-      "Anti tick",
-      "Collar",
-      "Dog supplies"
-    ],
+    "tags": ["Anti tick", "Collar", "Dog supplies"],
     "published_at": "2026-03-17T11:05:00-04:00",
     "created_at": "2026-03-17T11:02:29-04:00",
     "updated_at": "2026-04-14T21:21:14-04:00",
@@ -18,10 +14,7 @@
       {
         "name": "Blue",
         "position": 1,
-        "values": [
-          "Blue",
-          "Yellow"
-        ]
+        "values": ["Blue", "Yellow"]
       }
     ],
     "variants": [
@@ -78,11 +71,7 @@
     "description_html": "<p>Plush mushroom-shaped squeaky dog toys made from durable fabric. Perfect for fetch and tug.</p>",
     "vendor": "Mock Pet Foods",
     "product_type": "Dog Toys",
-    "tags": [
-      "Dog Toy",
-      "Mushroom",
-      "Stuffed animal"
-    ],
+    "tags": ["Dog Toy", "Mushroom", "Stuffed animal"],
     "published_at": "2025-12-10T12:01:58-05:00",
     "created_at": "2025-12-10T11:54:36-05:00",
     "updated_at": "2026-04-14T21:21:14-04:00",
@@ -90,12 +79,7 @@
       {
         "name": "Red Mushroom",
         "position": 1,
-        "values": [
-          "Red Mushroom",
-          "Blue Mushroom",
-          "Green Mushroom",
-          "Yellow Mushroom"
-        ]
+        "values": ["Red Mushroom", "Blue Mushroom", "Green Mushroom", "Yellow Mushroom"]
       }
     ],
     "variants": [
@@ -202,9 +186,7 @@
       {
         "name": "Title",
         "position": 1,
-        "values": [
-          "Default Title"
-        ]
+        "values": ["Default Title"]
       }
     ],
     "variants": [
@@ -240,11 +222,7 @@
     "description_html": "<p>Natural wet cat food with mackerel and sardines in broth. Grain-free, no additives.</p>",
     "vendor": "Mock Pet Foods",
     "product_type": "",
-    "tags": [
-      "Cartanvil",
-      "Mackerel",
-      "wet cat food"
-    ],
+    "tags": ["Cartanvil", "Mackerel", "wet cat food"],
     "published_at": "2026-03-23T10:27:39-04:00",
     "created_at": "2026-03-23T10:25:37-04:00",
     "updated_at": "2026-04-14T21:21:14-04:00",
@@ -252,9 +230,7 @@
       {
         "name": "Title",
         "position": 1,
-        "values": [
-          "Default Title"
-        ]
+        "values": ["Default Title"]
       }
     ],
     "variants": [
@@ -290,12 +266,7 @@
     "description_html": "<p>Dual-headed dental toothbrush for cats and dogs. Helps reduce plaque buildup.</p>",
     "vendor": "Mock Pet Foods",
     "product_type": "",
-    "tags": [
-      "Cat",
-      "Dog",
-      "Teeth Cleaning",
-      "Toothbrush"
-    ],
+    "tags": ["Cat", "Dog", "Teeth Cleaning", "Toothbrush"],
     "published_at": "2026-04-01T12:30:46-04:00",
     "created_at": "2026-04-01T12:27:37-04:00",
     "updated_at": "2026-04-14T21:21:14-04:00",
@@ -303,9 +274,7 @@
       {
         "name": "Title",
         "position": 1,
-        "values": [
-          "Default Title"
-        ]
+        "values": ["Default Title"]
       }
     ],
     "variants": [

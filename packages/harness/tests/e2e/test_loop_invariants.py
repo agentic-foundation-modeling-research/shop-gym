@@ -145,7 +145,7 @@ def test_executor_protocol_violation_blocks_task_and_continues(tmp_path: Path) -
     # Run reaches COMPLETED — every remaining PENDING task drained, the
     # BLOCKED task counts as terminal.
     assert result.final_status is FinalStatus.COMPLETED
-    assert result.exec_iter_count == 2  # noqa: PLR2004 — exec-0001 (violation) + exec-0002
+    assert result.exec_iter_count == 2
 
     # The first iteration's protocol.json still records the violation.
     protocol_path = result.run_dir / "iters" / "exec-0001" / "checks" / "protocol.json"

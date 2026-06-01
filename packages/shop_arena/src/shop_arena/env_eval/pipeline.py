@@ -1650,27 +1650,14 @@ def _capture_url_node_artifact(
         # (hero animations are pure CSS, fingerprint stays stable).  Other
         # surfaces almost never trigger first-load popups, so they pay no
         # extra latency.
-        is_homepage = node.canonical_id == "/"
-        if is_homepage:
-            import time as _t  # DEBUG
-            _t0 = _t.monotonic()
-            print(f"[DEBUG-CAP] start home capture canonical_id={node.canonical_id} url={node.representative_url}", flush=True)
         wait_for_axtree_settle(
             axtree=session.axtree,
-            min_wait_ms=DEFAULT_AXTREE_MIN_WAIT_HOMEPAGE_MS if is_homepage else 0,
+            min_wait_ms=DEFAULT_AXTREE_MIN_WAIT_HOMEPAGE_MS
+            if node.canonical_id == "/"
+            else 0,
         )
-        if is_homepage:
-            print(f"[DEBUG-CAP] settle returned at +{_t.monotonic()-_t0:.2f}s", flush=True)
-            popup_present = bool(session.page.evaluate("() => Array.from(document.querySelectorAll('[role=dialog]')).some(d => d.innerText.includes('GIFTS FOR MOM'))"))
-            print(f"[DEBUG-CAP] popup_in_dom={popup_present}", flush=True)
         axtree = session.axtree()
-        if is_homepage:
-            print(f"[DEBUG-CAP] axtree returned at +{_t.monotonic()-_t0:.2f}s; axtree node count={len(axtree.get('nodes', []))}", flush=True)
-            popup_present = bool(session.page.evaluate("() => Array.from(document.querySelectorAll('[role=dialog]')).some(d => d.innerText.includes('GIFTS FOR MOM'))"))
-            print(f"[DEBUG-CAP] popup_in_dom_after_axtree={popup_present}", flush=True)
         screenshot_png = _encode_screenshot(session.screenshot())
-        if is_homepage:
-            print(f"[DEBUG-CAP] screenshot returned at +{_t.monotonic()-_t0:.2f}s; png size={len(screenshot_png)}", flush=True)
         _write_axtree_json(axtree_json_path, axtree)
         written_axtree_json_path = axtree_json_path
         _write_axtree_text(axtree_text_path, render_axtree_text(axtree))

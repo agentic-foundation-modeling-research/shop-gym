@@ -192,7 +192,7 @@ class OpenAIImageBackend:
             return self._client
         api_key = os.environ.get(_API_KEY_ENV)
         if not api_key:
-            raise EnvironmentError(
+            raise OSError(
                 f"{_OPENAI_BACKEND_NAME!r} image backend requires {_API_KEY_ENV} "
                 "in the environment",
             )

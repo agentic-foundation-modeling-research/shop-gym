@@ -99,7 +99,8 @@ def main(argv: list[str] | None = None) -> int:
     if command == "eval":
         # Imported lazily so `shop-guru build` doesn't pay the AgentLab/BrowserGym
         # import cost (and so `build` works in environments without those deps).
-        from shop_guru.eval.run_all import main as run_all_main
+        from shop_guru.eval.run_all import main as run_all_main  # noqa: PLC0415
+
         return run_all_main(rest, prog="shop-guru eval")
 
     print(f"shop-guru: unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)

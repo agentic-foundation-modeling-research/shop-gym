@@ -55,7 +55,9 @@ describe('loadShopData', () => {
     expect(data.navigation['main-menu']).toHaveLength(3);
 
     expect(data.metafields.shop).toHaveLength(1);
-    expect(data.metafields.products['agoracage-skin-and-coat-chicken-with-grains-12lb']).toHaveLength(1);
+    expect(
+      data.metafields.products['agoracage-skin-and-coat-chicken-with-grains-12lb'],
+    ).toHaveLength(1);
     expect(data.metafields.collections['dog-essentials']).toHaveLength(1);
 
     // inventory.json (since v0.2): tracked counts indexed by numeric variant id.

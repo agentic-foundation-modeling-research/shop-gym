@@ -229,7 +229,7 @@ def test_collapse_set_from_picks_marketing_only() -> None:
         {"gift-bundle/coming-home-set", "paris-rules"},
     )
     # Sanity-check the configured collapse labels.
-    assert COLLAPSE_LABELS == frozenset({"marketing"})
+    assert frozenset({"marketing"}) == COLLAPSE_LABELS
 
 
 # ---------------------------------------------------------------------------

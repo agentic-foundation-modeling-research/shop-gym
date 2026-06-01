@@ -240,7 +240,7 @@ def _run_synthesize_only(args: argparse.Namespace) -> int:
 
 
 def _run_explore(args: argparse.Namespace) -> int:
-    """Execute the default invocation: full pipeline via :func:`shop_arena.explore.pipeline.explore`.
+    """Execute the default full-pipeline explore invocation.
 
     When ``--out`` points at an existing run_dir with a prior ``run.json``,
     the CLI falls into resume mode (``docs/specs/harness/resume.md`` §5.6):

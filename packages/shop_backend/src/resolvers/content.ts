@@ -98,20 +98,12 @@ export interface ArticleConnectionNode extends Connection<ArticleNode> {
  */
 export const contentResolvers = {
   Query: {
-    page: (
-      _parent: unknown,
-      args: QueryPageArgs,
-      ctx: ResolverContext,
-    ): PageNode | null => {
+    page: (_parent: unknown, args: QueryPageArgs, ctx: ResolverContext): PageNode | null => {
       const page = findPage(ctx.data.pages, args.handle);
       return page === null ? null : buildPageNode(page);
     },
 
-    blog: (
-      _parent: unknown,
-      args: QueryBlogArgs,
-      ctx: ResolverContext,
-    ): BlogNode | null => {
+    blog: (_parent: unknown, args: QueryBlogArgs, ctx: ResolverContext): BlogNode | null => {
       const blog = findBlog(ctx.data.blogs, args.handle);
       return blog === null ? null : buildBlogNode(blog);
     },

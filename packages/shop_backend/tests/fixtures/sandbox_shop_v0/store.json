@@ -6,11 +6,7 @@
   "currency_code": "CAD",
   "country_code": "CA",
   "payment_settings": {
-    "accepted_card_brands": [
-      "VISA",
-      "MASTER",
-      "AMERICAN_EXPRESS"
-    ]
+    "accepted_card_brands": ["VISA", "MASTER", "AMERICAN_EXPRESS"]
   },
   "brand": {
     "logo_url": null,

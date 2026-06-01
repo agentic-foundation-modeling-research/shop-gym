@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -135,7 +135,8 @@ def _seed_sources(value: Any, *, source: str, sources: dict[str, str], path: str
     name a real ``previous_source``.
     """
     if isinstance(value, dict):
-        for key, sub in value.items():
+        children = cast("dict[str, Any]", value)
+        for key, sub in children.items():
             child_path = f"{path}.{key}" if path else key
             _seed_sources(sub, source=source, sources=sources, path=child_path)
         return
@@ -172,8 +173,8 @@ def _deep_merge(
 
         if isinstance(existing, dict) and isinstance(value, dict):
             _deep_merge(
-                existing,
-                value,
+                cast("dict[str, Any]", existing),
+                cast("dict[str, Any]", value),
                 source=source,
                 sources=sources,
                 conflicts=conflicts,
@@ -182,9 +183,11 @@ def _deep_merge(
             continue
 
         if isinstance(existing, list) and isinstance(value, list):
-            seen: set[Any] = {_hashable_key(item) for item in existing}
-            merged: list[Any] = list(existing)
-            for item in value:
+            existing_items = cast("list[Any]", existing)
+            value_items = cast("list[Any]", value)
+            seen: set[Any] = {_hashable_key(item) for item in existing_items}
+            merged: list[Any] = list(existing_items)
+            for item in value_items:
                 key_for_dedupe = _hashable_key(item)
                 if key_for_dedupe not in seen:
                     seen.add(key_for_dedupe)
@@ -218,4 +221,4 @@ def _load_fragment(path: Path) -> dict[str, Any]:
         raise CapabilitiesValidationError(
             f"fragment {path.name} must be a JSON object, got {type(raw).__name__}"
         )
-    return raw
+    return cast("dict[str, Any]", raw)

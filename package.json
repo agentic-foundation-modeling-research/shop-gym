@@ -12,7 +12,7 @@
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "lint": "biome check .",
+    "lint": "biome check packages/shop_backend",
     "format": "biome format --write .",
     "shop:host": "./scripts/run-shop.sh"
   },

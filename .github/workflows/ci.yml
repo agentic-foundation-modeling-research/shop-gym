@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, mz/dev]
   pull_request:
   workflow_dispatch:
 
@@ -33,6 +33,9 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            packages/*/pyproject.toml
 
       - name: Install Python 3.12
         run: uv python install 3.12

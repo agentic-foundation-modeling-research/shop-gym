@@ -24,7 +24,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
       i += 1;
       continue;
     }
-    if (arg !== undefined && arg.startsWith('--cart-store=')) {
+    if (arg?.startsWith('--cart-store=')) {
       cartStorePath = arg.slice('--cart-store='.length);
       continue;
     }

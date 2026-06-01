@@ -298,7 +298,7 @@ def test_phase1_two_seed_end_to_end_no_llm(tmp_path: Path) -> None:
     # bool union: True wins.
     assert merged.cart.has_promo_input is True
     # max wins for nav_depth.
-    assert merged.site_shell.nav_depth == 3  # noqa: PLR2004
+    assert merged.site_shell.nav_depth == 3
     # list union, dedup, seed-order: seed_a first.
     assert merged.collection.filters == ["availability", "price", "color"]
     assert merged.product.variant_selectors == ["size", "color"]
@@ -318,11 +318,11 @@ def test_phase1_two_seed_end_to_end_no_llm(tmp_path: Path) -> None:
     stats = Stats.model_validate_json(
         (out_dir / "manual" / "stats.json").read_text(encoding="utf-8"),
     )
-    assert stats.products_total == 150  # noqa: PLR2004
-    assert stats.price.max == 299.99  # noqa: PLR2004
-    assert stats.price.min == 4.99  # noqa: PLR2004
+    assert stats.products_total == 150
+    assert stats.price.max == 299.99
+    assert stats.price.min == 4.99
     # nav_depth comes from merged caps (max=3), not from either seed's stats.
-    assert stats.navigation_depth_max == 3  # noqa: PLR2004
+    assert stats.navigation_depth_max == 3
 
     # Manifest carries the seed list and a non-empty conflict log.
     manifest = Manifest.model_validate_json(
@@ -549,7 +549,7 @@ def test_phase1_three_seed_end_to_end_with_llm(tmp_path: Path) -> None:
     # bool union: 2/3 True → True (and surfaces as a conflict).
     assert merged.cart.has_promo_input is True
     # nav_depth max across (2, 3, 1) → 3.
-    assert merged.site_shell.nav_depth == 3  # noqa: PLR2004
+    assert merged.site_shell.nav_depth == 3
     # info_pages_present is a list union over seed order.
     assert set(merged.info_pages_present) == {"about", "contact", "shipping", "faq"}
     # tone capped at 3, list union seed-order.
@@ -565,12 +565,12 @@ def test_phase1_three_seed_end_to_end_with_llm(tmp_path: Path) -> None:
         (out_dir / "manual" / "stats.json").read_text(encoding="utf-8"),
     )
     # median of (120, 200, 80) → 120.
-    assert stats.products_total == 120  # noqa: PLR2004
+    assert stats.products_total == 120
     # max-of-maxes / min-of-mins across seeds with non-zero price signal.
-    assert stats.price.max == 350.0  # noqa: PLR2004
-    assert stats.price.min == 5.0  # noqa: PLR2004
+    assert stats.price.max == 350.0
+    assert stats.price.min == 5.0
     # Capability-derived leaves come from the merged caps.
-    assert stats.navigation_depth_max == 3  # noqa: PLR2004
+    assert stats.navigation_depth_max == 3
     assert stats.info_pages_count == len(merged.info_pages_present)
 
     manifest = Manifest.model_validate_json(

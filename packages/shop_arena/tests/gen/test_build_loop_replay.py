@@ -335,12 +335,22 @@ def test_build_loop_replay_post_build_artifact_imports_navigation_primitives(
     header_src = (artifact / "app" / "components" / "Header.tsx").read_text(encoding="utf-8")
     footer_src = (artifact / "app" / "components" / "Footer.tsx").read_text(encoding="utf-8")
 
-    assert "from \"~/components/NavMenu\"" in header_src or "from '~/components/NavMenu'" in header_src, (
-        "Header.tsx must import <NavMenu> (template_navigation_primitives M2)"
+    has_nav_menu = (
+        "from \"~/components/NavMenu\"" in header_src
+        or "from '~/components/NavMenu'" in header_src
     )
-    assert "from \"~/components/HeaderShell\"" in header_src or "from '~/components/HeaderShell'" in header_src, (
+    has_header_shell = (
+        "from \"~/components/HeaderShell\"" in header_src
+        or "from '~/components/HeaderShell'" in header_src
+    )
+    has_footer_columns = (
+        "from \"~/components/FooterColumns\"" in footer_src
+        or "from '~/components/FooterColumns'" in footer_src
+    )
+    assert has_nav_menu, "Header.tsx must import <NavMenu> (template_navigation_primitives M2)"
+    assert has_header_shell, (
         "Header.tsx must import <HeaderShell> (template_navigation_primitives M2)"
     )
-    assert "from \"~/components/FooterColumns\"" in footer_src or "from '~/components/FooterColumns'" in footer_src, (
+    assert has_footer_columns, (
         "Footer.tsx must import <FooterColumns> (template_navigation_primitives M3)"
     )

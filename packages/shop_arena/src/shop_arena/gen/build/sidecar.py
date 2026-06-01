@@ -45,7 +45,7 @@ import os
 import signal
 import subprocess
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
@@ -153,7 +153,7 @@ def sidecar_lifecycle(
     argv: Sequence[str],
     port: int,
     health_timeout_s: float = _HEALTH_TIMEOUT_S,
-) -> Iterator[SidecarHandle]:
+) -> Generator[SidecarHandle, None, None]:
     """Spawn ``shop-backend``, poll ``/health``, yield a handle, clean up on exit.
 
     The subprocess is always torn down before this generator returns,
