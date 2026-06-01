@@ -69,9 +69,6 @@ coupled to neither. Its tests run against arbitrary toy tasks.
     and `{{verifier_feedback}}`.
   - [`protocol_violation_recovery.md`](protocol_violation_recovery.md)
     adds executor-phase BLOCKED-and-continue recovery.
-- The current Python implementation remains the shipping harness. The
-  proposed TypeScript vNext contract is tracked separately in
-  [`plan_exec_loop_vnext.md`](plan_exec_loop_vnext.md).
 
 ---
 

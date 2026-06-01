@@ -17,14 +17,6 @@ together produce reproducible shopping environments and evaluation datasets.
 | [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server hosting SandboxShop data. |
 | [`packages/harness`](packages/harness) | Python | **Harness** — Runtime-agnostic plan-then-loop engine that orchestrates LLM agents; provides process lifecycle, workspace state, and telemetry for build / eval loops. |
 
-The next-generation harness design is tracked in
-[`docs/specs/harness/plan_exec_loop_vnext.md`](docs/specs/harness/plan_exec_loop_vnext.md).
-It proposes a new TypeScript package, `packages/agent_harness`
-(`@shop-gym/agent-harness`), with JSON-state contracts, a git-backed
-agent sandbox, SDK-native runtimes, verifier hooks, and CLI-based Python
-integration. The current shipping implementation remains
-[`packages/harness`](packages/harness).
-
 A typical loop:
 
 ```
