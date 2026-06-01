@@ -4,11 +4,13 @@
 [![python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 
 
-Sandbox shop websites with modern features for **building and evaluating
-shopping LLM agents**. ShopGym is a mono-repo of four components that
-together produce reproducible shopping environments and evaluation datasets.
+ShopGym is an integrated framework for realistic simulation and scalable benchmarking of e-commerce web agents, functions as both as a simulation environment and as a benchmark construction pipeline.
+
+![shop-gym-pipeline](docs/imgs/shop-gym-pipeline.png)
 
 ## Components
+
+The package is a mono-repo of three components:
 
 | Package | Lang | Role |
 |---|---|---|
