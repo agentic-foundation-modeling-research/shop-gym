@@ -232,6 +232,24 @@ shop-gym/
 └── .editorconfig
 ```
 
+## Citation
+
+This repository contains code for the ShopGym paper:
+[*ShopGym: An Integrated Framework for Realistic Simulation and Scalable
+Benchmarking of E-Commerce Web Agents*](https://arxiv.org/abs/2605.16116).
+
+```bibtex
+@misc{savadikar2026shopgym,
+    title         = {ShopGym: An Integrated Framework for Realistic Simulation and Scalable Benchmarking of E-Commerce Web Agents},
+    author        = {Chinmay Savadikar and Mingyu Zhao and Yuanzheng Zhu and Han Li and Shuang Xie and Alberto Castelo and Tianfu Wu and Lingyun Wang},
+    year          = {2026},
+    eprint        = {2605.16116},
+    archivePrefix = {arXiv},
+    primaryClass  = {cs.AI},
+    url           = {https://arxiv.org/abs/2605.16116}
+}
+```
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, coding standards, tests, and
