@@ -32,8 +32,10 @@
 import type {
   CollectionProductsArgs,
   CollectionSortKeys,
+  ProductImagesArgs,
   ProductSelectedOrFirstAvailableVariantArgs,
   ProductSortKeys,
+  ProductVariantsArgs,
   QueryCollectionArgs,
   QueryCollectionsArgs,
   QueryProductArgs,
@@ -44,6 +46,7 @@ import { type Connection, paginate } from '../data/pagination.js';
 import type { Collection, Product, SandboxShopData } from '../data/types.js';
 import {
   type CollectionNode,
+  type ImageNode,
   type ProductNode,
   type ProductVariantNode,
   buildCollectionNode,
@@ -132,6 +135,14 @@ export const productResolvers = {
   },
 
   Product: {
+    images: (parent: ProductNode, args: Partial<ProductImagesArgs>): Connection<ImageNode> =>
+      paginate(parent.images, args),
+
+    variants: (
+      parent: ProductNode,
+      args: Partial<ProductVariantsArgs>,
+    ): Connection<ProductVariantNode> => paginate(parent.variants, args),
+
     selectedOrFirstAvailableVariant: (
       parent: ProductNode,
       args: ProductSelectedOrFirstAvailableVariantArgs,

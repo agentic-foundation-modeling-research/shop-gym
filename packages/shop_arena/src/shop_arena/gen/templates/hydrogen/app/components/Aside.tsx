@@ -6,6 +6,7 @@ import {
   useState,
 } from 'react';
 import {useId} from 'react';
+import {useLocation} from 'react-router';
 
 type AsideType = 'search' | 'cart' | 'mobile' | 'closed';
 type AsideContextValue = {
@@ -78,6 +79,11 @@ const AsideContext = createContext<AsideContextValue | null>(null);
 
 Aside.Provider = function AsideProvider({children}: {children: ReactNode}) {
   const [type, setType] = useState<AsideType>('closed');
+  const location = useLocation();
+
+  useEffect(() => {
+    setType('closed');
+  }, [location.pathname, location.search]);
 
   return (
     <AsideContext.Provider

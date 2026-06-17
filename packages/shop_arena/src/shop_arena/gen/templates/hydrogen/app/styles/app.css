@@ -4,6 +4,13 @@
   --cart-aside-summary-height: 460px;
   --grid-item-width: 355px;
   --header-height: 64px;
+  --research-disclaimer-height: 34px;
+  --shop-chrome-height: calc(
+    var(--research-disclaimer-height) + var(--header-height) + 1px
+  );
+  --z-overlay: 80;
+  --z-aside: 90;
+  --z-header: 100;
   --color-dark: #000;
   --color-light: #fff;
 }
@@ -87,11 +94,11 @@ img {
 .overlay > aside {
   background: var(--color-light);
   box-shadow: 0 0 50px rgba(0, 0, 0, 0.3);
-  height: 100vh;
+  height: calc(100dvh - var(--shop-chrome-height));
   width: min(var(--aside-width), 100vw);
   position: fixed;
   right: calc(-1 * var(--aside-width));
-  top: 0;
+  top: var(--shop-chrome-height);
   transition: transform 200ms ease-in-out;
   z-index: var(--z-aside, 90);
 }
@@ -163,7 +170,7 @@ img {
   pointer-events: none;
   position: fixed;
   right: 0;
-  top: 0;
+  top: var(--shop-chrome-height);
   transition: opacity 400ms ease-in-out;
   transition: opacity 400ms;
   visibility: hidden;
@@ -235,20 +242,64 @@ button.reset:hover:not(:has(> *)) {
   padding: 0 1rem;
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: var(--z-header);
 }
 
 .header-left {
   align-items: center;
   display: flex;
-  /*
-   * Single source of truth for the brand→primary-nav seam. The
-   * `--space-6` token lands with `template_baseline_fixes` P1; the
-   * fallback keeps the layout sensible until that token is defined,
-   * so this primitive can be adopted by `gen_navigation` without
-   * waiting on the baseline-fixes plan.
-   */
   gap: var(--space-6, 1.5rem);
+  min-width: 0;
+}
+
+.header-brand,
+.header-nav-link,
+.header-cta {
+  align-items: center;
+  color: var(--color-dark);
+  display: inline-flex;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.header-brand:hover,
+.header-nav-link:hover,
+.header-cta:hover {
+  text-decoration: underline;
+}
+
+.header-nav {
+  display: none;
+  min-width: 0;
+}
+
+.header-nav .nav-menu {
+  display: flex;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.header-nav .nav-menu-item {
+  position: relative;
+}
+
+.header-nav .nav-menu-children {
+  background: var(--color-light);
+  border: 1px solid var(--color-dark);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  left: 0;
+  list-style: none;
+  margin: 0;
+  min-width: 12rem;
+  padding: 0.75rem;
+  position: absolute;
+  top: 100%;
+  z-index: calc(var(--z-header) + 1);
 }
 
 .header-menu-mobile-toggle {
@@ -257,24 +308,10 @@ button.reset:hover:not(:has(> *)) {
   }
 }
 
-.header-menu-mobile {
-  display: flex;
-  flex-direction: column;
-  grid-gap: 1rem;
-}
-
-.header-menu-desktop {
-  display: none;
-  grid-gap: 1rem;
-  @media (min-width: 45em) {
-    display: flex;
-    grid-gap: 1rem;
-    margin-left: 3rem;
+@media (min-width: 48em) {
+  .header-nav {
+    display: block;
   }
-}
-
-.header-menu-item {
-  cursor: pointer;
 }
 
 .header-ctas {
@@ -286,6 +323,29 @@ button.reset:hover:not(:has(> *)) {
 
 .header-ctas > * {
   min-width: fit-content;
+}
+
+.mobile-nav-drawer,
+.mobile-nav-drawer-children {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mobile-nav-drawer-children {
+  gap: 0.5rem;
+  padding: 0.75rem 0 0 1rem;
+}
+
+.mobile-nav-link,
+.mobile-nav-trigger {
+  color: var(--color-dark);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
 }
 
 /*
@@ -318,13 +378,21 @@ button.reset:hover:not(:has(> *)) {
 */
 .cart-main {
   height: 100%;
-  max-height: calc(100vh - var(--cart-aside-summary-height));
   overflow-y: auto;
   width: auto;
 }
 
-.cart-main.with-discount {
-  max-height: calc(100vh - var(--cart-aside-summary-height-with-discount));
+.cart-main-aside {
+  max-height: calc(
+    100dvh - var(--shop-chrome-height) - var(--cart-aside-summary-height)
+  );
+}
+
+.cart-main-aside.with-discount {
+  max-height: calc(
+    100dvh - var(--shop-chrome-height) -
+      var(--cart-aside-summary-height-with-discount)
+  );
 }
 
 .cart-line {

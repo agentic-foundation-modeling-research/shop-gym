@@ -190,7 +190,7 @@ cmd_start() {
   fi
 
   echo "▶ Hydrogen     → http://localhost:$port"
-  ( cd "$hyd_dir" && PORT="$port" PUBLIC_STORE_DOMAIN="http://localhost:$api_port" \
+  ( cd "$hyd_dir" && NODE_ENV=production PORT="$port" PUBLIC_STORE_DOMAIN="http://localhost:$api_port" \
       exec node server.mjs >"$hyd_log" 2>&1 ) &
   local hyd_pid=$!
   disown "$hyd_pid" 2>/dev/null || true

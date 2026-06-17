@@ -45,7 +45,13 @@ export function CartMain({layout, cart: originalCart}: CartMainProps) {
   const withDiscount =
     cart &&
     Boolean(cart?.discountCodes?.filter((code) => code.applicable)?.length);
-  const className = `cart-main ${withDiscount ? 'with-discount' : ''}`;
+  const className = [
+    'cart-main',
+    layout === 'aside' ? 'cart-main-aside' : '',
+    withDiscount ? 'with-discount' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   const cartHasItems = cart?.totalQuantity ? cart.totalQuantity > 0 : false;
   const childrenMap = getLineItemChildrenMap(cart?.lines?.nodes ?? []);
 

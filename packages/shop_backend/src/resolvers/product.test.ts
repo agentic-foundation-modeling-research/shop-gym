@@ -387,6 +387,78 @@ describe('productResolvers — Query.collections', () => {
 });
 
 describe('productResolvers — Product.selectedOrFirstAvailableVariant', () => {
+  it('wraps product images as a paginated connection', async () => {
+    const result = await run(/* GraphQL */ `
+      {
+        product(handle: "aislearena-anti-tick-collar") {
+          images(first: 1) {
+            nodes {
+              id
+              url
+              width
+              height
+            }
+            edges {
+              node {
+                id
+              }
+            }
+          }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      product: {
+        images: {
+          nodes: [
+            {
+              id: 'gid://shopify/ProductImage/43482199916718',
+              url: `${BASE_URL}/images/products/aislearena-anti-tick-collar-1.jpg`,
+              width: 3264,
+              height: 2448,
+            },
+          ],
+          edges: [{ node: { id: 'gid://shopify/ProductImage/43482199916718' } }],
+        },
+      },
+    });
+  });
+
+  it('wraps product variants as a paginated connection', async () => {
+    const result = await run(/* GraphQL */ `
+      {
+        product(handle: "aislearena-anti-tick-collar") {
+          variants(first: 1) {
+            nodes {
+              id
+              title
+            }
+            edges {
+              node {
+                id
+              }
+            }
+          }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      product: {
+        variants: {
+          nodes: [
+            {
+              id: 'gid://shopify/ProductVariant/47642512195758',
+              title: 'Blue',
+            },
+          ],
+          edges: [{ node: { id: 'gid://shopify/ProductVariant/47642512195758' } }],
+        },
+      },
+    });
+  });
+
   it('returns the variant matching the supplied selectedOptions', async () => {
     const result = await run(/* GraphQL */ `
       {

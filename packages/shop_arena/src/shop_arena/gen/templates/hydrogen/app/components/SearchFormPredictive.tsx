@@ -34,19 +34,17 @@ export function SearchFormPredictive({
   const navigate = useNavigate();
   const aside = useAside();
 
-  /** Reset the input value and blur the input */
-  function resetInput(event: React.FormEvent<HTMLFormElement>) {
+  /** Navigate to the full search page when the form is submitted. */
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     event.stopPropagation();
-    if (inputRef?.current?.value) {
-      inputRef.current.blur();
-    }
+    goToSearch();
   }
 
   /** Navigate to the search page with the current input value */
   function goToSearch() {
-    const term = inputRef?.current?.value;
-    void navigate(SEARCH_ENDPOINT + (term ? `?q=${term}` : ''));
+    const term = inputRef?.current?.value.trim() ?? '';
+    void navigate(SEARCH_ENDPOINT + (term ? `?q=${encodeURIComponent(term)}` : ''));
     aside.close();
   }
 
@@ -69,7 +67,7 @@ export function SearchFormPredictive({
   }
 
   return (
-    <fetcher.Form {...props} className={className} onSubmit={resetInput}>
+    <fetcher.Form {...props} className={className} onSubmit={handleSubmit}>
       {children({inputRef, fetcher, fetchResults, goToSearch})}
     </fetcher.Form>
   );
