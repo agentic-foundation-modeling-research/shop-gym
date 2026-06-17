@@ -44,6 +44,7 @@ class _MapHandler(BaseHTTPRequestHandler):
     """
 
     path_status: Mapping[str, int]
+    path_body: Mapping[str, str]
 
     def do_GET(self) -> None:
         status = self.path_status.get(self.path)
@@ -54,20 +55,26 @@ class _MapHandler(BaseHTTPRequestHandler):
             return
         self.send_response(status)
         self.end_headers()
-        self.wfile.write(b"ok")
+        body = self.path_body.get(self.path, "ok")
+        self.wfile.write(body.encode("utf-8"))
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002 -- stdlib API
         del format, args  # silence default access-log spam
 
 
 @contextlib.contextmanager
-def _threaded_server(responses: Mapping[str, int]) -> Iterator[str]:
+def _threaded_server(
+    responses: Mapping[str, int],
+    *,
+    bodies: Mapping[str, str] | None = None,
+) -> Iterator[str]:
     """Spin up an in-process HTTP server backing the given path → status map."""
 
     class _Handler(_MapHandler):
         pass
 
     _Handler.path_status = responses
+    _Handler.path_body = bodies or {}
     server = HTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -83,6 +90,7 @@ def _threaded_server(responses: Mapping[str, int]) -> Iterator[str]:
 def _factory(
     responses: Mapping[str, int],
     *,
+    bodies: Mapping[str, str] | None = None,
     captured: list[Path] | None = None,
 ) -> DevServerFactory:
     """Build a :class:`DevServerFactory` returning :func:`_threaded_server`."""
@@ -90,7 +98,7 @@ def _factory(
     def _build(hydrogen_dir: Path) -> AbstractContextManager[str]:
         if captured is not None:
             captured.append(hydrogen_dir)
-        return _threaded_server(responses)
+        return _threaded_server(responses, bodies=bodies)
 
     return _build
 
@@ -271,6 +279,44 @@ def test_fails_on_404_route(
     assert result.verdict is Verdict.FAIL
     assert "/" in result.feedback
     assert "404" in result.feedback
+
+
+def test_fails_on_rendered_internal_link_404(
+    make_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """Rendered same-origin anchors are probed, catching generated dead links."""
+    verifier = Routes200Verifier(
+        data_dir=data_dir,
+        dev_server_factory=_factory(
+            {"/": 200, "/collections/best-sellers": 200},
+            bodies={
+                "/": (
+                    '<a href="/collections/best-sellers">Best sellers</a>'
+                    '<a href="/blogs/guides">Guides</a>'
+                    '<a href="mailto:help@example.test">Email</a>'
+                    '<a href="#main-content">Skip</a>'
+                    '<a href="/assets/app.css">Asset</a>'
+                ),
+            },
+        ),
+    )
+
+    result = verifier.run(make_ctx(selected_task_id="gen_homepage"))
+
+    assert result.verdict is Verdict.FAIL
+    assert result.details["links_checked"] == 2
+    assert result.details["failures"] == [
+        {
+            "type": "link",
+            "route": "/blogs/guides",
+            "status": "404",
+            "source_routes": ["/"],
+        },
+    ]
+    assert "Rendered internal-link failures" in result.feedback
+    assert "/blogs/guides" in result.feedback
+    assert "linked from `/`" in result.feedback
 
 
 def test_fails_when_factory_raises(

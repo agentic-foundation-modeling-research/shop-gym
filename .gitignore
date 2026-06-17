@@ -9,10 +9,14 @@ __pycache__/
 htmlcov/
 dist/
 build/
-# Re-include shop_gen Phase 4 build steps (legitimate package code; the
+# Re-include ShopArena Phase 4 build steps (legitimate package code; the
 # blanket ``build/`` rule above targets Python build artifacts).
-!packages/shop_arena/src/shop_gen/build/
-!packages/shop_arena/tests/shop_gen/build/
+!packages/shop_arena/src/shop_arena/gen/build/
+!packages/shop_arena/src/shop_arena/gen/build/**
+!packages/shop_arena/tests/gen/build/
+!packages/shop_arena/tests/gen/build/**
+packages/shop_arena/src/shop_arena/gen/build/**/__pycache__/
+packages/shop_arena/tests/gen/build/**/__pycache__/
 
 # Node / TS
 node_modules/

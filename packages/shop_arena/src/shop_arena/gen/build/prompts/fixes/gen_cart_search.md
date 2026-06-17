@@ -2,6 +2,21 @@
 
 These rules supersede anything in `execute.md` §3 they contradict.
 
+## Do not force every cart into a drawer
+
+The `cart_and_search` sub-manual is the source of truth for cart
+surfaces. Some shops have a slide-in cart drawer, but others have only
+a full `/cart` page, a header mini-cart popover, an add-to-cart toast,
+or a combination of those. Do not keep the template's generic
+`<Aside type="cart">` just because it exists.
+
+If the manual says there is **no** slide-in side drawer or modal,
+remove/disable the cart aside and make the header cart action match
+the documented behavior: navigate to `/cart`, open a small
+header-anchored mini-cart/popover, or both, depending on the manual.
+The full `/cart` page remains the editing surface unless the manual
+explicitly says quantity/remove controls live in the drawer.
+
 ## Keep the local `/checkout` route as the cart CTA target
 
 The template's `CartSummary` ships with `<CartCheckoutActions
@@ -109,3 +124,25 @@ one fragment named "PredictiveProduct"` (a runtime 500 that neither
 `tsc` nor `build` catches). The same rule applies to any other route
 that splices reusable `*_FRAGMENT` constants into a template literal:
 read the existing interpolation block before adding to it.
+
+## Search forms must submit to the regular search page
+
+The template's `SearchFormPredictive` serves two flows from one input:
+keystrokes fetch predictive results, and submit navigates to
+`/search?q=<term>`. Do not replace submit handling with a blur-only
+`preventDefault()` handler. Header search is considered broken if
+typing a term and pressing Enter or clicking the submit icon does not
+land on `/search?q=...` and render regular results.
+
+When rendering a compact header search, either let the form's
+`onSubmit` call `goToSearch()` or wire the submit button to the same
+function. Always URL-encode the term.
+
+## Close overlays on route changes
+
+Cart, search, and mobile menu asides are transient overlays. Their
+provider must close the active aside whenever `location.pathname` or
+`location.search` changes; otherwise a user can navigate to account,
+orders, checkout, or search pages while the cart drawer still covers
+the page. Keep this behavior in `Aside.Provider` rather than sprinkling
+manual `close()` calls across individual links.

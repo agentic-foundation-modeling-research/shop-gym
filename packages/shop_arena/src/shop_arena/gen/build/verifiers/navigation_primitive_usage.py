@@ -129,7 +129,6 @@ _ANTI_LEGACY_CSS_RE: Final[re.Pattern[str]] = re.compile(
     re.DOTALL,
 )
 
-
 _HEADER_ANTI_PATTERNS: Final[tuple[_AntiPattern, ...]] = (
     _AntiPattern(
         rule_id="hover_intent_inline",

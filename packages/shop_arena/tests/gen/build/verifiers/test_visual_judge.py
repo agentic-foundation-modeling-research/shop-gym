@@ -133,12 +133,19 @@ class _RaisingRuntime:
 
 
 _MINIMAL_CAPABILITIES: dict[str, object] = {
+    "homepage": {"section_count": 1},
     "home.hero": {"present": True},
+    "site_shell": {"header_style": "two_row_sticky"},
     "navigation.header": {"depth": 1},
     "footer": {"present": True},
+    "collection": {"layout": "grid"},
     "collection.filters": ["price"],
+    "product": {"has_quantity_selector": True},
     "product.variant_selectors": [],
+    "cart": {"type": "page"},
+    "search": {"has_predictive": True},
     "search.predictive_types": [],
+    "info_pages_present": ["about"],
 }
 
 
@@ -274,13 +281,13 @@ def test_run_returns_pass_when_agent_emits_clean_verdict(
     assert result.details["task_id"] == "gen_homepage"
     assert result.details["buckets_run"] == ["homepage"]
     assert result.details["routes"] == ["/"]
-    assert result.details["score"] == 8.5  # noqa: PLR2004 -- mirrors fixture
+    assert result.details["score"] == 8.5
     assert result.details["category_scores"] == {
         "structure": 8,
         "components": 7,
         "visual_tone": 9,
     }
-    assert result.details["pages_judged"] == 2  # noqa: PLR2004 -- mirrors fixture
+    assert result.details["pages_judged"] == 2
     assert result.details["retry_budget_exhausted"] is False
     assert result.details["prior_fails"] == 0
     assert server.enters == 1
@@ -300,6 +307,31 @@ def test_run_returns_pass_when_agent_emits_clean_verdict(
     assert "home.hero" in capabilities_block
     assert "product.variant_selectors" not in capabilities_block
     assert "search.predictive_types" not in capabilities_block
+
+
+def test_run_passes_top_level_cart_search_capabilities_to_prompt(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """Regression: real nested cart/search capabilities must not slice to ``{}``."""
+    runtime = _RecordingRuntime(verdict_body=_pass_body(score=8.5))
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=_StubDevServer(),
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="gen_cart_search")
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.PASS
+    assert len(runtime.calls) == 1
+    prompt_text = runtime.calls[0]["prompt"]
+    assert isinstance(prompt_text, str)
+    capabilities = json.loads(_extract_capabilities_block(prompt_text))
+    assert capabilities["cart"] == {"type": "page"}
+    assert capabilities["search"] == {"has_predictive": True}
+    assert "homepage" not in capabilities
+    assert "product" not in capabilities
 
 
 # --------------------------------------------------------------------------- #
@@ -447,7 +479,7 @@ def test_run_threshold_lowered_lets_marginal_pass_through(
 
     assert result.verdict is Verdict.PASS
     assert result.details["coercion_reason"] is None
-    assert result.details["score"] == 6.0  # noqa: PLR2004 -- mirrors fixture
+    assert result.details["score"] == 6.0
 
 
 def test_init_stores_max_concurrency() -> None:
@@ -457,7 +489,7 @@ def test_init_stores_max_concurrency() -> None:
         dev_server_factory=_StubDevServer(),
         max_concurrency=5,
     )
-    assert verifier._max_concurrency == 5  # noqa: PLR2004 -- mirrors fixture
+    assert verifier._max_concurrency == 5
 
 
 # --------------------------------------------------------------------------- #
@@ -617,7 +649,7 @@ def test_run_returns_fail_on_runtime_timeout_with_partial_verdict(
     assert result.verdict is Verdict.FAIL
     assert result.details["phase"] == "timeout"
     assert result.details["partial_verdict"] is True
-    assert result.details["score"] == 4.0  # noqa: PLR2004 -- mirrors fixture
+    assert result.details["score"] == 4.0
     assert "timed out" in result.feedback
     # Dev-server lifecycle is balanced even on timeout.
     assert server.enters == 1
@@ -672,7 +704,7 @@ def test_run_returns_fail_on_runtime_timeout_with_partial_screenshots(
     assert result.verdict is Verdict.FAIL
     assert result.details["phase"] == "timeout"
     assert result.details["partial_verdict"] is False
-    assert result.details["screenshot_count"] == 2  # noqa: PLR2004 -- mirrors fixture
+    assert result.details["screenshot_count"] == 2
     assert "screenshot(s) survived" in result.feedback
     # Screenshots were promoted into the verifier tree.
     promoted = (
@@ -864,8 +896,8 @@ def test_run_downgrades_to_advisory_when_retry_budget_met(
 
     assert result.verdict is Verdict.ADVISORY
     assert result.details["retry_budget_exhausted"] is True
-    assert result.details["prior_fails"] == 3  # noqa: PLR2004 -- mirrors fixture
-    assert result.details["retry_budget"] == 3  # noqa: PLR2004 -- mirrors ctor arg
+    assert result.details["prior_fails"] == 3
+    assert result.details["retry_budget"] == 3
     assert "retry budget" in result.feedback
     assert "gen_homepage" in result.feedback
     # Spec §5.4: dev server is *not* booted and the runtime is *not* called.
@@ -903,7 +935,7 @@ def test_run_does_not_downgrade_below_retry_budget(
 
     assert result.verdict is Verdict.PASS
     assert result.details["retry_budget_exhausted"] is False
-    assert result.details["prior_fails"] == 2  # noqa: PLR2004 -- mirrors fixture
+    assert result.details["prior_fails"] == 2
     assert len(runtime.calls) == 1
     assert server.enters == 1
 
@@ -937,7 +969,7 @@ def test_run_ignores_retry_budget_when_zero(
 
     assert result.verdict is Verdict.PASS
     assert result.details["retry_budget_exhausted"] is False
-    assert result.details["prior_fails"] == 10  # noqa: PLR2004 -- mirrors fixture
+    assert result.details["prior_fails"] == 10
     assert len(runtime.calls) == 1
 
 
@@ -1012,8 +1044,8 @@ def test_sc3_dispatch_records_advisory_downgrade_after_three_fails(
     assert payload["task_id"] == "gen_homepage"
     assert payload["iter_id"] == iter_id
     assert payload["details"]["retry_budget_exhausted"] is True
-    assert payload["details"]["prior_fails"] == 3  # noqa: PLR2004 -- mirrors fixture
-    assert payload["details"]["retry_budget"] == 3  # noqa: PLR2004 -- mirrors ctor arg
+    assert payload["details"]["prior_fails"] == 3
+    assert payload["details"]["retry_budget"] == 3
     assert "retry budget" in payload["feedback"]
     del tmp_path  # unused; artifact_dir already lives under tmp_path
 
@@ -1320,7 +1352,10 @@ def test_visual_fix_fanout_per_bucket_capability_slice_isolated(
 
     homepage_slice = _extract_capabilities_block(captured["homepage"])
     cart_slice = _extract_capabilities_block(captured["cart_search"])
+    cart_capabilities = json.loads(cart_slice)
     # Homepage prompt sees ``home.hero`` but not search keys; cart_search inverse.
     assert "home.hero" in homepage_slice
     assert "search" not in homepage_slice
     assert "home.hero" not in cart_slice
+    assert cart_capabilities["cart"] == {"type": "page"}
+    assert cart_capabilities["search"] == {"has_predictive": True}

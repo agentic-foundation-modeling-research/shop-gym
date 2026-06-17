@@ -47,12 +47,14 @@ _HYDROGEN_APP_DIR: Final[str] = "hydrogen/app"
 _SCAN_SUFFIXES: Final[frozenset[str]] = frozenset({".tsx", ".ts"})
 """Source-file extensions inspected for GraphQL operations."""
 
-# Match Hydrogen's ``graphql\`...\``` template literal tag. The tag is
-# what Hydrogen's codegen looks for, so the agent is expected to keep
-# using it; queries embedded as plain strings would not be picked up by
-# either codegen or this verifier.
+_CUSTOMER_ACCOUNT_GRAPHQL_PARTS: Final[tuple[str, str]] = ("graphql", "customer-account")
+"""Template subtree containing Customer Account API queries, not Storefront API queries."""
+
+# Match Hydrogen GraphQL template literals. The template accepts both
+# ``graphql`...``` tagged blocks and the ```#graphql ...``` magic-comment
+# form used by recent Hydrogen examples.
 _GRAPHQL_BLOCK_RE: Final[re.Pattern[str]] = re.compile(
-    r"graphql`([^`]*)`",
+    r"(?:graphql`(?P<tagged>[^`]*)`|`(?P<hash>\s*#graphql\b[^`]*)`)",
     re.DOTALL,
 )
 
@@ -60,8 +62,8 @@ _GRAPHQL_BLOCK_RE: Final[re.Pattern[str]] = re.compile(
 # `mutation { ... }`. The verifier is lenient about anonymous
 # operations — they're legal GraphQL.
 _OPERATION_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(query|mutation|subscription)\b\s*([A-Za-z_][A-Za-z0-9_]*)?",
-    re.IGNORECASE,
+    r"^\s*(query|mutation|subscription)\b\s*([A-Za-z_][A-Za-z0-9_]*)?",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 # Capture the first identifier inside the operation's selection set.
@@ -69,7 +71,7 @@ _OPERATION_RE: Final[re.Pattern[str]] = re.compile(
 # accept the simplification: the v0.1 check is "did the agent invent a
 # top-level field?", not "did every nested field type-check?".
 _ROOT_FIELD_RE: Final[re.Pattern[str]] = re.compile(
-    r"\{\s*(?:#[^\n]*\n\s*)*([A-Za-z_][A-Za-z0-9_]*)",
+    r"\{\s*(?:#[^\n]*\n\s*)*(?:(?:[A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*)",
 )
 
 _OPERATION_TO_ROOT: Final[dict[str, str]] = {
@@ -273,23 +275,41 @@ class DataInUseVerifier:
 
 
 def _extract_operations(app_dir: Path) -> Iterable[GraphQLOperationRef]:
-    """Yield one :class:`GraphQLOperationRef` per ``graphql\\`...\\``` block."""
+    """Yield one ref per operation-bearing Hydrogen GraphQL block."""
     for path in sorted(app_dir.rglob("*")):
         if not path.is_file() or path.suffix not in _SCAN_SUFFIXES:
+            continue
+        app_rel_path = path.relative_to(app_dir)
+        if app_rel_path.parts[:2] == _CUSTOMER_ACCOUNT_GRAPHQL_PARTS:
             continue
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
         for block in _GRAPHQL_BLOCK_RE.finditer(text):
-            yield _parse_operation(
+            body = block.group("tagged") or block.group("hash") or ""
+            ref = _parse_operation(
                 rel_path=path.relative_to(app_dir.parent.parent),
-                body=block.group(1),
+                body=_strip_hash_graphql_marker(body),
             )
+            if ref is not None:
+                yield ref
 
 
-def _parse_operation(*, rel_path: Path, body: str) -> GraphQLOperationRef:
-    """Parse one ``graphql\\`...\\``` body into a :class:`GraphQLOperationRef`.
+def _strip_hash_graphql_marker(body: str) -> str:
+    """Remove a leading ``#graphql`` marker from a template body.
+
+    Args:
+        body: Raw template literal body.
+
+    Returns:
+        Body with the optional first-line marker removed.
+    """
+    return re.sub(r"^\s*#graphql[^\n]*(?:\n|$)", "", body, count=1)
+
+
+def _parse_operation(*, rel_path: Path, body: str) -> GraphQLOperationRef | None:
+    """Parse one GraphQL template body into a :class:`GraphQLOperationRef`.
 
     The parser is intentionally regex-driven; spec §5.5.3 does not
     mandate a full GraphQL parser and the v0.1 check is satisfied by
@@ -297,15 +317,21 @@ def _parse_operation(*, rel_path: Path, body: str) -> GraphQLOperationRef:
     """
     op_match = _OPERATION_RE.search(body)
     if op_match is None:
+        if not body.lstrip().startswith("{"):
+            # Fragment-only blocks and interpolation-only blocks are not
+            # executable operations, so there is no root field to diff.
+            return None
         # Anonymous shorthand (``graphql`{ ... }```) — treat as a query.
         operation_type = "Query"
         operation_name: str | None = None
+        selection_body = body
     else:
         operation_type = _OPERATION_TO_ROOT[op_match.group(1).lower()]
         raw_name = op_match.group(2)
         operation_name = raw_name if raw_name else None
+        selection_body = body[op_match.end() :]
 
-    root_field_match = _ROOT_FIELD_RE.search(body)
+    root_field_match = _ROOT_FIELD_RE.search(selection_body)
     root_field = root_field_match.group(1) if root_field_match is not None else None
     return GraphQLOperationRef(
         path=rel_path,

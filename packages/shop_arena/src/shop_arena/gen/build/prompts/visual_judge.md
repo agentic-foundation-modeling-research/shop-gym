@@ -43,20 +43,24 @@ penalise the absence of features the slice does not list.
 
 ## Image loading policy
 
-The generated store uses synthetic / placeholder images that load
-asynchronously. Screenshots are sometimes captured before lazy-loaded
-images finish decoding, so blank image slots in a single screenshot
-are **not** reliable evidence of a real bug.
+The generated store uses synthetic images that can load asynchronously.
+Screenshots are sometimes captured before lazy-loaded images finish
+decoding, so a blank image slot in a single screenshot is **not**
+reliable evidence of a real bug.
 
-- Treat blank image slots, gradient / solid-colour placeholders, and
-  broken-image icons as **inconclusive, not as issues**.
-- Only flag an image-related finding when the **same** slot is empty
-  across **multiple** screenshots of the same page (e.g. after
-  scrolling), or when the surrounding container layout itself is
-  wrong.
-- Focus image-related findings on container layout (aspect ratio,
-  grid arrangement, alignment), not on whether a specific image
-  rendered.
+- Treat one-off blank slots as inconclusive. Flag an image issue only
+  when the **same product/category/homepage media slot** is empty,
+  shows visible alt text, or shows a broken-image icon across multiple
+  screenshots of the same page (e.g. after scrolling or across both
+  viewports).
+- Treat gradient / solid-colour / text-only placeholders as acceptable
+  only for explicit decorative surfaces. They are an issue when they
+  replace product cards, collection cards, PDP galleries, hero media,
+  promo media, or `image_with_text` sections that should be backed by
+  Storefront API image data.
+- Focus image-related findings on data wiring and container layout:
+  whether media-bearing sections actually render image elements, keep
+  stable aspect ratios, and align with the surrounding grid.
 - Icons that resolve via inline SVG or CSS still count — only flag
   missing icons when the icon container is clearly broken across
   multiple screenshots.

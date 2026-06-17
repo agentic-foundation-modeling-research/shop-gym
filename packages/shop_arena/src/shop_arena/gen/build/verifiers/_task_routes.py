@@ -121,12 +121,35 @@ reuse the base task's bucket set.
 
 
 BUCKET_CAPABILITY_KEYS: Final[dict[str, frozenset[str]]] = {
-    "homepage": frozenset({"home.*", "navigation.header", "footer"}),
-    "navigation": frozenset({"navigation.*", "footer"}),
-    "collections": frozenset({"collection.*"}),
-    "product": frozenset({"product.*"}),
-    "cart_search": frozenset({"cart.*", "search.*"}),
-    "info_pages": frozenset({"page.*", "policies.*"}),
+    "homepage": frozenset(
+        {
+            "homepage",
+            "home.*",
+            "navigation.header",
+            "footer",
+        },
+    ),
+    "navigation": frozenset(
+        {
+            "site_shell",
+            "navigation",
+            "navigation.*",
+            "footer",
+            "intl",
+        },
+    ),
+    "collections": frozenset({"collection", "collection.*"}),
+    "product": frozenset({"product", "product.*"}),
+    "cart_search": frozenset({"cart", "cart.*", "search", "search.*"}),
+    "info_pages": frozenset(
+        {
+            "info_pages_present",
+            "page",
+            "page.*",
+            "policies",
+            "policies.*",
+        },
+    ),
 }
 """Bucket → ``capabilities.json`` key globs (spec §5.3.1).
 

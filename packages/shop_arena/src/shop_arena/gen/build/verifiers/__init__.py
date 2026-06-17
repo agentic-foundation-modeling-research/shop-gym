@@ -19,6 +19,11 @@ The v0.1 verifier set lives here:
 * :class:`NavCoverageVerifier` — every collection handle in
   ``data/collections.json`` is reachable from the hydrogen nav.
   Applies to ``gen_navigation``.
+* :class:`NavigationPrimitiveUsageVerifier` — ``gen_navigation`` must
+  adopt shared navigation primitives instead of re-deriving menu
+  behavior inline.
+* :class:`CartSurfaceConformanceVerifier` — cart surfaces must obey
+  explicit manual negative constraints such as "no cart drawer".
 * :class:`NoBrandLeakVerifier` — runs the §5.6 allowlist scanner over
   ``hydrogen/app/**/*.{tsx,ts,css,md}``. Applies to every ``gen_*``
   task.
@@ -36,6 +41,9 @@ at import time.
 from __future__ import annotations
 
 from shop_arena.gen.build.verifiers.build import BuildVerifier
+from shop_arena.gen.build.verifiers.cart_surface_conformance import (
+    CartSurfaceConformanceVerifier,
+)
 from shop_arena.gen.build.verifiers.cross_task_consistency import CrossTaskConsistencyVerifier
 from shop_arena.gen.build.verifiers.data_in_use import (
     DataInUseVerifier,
@@ -59,6 +67,7 @@ from shop_arena.gen.build.verifiers.visual_judge import (
 __all__ = [
     "DEFAULT_VISUAL_JUDGE_TIMEOUT_S",
     "BuildVerifier",
+    "CartSurfaceConformanceVerifier",
     "CrossTaskConsistencyVerifier",
     "DataInUseVerifier",
     "GraphQLOperationError",

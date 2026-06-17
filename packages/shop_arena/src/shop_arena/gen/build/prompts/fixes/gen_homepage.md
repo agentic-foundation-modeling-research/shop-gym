@@ -60,3 +60,27 @@ If only one part inherits the container constraint, the heading row
 left/right edges stop matching the body's left/right edges and the
 section reads as broken. `tsc` and `build` will not catch this; only
 a wide-viewport visual pass will.
+
+## Use generated catalog imagery for image-bearing homepage sections
+
+The SandboxShop dataset includes product image records and, on AI-image
+runs, real generated PNGs under `data/images/`. Homepage sections that
+are visually image-bearing must use those Storefront API image fields
+instead of CSS-only placeholders.
+
+Do this for collection/category cards, hero media, promo banners, and
+`image_with_text` style sections:
+
+- Query `collection.image { id url altText width height }` and/or
+  product `featuredImage { id url altText width height }`.
+- For collections whose `image` is `null`, fall back to the first
+  product's `featuredImage`.
+- Render with Hydrogen's `<Image data={...}>` or a plain `<img>` using
+  the returned `url`; keep a fixed aspect ratio on the container so
+  lazy loading cannot collapse the layout.
+
+Do not satisfy an image slot with only a gradient block, initials,
+`role="img"` text badge, "Portrait — ..." label, or other CSS-drawn
+placeholder when catalog imagery is available. Those can be decorative
+overlays, but they cannot be the only media in a section whose manual
+describes image/text or product/category imagery.
