@@ -205,10 +205,10 @@ pnpm shop:host stop mock_shop           # or `stop all`
 pnpm shop:host restart mock_shop
 ```
 
-The script picks the Hydrogen tree in this order: `HYDROGEN_DIR` env override
-→ `outputs/shops/<name>/hydrogen/` (if `node_modules` exists) →
-`outputs/shops/<name>/runs/build/artifact/hydrogen/` (the build-loop output,
-where deps live by default).
+By default the script hosts the build-loop Hydrogen tree at
+`outputs/shops/<name>/runs/build/artifact/hydrogen/`, where dependencies
+and the compiled production bundle live. Set `HYDROGEN_DIR=<path>` only
+when you intentionally want to host a different hydrated Hydrogen tree.
 
 ## Repository layout
 

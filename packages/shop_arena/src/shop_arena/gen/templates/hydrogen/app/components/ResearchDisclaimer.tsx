@@ -21,7 +21,12 @@ export function ResearchDisclaimer() {
         padding: '8px 16px',
         textAlign: 'center',
         fontSize: '14px',
+        lineHeight: '17px',
         borderBottom: '1px solid #F59E0B',
+        boxSizing: 'border-box',
+        height: '34px',
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
         position: 'relative',
         zIndex: 1,
       }}
