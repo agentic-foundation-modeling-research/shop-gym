@@ -65,7 +65,7 @@ from harness import (
 )
 from harness.workspace import Workspace
 from shop_arena.explore.pipeline import resolve_playwright_skill_dir
-from shop_arena.gen.build.env import CLONE_TEMPLATE_STEP_VERSION
+from shop_arena.gen.build.env import CLONE_TEMPLATE_STEP_VERSION as _CLONE_STEP_VERSION
 from shop_arena.gen.build.prompts import (
     copy_fixes_into,
     load_agents_md,
@@ -80,6 +80,7 @@ from shop_arena.gen.build.sidecar import (
 from shop_arena.gen.build.verifiers import (
     DEFAULT_VISUAL_JUDGE_TIMEOUT_S,
     BuildVerifier,
+    CartSurfaceConformanceVerifier,
     CrossTaskConsistencyVerifier,
     DataInUseVerifier,
     NavCoverageVerifier,
@@ -132,8 +133,7 @@ _SOURCE_STAMP: Final[Path] = Path(".shop_gen") / "source_fingerprint"
 """Run-relative path of the artifact tree's source-fingerprint stamp.
 
 Records the fingerprint of the source state (``<out_dir>/hydrogen/`` +
-``<out_dir>/data/`` content, mixed with
-:data:`shop_arena.gen.build.env.CLONE_TEMPLATE_STEP_VERSION`) at the moment
+``<out_dir>/data/`` content, mixed with :data:`_CLONE_STEP_VERSION`) at the moment
 ``runs/build/`` was last materialised. ``_setup_run_dir``
 compares this stamp against the current source fingerprint on every
 invocation. A mismatch means the upstream source has changed (template
@@ -581,8 +581,8 @@ def _compute_source_fingerprint(hydrogen_src: Path, data_dir: Path) -> str:
 
     The digest mixes three signals:
 
-    1. :data:`shop_arena.gen.build.env.CLONE_TEMPLATE_STEP_VERSION` so a version
-       bump always invalidates the stamp, even when ``clone_template``
+    1. :data:`_CLONE_STEP_VERSION` so a version bump always invalidates the
+       stamp, even when ``clone_template``
        wrote byte-identical content (the version is the canonical
        "upstream generation changed" signal per spec §5.7.1).
     2. Every file under ``hydrogen_src`` *except* ``node_modules/``
@@ -606,7 +606,7 @@ def _compute_source_fingerprint(hydrogen_src: Path, data_dir: Path) -> str:
     """
     digest = hashlib.sha256()
     digest.update(b"clone_template_version\x00")
-    digest.update(str(CLONE_TEMPLATE_STEP_VERSION).encode("ascii"))
+    digest.update(str(_CLONE_STEP_VERSION).encode("ascii"))
     digest.update(b"\n")
     for label, root in (("hydrogen", hydrogen_src), ("data", data_dir)):
         for path in sorted(root.rglob("*")):
@@ -771,6 +771,7 @@ def default_verifiers_factory(
         # cassette (`test_build_loop_replay_post_build_artifact_imports_navigation_primitives`).
         # Was advisory in M4 (T4.2); promotion drops the `advisory=True` kwarg.
         NavigationPrimitiveUsageVerifier(),
+        CartSurfaceConformanceVerifier(),
         # `routes_200` boots a transient dev server and asserts every bucket
         # route returns HTTP 2xx (spec §5.3 / impl plan T4.1). Slotted before
         # the LLM judges so a broken hydrogen tree (e.g. SSR 500s) surfaces

@@ -298,6 +298,24 @@ def test_copy_fixes_into_materialises_per_task_files(tmp_path: Path) -> None:
         assert path.read_text(encoding="utf-8").strip(), f"prompts/fixes/{name} is empty"
 
 
+def test_gen_cart_search_fix_prompt_warns_against_forced_cart_drawers(
+    tmp_path: Path,
+) -> None:
+    """The cart-search fix prompt must preserve manual-specific cart surfaces."""
+    target_prompts = tmp_path / "prompts"
+    target_prompts.mkdir()
+    copy_fixes_into(target_prompts)
+
+    body = (target_prompts / "fixes" / "gen_cart_search.md").read_text(
+        encoding="utf-8",
+    )
+    assert "Do not force every cart into a drawer" in body
+    assert "no" in body.lower()
+    assert "slide-in side drawer or modal" in body
+    assert '`<Aside type="cart">`' in body
+    assert "navigate to `/cart`" in body
+
+
 def test_copy_fixes_into_is_idempotent_for_resume(tmp_path: Path) -> None:
     """`copy_fixes_into` must no-op when the target already exists.
 

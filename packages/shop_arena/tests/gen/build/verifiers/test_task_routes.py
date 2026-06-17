@@ -79,7 +79,7 @@ def _seed_dataset(data_dir: Path) -> Path:
 
 def test_task_buckets_constant_has_seven_keys() -> None:
     """Sanity check: 6 ``gen_*`` + ``visual_fix`` (spec §5.3)."""
-    assert len(TASK_BUCKETS) == 7  # noqa: PLR2004 -- 6 gen_* + visual_fix
+    assert len(TASK_BUCKETS) == 7
     assert set(TASK_BUCKETS) == {
         "gen_homepage",
         "gen_navigation",
@@ -253,14 +253,14 @@ def test_caps_widen_collections_and_products_for_sweep(tmp_path: Path) -> None:
     default_collections = bucket_routes("collections", tmp_path, caps=DEFAULT_CAPS)
     sweep_collections = bucket_routes("collections", tmp_path, caps=SWEEP_CAPS)
     # Default: ``/collections`` + 1 handle. Sweep: ``/collections`` + 8 handles.
-    assert len(default_collections) == 2  # noqa: PLR2004 -- /collections + 1 handle
-    assert len(sweep_collections) == 9  # noqa: PLR2004 -- /collections + 8 handles
+    assert len(default_collections) == 2
+    assert len(sweep_collections) == 9
 
     default_products = bucket_routes("product", tmp_path, caps=DEFAULT_CAPS)
     sweep_products = bucket_routes("product", tmp_path, caps=SWEEP_CAPS)
     # Default: 1 product. Sweep: 8 collections x 1 product/each = 8 products.
     assert len(default_products) == 1
-    assert len(sweep_products) == 8  # noqa: PLR2004 -- 8 collections at 1 product each
+    assert len(sweep_products) == 8
 
 
 def test_caps_widen_pages_for_sweep(tmp_path: Path) -> None:
@@ -269,8 +269,8 @@ def test_caps_widen_pages_for_sweep(tmp_path: Path) -> None:
     sweep_pages = bucket_routes("info_pages", tmp_path, caps=SWEEP_CAPS)
     # Default: 1 page handle + ``/policies/privacy``.
     # Sweep: 6 page handles + ``/policies/privacy``.
-    assert len(default_pages) == 2  # noqa: PLR2004 -- 1 page + /policies/privacy
-    assert len(sweep_pages) == 7  # noqa: PLR2004 -- 6 pages + /policies/privacy
+    assert len(default_pages) == 2
+    assert len(sweep_pages) == 7
 
 
 def test_caps_default_is_used_when_none(tmp_path: Path) -> None:
@@ -393,6 +393,38 @@ def test_capabilities_for_buckets_unions_across_buckets() -> None:
     }
     sliced = capabilities_for_buckets({"collections", "cart_search"}, capabilities)
     assert set(sliced) == {"collection.filters", "cart.summary", "search.results"}
+
+
+def test_capabilities_for_buckets_preserves_nested_top_level_keys() -> None:
+    """Real ``capabilities.json`` uses nested top-level objects, not dotted keys."""
+    capabilities = {
+        "site_shell": {"header_style": "two_row_sticky"},
+        "homepage": {"section_count": 11},
+        "collection": {"layout": "grid"},
+        "product": {"has_quantity_selector": True},
+        "cart": {"type": "page"},
+        "search": {"has_predictive": True},
+        "info_pages_present": ["about"],
+        "floating": {"has_chat_widget": False},
+    }
+
+    cart_search = capabilities_for_buckets({"cart_search"}, capabilities)
+    assert cart_search == {
+        "cart": {"type": "page"},
+        "search": {"has_predictive": True},
+    }
+
+    visual_fix = capabilities_for_buckets(buckets_for_task("visual_fix"), capabilities)
+    assert set(visual_fix) == {
+        "site_shell",
+        "homepage",
+        "collection",
+        "product",
+        "cart",
+        "search",
+        "info_pages_present",
+    }
+    assert "floating" not in visual_fix
 
 
 def test_capabilities_for_buckets_empty_bucket_set_returns_empty() -> None:

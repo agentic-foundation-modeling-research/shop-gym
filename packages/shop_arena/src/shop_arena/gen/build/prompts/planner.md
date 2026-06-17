@@ -52,7 +52,7 @@ template default and note the gap in its iteration reply.
 - [ ] gen_homepage     — render hero, featured collections, and any promo banner from `homepage.section_types` and `artifact/manual/parts/homepage.md`; bind to live Storefront API queries [priority: 7]
 - [ ] gen_collections  — collection list + collection detail with the filter / sort affordances `capabilities.collection` and `artifact/manual/parts/collections.md` declare; ProductItem component shared with PDP [priority: 6]
 - [ ] gen_product      — product detail with variant pickers, gallery, and the option / quantity / availability rules `capabilities.product` and `artifact/manual/parts/product.md` declare [priority: 5]
-- [ ] gen_cart_search  — cart drawer with the lifecycle states (`empty`, `filled`, `qty change`, `remove`); predictive search per `capabilities.search` and `artifact/manual/parts/cart_and_search.md` [priority: 4]
+- [ ] gen_cart_search  — cart surface(s) exactly as `capabilities.cart` and `artifact/manual/parts/cart_and_search.md` declare (page, drawer, mini-cart/popover); predictive search per `capabilities.search` [priority: 4]
 - [ ] gen_info_pages   — every page in `info_pages_present` (about, contact, policies, FAQ, …) per `artifact/manual/parts/info_pages.md`; wire into routes and the footer [priority: 3]
 - [ ] visual_fix       — REQUIRED final task; fix leftover `[!]` task issues and cross-page seams (shared-component drift, design-token drift, broken inter-page links, deferred verifier feedback) [priority: 2]
 ```

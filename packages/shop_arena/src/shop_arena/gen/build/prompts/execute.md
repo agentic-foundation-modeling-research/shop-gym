@@ -154,7 +154,7 @@ what every task shares.
    | `gen_homepage`    | `app/routes/_index.tsx`, hero / featured-collection / promo-banner components used only by the homepage. |
    | `gen_collections` | `app/routes/collections.*.tsx`, `app/components/CollectionGrid.tsx`, `app/components/ProductItem.tsx`, filter / sort components. |
    | `gen_product`     | `app/routes/products.$handle.tsx`, `app/components/ProductGallery.tsx`, `app/components/VariantSelector.tsx`. |
-   | `gen_cart_search` | `app/components/CartDrawer.tsx`, `app/components/PredictiveSearch.tsx`, the cart / search route loaders. |
+   | `gen_cart_search` | Cart surface components named by the manual (`CartPage`, `CartDrawer`, `MiniCart`, header popover, etc.), `app/components/PredictiveSearch.tsx`, the cart / search route loaders. |
    | `gen_info_pages`  | `app/routes/pages.$handle.tsx`, `app/routes/policies.$handle.tsx`, FAQ / about / contact static routes. |
    | `visual_fix`      | Any slice — final cross-cutting cleanup pass (see §3a).                                |
 

@@ -82,3 +82,36 @@ set, derive the columns from `item.items` (e.g. `chunk(item.items,
 n)`) — never from a hard-coded list. The same rule applies to
 `<MobileNavDrawer>`: each accordion's body is its parent's
 `item.items`, not a shared global list.
+
+## Keep desktop header rows aligned and overflow-safe
+
+Two-row headers are especially sensitive to small spacing drift. When
+you edit `Header.tsx` or header CSS, make the row geometry explicit:
+
+- Keep brand, primary nav, and CTA slots on one baseline using
+  `align-items: center`, consistent `line-height`, and a single
+  `gap` on `.header-left`; do not add per-link `margin-top`,
+  `margin-left`, or transform nudges.
+- Give flex children an overflow strategy (`min-width: 0` on the
+  flex group, `flex: 0 1 auto` on nav, `white-space: nowrap` on
+  short labels, and a smaller gap / font size at constrained desktop
+  widths) so long collection labels do not push CTAs out of alignment.
+- Remove decorative empty controls that render stray glyphs (`_`,
+  empty `<summary>`, unlabelled +/- markers) unless the manual
+  explicitly requires them and they have stable dimensions.
+- Do not hard-code utility links for resources that are not present in
+  the generated data. Render header links from the Storefront API menu
+  data, or from an actual generated resource handle only when the
+  matching data file exists. If the shop has no blog data, omit blog
+  links; dead header links are worse than a sparse utility row.
+- Check both 1280px and 1440px desktop widths mentally while writing
+  CSS: the utility row and main row should share the same horizontal
+  padding, the brand should not sit on a different visual baseline
+  from nav links, and no link text should overlap or clip.
+
+Prefer a single-row desktop header when the manual does not explicitly
+require a separate utility row: brand + primary nav in `.header-left`,
+then search/cart/account in `.header-ctas`. This avoids a common
+failure where the generator adds a second row just to house hard-coded
+utility links, causing the brand, nav, search, cart, and account
+controls to sit on different baselines.

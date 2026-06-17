@@ -3,7 +3,12 @@
 Boots a transient dev server against the hydrogen tree under
 ``ctx.artifact_dir / "hydrogen"`` and asserts every route resolved by
 the **task → buckets → routes** axis (spec §5.3) returns a 2xx HTTP
-status. Applies to every ``gen_*`` task: each task id is run through
+status. For every successful HTML route response, it also extracts
+rendered same-origin ``<a href>`` targets and probes those internal
+links. This catches generated dead navigation, footer, and CTA links
+without encoding shop-specific labels or handles into the verifier.
+
+Applies to every ``gen_*`` task: each task id is run through
 :func:`shop_arena.gen.build.verifiers._task_routes.buckets_for_task` to
 strip a trailing ``_redo_<n>`` suffix and reuse the base task's
 bucket set; :func:`routes_for_buckets` then produces the route list.
@@ -26,8 +31,10 @@ import time.
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Final
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 
@@ -53,6 +60,34 @@ _HTTP_OK_FLOOR: Final[int] = 200
 
 _HTTP_OK_CEIL: Final[int] = 300
 """Exclusive upper bound of the accepted status range (2xx)."""
+
+_SKIPPED_LINK_SCHEMES: Final[frozenset[str]] = frozenset(
+    {"blob", "data", "javascript", "mailto", "tel"},
+)
+"""Non-navigation ``href`` schemes ignored by rendered-link checks."""
+
+_SKIPPED_LINK_PREFIXES: Final[tuple[str, ...]] = (
+    "/__manifest",
+    "/assets/",
+    "/favicon",
+)
+"""Internal paths that are static/framework assets, not storefront routes."""
+
+_SKIPPED_LINK_EXTENSIONS: Final[tuple[str, ...]] = (
+    ".css",
+    ".gif",
+    ".ico",
+    ".jpeg",
+    ".jpg",
+    ".js",
+    ".json",
+    ".map",
+    ".png",
+    ".svg",
+    ".webp",
+    ".xml",
+)
+"""Static file extensions skipped by rendered-link checks."""
 
 
 class Routes200Verifier:
@@ -114,8 +149,8 @@ class Routes200Verifier:
             when the resolved route list is empty — a no-op for tasks
             outside the bucket map).
 
-            ``FAIL`` with one ``- /path: <status>`` bullet per non-2xx
-            response otherwise.
+            ``FAIL`` with one bullet per non-2xx route or rendered
+            internal-link response otherwise.
 
             A missing hydrogen tree returns ``FAIL`` with explanatory
             feedback so the loop can recover.
@@ -190,7 +225,8 @@ class Routes200Verifier:
                 details={"phase": "factory_construct", "error": str(exc)},
             )
 
-        failures: list[tuple[str, str]] = []
+        route_failures: list[tuple[str, str]] = []
+        route_responses: list[tuple[str, httpx.Response]] = []
         try:
             with (
                 cm as base_url,
@@ -203,10 +239,17 @@ class Routes200Verifier:
                     try:
                         response = client.get(route)
                     except httpx.HTTPError as exc:
-                        failures.append((route, f"error: {exc}"))
+                        route_failures.append((route, f"error: {exc}"))
                         continue
                     if not _is_2xx(response.status_code):
-                        failures.append((route, str(response.status_code)))
+                        route_failures.append((route, str(response.status_code)))
+                        continue
+                    route_responses.append((route, response))
+
+                link_failures = _probe_rendered_internal_links(
+                    client=client,
+                    route_responses=route_responses,
+                )
         except Exception as exc:
             return VerifierResult(
                 verdict=Verdict.FAIL,
@@ -214,22 +257,42 @@ class Routes200Verifier:
                 details={"phase": "dev_server", "error": str(exc)},
             )
 
-        if not failures:
+        if not route_failures and not link_failures:
+            links_checked = len(_rendered_internal_link_map(route_responses))
             return VerifierResult(
                 verdict=Verdict.PASS,
                 details={
                     "buckets": list(buckets),
                     "routes": list(routes),
+                    "links_checked": links_checked,
                     "all_ok": True,
                 },
             )
+        failures = [
+            {"type": "route", "route": route, "status": status}
+            for route, status in route_failures
+        ]
+        failures.extend(
+            {
+                "type": "link",
+                "route": failure.route,
+                "status": failure.status,
+                "source_routes": list(failure.source_routes),
+            }
+            for failure in link_failures
+        )
         return VerifierResult(
             verdict=Verdict.FAIL,
-            feedback=_render_failure_markdown(routes=routes, failures=failures),
+            feedback=_render_failure_markdown(
+                routes=routes,
+                route_failures=route_failures,
+                link_failures=link_failures,
+            ),
             details={
                 "buckets": list(buckets),
                 "routes": list(routes),
-                "failures": [{"route": route, "status": status} for route, status in failures],
+                "links_checked": len(_rendered_internal_link_map(route_responses)),
+                "failures": failures,
             },
         )
 
@@ -242,17 +305,145 @@ def _is_2xx(status_code: int) -> bool:
 def _render_failure_markdown(
     *,
     routes: tuple[str, ...],
-    failures: list[tuple[str, str]],
+    route_failures: list[tuple[str, str]],
+    link_failures: list[_LinkFailure],
 ) -> str:
     """Render the failure feedback body."""
+    total_failures = len(route_failures) + len(link_failures)
     lines = [
-        f"`routes_200` failed: {len(failures)} of {len(routes)} probed "
-        "route(s) did not return HTTP 2xx.",
+        f"`routes_200` failed: {total_failures} rendered route/link "
+        "probe(s) did not return HTTP 2xx.",
         "",
-        "Failures:",
     ]
-    lines.extend(f"- `{route}` → {status}" for route, status in failures)
+    if route_failures:
+        lines.append(f"Route failures ({len(route_failures)} of {len(routes)} routes):")
+        lines.extend(f"- `{route}` → {status}" for route, status in route_failures)
+    if link_failures:
+        if route_failures:
+            lines.append("")
+        lines.append(f"Rendered internal-link failures ({len(link_failures)}):")
+        lines.extend(
+            "- `{route}` → {status} (linked from {sources})".format(
+                route=failure.route,
+                status=failure.status,
+                sources=", ".join(f"`{source}`" for source in failure.source_routes),
+            )
+            for failure in link_failures
+        )
     return "\n".join(lines)
+
+
+class _AnchorHrefParser(HTMLParser):
+    """Extract ``href`` values from rendered HTML anchors."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.hrefs: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Record every non-empty anchor ``href``."""
+        if tag.lower() != "a":
+            return
+        for name, value in attrs:
+            if name.lower() == "href" and value:
+                self.hrefs.append(value)
+                return
+
+
+class _LinkFailure:
+    """A rendered internal link that did not resolve successfully."""
+
+    def __init__(
+        self,
+        *,
+        route: str,
+        status: str,
+        source_routes: tuple[str, ...],
+    ) -> None:
+        self.route = route
+        self.status = status
+        self.source_routes = source_routes
+
+
+def _probe_rendered_internal_links(
+    *,
+    client: httpx.Client,
+    route_responses: list[tuple[str, httpx.Response]],
+) -> list[_LinkFailure]:
+    """Probe every unique internal anchor rendered by the successful routes."""
+    link_sources = _rendered_internal_link_map(route_responses)
+    failures: list[_LinkFailure] = []
+    for link, sources in sorted(link_sources.items()):
+        try:
+            response = client.get(link, follow_redirects=True)
+        except httpx.HTTPError as exc:
+            failures.append(
+                _LinkFailure(
+                    route=link,
+                    status=f"error: {exc}",
+                    source_routes=sources,
+                ),
+            )
+            continue
+        if not _is_2xx(response.status_code):
+            failures.append(
+                _LinkFailure(
+                    route=link,
+                    status=str(response.status_code),
+                    source_routes=sources,
+                ),
+            )
+    return failures
+
+
+def _rendered_internal_link_map(
+    route_responses: list[tuple[str, httpx.Response]],
+) -> dict[str, tuple[str, ...]]:
+    """Return internal rendered links mapped to the routes that emitted them."""
+    link_sources: dict[str, set[str]] = {}
+    for source_route, response in route_responses:
+        for href in _extract_internal_links(response):
+            link_sources.setdefault(href, set()).add(source_route)
+    return {
+        link: tuple(sorted(sources))
+        for link, sources in sorted(link_sources.items())
+    }
+
+
+def _extract_internal_links(response: httpx.Response) -> tuple[str, ...]:
+    """Extract normalized same-origin route links from a rendered HTML response."""
+    parser = _AnchorHrefParser()
+    parser.feed(response.text)
+    links: set[str] = set()
+    for href in parser.hrefs:
+        normalized = _normalize_internal_href(href=href, page_url=str(response.url))
+        if normalized is not None:
+            links.add(normalized)
+    return tuple(sorted(links))
+
+
+def _normalize_internal_href(*, href: str, page_url: str) -> str | None:
+    """Return a route path for a same-origin anchor ``href`` or ``None``."""
+    stripped = href.strip()
+    if not stripped or stripped == "#" or stripped.startswith("#"):
+        return None
+    parsed_page = urlparse(page_url)
+    parsed = urlparse(urljoin(page_url, stripped))
+    if parsed.scheme in _SKIPPED_LINK_SCHEMES:
+        return None
+    if (parsed.scheme, parsed.netloc) != (parsed_page.scheme, parsed_page.netloc):
+        return None
+    path = parsed.path or "/"
+    if _should_skip_internal_path(path):
+        return None
+    return urlunparse(("", "", path, "", parsed.query, ""))
+
+
+def _should_skip_internal_path(path: str) -> bool:
+    """Return ``True`` for same-origin hrefs that are not storefront routes."""
+    if any(path.startswith(prefix) for prefix in _SKIPPED_LINK_PREFIXES):
+        return True
+    return path.endswith(_SKIPPED_LINK_EXTENSIONS)
 
 
 __all__ = ["Routes200Verifier"]

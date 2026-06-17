@@ -117,6 +117,85 @@ def test_passes_when_all_root_fields_in_schema(
     assert result.details == {"operations": 2, "mismatches": 0}
 
 
+def test_passes_when_hash_graphql_literals_use_valid_root_fields(
+    make_ctx: Callable[..., VerifierContext],
+    write_app_file: Callable[[str, str], Path],
+) -> None:
+    """Recent Hydrogen codegen uses ```#graphql`` literals, not only tags."""
+    write_app_file(
+        "routes/_index.tsx",
+        """
+        const PRODUCT_CARD_FRAGMENT = `#graphql
+          fragment ProductCard on Product {
+            id
+            title
+          }
+        ` as const;
+
+        const HOMEPAGE_QUERY = `#graphql
+          ${PRODUCT_CARD_FRAGMENT}
+          query Homepage {
+            collections(first: 3) {
+              nodes {
+                products(first: 1) {
+                  nodes { ...ProductCard }
+                }
+              }
+            }
+          }
+        ` as const;
+        """,
+    )
+    verifier = DataInUseVerifier(introspect=_introspector())
+    result = verifier.run(make_ctx())
+    assert result.verdict is Verdict.PASS
+    assert result.details == {"operations": 1, "mismatches": 0}
+
+
+def test_skips_hash_graphql_fragment_only_literals(
+    make_ctx: Callable[..., VerifierContext],
+    write_app_file: Callable[[str, str], Path],
+) -> None:
+    """Fragment arguments named ``query`` are not operation headers."""
+    write_app_file(
+        "lib/fragments.ts",
+        """
+        const CUSTOMER_ORDERS_FRAGMENT = `#graphql
+          fragment CustomerOrders on Customer {
+            orders(query: $query) {
+              nodes { id }
+            }
+          }
+        ` as const;
+        """,
+    )
+    verifier = DataInUseVerifier(introspect=_introspector())
+    result = verifier.run(make_ctx())
+    assert result.verdict is Verdict.PASS
+    assert result.details == {"operations": 0}
+
+
+def test_skips_customer_account_api_graphql_files(
+    make_ctx: Callable[..., VerifierContext],
+    write_app_file: Callable[[str, str], Path],
+) -> None:
+    """Customer Account API operations are validated by a different schema."""
+    write_app_file(
+        "graphql/customer-account/CustomerDetailsQuery.ts",
+        """
+        const CUSTOMER_QUERY = `#graphql
+          query CustomerDetails {
+            customer { id }
+          }
+        ` as const;
+        """,
+    )
+    verifier = DataInUseVerifier(introspect=_introspector())
+    result = verifier.run(make_ctx())
+    assert result.verdict is Verdict.PASS
+    assert result.details == {"operations": 0}
+
+
 def test_fails_on_unknown_root_field(
     make_ctx: Callable[..., VerifierContext],
     write_app_file: Callable[[str, str], Path],
@@ -185,7 +264,7 @@ def test_partial_mismatch_only_reports_unknown_ops(
     verifier = DataInUseVerifier(introspect=_introspector())
     result = verifier.run(make_ctx())
     assert result.verdict is Verdict.FAIL
-    assert result.details["operations"] == 2  # noqa: PLR2004
+    assert result.details["operations"] == 2
     assert result.details["mismatches"] == 1
     assert "blogPosts" in result.feedback
 
@@ -202,6 +281,28 @@ def test_anonymous_operation_treated_as_query(
     verifier = DataInUseVerifier(introspect=_introspector())
     result = verifier.run(make_ctx())
     assert result.verdict is Verdict.PASS
+
+
+def test_aliased_root_field_checks_actual_field_name(
+    make_ctx: Callable[..., VerifierContext],
+    write_app_file: Callable[[str, str], Path],
+) -> None:
+    write_app_file(
+        "routes/search.tsx",
+        """
+        const SEARCH_QUERY = `#graphql
+          query RegularSearch($term: String!) {
+            articles: search(query: $term, types: [ARTICLE], first: 4) {
+              nodes { __typename }
+            }
+          }
+        ` as const;
+        """,
+    )
+    verifier = DataInUseVerifier(introspect=_introspector())
+    result = verifier.run(make_ctx())
+    assert result.verdict is Verdict.PASS
+    assert result.details == {"operations": 1, "mismatches": 0}
 
 
 def test_fails_when_hydrogen_tree_missing(

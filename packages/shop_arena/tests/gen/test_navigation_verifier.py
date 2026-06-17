@@ -179,3 +179,4 @@ def test_navigation_verifier_fails_when_header_re_derives_hover_intent(
     assert result.details["missing_imports"] is False
     assert "hover_intent_inline" in result.details["triggered_rule_ids"]
     assert "useHoverIntent" in result.feedback
+

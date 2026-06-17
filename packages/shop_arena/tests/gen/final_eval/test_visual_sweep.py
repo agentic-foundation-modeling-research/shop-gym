@@ -45,14 +45,21 @@ _STUB_PROMPT: Final[str] = (
 
 
 _MINIMAL_CAPABILITIES: dict[str, Any] = {
+    "homepage": {"section_count": 1},
     "home.hero": {"present": True},
+    "site_shell": {"header_style": "two_row_sticky"},
     "navigation.header": {"depth": 1},
     "footer": {"present": True},
+    "collection": {"layout": "grid"},
     "collection.filters": ["price"],
+    "product": {"has_quantity_selector": True},
     "product.variant_selectors": [],
+    "info_pages_present": ["about"],
     "page.about": {"present": True},
     "policies.privacy": {"present": True},
+    "search": {"has_predictive": True},
     "search.predictive_types": [],
+    "cart": {"type": "page"},
     "cart.summary": {"present": True},
 }
 
@@ -446,6 +453,11 @@ def test_run_visual_sweep_filters_capabilities_per_bucket(
     product_prompt = captured["product"]
     assert "product.variant_selectors" in product_prompt
     assert "home.hero" not in product_prompt
+
+    cart_prompt = captured["cart_search"]
+    assert '"cart": {' in cart_prompt
+    assert '"search": {' in cart_prompt
+    assert '"homepage": {' not in cart_prompt
 
 
 def test_run_visual_sweep_fan_out_scales_with_longest_bucket(

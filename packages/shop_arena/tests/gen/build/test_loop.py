@@ -58,6 +58,7 @@ from shop_arena.gen.build.prompts import (
 from shop_arena.gen.build.sidecar import SidecarHandle
 from shop_arena.gen.build.verifiers import (
     BuildVerifier,
+    CartSurfaceConformanceVerifier,
     CrossTaskConsistencyVerifier,
     DataInUseVerifier,
     NavCoverageVerifier,
@@ -730,7 +731,7 @@ def test_step_run_resets_run_dir_when_source_drifts(tmp_path: Path) -> None:
         #    prior iters/ history is gone.
         step.run(_build_ctx(out_dir))
         assert artifact_pkg.read_text(encoding="utf-8") == '{"name":"hydrogen-v2"}\n'
-        assert len(install_invocations) == 2, (  # noqa: PLR2004
+        assert len(install_invocations) == 2, (
             "install did not re-run after source drift: "
             f"{install_invocations}"
         )
@@ -804,7 +805,7 @@ def test_step_run_resets_run_dir_when_clone_version_bumped(
         monkeypatch.setattr("shop_arena.gen.build.loop._CLONE_STEP_VERSION", 999)
 
         step.run(_build_ctx(out_dir))
-        assert len(install_invocations) == 2, (  # noqa: PLR2004
+        assert len(install_invocations) == 2, (
             "clone-template version bump did not invalidate the stamp: "
             f"{install_invocations}"
         )
@@ -1041,6 +1042,7 @@ def test_default_verifiers_factory_returns_v01_set_when_skill_missing(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        CartSurfaceConformanceVerifier,
         Routes200Verifier,
         QualityJudgeVerifier,
         CrossTaskConsistencyVerifier,
@@ -1078,6 +1080,7 @@ def test_default_verifiers_factory_includes_visual_judge_when_skill_present(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        CartSurfaceConformanceVerifier,
         Routes200Verifier,
         QualityJudgeVerifier,
         VisualJudgeVerifier,
@@ -1146,7 +1149,7 @@ def test_default_verifiers_factory_threads_visual_judge_pass_threshold(
         )
 
     visual = next(v for v in verifiers if isinstance(v, VisualJudgeVerifier))
-    assert visual._pass_threshold == 8.5  # noqa: PLR2004 -- mirrors fixture
+    assert visual._pass_threshold == 8.5
 
 
 def test_default_verifiers_factory_threads_visual_judge_max_concurrency(
@@ -1166,7 +1169,7 @@ def test_default_verifiers_factory_threads_visual_judge_max_concurrency(
         )
 
     visual = next(v for v in verifiers if isinstance(v, VisualJudgeVerifier))
-    assert visual._max_concurrency == 6  # noqa: PLR2004 -- mirrors fixture
+    assert visual._max_concurrency == 6
 
 
 def test_default_verifiers_factory_registers_navigation_primitive_usage_as_hard_fail(
@@ -1195,6 +1198,27 @@ def test_default_verifiers_factory_registers_navigation_primitive_usage_as_hard_
     assert matches[0]._advisory is False
 
 
+def test_default_verifiers_factory_registers_cart_surface_conformance(
+    tmp_path: Path,
+) -> None:
+    """Cart surface conformance is a rule verifier and is not gated by ``judges``."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(out_dir)
+
+    sidecar = _stub_handle()
+    with patch("shop_arena.gen.build.loop.is_playwright_skill_available", return_value=True):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            judges=frozenset(),
+        )
+
+    matches = [v for v in verifiers if isinstance(v, CartSurfaceConformanceVerifier)]
+    assert len(matches) == 1, "`cart_surface_conformance` registers exactly once"
+    assert matches[0].name == "cart_surface_conformance"
+
+
 def test_default_verifiers_factory_judges_empty_returns_only_rule_verifiers(
     tmp_path: Path,
 ) -> None:
@@ -1218,6 +1242,7 @@ def test_default_verifiers_factory_judges_empty_returns_only_rule_verifiers(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        CartSurfaceConformanceVerifier,
         Routes200Verifier,
     ]
 
@@ -1249,6 +1274,7 @@ def test_default_verifiers_factory_judges_visual_only_when_skill_present(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        CartSurfaceConformanceVerifier,
         Routes200Verifier,
         VisualJudgeVerifier,
     ]
@@ -1289,6 +1315,7 @@ def test_default_verifiers_factory_judges_visual_only_skill_missing_warns(
         DataInUseVerifier,
         NavCoverageVerifier,
         NavigationPrimitiveUsageVerifier,
+        CartSurfaceConformanceVerifier,
         Routes200Verifier,
     ]
     visual_warnings = [
@@ -1347,6 +1374,7 @@ def test_default_verifiers_factory_sc5_judges_visual_and_quality_excludes_cross_
         "data_in_use",
         "nav_coverage",
         "navigation_primitive_usage",
+        "cart_surface_conformance",
         "routes_200",
     ):
         assert names_by_count.get(rule_name) == 1, f"missing rule verifier: {rule_name}"
@@ -1388,6 +1416,7 @@ def test_default_verifiers_factory_sc5_judges_none_registers_zero_llm_judges(
         "data_in_use",
         "nav_coverage",
         "navigation_primitive_usage",
+        "cart_surface_conformance",
         "routes_200",
     ):
         assert names.count(rule_name) == 1, f"missing rule verifier: {rule_name}"
