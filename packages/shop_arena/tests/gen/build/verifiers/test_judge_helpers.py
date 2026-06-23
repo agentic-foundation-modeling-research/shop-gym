@@ -139,7 +139,7 @@ def test_render_source_blocks_walks_and_truncates(tmp_path: Path) -> None:
         max_bytes_per_file=64,
         max_total_bytes=10_000,
     )
-    assert reviewed == 2  # noqa: PLR2004 -- two scannable files
+    assert reviewed == 2
     assert elided == 0
     assert "hydrogen/app/Big.tsx" in blocks
     assert "bytes elided" in blocks  # truncation marker

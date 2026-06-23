@@ -52,7 +52,10 @@ from shop_arena.gen.build.sidecar import (
     sidecar_lifecycle,
 )
 from shop_arena.gen.config import ShopGenConfig
-from shop_arena.gen.data_validation.hosting_check import HostingValidationError, find_shop_backend_cli
+from shop_arena.gen.data_validation.hosting_check import (
+    HostingValidationError,
+    find_shop_backend_cli,
+)
 from shop_arena.gen.pipeline import list_steps
 from shop_arena.gen.steps.base import Step, StepContext, StepInput
 

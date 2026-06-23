@@ -323,7 +323,10 @@ function parseMultipartJsonPart(part: string): MultipartExecutionPart {
   if (headerEnd < 0) {
     throw new Error(`Malformed multipart response part: ${part}`);
   }
-  const jsonText = part.slice(headerEnd + 2).replace(/\n--$/, '').trim();
+  const jsonText = part
+    .slice(headerEnd + 2)
+    .replace(/\n--$/, '')
+    .trim();
   return JSON.parse(jsonText) as MultipartExecutionPart;
 }
 
@@ -1010,10 +1013,7 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
     `);
     expect(addResult.errors).toBeUndefined();
     const afterAdd = await readExtras(run, cart.id);
-    expect(afterAdd.appliedGiftCards.map((card) => card.lastCharacters)).toEqual([
-      '1234',
-      '5678',
-    ]);
+    expect(afterAdd.appliedGiftCards.map((card) => card.lastCharacters)).toEqual(['1234', '5678']);
 
     const removeId = afterAdd.appliedGiftCards[0]?.id;
     if (removeId === undefined) throw new Error('expected first gift-card id');

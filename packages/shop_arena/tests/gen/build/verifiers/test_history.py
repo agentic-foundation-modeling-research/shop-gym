@@ -113,7 +113,7 @@ def test_count_prior_task_fails_counts_three_consecutive_fails(tmp_path: Path) -
             verifier_name="visual_judge",
             task_id="gen_homepage",
         )
-        == 3  # noqa: PLR2004 -- mirrors fixture count
+        == 3
     )
 
 
@@ -137,7 +137,7 @@ def test_count_prior_task_fails_counts_five_with_mixed_history(tmp_path: Path) -
             verifier_name="visual_judge",
             task_id="gen_homepage",
         )
-        == 5  # noqa: PLR2004 -- mirrors fixture count
+        == 5
     )
 
 
