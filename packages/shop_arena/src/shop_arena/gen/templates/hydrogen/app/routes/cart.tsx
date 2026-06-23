@@ -55,7 +55,9 @@ export async function action({request, context}: Route.ActionArgs) {
         formGiftCardCode ? [formGiftCardCode] : []
       ) as string[];
 
-      result = await cart.addGiftCardCodes(giftCardCodes);
+      result = cart.getCartId()
+        ? await cart.addGiftCardCodes(giftCardCodes)
+        : await cart.create({giftCardCodes});
       break;
     }
     case CartForm.ACTIONS.GiftCardCodesRemove: {

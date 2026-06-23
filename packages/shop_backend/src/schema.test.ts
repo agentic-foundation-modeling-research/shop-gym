@@ -50,6 +50,12 @@ describe('createSandboxSchema', () => {
     }
   });
 
+  it('declares Hydrogen client directives used by cart helpers', () => {
+    const schema = createSandboxSchema();
+    expect(schema.getDirective('inContext')).toBeDefined();
+    expect(schema.getDirective('defer')).toBeDefined();
+  });
+
   it('exposes the cart mutations from the v0.1 surface', () => {
     const schema = createSandboxSchema();
     const mutationType = schema.getMutationType();
@@ -66,6 +72,8 @@ describe('createSandboxSchema', () => {
       'cartNoteUpdate',
       'cartAttributesUpdate',
       'cartGiftCardCodesUpdate',
+      'cartGiftCardCodesAdd',
+      'cartGiftCardCodesRemove',
     ]) {
       expect(fields[name], `Mutation.${name} missing`).toBeDefined();
     }

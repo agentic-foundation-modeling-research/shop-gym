@@ -241,6 +241,16 @@ interface ExecutionResult {
   readonly errors?: readonly unknown[];
 }
 
+interface IncrementalExecutionPatch {
+  readonly data?: unknown;
+  readonly errors?: readonly unknown[];
+  readonly path?: readonly (string | number)[];
+}
+
+interface MultipartExecutionPart extends ExecutionResult {
+  readonly incremental?: readonly IncrementalExecutionPatch[];
+}
+
 function runWith(carts: CartStore) {
   const data = loadShopData(FIXTURE_DIR);
   const yoga = createYoga({
@@ -253,8 +263,102 @@ function runWith(carts: CartStore) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ query: source }),
     });
-    return (await response.json()) as ExecutionResult;
+    return await readExecutionResult(response);
   };
+}
+
+async function readExecutionResult(response: {
+  readonly headers: { get(name: string): string | null };
+  json(): Promise<unknown>;
+  text(): Promise<string>;
+}): Promise<ExecutionResult> {
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.startsWith('multipart/mixed')) {
+    return (await response.json()) as ExecutionResult;
+  }
+  return mergeMultipartExecution(contentType, await response.text());
+}
+
+function mergeMultipartExecution(contentType: string, body: string): ExecutionResult {
+  const boundary = multipartBoundary(contentType);
+  const result: { data?: unknown; errors?: readonly unknown[] } = {};
+  for (const part of multipartJsonParts(body, boundary)) {
+    if (part.errors !== undefined) {
+      result.errors = part.errors;
+    }
+    if (part.data !== undefined) {
+      result.data = mergeAtPath(result.data, [], part.data);
+    }
+    for (const patch of part.incremental ?? []) {
+      if (patch.errors !== undefined) {
+        result.errors = patch.errors;
+      }
+      if (patch.data !== undefined && patch.path !== undefined) {
+        result.data = mergeAtPath(result.data, patch.path, patch.data);
+      }
+    }
+  }
+  return result;
+}
+
+function multipartBoundary(contentType: string): string {
+  const match = /boundary="?([^";]+)"?/.exec(contentType);
+  if (match?.[1] === undefined) {
+    throw new Error(`Missing multipart boundary in content type: ${contentType}`);
+  }
+  return match[1];
+}
+
+function multipartJsonParts(body: string, boundary: string): MultipartExecutionPart[] {
+  const delimiter = `--${boundary}`;
+  return body
+    .split(delimiter)
+    .map((part) => part.replaceAll('\r\n', '\n').trim())
+    .filter((part) => part.length > 0 && part !== '--')
+    .map(parseMultipartJsonPart);
+}
+
+function parseMultipartJsonPart(part: string): MultipartExecutionPart {
+  const headerEnd = part.indexOf('\n\n');
+  if (headerEnd < 0) {
+    throw new Error(`Malformed multipart response part: ${part}`);
+  }
+  const jsonText = part.slice(headerEnd + 2).replace(/\n--$/, '').trim();
+  return JSON.parse(jsonText) as MultipartExecutionPart;
+}
+
+function mergeAtPath(
+  current: unknown,
+  path: readonly (string | number)[],
+  patch: unknown,
+): unknown {
+  const [head, ...tail] = path;
+  if (head === undefined) {
+    return mergeValues(current, patch);
+  }
+  if (typeof head === 'number') {
+    const copy = Array.isArray(current) ? [...current] : [];
+    copy[head] = mergeAtPath(copy[head], tail, patch);
+    return copy;
+  }
+  const copy = isRecord(current) ? { ...current } : {};
+  copy[head] = mergeAtPath(copy[head], tail, patch);
+  return copy;
+}
+
+function mergeValues(current: unknown, patch: unknown): unknown {
+  if (!isRecord(current) || !isRecord(patch)) {
+    return patch;
+  }
+  const merged: Record<string, unknown> = { ...current };
+  for (const [key, value] of Object.entries(patch)) {
+    merged[key] = mergeValues(merged[key], value);
+  }
+  return merged;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 describe('cartResolvers — Query.cart', () => {
@@ -722,6 +826,38 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
     ]);
   });
 
+  it('cartDiscountCodesUpdate accepts Hydrogen deferred cart fragments', async () => {
+    const carts = new CartStore();
+    const cart = carts.create();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartDiscountCodesUpdate(
+          cartId: "${cart.id}"
+          discountCodes: ["SUMMER10"]
+        ) {
+          ... @defer {
+            cart {
+              discountCodes { code applicable }
+            }
+          }
+          userErrors { code field message }
+          warnings { code message target }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      cartDiscountCodesUpdate: {
+        cart: {
+          discountCodes: [{ code: 'SUMMER10', applicable: true }],
+        },
+        userErrors: [],
+        warnings: [],
+      },
+    });
+  });
+
   it('cartDiscountCodesUpdate with null clears stored codes', async () => {
     const carts = new CartStore();
     const cart = carts.create({ discountCodes: ['SAVE5'] });
@@ -856,6 +992,44 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
     );
     // GIDs are deterministic per code.
     expect(extras.appliedGiftCards[0]?.id).not.toBe(extras.appliedGiftCards[1]?.id);
+  });
+
+  it('cartGiftCardCodesAdd and cartGiftCardCodesRemove match Hydrogen helper mutations', async () => {
+    const carts = new CartStore();
+    const cart = carts.create({ giftCardCodes: ['GIFT-ABCD-1234'] });
+    const run = runWith(carts);
+    const addResult = await run(/* GraphQL */ `
+      mutation {
+        cartGiftCardCodesAdd(
+          cartId: "${cart.id}"
+          giftCardCodes: ["GIFT-ABCD-1234", "GIFT-WXYZ-5678"]
+        ) {
+          ${CART_EXTRA_FIELDS}
+        }
+      }
+    `);
+    expect(addResult.errors).toBeUndefined();
+    const afterAdd = await readExtras(run, cart.id);
+    expect(afterAdd.appliedGiftCards.map((card) => card.lastCharacters)).toEqual([
+      '1234',
+      '5678',
+    ]);
+
+    const removeId = afterAdd.appliedGiftCards[0]?.id;
+    if (removeId === undefined) throw new Error('expected first gift-card id');
+    const removeResult = await run(/* GraphQL */ `
+      mutation {
+        cartGiftCardCodesRemove(
+          cartId: "${cart.id}"
+          appliedGiftCardIds: ["${removeId}"]
+        ) {
+          ${CART_EXTRA_FIELDS}
+        }
+      }
+    `);
+    expect(removeResult.errors).toBeUndefined();
+    const afterRemove = await readExtras(run, cart.id);
+    expect(afterRemove.appliedGiftCards.map((card) => card.lastCharacters)).toEqual(['5678']);
   });
 
   it('extra-field mutations return INVALID userError when cartId is unknown', async () => {

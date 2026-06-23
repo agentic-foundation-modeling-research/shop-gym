@@ -44,6 +44,7 @@ import type {
 } from '../__generated__/resolvers-types.js';
 import { type Connection, paginate } from '../data/pagination.js';
 import type { Collection, Product, SandboxShopData } from '../data/types.js';
+import { encodeVariantAvailability, encodeVariantExistence } from '../encoded_variants.js';
 import {
   type CollectionNode,
   type ImageNode,
@@ -137,6 +138,12 @@ export const productResolvers = {
   Product: {
     images: (parent: ProductNode, args: Partial<ProductImagesArgs>): Connection<ImageNode> =>
       paginate(parent.images, args),
+
+    encodedVariantExistence: (parent: ProductNode): string =>
+      encodeVariantExistence(parent.options, parent.variants),
+
+    encodedVariantAvailability: (parent: ProductNode): string =>
+      encodeVariantAvailability(parent.options, parent.variants),
 
     variants: (
       parent: ProductNode,

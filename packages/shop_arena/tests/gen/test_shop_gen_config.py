@@ -24,6 +24,7 @@ from shop_arena.gen.config import (
     DEFAULT_FINAL_EVAL_MAX_COLLECTIONS,
     DEFAULT_FINAL_EVAL_MAX_PAGES,
     DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION,
+    DEFAULT_FINAL_EVAL_VISUAL_MAX_CONCURRENCY,
     DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_IMAGE_CONCURRENCY,
@@ -114,6 +115,7 @@ def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
     assert cfg.final_eval_products_per_collection == DEFAULT_FINAL_EVAL_PRODUCTS_PER_COLLECTION
     assert cfg.final_eval_max_pages == DEFAULT_FINAL_EVAL_MAX_PAGES
     assert cfg.final_eval_visual_timeout_s == DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S
+    assert cfg.final_eval_visual_max_concurrency == DEFAULT_FINAL_EVAL_VISUAL_MAX_CONCURRENCY
 
 
 def test_default_model_for_returns_per_runtime_pinned_opus() -> None:
@@ -452,6 +454,28 @@ def test_shop_gen_config_accepts_positive_final_eval_visual_timeout(
     seed = _seed(tmp_path)
     cfg = ShopGenConfig(seeds=[seed], final_eval_visual_timeout_s=good)
     assert cfg.final_eval_visual_timeout_s == good
+
+
+@pytest.mark.parametrize("bad", [0, -1, -3])
+def test_shop_gen_config_rejects_non_positive_final_eval_visual_max_concurrency(
+    tmp_path: Path,
+    bad: int,
+) -> None:
+    """Spec §5.6: the decoupled sweep fan-out width must be strictly positive."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], final_eval_visual_max_concurrency=bad)
+
+
+@pytest.mark.parametrize("good", [1, 2, 4, 16])
+def test_shop_gen_config_accepts_positive_final_eval_visual_max_concurrency(
+    tmp_path: Path,
+    good: int,
+) -> None:
+    """Positive sweep fan-out widths round-trip and stay decoupled from visual_fix."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], final_eval_visual_max_concurrency=good)
+    assert cfg.final_eval_visual_max_concurrency == good
 
 # --------------------------------------------------------------------------- #
 # ShopGenConfig — judges validation (impl plan T3.1, spec §5.5)

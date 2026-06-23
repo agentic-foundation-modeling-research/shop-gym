@@ -554,6 +554,8 @@ def test_run_resolves_runtime_from_config_when_omitted(tmp_path: Path) -> None:
     """Default invocation builds a runtime from ``config.runtime`` + ``config.model``."""
     [seed] = _make_seeds(tmp_path, 1)
     out_dir = tmp_path / "shop"
+    skill_dir = tmp_path / "node_modules" / "pi-playwright" / "skills" / "playwright-browser"
+    skill_dir.mkdir(parents=True)
     config = ShopGenConfig(
         seeds=[seed],
         out_dir=out_dir,
@@ -574,6 +576,7 @@ def test_run_resolves_runtime_from_config_when_omitted(tmp_path: Path) -> None:
 
     with (
         patch.object(pipeline, "get_runtime", fake_get_runtime),
+        patch.object(pipeline, "resolve_playwright_skill_dir", lambda: skill_dir),
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
@@ -582,7 +585,13 @@ def test_run_resolves_runtime_from_config_when_omitted(tmp_path: Path) -> None:
     ):
         run(config)
 
-    assert captured == {"name": "pi", "kwargs": {"model": "anthropic/claude-opus-4-7"}}
+    assert captured == {
+        "name": "pi",
+        "kwargs": {
+            "model": "anthropic/claude-opus-4-7",
+            "skill_paths": [skill_dir],
+        },
+    }
     assert isinstance(sink["runtime"], _StubCompleter)
     assert sink["runtime"].label == "resolved"
 
@@ -601,6 +610,7 @@ def test_run_drops_model_kwarg_when_config_model_is_none(tmp_path: Path) -> None
 
     with (
         patch.object(pipeline, "get_runtime", fake_get_runtime),
+        patch.object(pipeline, "resolve_playwright_skill_dir", lambda: None),
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
@@ -610,6 +620,37 @@ def test_run_drops_model_kwarg_when_config_model_is_none(tmp_path: Path) -> None
         run(config)
 
     assert captured_kwargs == {}
+
+
+def test_run_drops_skill_paths_for_non_pi_runtime(tmp_path: Path) -> None:
+    """Only Pi receives explicit playwright skill paths from the pipeline runtime."""
+    [seed] = _make_seeds(tmp_path, 1)
+    out_dir = tmp_path / "shop"
+    config = ShopGenConfig(
+        seeds=[seed],
+        out_dir=out_dir,
+        runtime="claude_code",
+        model="opus",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_get_runtime(name: str, **kwargs: object) -> _StubCompleter:
+        captured["name"] = name
+        captured["kwargs"] = kwargs
+        return _StubCompleter("resolved")
+
+    with (
+        patch.object(pipeline, "get_runtime", fake_get_runtime),
+        patch.object(pipeline, "resolve_playwright_skill_dir", lambda: tmp_path),
+        patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
+        patch.object(pipeline, "_register_data_validation", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
+    ):
+        run(config)
+
+    assert captured == {"name": "claude_code", "kwargs": {"model": "opus"}}
 
 
 def test_build_loop_runtime_factory_wires_pi_playwright_skill(
@@ -850,7 +891,11 @@ def test_register_final_eval_threads_config_caps_into_step(tmp_path: Path) -> No
         final_eval_products_per_collection=_T54_PRODUCTS_PER_COLLECTION,
         final_eval_max_pages=_T54_MAX_PAGES,
         final_eval_visual_timeout_s=_T54_VISUAL_TIMEOUT_S,
-        visual_judge_max_concurrency=_T54_MAX_CONCURRENCY,
+        # The sweep reads ``final_eval_visual_max_concurrency``, not the
+        # in-loop ``visual_judge_max_concurrency``; set them apart so the
+        # assertion below proves the step picked up the decoupled knob.
+        visual_judge_max_concurrency=_T54_MAX_CONCURRENCY + 1,
+        final_eval_visual_max_concurrency=_T54_MAX_CONCURRENCY,
         visual_judge_pass_threshold=_T54_PASS_THRESHOLD,
     )
     registry = Registry()

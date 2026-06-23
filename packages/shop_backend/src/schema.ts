@@ -26,6 +26,7 @@ export type SandboxSchemaResolvers = NonNullable<
  */
 const typeDefs = /* GraphQL */ `
   directive @inContext(language: LanguageCode, country: CountryCode, visitorConsent: VisitorConsent) on QUERY | MUTATION
+  directive @defer(if: Boolean = true, label: String) on FRAGMENT_SPREAD | INLINE_FRAGMENT
 
   input VisitorConsent {
     marketing: Boolean
@@ -97,6 +98,8 @@ const typeDefs = /* GraphQL */ `
     cartNoteUpdate(cartId: ID!, note: String!): CartNoteUpdatePayload!
     cartAttributesUpdate(cartId: ID!, attributes: [AttributeInput!]!): CartAttributesUpdatePayload!
     cartGiftCardCodesUpdate(cartId: ID!, giftCardCodes: [String!]!): CartGiftCardCodesUpdatePayload!
+    cartGiftCardCodesAdd(cartId: ID!, giftCardCodes: [String!]!): CartGiftCardCodesAddPayload!
+    cartGiftCardCodesRemove(cartId: ID!, appliedGiftCardIds: [ID!]!): CartGiftCardCodesRemovePayload!
   }
 
   # ── Shop ──────────────────────────────────────────────────────────────────
@@ -432,6 +435,7 @@ const typeDefs = /* GraphQL */ `
   input CartInput {
     lines: [CartLineInput!]
     discountCodes: [String!]
+    giftCardCodes: [String!]
     attributes: [AttributeInput!]
     note: String
     buyerIdentity: CartBuyerIdentityInput
@@ -518,6 +522,18 @@ const typeDefs = /* GraphQL */ `
     warnings: [CartWarning!]!
   }
 
+  type CartGiftCardCodesAddPayload {
+    cart: Cart
+    userErrors: [CartUserError!]!
+    warnings: [CartWarning!]!
+  }
+
+  type CartGiftCardCodesRemovePayload {
+    cart: Cart
+    userErrors: [CartUserError!]!
+    warnings: [CartWarning!]!
+  }
+
   type CartUserError {
     code: String
     field: [String!]
@@ -544,6 +560,7 @@ const typeDefs = /* GraphQL */ `
   # ── Blog / Article ────────────────────────────────────────────────────────
 
   type Blog {
+    id: ID!
     handle: String!
     title: String!
     seo: SEO!

@@ -244,6 +244,19 @@ def test_visual_judge_prompt_calls_out_pre_filtered_capability_slice() -> None:
     )
 
 
+def test_visual_judge_prompt_forbids_networkidle_and_run_code() -> None:
+    """The rendered-page judge must avoid known hanging browser patterns."""
+    body = load_visual_judge_prompt().lower()
+    assert "networkidle" in body, (
+        "visual_judge.md must explicitly warn against networkidle waits; "
+        "Hydrogen pages can keep background requests open until the verifier times out."
+    )
+    assert "run-code" in body, (
+        "visual_judge.md must steer the agent away from raw run-code navigation "
+        "and toward the playwright skill's bounded built-in commands."
+    )
+
+
 # ---------------------------------------------------------------------------
 # `prompts/fixes/` — per-task pitfall + reuse rules read by the executor at
 # task-start (execute.md §2 step 5).
@@ -314,6 +327,8 @@ def test_gen_cart_search_fix_prompt_warns_against_forced_cart_drawers(
     assert "slide-in side drawer or modal" in body
     assert '`<Aside type="cart">`' in body
     assert "navigate to `/cart`" in body
+    assert ".overlay > aside" in body
+    assert "visually offscreen" in body
 
 
 def test_copy_fixes_into_is_idempotent_for_resume(tmp_path: Path) -> None:

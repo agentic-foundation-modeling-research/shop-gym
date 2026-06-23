@@ -441,10 +441,31 @@ class _LoopState:
         try:
             after = _parse_workspace_plan(self._workspace)
             plan_diff = diff(before, after)
-        except InvalidPlanError:
-            self._final_status = FinalStatus.INVALID_PLAN
+        except InvalidPlanError as exc:
+            # The executor left `plan.md` unparseable (e.g. a malformed
+            # marker line) or illegally resurrected a `[x]` task. Rather
+            # than abort the whole run — which would strand every
+            # untouched downstream task — restore the pre-iteration
+            # snapshot, force-block the offending task, and continue with
+            # the next selectable one. Mirrors the protocol-violation
+            # recovery below.
+            _log.warning(
+                "executor iteration %s left an invalid plan on task=%s: %s; "
+                "restoring snapshot, marking BLOCKED, and continuing",
+                exec_id,
+                selected.id,
+                exc,
+            )
+            _force_block_selected_task(
+                workspace=self._workspace,
+                plan_before_path=exec_dir / _PLAN_BEFORE_FILENAME,
+                selected_task_id=selected.id,
+                reasons=(str(exc),),
+                note_kind="invalid_plan",
+            )
+            self._skipped_task_ids.add(selected.id)
             self._rewrite_run_summary()
-            return False
+            return True
 
         plan_protocol_result = run_protocol_checks(
             iter_id=exec_id,
@@ -689,6 +710,7 @@ def _force_block_selected_task(
     plan_before_path: Path,
     selected_task_id: str,
     reasons: tuple[str, ...],
+    note_kind: str = "protocol_violation",
 ) -> None:
     """Restore `plan.md` from `plan.before.md` and force-mark a task `[!]` BLOCKED.
 
@@ -696,19 +718,27 @@ def _force_block_selected_task(
     are reversed by copying the pre-iteration snapshot back into place;
     the harness then rewrites the line that owns ``selected_task_id`` so
     its status marker becomes ``!`` and its trailing note records the
-    protocol violation. The next iteration sees the task BLOCKED and the
-    executor loop picks a different task.
+    failure. The next iteration sees the task BLOCKED and the executor
+    loop picks a different task.
 
     Falls back to writing a minimal valid plan.md when ``plan.before.md``
     is missing or the target line cannot be located — in either case the
     next iteration will re-plan rather than re-pick the same broken task.
+
+    Args:
+        workspace: Run workspace owning the live ``plan.md``.
+        plan_before_path: Snapshot taken before the failing iteration.
+        selected_task_id: Id of the task to force-block.
+        reasons: Short diagnostics joined into the task's trailing note.
+        note_kind: Note prefix recording why the task was blocked
+            (e.g. ``"protocol_violation"`` or ``"invalid_plan"``).
     """
     if plan_before_path.is_file():
         text = plan_before_path.read_text(encoding="utf-8")
     else:
         text = workspace.plan_md.read_text(encoding="utf-8")
 
-    note = "protocol_violation: " + (", ".join(reasons) if reasons else "unspecified")
+    note = f"{note_kind}: " + (", ".join(reasons) if reasons else "unspecified")
     new_lines: list[str] = []
     rewritten = False
     for line in text.splitlines():

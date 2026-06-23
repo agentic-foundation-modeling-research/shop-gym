@@ -33,6 +33,7 @@ from harness.plan import TaskStatus, parse
 from harness.plan.parser import InvalidPlanError
 from shop_arena.gen.build.redo import RedoError, append_redo_task
 from shop_arena.gen.config import (
+    DEFAULT_FINAL_EVAL_VISUAL_MAX_CONCURRENCY,
     DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
     DEFAULT_IMAGE_BACKEND,
     DEFAULT_IMAGE_CONCURRENCY,
@@ -118,8 +119,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="shop-gen",
         description=(
-            "Generate a SandboxShop from one or more ``shop_arena.explore`` "
-            "seed manuals."
+            "Generate a SandboxShop from one or more ``shop_arena.explore`` seed manuals."
         ),
     )
     parser.add_argument(
@@ -275,6 +275,19 @@ def _build_parser() -> argparse.ArgumentParser:
             "Per-bucket wall-clock budget for the final-eval visual sweep's nested "
             "``runtime.run_iteration`` calls (spec \u00a75.6). Strictly positive. "
             f"Default: {DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S}."
+        ),
+    )
+    parser.add_argument(
+        "--final-eval-visual-max-concurrency",
+        type=int,
+        default=DEFAULT_FINAL_EVAL_VISUAL_MAX_CONCURRENCY,
+        metavar="N",
+        help=(
+            "Page-bucket fan-out worker count for the final-eval visual sweep, "
+            "decoupled from ``--visual-judge-max-concurrency`` so the "
+            "all-buckets-at-once sweep runs fewer concurrent headless-Chrome "
+            "instances. Strictly positive. "
+            f"Default: {DEFAULT_FINAL_EVAL_VISUAL_MAX_CONCURRENCY}."
         ),
     )
     parser.add_argument(
@@ -471,6 +484,7 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
         visual_judge_pass_threshold=args.visual_judge_pass_threshold,
         visual_judge_max_concurrency=args.visual_judge_max_concurrency,
         final_eval_visual_timeout_s=args.final_eval_visual_timeout,
+        final_eval_visual_max_concurrency=args.final_eval_visual_max_concurrency,
         judges=judges,
     )
 

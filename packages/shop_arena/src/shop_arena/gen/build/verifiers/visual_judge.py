@@ -440,9 +440,7 @@ class VisualJudgeVerifier:
                     "visual_judge runtime invocation timed out after %.1fs",
                     self._timeout_s,
                 )
-                timeout_reason = (
-                    f"agent iteration exceeded the {self._timeout_s:.0f}s budget"
-                )
+                timeout_reason = f"agent iteration exceeded the {self._timeout_s:.0f}s budget"
                 parsed = parse_visual_verdict(
                     work_dir / "verdict.json",
                     pass_threshold=self._pass_threshold,
@@ -526,9 +524,7 @@ class VisualJudgeVerifier:
             else 0
         )
         screenshots_rel = (
-            str(screenshots_dir.relative_to(ctx.run_dir))
-            if screenshots_dir.is_dir()
-            else None
+            str(screenshots_dir.relative_to(ctx.run_dir)) if screenshots_dir.is_dir() else None
         )
 
         lines: list[str] = [f"`visual_judge` timed out: {timeout_reason}."]
@@ -880,6 +876,24 @@ def _run_bucket(
             timeout_s=timeout_s,
             pass_threshold=pass_threshold,
         )
+    except subprocess.TimeoutExpired as exc:
+        _log.warning(
+            "visual_judge: bucket %s runtime invocation timed out after %.1fs",
+            spec.bucket,
+            timeout_s,
+        )
+        work_dir = spec.parent_dir / "work"
+        verdict = parse_visual_verdict(
+            work_dir / "verdict.json",
+            pass_threshold=pass_threshold,
+        )
+        return _BucketOutcome(
+            bucket=spec.bucket,
+            routes=spec.routes,
+            work_dir=work_dir,
+            verdict=verdict,
+            error=f"runtime timed out after {exc.timeout}s",
+        )
     except Exception as exc:
         _log.warning(
             "visual_judge: bucket %s runtime invocation raised: %s: %s",
@@ -937,6 +951,8 @@ def _merge_bucket_outcomes(outcomes: list[_BucketOutcome]) -> _MergedVerdict:
     for outcome in outcomes:
         if outcome.verdict is not None:
             usable.append(outcome)
+            if outcome.error is not None:
+                errored.append(outcome)
         elif outcome.error == "no routes resolved for bucket":
             skipped.append(outcome)
         else:
@@ -1082,7 +1098,7 @@ def _serialise_outcome(outcome: _BucketOutcome) -> dict[str, Any]:
         "category_scores": dict(outcome.verdict.category_scores),
         "pages_judged": outcome.verdict.pages_judged,
         "issue_count": len(outcome.verdict.issues),
-        "error": None,
+        "error": outcome.error,
     }
 
 

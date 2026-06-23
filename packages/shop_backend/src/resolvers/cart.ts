@@ -44,6 +44,8 @@ import type {
   MutationCartBuyerIdentityUpdateArgs,
   MutationCartCreateArgs,
   MutationCartDiscountCodesUpdateArgs,
+  MutationCartGiftCardCodesAddArgs,
+  MutationCartGiftCardCodesRemoveArgs,
   MutationCartGiftCardCodesUpdateArgs,
   MutationCartLinesAddArgs,
   MutationCartLinesRemoveArgs,
@@ -190,6 +192,9 @@ export class CartStore {
     if (input?.discountCodes !== undefined && input.discountCodes !== null) {
       this.setDiscountCodes(cart, input.discountCodes);
     }
+    if (input?.giftCardCodes !== undefined && input.giftCardCodes !== null) {
+      this.setGiftCardCodes(cart, input.giftCardCodes);
+    }
     if (input?.attributes !== undefined && input.attributes !== null) {
       this.setAttributes(cart, input.attributes);
     }
@@ -289,6 +294,26 @@ export class CartStore {
    */
   setGiftCardCodes(cart: CartState, codes: readonly string[]): void {
     cart.giftCardCodes = [...codes];
+    this.persist();
+  }
+
+  /** Append new gift-card codes, preserving existing codes and skipping duplicates. */
+  addGiftCardCodes(cart: CartState, codes: readonly string[]): void {
+    for (const code of codes) {
+      if (!cart.giftCardCodes.includes(code)) {
+        cart.giftCardCodes.push(code);
+      }
+    }
+    this.persist();
+  }
+
+  /** Remove applied gift cards by their Storefront API AppliedGiftCard IDs. */
+  removeGiftCardCodes(cart: CartState, appliedGiftCardIds: readonly string[]): void {
+    if (appliedGiftCardIds.length === 0) return;
+    const ids = new Set(appliedGiftCardIds);
+    cart.giftCardCodes = cart.giftCardCodes.filter(
+      (code) => !ids.has(gid('AppliedGiftCard', code)),
+    );
     this.persist();
   }
 
@@ -756,6 +781,28 @@ export const cartResolvers = {
       const state = ctx.carts.get(args.cartId);
       if (state === undefined) return cartNotFoundPayload();
       ctx.carts.setGiftCardCodes(state, args.giftCardCodes);
+      return successPayload(state, ctx);
+    },
+
+    cartGiftCardCodesAdd: (
+      _parent: unknown,
+      args: MutationCartGiftCardCodesAddArgs,
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.addGiftCardCodes(state, args.giftCardCodes);
+      return successPayload(state, ctx);
+    },
+
+    cartGiftCardCodesRemove: (
+      _parent: unknown,
+      args: MutationCartGiftCardCodesRemoveArgs,
+      ctx: ResolverContext,
+    ): CartMutationPayloadNode => {
+      const state = ctx.carts.get(args.cartId);
+      if (state === undefined) return cartNotFoundPayload();
+      ctx.carts.removeGiftCardCodes(state, args.appliedGiftCardIds);
       return successPayload(state, ctx);
     },
   },

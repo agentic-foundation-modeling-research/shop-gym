@@ -213,7 +213,7 @@ function CartGiftCard({
               >
                 <code>***{giftCard.lastCharacters}</code>
                 &nbsp;
-                <Money data={giftCard.amountUsed} />
+                {giftCard.amountUsed ? <Money data={giftCard.amountUsed} /> : null}
               </RemoveGiftCardForm>
             </dd>
           ))}

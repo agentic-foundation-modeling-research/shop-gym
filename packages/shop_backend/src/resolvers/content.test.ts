@@ -92,6 +92,7 @@ describe('contentResolvers — Query.blog(s)', () => {
     const result = await run(/* GraphQL */ `
       {
         blog(handle: "news") {
+          id
           handle
           title
           articles {
@@ -115,6 +116,7 @@ describe('contentResolvers — Query.blog(s)', () => {
     expect(result.errors).toBeUndefined();
     expect(result.data).toEqual({
       blog: {
+        id: 'gid://shopify/Blog/4bc7bc46',
         handle: 'news',
         title: 'Mock Pet Foods News',
         articles: {

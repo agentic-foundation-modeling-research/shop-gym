@@ -17,6 +17,16 @@ header-anchored mini-cart/popover, or both, depending on the manual.
 The full `/cart` page remains the editing surface unless the manual
 explicitly says quantity/remove controls live in the drawer.
 
+If the manual does call for a custom drawer, either use the template's
+existing `<Aside type="cart">` primitive or give the custom drawer
+markup and CSS a completely separate structure. Do not mount a custom
+cart drawer as `.overlay > aside`: the template's base Aside CSS owns
+that selector and will override custom positioning, leaving the drawer
+expanded in state but visually offscreen. If you need custom markup,
+use a non-`aside` panel element or write selectors specific enough to
+override `right`, `top`, `height`, and `transform`, then verify the
+drawer is visible after clicking the header cart CTA.
+
 ## Keep the local `/checkout` route as the cart CTA target
 
 The template's `CartSummary` ships with `<CartCheckoutActions

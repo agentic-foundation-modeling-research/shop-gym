@@ -11,6 +11,18 @@ browser and render every URL listed below at two viewports — desktop
 ``./screenshots/<slug>__<viewport>.png`` (use the route's last path
 segment as the slug, or ``home`` for ``/``).
 
+## Browser command guardrails
+
+Use the playwright skill's built-in navigation, viewport, and
+screenshot commands. Do not use ``run-code`` for page navigation or
+screenshot capture. In particular, do not wait for ``networkidle``:
+Hydrogen pages can keep analytics, HMR, or streaming requests open and
+``networkidle`` can hang until the outer sweep timeout kills you.
+Navigate with a bounded DOM-ready/load wait instead, then capture the
+screenshot. If a route still fails to settle inside the skill command's
+own timeout, write ``./verdict.json`` immediately with a critical issue
+for that route and stop.
+
 ## Judge only what you have rendered
 
 The capabilities slice below has been **pre-filtered** for this
@@ -89,6 +101,14 @@ scale:
   merged verdict is advisory only.
 - ``pages_judged`` is the integer count of distinct
   (route, viewport) pairs you rendered and judged.
+
+## Write `verdict.json` early and update it as you go
+
+The sweep's wall-clock budget is finite. Write a first draft of
+``./verdict.json`` after the **first** successful render so a partial
+verdict survives if you run out of time, then overwrite it with the
+final body once every route has been rendered. The sweep reads whatever
+is on disk when the bucket iteration ends.
 
 Verdict schema (§9.3):
 

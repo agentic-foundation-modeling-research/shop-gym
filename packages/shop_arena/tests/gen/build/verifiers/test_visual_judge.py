@@ -602,7 +602,6 @@ def test_dev_server_torn_down_on_runtime_exception(
     assert runtime.calls == 1
 
 
-
 def test_run_returns_fail_on_runtime_timeout_with_partial_verdict(
     make_visual_ctx: Callable[..., VerifierContext],
     data_dir: Path,
@@ -708,8 +707,13 @@ def test_run_returns_fail_on_runtime_timeout_with_partial_screenshots(
     assert "screenshot(s) survived" in result.feedback
     # Screenshots were promoted into the verifier tree.
     promoted = (
-        ctx.run_dir / "iters" / ctx.iter_id / "checks" / "verifiers" /
-        "visual_judge" / "screenshots"
+        ctx.run_dir
+        / "iters"
+        / ctx.iter_id
+        / "checks"
+        / "verifiers"
+        / "visual_judge"
+        / "screenshots"
     )
     assert (promoted / "home__desktop.png").is_file()
     assert (promoted / "home__mobile.png").is_file()
@@ -749,6 +753,7 @@ def test_run_returns_fail_on_runtime_timeout_with_no_artifacts(
     assert "routes_200" in result.feedback
     assert server.enters == 1
     assert server.exits == 1
+
 
 def test_screenshots_promoted_into_verifier_tree(
     make_visual_ctx: Callable[..., VerifierContext],
@@ -1306,6 +1311,68 @@ def test_visual_fix_fanout_runtime_error_collapses_to_fail(
     per_bucket = {entry["bucket"]: entry for entry in result.details["per_bucket"]}
     assert per_bucket["homepage"]["verdict"] is None
     assert "runtime raised RuntimeError" in (per_bucket["homepage"]["error"] or "")
+
+
+def test_visual_fix_fanout_timeout_recovers_partial_verdict_and_fails(
+    make_visual_ctx: Callable[..., VerifierContext],
+    data_dir: Path,
+) -> None:
+    """Timed-out visual-fix buckets keep partial verdicts but fail the merge."""
+
+    @dataclass
+    class _OneBucketTimesOutAfterVerdict:
+        bodies: dict[str, str]
+        timeout_bucket: str
+        calls: list[Path] = field(default_factory=list)
+
+        def run_iteration(
+            self,
+            *,
+            run_dir: Path,
+            iter_dir: Path,
+            prompt: str,
+            timeout: float,
+        ) -> RuntimeIterationResult:
+            del iter_dir, prompt
+            self.calls.append(run_dir)
+            bucket = run_dir.parent.name
+            body = self.bodies.get(bucket)
+            if body is not None:
+                (run_dir / "verdict.json").write_text(body, encoding="utf-8")
+            if bucket == self.timeout_bucket:
+                raise subprocess.TimeoutExpired(cmd=["pi"], timeout=timeout)
+            now = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+            return RuntimeIterationResult(
+                trajectory=Trajectory(
+                    iter_id="visual-stub",
+                    runtime="stub",
+                    started_at=now,
+                    ended_at=now,
+                    exit_code=0,
+                    prompt_sha256="0" * 64,
+                ),
+            )
+
+    bodies = {bucket: _pass_body(score=8.0) for bucket in _VISUAL_FIX_ACTIVE_BUCKETS}
+    runtime = _OneBucketTimesOutAfterVerdict(
+        bodies=bodies,
+        timeout_bucket="homepage",
+    )
+    verifier = VisualJudgeVerifier(
+        data_dir=data_dir,
+        dev_server_factory=_StubDevServer(),
+    )
+    ctx = make_visual_ctx(runtime=runtime, selected_task_id="visual_fix")
+
+    result = verifier.run(ctx)
+
+    assert result.verdict is Verdict.FAIL
+    assert "homepage" in result.feedback
+    assert "runtime timed out" in result.feedback
+    per_bucket = {entry["bucket"]: entry for entry in result.details["per_bucket"]}
+    assert per_bucket["homepage"]["verdict"] == "pass"
+    assert "runtime timed out" in (per_bucket["homepage"]["error"] or "")
+    assert per_bucket["navigation"]["error"] is None
 
 
 def test_visual_fix_fanout_per_bucket_capability_slice_isolated(

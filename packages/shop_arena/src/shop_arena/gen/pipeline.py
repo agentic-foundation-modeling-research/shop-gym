@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Final
 
 from harness.runtimes import LLMCompleter, get_runtime
+from shop_arena.explore.pipeline import resolve_playwright_skill_dir
 from shop_arena.gen.build import (
     CloneTemplateStep,
     RunBuildHarnessLoopStep,
@@ -264,7 +265,10 @@ def _resolve_runtime(config: ShopGenConfig) -> LLMCompleter:
 
     Mirrors the build-loop's runtime factory: ``model=None`` is dropped
     from the kwargs so the runtime adapter sees no ``model`` keyword on
-    opt-out (spec §5.8 ``--model ""`` semantics). The runtime is
+    opt-out (spec §5.8 ``--model ""`` semantics). For ``pi`` runs, the
+    workspace-pinned ``pi-playwright`` skill is passed explicitly so
+    final-eval visual-sweep iterations can use browser tools while
+    ambient skill discovery remains disabled. The runtime is
     narrowed to :class:`LLMCompleter` because Phase 2 synth steps and
     the Phase 5 judge invoke ``ctx.runtime.complete``; both registered
     runtimes (``pi`` and ``claude_code``) implement the sub-protocol.
@@ -272,7 +276,8 @@ def _resolve_runtime(config: ShopGenConfig) -> LLMCompleter:
     Args:
         config: Run configuration. ``config.runtime`` keys the registry
             lookup; ``config.model`` (when not ``None``) is forwarded as
-            ``--model``.
+            ``--model``. ``pi`` runtimes also receive the resolved
+            playwright skill path when it is available.
 
     Returns:
         A runtime instance narrowed to :class:`LLMCompleter`.
@@ -282,9 +287,20 @@ def _resolve_runtime(config: ShopGenConfig) -> LLMCompleter:
             :class:`LLMCompleter`. Cannot occur with the v0.1
             registry; defensive check for future runtime additions.
     """
-    kwargs: dict[str, str] = {}
+    kwargs: dict[str, object] = {}
     if config.model is not None:
         kwargs["model"] = config.model
+    if config.runtime == "pi":
+        skill_dir = resolve_playwright_skill_dir()
+        if skill_dir is None:
+            _LOGGER.warning(
+                "pi-playwright skill not found for shop-gen runtime; final-eval "
+                "visual browser iterations may fail unless the runtime can "
+                "resolve browser tooling itself.",
+            )
+        else:
+            kwargs["skill_paths"] = [skill_dir]
+            _LOGGER.info("using pi-playwright skill for shop-gen runtime: %s", skill_dir)
     runtime = get_runtime(config.runtime, **kwargs)
     if not isinstance(runtime, LLMCompleter):
         raise TypeError(
@@ -576,7 +592,7 @@ def _register_final_eval(registry: Registry, *, config: ShopGenConfig | None = N
             FinalEvalStep(
                 visual_caps=caps,
                 visual_timeout_s=config.final_eval_visual_timeout_s,
-                visual_max_concurrency=config.visual_judge_max_concurrency,
+                visual_max_concurrency=config.final_eval_visual_max_concurrency,
                 visual_pass_threshold=config.visual_judge_pass_threshold,
             ),
         )

@@ -130,6 +130,9 @@ uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop
 ```
 
 Output lands in `outputs/shops/mock_shop/`. Re-running with the same `--name` resumes from the cached state.
+If the final visual sweep is resource-constrained on your machine, reduce
+browser fan-out with `--final-eval-visual-max-concurrency 1` or `2`; this is
+separate from the in-loop `--visual-judge-max-concurrency` setting.
 
 ### 3. Serve the shop
 

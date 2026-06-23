@@ -92,6 +92,24 @@ describe('productResolvers — Query.product', () => {
     expect(result.errors).toBeUndefined();
     expect(result.data).toEqual({ product: null });
   });
+
+  it('exposes Hydrogen encoded variant fields', async () => {
+    const result = await run(/* GraphQL */ `
+      {
+        product(handle: "aislearena-anti-tick-collar") {
+          encodedVariantExistence
+          encodedVariantAvailability
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({
+      product: {
+        encodedVariantExistence: 'v1_0 1',
+        encodedVariantAvailability: 'v1_0 1',
+      },
+    });
+  });
 });
 
 describe('productResolvers — Query.products', () => {
