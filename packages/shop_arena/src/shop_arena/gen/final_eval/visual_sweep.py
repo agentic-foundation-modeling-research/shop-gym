@@ -42,6 +42,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+import subprocess
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -84,8 +85,14 @@ _REPORT_FILENAME: Final[str] = "report.md"
 _DEFAULT_TIMEOUT_S: Final[float] = 1200.0
 """Wall-clock budget per per-bucket nested iteration (spec §5.6 step 4)."""
 
-_DEFAULT_MAX_CONCURRENCY: Final[int] = 3
-"""Default ``ThreadPoolExecutor`` width (spec §5.2.1 step 5)."""
+_DEFAULT_MAX_CONCURRENCY: Final[int] = 2
+"""Default ``ThreadPoolExecutor`` width (spec §5.2.1 step 5).
+
+Conservative because each worker boots its own headless Chrome via the
+playwright skill; running too many at once can OOM-kill the browser mid-sweep
+and time out every in-flight bucket. Callers (the pipeline) pass an explicit
+``max_concurrency`` from ``ShopGenConfig.final_eval_visual_max_concurrency``.
+"""
 
 _DEFAULT_PASS_THRESHOLD: Final[float] = 7.0
 """Score floor reused from §9.3 for the per-bucket coercion rule."""
@@ -426,6 +433,23 @@ def _run_bucket(
             prompt=spec.rendered_prompt,
             timeout=timeout_s,
         )
+    except subprocess.TimeoutExpired as exc:
+        _log.warning(
+            "visual_sweep: bucket %s runtime invocation timed out after %.1fs",
+            spec.bucket,
+            timeout_s,
+        )
+        verdict = parse_visual_verdict(
+            work / "verdict.json",
+            pass_threshold=pass_threshold,
+        )
+        return BucketResult(
+            bucket=spec.bucket,
+            routes=spec.routes,
+            verdict=verdict,
+            error=f"runtime timed out after {exc.timeout}s",
+            work_dir=work,
+        )
     except Exception as exc:  # pragma: no cover - exercised via stub raising path
         _log.warning(
             "visual_sweep: bucket %s runtime invocation raised: %s: %s",
@@ -535,7 +559,7 @@ def _serialise_result(result: BucketResult) -> dict[str, Any]:
             }
             for issue in result.verdict.issues
         ],
-        "error": None,
+        "error": result.error,
     }
 
 
@@ -566,6 +590,8 @@ def _render_report(results: list[BucketResult], *, base_url: str) -> str:
             continue
         verdict_token = "pass" if result.verdict.verdict is Verdict.PASS else "fail"
         lines.append(f"- verdict: **{verdict_token}**")
+        if result.error is not None:
+            lines.append(f"- error: {result.error}")
         lines.append(f"- score: {result.verdict.score:.2f}")
         lines.append(f"- pages judged: {result.verdict.pages_judged}")
         lines.append(f"- routes: {len(result.routes)}")
@@ -641,6 +667,8 @@ def merge_sweep_to_visual_subtree(report: Mapping[str, Any]) -> dict[str, Any]:
     for entry in per_bucket:
         if entry.get("verdict") is not None:
             usable.append(entry)
+            if entry.get("error") is not None:
+                errored.append(entry)
         elif entry.get("error") == _NO_ROUTES_SKIP_REASON:
             # Empty dataset — drop from numerator and denominator (§9.5).
             continue

@@ -143,8 +143,7 @@ def test_visual_sweep_prompt_describes_advisory_contract() -> None:
     """
     body = load_visual_sweep_prompt().lower()
     assert "advisory" in body, (
-        "visual_sweep.md must orient the reviewer to the advisory "
-        "contract (spec §9.4)."
+        "visual_sweep.md must orient the reviewer to the advisory contract (spec §9.4)."
     )
     assert "human review" in body, (
         "visual_sweep.md must surface the human-review framing "
@@ -193,6 +192,27 @@ def test_visual_sweep_prompt_emits_structured_verdict_schema_slot() -> None:
             f"visual_sweep.md must reference `{token}` from the structured "
             "verdict contract (spec §9.3 + §9.4)."
         )
+
+
+def test_visual_sweep_prompt_forbids_networkidle_and_run_code() -> None:
+    """The final visual sweep must avoid known hanging browser patterns."""
+    body = load_visual_sweep_prompt().lower()
+    assert "networkidle" in body, (
+        "visual_sweep.md must explicitly warn against networkidle waits; "
+        "Hydrogen pages can keep background requests open until the sweep times out."
+    )
+    assert "run-code" in body, (
+        "visual_sweep.md must steer the agent away from raw run-code navigation "
+        "and toward the playwright skill's bounded built-in commands."
+    )
+
+
+def test_visual_sweep_prompt_writes_verdict_early() -> None:
+    """The final sweep prompt must preserve partial verdicts on timeout."""
+    body = load_visual_sweep_prompt().lower()
+    assert "write a first draft" in body
+    assert "./verdict.json" in body
+    assert "successful render" in body
 
 
 def test_load_visual_sweep_prompt_is_cached() -> None:

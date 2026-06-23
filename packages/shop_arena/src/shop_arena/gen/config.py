@@ -170,6 +170,19 @@ the sweep wall-clock therefore scales with the longest bucket, not the sum.
 Must be strictly positive.
 """
 
+DEFAULT_FINAL_EVAL_VISUAL_MAX_CONCURRENCY: Final[int] = 2
+"""Default page-bucket fan-out worker count for the final-eval visual sweep.
+
+Decoupled from :data:`DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY` (which governs
+the in-loop ``visual_fix`` task): the post-build sweep walks *every* page
+bucket at once, so each worker boots its own headless Chrome through the
+playwright skill. A conservative default of ``2`` bounds peak browser memory
+— three or more concurrent Chrome instances were observed to OOM-kill the
+browser mid-sweep, after which every in-flight bucket times out — while still
+halving wall-clock relative to a fully serial sweep. Must be strictly
+positive.
+"""
+
 KNOWN_JUDGES: Final[frozenset[str]] = frozenset(
     {"visual_judge", "quality_judge", "cross_task_consistency"},
 )
@@ -280,6 +293,13 @@ class ShopGenConfig(BaseModel):
             calls (spec §5.6). Defaults to
             :data:`DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S`. Strictly
             positive.
+        final_eval_visual_max_concurrency: Page-bucket fan-out worker count
+            for the final-eval visual sweep, decoupled from
+            ``visual_judge_max_concurrency`` so the all-buckets-at-once sweep
+            can run fewer concurrent headless-Chrome instances than the
+            in-loop ``visual_fix`` task. Defaults to
+            :data:`DEFAULT_FINAL_EVAL_VISUAL_MAX_CONCURRENCY`. Strictly
+            positive.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -319,6 +339,10 @@ class ShopGenConfig(BaseModel):
     )
     final_eval_visual_timeout_s: float = Field(
         default=DEFAULT_FINAL_EVAL_VISUAL_TIMEOUT_S,
+        gt=0,
+    )
+    final_eval_visual_max_concurrency: int = Field(
+        default=DEFAULT_FINAL_EVAL_VISUAL_MAX_CONCURRENCY,
         gt=0,
     )
 

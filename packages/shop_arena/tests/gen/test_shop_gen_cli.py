@@ -53,6 +53,7 @@ _EXPECTED_VISUAL_RETRY_BUDGET = 5
 _EXPECTED_VISUAL_JUDGE_PASS_THRESHOLD = 6.5
 _EXPECTED_VISUAL_JUDGE_MAX_CONCURRENCY = 8
 _EXPECTED_FINAL_EVAL_VISUAL_TIMEOUT_S = 120.0
+_EXPECTED_FINAL_EVAL_VISUAL_MAX_CONCURRENCY = 4
 
 
 # --------------------------------------------------------------------------- #
@@ -418,6 +419,47 @@ def test_final_eval_visual_timeout_flag_propagates_to_config(
         captured_run["config"].final_eval_visual_timeout_s
         == _EXPECTED_FINAL_EVAL_VISUAL_TIMEOUT_S
     )
+
+
+def test_final_eval_visual_max_concurrency_flag_propagates_to_config(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """``--final-eval-visual-max-concurrency`` threads into ``ShopGenConfig``."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--final-eval-visual-max-concurrency",
+            str(_EXPECTED_FINAL_EVAL_VISUAL_MAX_CONCURRENCY),
+        ]
+    )
+    assert rc == EXIT_OK
+    assert (
+        captured_run["config"].final_eval_visual_max_concurrency
+        == _EXPECTED_FINAL_EVAL_VISUAL_MAX_CONCURRENCY
+    )
+
+
+def test_final_eval_visual_max_concurrency_zero_is_config_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``0`` sweep fan-out width is rejected (must be strictly positive)."""
+    seed = _make_seed(tmp_path)
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--final-eval-visual-max-concurrency",
+            "0",
+        ]
+    )
+    assert rc == EXIT_CONFIG
+    assert "invalid configuration" in capsys.readouterr().err
 
 
 def test_final_eval_visual_timeout_zero_is_config_error(

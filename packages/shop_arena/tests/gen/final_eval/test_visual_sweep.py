@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import json
+import subprocess
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -24,7 +25,11 @@ import pytest
 from harness.runtimes.base import RuntimeIterationResult
 from harness.trajectory import Trajectory
 from shop_arena.gen.build.verifiers._task_routes import TASK_BUCKETS, BucketCaps
-from shop_arena.gen.final_eval.visual_sweep import PlaywrightSkillUnavailableError, run_visual_sweep
+from shop_arena.gen.final_eval.visual_sweep import (
+    PlaywrightSkillUnavailableError,
+    merge_sweep_to_visual_subtree,
+    run_visual_sweep,
+)
 
 # --------------------------------------------------------------------------- #
 # Fixtures + stubs
@@ -382,6 +387,91 @@ def test_run_visual_sweep_records_missing_verdict_as_error(
     assert by_bucket["homepage"]["error"] == "missing or malformed verdict.json"
     # Other buckets still produced PASS verdicts.
     assert by_bucket["collections"]["verdict"] == "pass"
+
+
+def test_run_visual_sweep_recovers_partial_verdict_on_timeout(
+    out_dir: Path,
+    hydrogen_dir: Path,
+    data_dir: Path,
+) -> None:
+    """Timed-out buckets keep partial verdicts but still record the timeout."""
+
+    @dataclass
+    class _TimeoutAfterVerdictRuntime:
+        calls: list[str] = field(default_factory=list)
+
+        def run_iteration(
+            self,
+            *,
+            run_dir: Path,
+            iter_dir: Path,
+            prompt: str,
+            timeout: float,
+        ) -> RuntimeIterationResult:
+            del iter_dir
+            bucket = _bucket_from_prompt(prompt)
+            self.calls.append(bucket)
+            (run_dir / "verdict.json").write_text(
+                _pass_body(bucket=bucket, score=8.0),
+                encoding="utf-8",
+            )
+            if bucket == "homepage":
+                raise subprocess.TimeoutExpired(cmd=["pi"], timeout=timeout)
+            now = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+            return RuntimeIterationResult(
+                trajectory=Trajectory(
+                    iter_id=f"sweep-{bucket}",
+                    runtime="stub",
+                    started_at=now,
+                    ended_at=now,
+                    exit_code=0,
+                    prompt_sha256="0" * 64,
+                ),
+            )
+
+    runtime = _TimeoutAfterVerdictRuntime()
+
+    report = run_visual_sweep(
+        out_dir=out_dir,
+        data_dir=data_dir,
+        hydrogen_dir=hydrogen_dir,
+        runtime=runtime,
+        dev_server_factory=_stub_dev_server_factory,
+        capabilities=_MINIMAL_CAPABILITIES,
+        prompt_template=_STUB_PROMPT,
+    )
+
+    by_bucket = {entry["bucket"]: entry for entry in report["per_bucket"]}
+    assert by_bucket["homepage"]["verdict"] == "pass"
+    assert "runtime timed out" in (by_bucket["homepage"]["error"] or "")
+    assert by_bucket["collections"]["error"] is None
+
+
+def test_merge_sweep_treats_recovered_timeout_verdict_as_error() -> None:
+    """A partial PASS verdict cannot hide a bucket timeout in the merged subtree."""
+    visual = merge_sweep_to_visual_subtree(
+        {
+            "report_path": "visual_eval/report.md",
+            "per_bucket": [
+                {
+                    "bucket": "homepage",
+                    "routes": ["/"],
+                    "verdict": "pass",
+                    "score": 8.0,
+                    "category_scores": {},
+                    "pages_judged": 1,
+                    "feedback": "partial",
+                    "issues": [],
+                    "error": "runtime timed out after 1200.0s",
+                },
+            ],
+        },
+    )
+
+    assert visual["ok"] is False
+    assert visual["verdict"] == "fail"
+    assert "homepage: runtime timed out" in visual["error"]
+    assert "Bucket errors" in visual["feedback"]
 
 
 def test_run_visual_sweep_skips_bucket_when_dataset_yields_no_routes(

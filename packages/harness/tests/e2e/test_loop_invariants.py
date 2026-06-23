@@ -161,6 +161,65 @@ def test_executor_protocol_violation_blocks_task_and_continues(tmp_path: Path) -
     assert "protocol_violation" in final_plan
 
 
+def test_executor_invalid_plan_edit_blocks_task_and_continues(tmp_path: Path) -> None:
+    """Executor leaving an unparseable plan → BLOCKED + skip set, loop continues.
+
+    A malformed marker line (note text wedged before the task id) makes
+    ``plan.md`` unparseable after the iteration. Recovery must restore the
+    pre-iteration snapshot, force-block the selected task ``[!]`` with an
+    ``invalid_plan`` note, and drain the remaining PENDING task rather than
+    aborting the whole run with ``FinalStatus.INVALID_PLAN``.
+    """
+    scenario_dir = tmp_path / "cassettes"
+    _write_cassette(
+        scenario_dir,
+        "plan",
+        plan_md=(
+            "# Plan\n\n"
+            "## Tasks\n"
+            "- [ ] homepage         [priority: 2]\n"
+            "- [ ] product_detail   [priority: 1]\n"
+        ),
+    )
+    # Selected task is `homepage`; this cassette corrupts its line by
+    # wedging a free-text note before the task id, so the post-iteration
+    # parse raises InvalidPlanError.
+    _write_cassette(
+        scenario_dir,
+        "exec-0001",
+        plan_md=(
+            "# Plan\n\n"
+            "## Tasks\n"
+            "- [!] needs cross-task fix homepage   [priority: 2]\n"
+            "- [ ] product_detail   [priority: 1]\n"
+        ),
+    )
+    _write_cassette(
+        scenario_dir,
+        "exec-0002",
+        plan_md=(
+            "# Plan\n\n"
+            "## Tasks\n"
+            "- [!] homepage         [priority: 2] — invalid_plan: prior\n"
+            "- [x] product_detail   [priority: 1]\n"
+        ),
+    )
+
+    runtime = ReplayRuntime(scenario_dir)
+    result = run_plan_exec_loop(_config(tmp_path), runtime)
+
+    # Run reaches COMPLETED — the corrupt iteration is recovered, not fatal.
+    assert result.final_status is FinalStatus.COMPLETED
+    assert result.exec_iter_count == 2
+
+    # The live plan.md after recovery shows `homepage` BLOCKED with an
+    # ``invalid_plan`` note, and `product_detail` completed.
+    final_plan = (result.run_dir / "plan.md").read_text(encoding="utf-8")
+    assert "[!] homepage" in final_plan
+    assert "invalid_plan" in final_plan
+    assert "[x] product_detail" in final_plan
+
+
 def test_budget_exhausted_when_pending_tasks_remain(tmp_path: Path) -> None:
     """`max_iters=1` with two PENDING tasks → `FinalStatus.BUDGET_EXHAUSTED`."""
     scenario_dir = tmp_path / "cassettes"

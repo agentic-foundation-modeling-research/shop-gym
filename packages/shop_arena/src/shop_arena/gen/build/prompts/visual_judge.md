@@ -10,6 +10,18 @@ and mobile (375×667). Save each screenshot under
 ``./screenshots/<slug>__<viewport>.png`` (use the route's last path
 segment as the slug, or ``home`` for ``/``).
 
+## Browser command guardrails
+
+Use the playwright skill's built-in navigation, viewport, and
+screenshot commands. Do not use ``run-code`` for page navigation or
+screenshot capture. In particular, do not wait for ``networkidle``:
+Hydrogen pages can keep analytics, HMR, or streaming requests open and
+``networkidle`` can hang until the outer verifier timeout kills you.
+Navigate with a bounded DOM-ready/load wait instead, then capture the
+screenshot. If a route still fails to settle inside the skill command's
+own timeout, write ``./verdict.json`` immediately with a critical issue
+for that route and stop.
+
 ## Fail fast on broken pages
 
 Before walking the full route list, render the **first** route in the

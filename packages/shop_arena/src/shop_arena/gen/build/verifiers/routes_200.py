@@ -268,7 +268,7 @@ class Routes200Verifier:
                     "all_ok": True,
                 },
             )
-        failures = [
+        failures: list[dict[str, object]] = [
             {"type": "route", "route": route, "status": status}
             for route, status in route_failures
         ]
