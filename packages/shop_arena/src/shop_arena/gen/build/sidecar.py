@@ -115,7 +115,8 @@ _PORT_RANGE_MAX: Final[int] = 65535
 class SidecarLifecycleError(RuntimeError):
     """Raised when the sidecar fails to start or its config cannot be parsed.
 
-    Distinguishable from :class:`shop_arena.gen.data_validation.hosting_check.HostingValidationError`:
+    Distinguishable from
+    :class:`shop_arena.gen.data_validation.hosting_check.HostingValidationError`:
     that one signals a query-suite failure against a *running* sidecar;
     this one signals a problem with the lifecycle helper itself
     (spawn, health, or env-file parse).

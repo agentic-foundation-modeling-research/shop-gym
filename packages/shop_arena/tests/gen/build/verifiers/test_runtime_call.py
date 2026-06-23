@@ -58,8 +58,8 @@ def test_parse_visual_verdict_returns_pass_for_clean_body(tmp_path: Path) -> Non
 
     assert parsed is not None
     assert parsed.verdict is Verdict.PASS
-    assert parsed.score == 8.5  # noqa: PLR2004 -- mirrors fixture body
-    assert parsed.pages_judged == 4  # noqa: PLR2004 -- mirrors fixture body
+    assert parsed.score == 8.5
+    assert parsed.pages_judged == 4
     assert parsed.coercion_reason is None
     assert parsed.issues == ()
     assert dict(parsed.category_scores) == {
@@ -275,4 +275,4 @@ def test_run_visual_iteration_dispatches_runtime_and_parses_verdict(
     assert call["run_dir"] == work
     assert call["iter_dir"] == work / "iter"
     assert call["prompt"] == "judge the homepage"
-    assert call["timeout"] == 42.0  # noqa: PLR2004 -- mirrors test arg
+    assert call["timeout"] == 42.0

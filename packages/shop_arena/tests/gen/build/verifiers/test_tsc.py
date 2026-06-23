@@ -100,7 +100,7 @@ def test_fails_when_runner_returns_nonzero_and_embeds_streams(
     assert "stdout:" in result.feedback
     assert "stderr:" in result.feedback
     assert "TS2322" in result.feedback
-    assert result.details["returncode"] == 2  # noqa: PLR2004
+    assert result.details["returncode"] == 2
     assert result.details["argv"] == ["pnpm", "tsc", "--noEmit"]
 
 
