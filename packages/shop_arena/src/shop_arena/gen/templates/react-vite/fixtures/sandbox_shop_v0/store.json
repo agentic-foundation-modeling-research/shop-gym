@@ -1,0 +1,19 @@
+{
+  "shop_id": 54935027886,
+  "name": "Mock Pet Foods",
+  "domain": "mock-pet-foods.example",
+  "description": "Mock Pet Foods offers dry, wet and raw food options for cats and dogs. In addition we carry supplies for many small animals, fish, and birds. Our focus is on local suppliers and the highest quality goods.",
+  "currency_code": "CAD",
+  "country_code": "CA",
+  "payment_settings": {
+    "accepted_card_brands": ["VISA", "MASTER", "AMERICAN_EXPRESS"]
+  },
+  "brand": {
+    "logo_url": null,
+    "colors": {
+      "primary": "#1f6f43",
+      "secondary": "#f3e9d2"
+    }
+  },
+  "dataset_version": "0.1"
+}

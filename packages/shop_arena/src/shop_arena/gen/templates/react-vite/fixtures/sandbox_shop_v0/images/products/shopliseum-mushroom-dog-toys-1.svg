@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <rect width="1200" height="900" fill="#fbf7f2"/>
+  <rect x="96" y="76" width="1008" height="748" rx="42" fill="#ffffff" stroke="#d9e2ec" stroke-width="8"/>
+  <ellipse cx="598" cy="352" rx="284" ry="154" fill="#ef4444"/>
+  <path d="M338 360c34-118 146-192 260-192s226 74 260 192" fill="#f87171"/>
+  <circle cx="490" cy="290" r="38" fill="#fee2e2"/>
+  <circle cx="634" cy="252" r="30" fill="#fee2e2"/>
+  <circle cx="714" cy="338" r="42" fill="#fee2e2"/>
+  <rect x="470" y="380" width="256" height="276" rx="86" fill="#f5d0a9" stroke="#1f2933" stroke-width="8"/>
+  <path d="M512 514h172" stroke="#1f2933" stroke-width="18" stroke-linecap="round"/>
+  <path d="M394 634c112 74 296 74 408 0" fill="none" stroke="#94a3b8" stroke-width="22" stroke-linecap="round"/>
+  <text x="600" y="756" text-anchor="middle" font-family="Arial, sans-serif" font-size="52" font-weight="700" fill="#1f2933">Plush Mushroom Toy</text>
+</svg>
