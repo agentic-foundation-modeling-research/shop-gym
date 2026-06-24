@@ -101,7 +101,9 @@ This spec **augments** the v0.1 verifier set; `quality_judge` and
   succeeds; otherwise it is omitted with a warning.
 - `final_eval/visual_sweep.py` and `final_eval/step.py` implement the
   advisory all-pages visual sweep, reusing the visual-judge verdict
-  schema and route/bucket helpers.
+  schema and route/bucket helpers. Final-eval sweep concurrency is
+  configured separately from in-loop `visual_fix` fan-out so the
+  all-bucket sweep can run with a lower browser-process count.
 - Tests cover prompt slots, task bucket routing, visual-judge parsing
   and evidence promotion, retry-budget behavior, judge-set selection,
   page-bucket fan-out, and final-eval visual sweep wiring.
@@ -120,7 +122,8 @@ This spec **augments** the v0.1 verifier set; `quality_judge` and
 | `visual_retry_budget`    | `int`. Max consecutive `visual_judge` FAILs against one task before downgrading to `ADVISORY`. Default 3.                          |
 | `visual_judge_timeout_s` | `float`. Wall-clock budget for one `visual_judge` nested agent iteration. Default 300 s.                                           |
 | `visual_judge_pass_threshold`  | `float`. Score threshold below which a `pass` verdict from the agent is coerced to `fail` (§9.3). Default 7.0.                            |
-| `visual_judge_max_concurrency` | `int`. Page-bucket fan-out worker count for the `visual_fix` task and the final-eval sweep (§5.2.1 step 5, §5.6). Default 3.              |
+| `visual_judge_max_concurrency` | `int`. Page-bucket fan-out worker count for the in-loop `visual_fix` task (§5.2.1 step 5). Default 3.              |
+| `final_eval_visual_max_concurrency` | `int`. Page-bucket fan-out worker count for the final-eval visual sweep (§5.6), decoupled from `visual_judge_max_concurrency` to bound concurrent headless browsers. Default 2. |
 
 **New CLI surface** (additive):
 
@@ -130,7 +133,8 @@ shop-gen ... --judges none                             # disable all LLM judges 
 shop-gen ... --visual-retry-budget 3                   # per-task cap on visual_judge FAILs
 shop-gen ... --visual-judge-timeout 300                # per-call wall-clock budget
 shop-gen ... --visual-judge-pass-threshold 7.0         # score threshold for pass→fail coercion
-shop-gen ... --visual-judge-max-concurrency 3          # page-bucket fan-out worker count
+shop-gen ... --visual-judge-max-concurrency 3          # in-loop visual_fix fan-out worker count
+shop-gen ... --final-eval-visual-max-concurrency 2     # final visual sweep fan-out worker count
 ```
 
 **New on disk** (additive under existing `runs/build/iters/<id>/checks/verifiers/`):
@@ -633,8 +637,8 @@ sweep. The flow is:
    the visual-sweep prompt (§9.4) — same fan-out path as
    `visual_judge`'s `visual_fix` (§5.2.1 step 5). One sub-iter per
    bucket under a `ThreadPoolExecutor`
-   (`max_workers = visual_judge_max_concurrency`); per-call timeout
-   is `final_eval_visual_timeout_s = 900` s by default, so
+   (`max_workers = final_eval_visual_max_concurrency`); per-call
+   timeout is `final_eval_visual_timeout_s = 1200` s by default, so
    wall-clock scales with the longest bucket, not the sum.
 5. Parse the agent's `verdict.json`, promote screenshots into
    `<out_dir>/visual_eval/screenshots/<page>/`, write
@@ -731,9 +735,10 @@ subtree in `final_eval.json`).
 shop-gen ... --judges <comma-list|all|none>          # default: all
 shop-gen ... --visual-retry-budget <int>             # default: 3
 shop-gen ... --visual-judge-timeout <seconds>        # default: 300
-shop-gen ... --final-eval-visual-timeout <seconds>   # default: 900
+shop-gen ... --final-eval-visual-timeout <seconds>   # default: 1200
 shop-gen ... --visual-judge-pass-threshold <float>   # default: 7.0 (§9.3 score → verdict coercion)
-shop-gen ... --visual-judge-max-concurrency <int>    # default: 3   (§5.2.1 step 5 fan-out)
+shop-gen ... --visual-judge-max-concurrency <int>    # default: 3   (in-loop visual_fix fan-out)
+shop-gen ... --final-eval-visual-max-concurrency <int> # default: 2 (final visual sweep fan-out)
 ```
 
 No new shape — these are additive flags; every other flag from
