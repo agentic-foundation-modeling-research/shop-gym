@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <rect width="1200" height="900" fill="#faf7f1"/>
+  <rect x="328" y="116" width="544" height="656" rx="36" fill="#fff7ed" stroke="#1f2933" stroke-width="10"/>
+  <rect x="382" y="190" width="436" height="96" rx="20" fill="#f97316"/>
+  <text x="600" y="252" text-anchor="middle" font-family="Arial, sans-serif" font-size="40" font-weight="700" fill="#ffffff">Nutrition panel</text>
+  <path d="M408 366h384M408 436h384M408 506h384M408 576h384" stroke="#94a3b8" stroke-width="22" stroke-linecap="round"/>
+  <rect x="426" y="636" width="120" height="58" rx="16" fill="#fde68a"/>
+  <rect x="574" y="636" width="120" height="58" rx="16" fill="#bbf7d0"/>
+  <rect x="722" y="636" width="120" height="58" rx="16" fill="#fed7aa"/>
+  <text x="600" y="822" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="700" fill="#1f2933">Ingredient and feeding guide</text>
+</svg>

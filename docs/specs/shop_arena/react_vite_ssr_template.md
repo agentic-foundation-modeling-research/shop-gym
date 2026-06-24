@@ -1,6 +1,6 @@
 # React Vite SSR Template (`packages/shop_arena/src/shop_arena/gen/templates/react-vite`)
 
-Status: **Spec (draft)** · Version: **0.1**
+Status: **Implemented** · Version: **0.1**
 Owners: ShopArena
 
 > A verified, minimal React + Vite + React Router SSR storefront
@@ -29,8 +29,8 @@ evaluators.
 This spec defines a parallel `react-vite` template. It is a standalone
 React + Vite + React Router SSR app with a small custom GraphQL client
 for `shop_backend`. It does not replace Hydrogen in v0.1. Hydrogen remains
-the default generated storefront until a later `shop_gen` integration
-adds template selection.
+the default generated storefront; `react-vite` must be selected
+explicitly through `shop_gen`.
 
 Two failure modes motivate the shape of this template:
 
@@ -55,8 +55,7 @@ theme.
 
 ## 2. Terminology
 
-- **React Vite SSR Template** — the proposed vendored storefront
-  template under
+- **React Vite SSR Template** — the vendored storefront template under
   `packages/shop_arena/src/shop_arena/gen/templates/react-vite/`.
 - **Hydrogen Template** — the existing vendored storefront template under
   `packages/shop_arena/src/shop_arena/gen/templates/hydrogen/`.
@@ -68,7 +67,7 @@ theme.
 - **Load Context** — the object provided by `server.mjs` to React Router
   loaders and actions. In this template it contains environment values,
   the Storefront Client, and cart/session helpers.
-- **Template Selector** — a future `shop_gen` option that chooses which
+- **Template Selector** — the `shop_gen` option that chooses which
   vendored storefront template to clone for a run.
 - **Template Registry** — the `shop_gen` mapping from template id to
   source directory, generated app directory name, env-file path, install
@@ -87,7 +86,7 @@ theme.
 
 ## 3. Current Status
 
-Current code has one storefront template:
+Current code has two storefront templates:
 
 - `packages/shop_arena/src/shop_arena/gen/templates/hydrogen/` ships a
   Hydrogen app with React Router SSR.
@@ -100,35 +99,34 @@ Current code has one storefront template:
 - Navigation is already backend-driven: header and footer queries call
   `Query.menu`, which resolves from the SandboxShop `navigation.json`
   dataset.
+- `packages/shop_arena/src/shop_arena/gen/templates/react-vite/` ships a
+  minimal React Router SSR app with Express, Vite middleware in
+  development, production SSR from `dist/client` and `dist/server`, a
+  template-local `shop_backend` GraphQL client, cookie-backed cart
+  state, and a synthetic fixture shop.
 
-Current generation and hosting code is Hydrogen-specific:
+Current generation and hosting code is template-aware:
 
-- `shop_arena.gen` clones the Hydrogen template into an output
-  `hydrogen/` directory.
-- The build loop and verifiers look for the generated app under
-  Hydrogen-named paths.
-- `scripts/run-shop.sh` hosts the built app from the build-loop
-  Hydrogen artifact tree.
+- `shop_arena.gen` defaults to Hydrogen and accepts
+  `--template hydrogen|react-vite`.
+- The Template Registry supplies source directory, app directory, env
+  file, install/typecheck/build commands, health path, and verifier
+  applicability.
+- The build loop, verifiers, final eval, and `scripts/run-shop.sh` read
+  the selected app directory instead of inferring `hydrogen/`.
 - The repo `pnpm` workspace includes `packages/shop_backend`, not the
   vendored templates; templates are self-contained package trees.
-- `shop_backend` has synthetic test fixtures, but no React Vite template
-  currently ships with a template-owned fixture and smoke path that prove
-  route loaders, navigation, products, search, and cart work end to end.
 - The current Hydrogen template is feature-rich. That is useful for
   fidelity, but it is also a strong visual and architectural prior for
   generated sites.
-
-No standalone React + Vite storefront template exists today.
 
 ---
 
 ## 4. Desired Status
 
-Add a documentation-backed design for a second storefront template,
-`react-vite`, and the `shop_gen` pipeline changes needed to select,
-build, verify, and host it. The template is not implemented by this
-spec document, but the contract should be precise enough for a follow-up
-implementation.
+Maintain a documentation-backed contract for the second storefront
+template, `react-vite`, and the `shop_gen` pipeline changes that select,
+build, verify, and host it.
 
 The desired template balances two constraints:
 
@@ -176,8 +174,11 @@ packages/shop_arena/src/shop_arena/gen/templates/react-vite/
 The fixture is synthetic dummy data, not source-store data. It should be
 small but complete enough to exercise every initial route and cart flow:
 at least two collections, at least four products, at least one product
-with multiple variants, header and footer menus, one page, one policy,
-searchable product/page text, inventory, and local images.
+with multiple variants, header and footer menus, one page, multiple
+policies, searchable product/page text, inventory, and local images. Each
+fixture product should have at least two visible local product images so
+the product detail gallery can be exercised without relying on external
+media.
 
 The fixture exists to validate the template before generation. Generated
 shops still receive their authoritative data from `<out_dir>/data/`;
@@ -213,9 +214,10 @@ host script.
 | `/` | `Query.shop`, `Query.menu`, featured `Query.collections` / `Query.products` | Homepage with backend-driven navigation and merchandising. |
 | `/collections` | `Query.collections` | Collection index. |
 | `/collections/:handle` | `Query.collection` | Collection detail with product grid. |
-| `/products/:handle` | `Query.product` | Product detail page with variant selection and add-to-cart. |
+| `/products/:handle` | `Query.product` | Product detail page with variant selection, gallery image switching, and add-to-cart. |
 | `/search` | `Query.search` | Search results for products, pages, and articles where available. |
-| `/cart` | `Query.cart`, cart mutations | Cart page plus add/update/remove actions. |
+| `/cart` | `Query.cart`, cart mutations | Cart page plus add/update/remove and promo-code actions. |
+| `/checkout` | `Query.cart` | Local checkout review/confirmation page for the current cart. |
 | `/pages/:handle` | `Query.page` | Static content pages from the dataset. |
 | `/policies/:handle` | Policy fields on `Query.shop` | Policy pages from the dataset. |
 
@@ -228,9 +230,9 @@ host script.
 | SC3 | `pnpm dev` serves SSR pages through `server.mjs` with Vite middleware and React hydration. |
 | SC4 | `pnpm start` serves production SSR from `dist/client` and `dist/server`. |
 | SC5 | `/health` returns HTTP 200 in development and production. |
-| SC6 | Home, collection, product, search, page, policy, and cart routes render against a running `shop_backend` instance. |
+| SC6 | Home, collection, product, search, cart, checkout, page, and policy routes render against a running `shop_backend` instance. |
 | SC7 | The initial HTML for backend-backed routes contains backend-derived content before client hydration. |
-| SC8 | Cart create, add, update, and remove flows work through `shop_backend` cart mutations and persist across reloads. |
+| SC8 | Cart create, add, update, remove, and discount-code flows work through `shop_backend` cart mutations and persist across reloads. |
 | SC9 | The template has no `@shopify/hydrogen` dependency and no imports from `@shopify/hydrogen`. |
 | SC10 | The Baseline Quality Gate runs against the Fixture Shop and fails on broken route loaders, missing backend fields, SSR errors, hydration errors, or cart mutation regressions. |
 | SC11 | The template's UI remains a Minimal Surface: no large component library, no brand-like visual system, no hardcoded product/collection handles outside the fixture, and no page-specific design that generated shops are expected to keep. |
@@ -278,7 +280,7 @@ Use React Router framework mode directly:
   streaming.
 - `app/entry.client.tsx` hydrates with `HydratedRouter`.
 - `app/root.tsx` owns document layout and a root loader that fetches
-  shop, header menu, footer menu, and current cart data.
+  shop, header menu, footer menu, policies, and current cart data.
 - Route modules use server loaders and actions for backend reads and
   cart mutations.
 - Shared UI components stay template-local and avoid Hydrogen
@@ -389,12 +391,24 @@ Cart state should be server-compatible:
   `cartLinesAdd`.
 - Quantity updates call `cartLinesUpdate`.
 - Remove actions call `cartLinesRemove`.
+- Promo-code updates call `cartDiscountCodesUpdate`; applying a promo
+  code before a cart exists creates an empty backend cart with that code.
 - Mutations that return a new or existing cart id update the cookie in
   the action response.
+- The header opens a right-side cart popup over a dimmed page backdrop,
+  modeled after Hydrogen's aside behavior but implemented without
+  Hydrogen dependencies. The popup reuses the cart line and summary
+  controls from `/cart`; the cart page remains directly accessible at
+  `/cart`.
+- The template includes lightweight cookie preference and subscription
+  popups. They are client-side, dismissible, accessible, and intentionally
+  generic so `shop_gen` can replace or restyle them without unwinding a
+  large component system.
 
-Checkout behavior can stay minimal in v0.1. If `shop_backend` returns a
-`checkoutUrl`, the template may link to it; otherwise `/cart` remains the
-terminal local cart summary.
+Checkout behavior can stay minimal in v0.1. The template links cart
+checkout actions to a local `/checkout` review/confirmation route because
+`shop_backend` does not create real orders and currently returns a
+placeholder `checkoutUrl`.
 
 ### 5.6 Baseline quality gate
 
@@ -407,6 +421,11 @@ asserts:
 - No route returns a 5xx response.
 - Product add-to-cart creates or updates a backend cart.
 - Cart quantity update and remove actions persist across reloads.
+- Promo-code apply/remove calls the backend cart discount-code mutation.
+- Header cart opens a right-side popup with backdrop/Escape dismissal and
+  cart page remains reachable.
+- Cookie and subscription popups render, dismiss, persist their dismissed
+  state locally, and do not produce hydration or browser console errors.
 - Browser hydration completes without console errors for the checked
   routes.
 
@@ -601,15 +620,15 @@ serving model while removing Hydrogen-specific dependencies.
 
 | Milestone | Status | Work |
 | --------- | ------ | ---- |
-| M1 | Pending | Add the `templates/react-vite/` SSR scaffold with package scripts, Vite config, React Router config, client/server entries, and `server.mjs`. |
-| M2 | Pending | Add the Fixture Shop dataset covering navigation, products, collections, search, pages, policies, inventory, local images, and cart variants. |
-| M3 | Pending | Add the Storefront Client and route loaders for navigation, home, collections, products, search, pages, and policies. |
-| M4 | Pending | Add cookie-backed cart loaders/actions using `shop_backend` cart queries and mutations. |
-| M5 | Pending | Add minimal styling and accessible storefront components without Hydrogen imports or a strong visual system. |
-| M6 | Pending | Add the Baseline Quality Gate for install, typecheck, build, dev SSR, production SSR, `/health`, backend-derived HTML, hydration, and cart flow against the Fixture Shop. |
-| M7 | Pending | Add `ShopGenConfig.template` / `shop-gen --template`, backed by a Template Registry for source dir, app dir, env file, commands, and verifier applicability. |
-| M8 | Pending | Generalize `clone_template`, env writing, artifact setup, source fingerprinting, dependency install, verifiers, final eval, and host scripts away from hardcoded `hydrogen/` paths. |
-| M9 | Pending | Update root README and hosting docs once `react-vite` is selectable or hostable through the normal generated-shop flow. |
+| M1 | Implemented | Add the `templates/react-vite/` SSR scaffold with package scripts, Vite config, React Router config, client/server entries, and `server.mjs`. |
+| M2 | Implemented | Add the Fixture Shop dataset covering navigation, products, collections, search, pages, policies, inventory, local images, and cart variants. |
+| M3 | Implemented | Add the Storefront Client and route loaders for navigation, home, collections, products, search, pages, and policies. |
+| M4 | Implemented | Add cookie-backed cart loaders/actions using `shop_backend` cart queries and mutations, including discount-code updates. |
+| M5 | Implemented | Add minimal styling and accessible storefront components without Hydrogen imports or a strong visual system. |
+| M6 | Validated manually | Validate install, typecheck, build, production SSR, `/health`, backend-derived HTML, hydration, and cart flow against the Fixture Shop. A reusable checked-in smoke command remains a follow-up. |
+| M7 | Implemented | Add `ShopGenConfig.template` / `shop-gen --template`, backed by a Template Registry for source dir, app dir, env file, commands, and verifier applicability. |
+| M8 | Implemented | Generalize `clone_template`, env writing, artifact setup, source fingerprinting, dependency install, verifiers, final eval, and host scripts away from hardcoded `hydrogen/` paths. |
+| M9 | Implemented | Update root README and hosting docs once `react-vite` is selectable or hostable through the normal generated-shop flow. |
 
 ---
 

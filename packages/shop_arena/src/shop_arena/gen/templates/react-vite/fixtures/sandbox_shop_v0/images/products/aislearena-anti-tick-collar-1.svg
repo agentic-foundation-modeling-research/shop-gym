@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <rect width="1200" height="900" fill="#f6f8fb"/>
+  <rect x="88" y="76" width="1024" height="748" rx="42" fill="#ffffff" stroke="#d9e2ec" stroke-width="8"/>
+  <ellipse cx="600" cy="476" rx="318" ry="232" fill="none" stroke="#2f6fed" stroke-width="74"/>
+  <ellipse cx="600" cy="476" rx="214" ry="142" fill="#ffffff" stroke="#d9e2ec" stroke-width="12"/>
+  <rect x="524" y="236" width="154" height="96" rx="26" fill="#1f2933"/>
+  <circle cx="600" cy="284" r="24" fill="#67e8f9"/>
+  <path d="M834 326c42 36 68 88 68 148" fill="none" stroke="#facc15" stroke-width="26" stroke-linecap="round"/>
+  <text x="600" y="742" text-anchor="middle" font-family="Arial, sans-serif" font-size="56" font-weight="700" fill="#1f2933">Anti Tick Collar</text>
+</svg>

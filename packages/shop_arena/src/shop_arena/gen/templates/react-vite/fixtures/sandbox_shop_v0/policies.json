@@ -1,0 +1,17 @@
+[
+  {
+    "handle": "privacy-policy",
+    "title": "Privacy Policy",
+    "body_html": "<p>Mock Pet Foods respects your privacy. We collect only the information needed to fulfill your orders and never share it with third parties without your consent.</p>"
+  },
+  {
+    "handle": "refund-policy",
+    "title": "Refund Policy",
+    "body_html": "<p>Unopened items can be returned within 30 days. Contact support with your order number before sending products back.</p>"
+  },
+  {
+    "handle": "shipping-policy",
+    "title": "Shipping Policy",
+    "body_html": "<p>Orders ship from our mock warehouse within two business days. Delivery estimates appear during checkout review.</p>"
+  }
+]
