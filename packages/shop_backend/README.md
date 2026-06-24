@@ -2,19 +2,35 @@
 
 Local GraphQL server that backs **SandboxShop** sandboxes.
 
-Used for benchmarking shopping LLM agents and as the planned host of an RL
-environment. Spec:
-[`docs/specs/shop_backend/storefront_api.md`](../../docs/specs/shop_backend/storefront_api.md).
+ShopBackend loads one synthesized storefront dataset and exposes a
+Storefront-API-compatible GraphQL surface for generated Hydrogen storefronts,
+shopping-agent benchmarks, and local environment validation.
 
 ## Status
 
-Implemented. Boots against a SandboxShop dataset directory and answers
-canonical Storefront-API queries across `shop`, `product`, `collection`,
-`menu`, `page`, `blog`, `search`, `predictiveSearch`, `localization`, and
-metafields, plus inventory-backed product availability and a full cart
-lifecycle (`cartCreate` → `cartLinesAdd` → `cartLinesUpdate` →
-`cartLinesRemove`). The server also enforces supported `@inContext`
-country/language values and can persist carts with `--cart-store`.
+Implemented as a TypeScript ESM package. The server boots against a
+SandboxShop dataset directory, serves dataset images, and answers canonical
+Storefront API queries across shop metadata, menus, products, variants,
+collections, content, search, predictive search, localization, product
+recommendations, metafields, and cart state.
+
+The current GraphQL contract is the SDL in `src/schema.ts`. It includes:
+
+| Area | Surface |
+| --- | --- |
+| Shop | `shop`, `Shop.paymentSettings`, `Shop.primaryDomain`, `Shop.brand`, policies, `Shop.metafield(s)` |
+| Menu | `menu(handle)` |
+| Product | `product(handle)`, `products(...)`, product options, variants, images, encoded variant fields, inventory-backed `availableForSale` / `quantityAvailable`, `Product.metafield(s)` |
+| Collection | `collection(handle)`, `collections(...)`, `Collection.products(...)`, `Collection.metafield(s)` |
+| Content | `page(handle)`, `blog(handle)`, `blogs(...)`, `Blog.articles(...)`, `Blog.articleByHandle(...)` |
+| Search | `search(...)`, `predictiveSearch(...)`, `productRecommendations(productId)` |
+| Localization | `localization`, plus validation for literal `@inContext(country:, language:)` values |
+| Cart | `cart(id)` and cart mutations for create, line add/update/remove, discount codes, buyer identity, note, attributes, and gift-card codes |
+
+The server is deterministic and read-mostly. Cart state is mutable per server
+instance, in-memory by default, and optionally persisted with `--cart-store`.
+There is no Admin API, checkout/payment, customer account auth, order surface,
+webhook support, or Storefront access-token validation.
 
 ## Install (dev)
 
@@ -41,7 +57,9 @@ The CLI prints loaded counts on startup and binds:
 | `GET /images/<path>`                | Static images under `<data-dir>/images/`.               |
 | `GET /health`                       | `200 {"status":"ok","store":"<name>"}`.                 |
 
-CORS allows `*` origins.
+`/images/*` serves PNG, JPG, JPEG, WEBP, and SVG files with immutable cache
+headers and strips query strings before filesystem lookup. GraphQL CORS allows
+any origin for `POST` / `OPTIONS` requests with the `Content-Type` header.
 
 ### Example query
 
@@ -59,7 +77,7 @@ exercised end-to-end in `src/storefront_api.e2e.test.ts`.
 
 ### Persisted carts
 
-By default the cart store lives in-memory only — restarting the server
+By default the cart store lives in-memory only. Restarting the server
 resets every cart to "not found". Pass `--cart-store <path>` to back the
 store with a JSON snapshot file:
 
@@ -75,19 +93,44 @@ ids minted in run A remain queryable from run B.
 
 ## Dataset layout
 
-A SandboxShop dataset is a directory containing the JSON files defined in
-[spec §8.1](../../docs/specs/shop_backend/storefront_api.md#81-sandboxshop-dataset-schema-v01).
-Required: `store.json`, `products.json`, `collections.json`,
-`navigation.json`, `pages.json`, `policies.json`. Optional: `blogs.json`,
-`metafields.json`. Image assets live under `<data-dir>/images/` and are
-served at `/images/<path>`.
+`loadShopData(dir)` reads one snapshot from a SandboxShop dataset directory.
+Missing required files or malformed optional files fail startup.
 
-Datasets are produced by ShopArena's `shop_gen` module.
+Required files:
+
+| File | Contents |
+| --- | --- |
+| `store.json` | Store identity, domain, description, currency, country, payment settings, and brand colors |
+| `products.json` | Products, options, variants, images, prices, tags, timestamps, and availability fallback flags |
+| `collections.json` | Collections and ordered product-handle membership |
+| `navigation.json` | Menu handles mapped to nested navigation items |
+| `pages.json` | Static pages |
+| `policies.json` | Store policies |
+
+Optional files:
+
+| File | Default | Used for |
+| --- | --- | --- |
+| `blogs.json` | `[]` | Blogs, articles, article search results, and predictive search articles |
+| `metafields.json` | `{ shop: [], products: {}, collections: {} }` | Shop, product, and collection metafield resolvers |
+| `inventory.json` | `{}` | Per-variant `quantityAvailable` and inventory-backed availability |
+
+Image assets may live under `<data-dir>/images/` and are served at
+`/images/<path>`. Product image `src` values can be absolute URLs or relative
+image paths; relative paths are rewritten to the running server's `/images/*`
+URL at resolve time.
+
+Datasets are produced by ShopArena's generation pipeline and consumed as a
+frozen snapshot for the lifetime of the server instance.
 
 ## Library API
 
 ```ts
-import { createSandboxServer, loadShopData } from '@shop-gym/shop-backend';
+import {
+  createSandboxSchema,
+  createSandboxServer,
+  loadShopData,
+} from '@shop-gym/shop-backend';
 
 const dataDir = './outputs/shops/example/data';
 const data = loadShopData(dataDir);
@@ -95,6 +138,10 @@ const server = createSandboxServer({ data, dataDir });
 await server.listen();
 console.log(server.url); // http://127.0.0.1:4000/graphql
 ```
+
+Public exports include `loadShopData`, `createSandboxSchema`,
+`createSandboxServer`, `SandboxShopData`, `ServerOptions`, `SandboxServer`, and
+the primary dataset entity types used by the loader.
 
 ## Build & test
 

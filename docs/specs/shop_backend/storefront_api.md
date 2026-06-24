@@ -193,7 +193,7 @@ it. The full SDL lives in §8.2; the surface is:
 | **Content**       | `page(handle)`, `blog(handle)`, `blogs(first/after)`, `Blog.articles`, `Blog.articleByHandle`          | —         |
 | **Search**        | `search(query, types, first/after, sortKey, reverse, ...)`, `predictiveSearch(query, limit, types)`    | —         |
 | **Localization**  | `localization` (single country/language pair derived from `store.country_code`/`currency_code`)        | —         |
-| **Cart**          | `cart(id)`                                                                                             | `cartCreate`, `cartLinesAdd`, `cartLinesUpdate`, `cartLinesRemove`, `cartDiscountCodesUpdate`, `cartBuyerIdentityUpdate`, `cartNoteUpdate`, `cartAttributesUpdate`, `cartGiftCardCodesUpdate` |
+| **Cart**          | `cart(id)`                                                                                             | `cartCreate`, `cartLinesAdd`, `cartLinesUpdate`, `cartLinesRemove`, `cartDiscountCodesUpdate`, `cartBuyerIdentityUpdate`, `cartNoteUpdate`, `cartAttributesUpdate`, `cartGiftCardCodesUpdate`, `cartGiftCardCodesAdd`, `cartGiftCardCodesRemove` |
 | **Metafields**    | `Product.metafield(s)`, `Collection.metafield(s)` (only if `metafields.json` present)                  | —         |
 
 Out of this subset (deferred): `Customer`, `Article` standalone (only
@@ -202,7 +202,9 @@ via blog), `selling_plan`, and `Variant.metafield(s)` beyond what
 
 The `@inContext` directive is declared in the SDL on `QUERY` /
 `MUTATION` and validated against the dataset locale (see §5.3
-"Localization & `@inContext`").
+"Localization & `@inContext`"). The SDL also declares `@defer` so
+Hydrogen Storefront API helpers that add deferred cart fragments pass
+validation; deferred execution is not required for the local backend.
 
 ### 5.3 Resolver semantics
 
