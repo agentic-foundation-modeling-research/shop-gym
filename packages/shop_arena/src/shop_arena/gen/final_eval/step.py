@@ -90,6 +90,12 @@ mutated tree under ``<run_dir>/artifact/hydrogen/``; the smoke flow walks
 the dev server rooted there.
 """
 
+_ARTIFACT_DIR: Final[Path] = Path("runs") / "build" / "artifact"
+"""Run-relative build-loop artifact directory containing the selected app."""
+
+_TEMPLATE_METADATA: Final[Path] = Path(".shop_gen") / "template.json"
+"""Run-relative metadata written by ``clone_template`` with the selected app dir."""
+
 _DATA_DIR: Final[Path] = Path("data")
 """Run-relative directory carrying the published storefront dataset.
 
@@ -389,7 +395,7 @@ def run_final_eval(
           the per-bucket merge populates the body.
     """
     flow = resolve_smoke_flow(out_dir=out_dir, viewports=viewports)
-    hydrogen_dir = out_dir / _HYDROGEN_DIR
+    hydrogen_dir = _resolve_storefront_dir(out_dir)
     screenshots_dir = out_dir / _SCREENSHOTS_DIR
 
     smoke_payload = _run_smoke(
@@ -479,6 +485,32 @@ def _run_smoke(
             "error": f"{type(exc).__name__}: {exc}",
         }
     return _serialise_smoke_report(report, out_dir=out_dir)
+
+
+def _resolve_storefront_dir(out_dir: Path) -> Path:
+    """Return the built storefront app directory for ``out_dir``.
+
+    New runs persist ``.shop_gen/template.json`` with the selected
+    app directory. Older Hydrogen runs do not have that file, so the
+    legacy ``runs/build/artifact/hydrogen`` path remains the fallback.
+    """
+    metadata_path = out_dir / _TEMPLATE_METADATA
+    if not metadata_path.is_file():
+        return out_dir / _HYDROGEN_DIR
+    try:
+        payload: object = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return out_dir / _HYDROGEN_DIR
+    if not isinstance(payload, dict):
+        return out_dir / _HYDROGEN_DIR
+    metadata = cast("dict[str, object]", payload)
+    app_dir_raw = metadata.get("app_dir")
+    if not isinstance(app_dir_raw, str) or not app_dir_raw:
+        return out_dir / _HYDROGEN_DIR
+    app_dir = Path(app_dir_raw)
+    if app_dir.is_absolute() or ".." in app_dir.parts:
+        return out_dir / _HYDROGEN_DIR
+    return out_dir / _ARTIFACT_DIR / app_dir
 
 
 def _serialise_smoke_report(report: SmokeReport, *, out_dir: Path) -> dict[str, Any]:

@@ -35,6 +35,7 @@ from shop_arena.gen.config import (
     DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_PRODUCTS_PER_COLLECTION,
     DEFAULT_RUNTIME,
+    DEFAULT_TEMPLATE,
     DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
     DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
     DEFAULT_VISUAL_RETRY_BUDGET,
@@ -101,6 +102,7 @@ def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
     assert cfg.name is None
     assert cfg.runtime == DEFAULT_RUNTIME
     assert cfg.model is None
+    assert cfg.template == DEFAULT_TEMPLATE
     assert cfg.max_iters == DEFAULT_MAX_ITERS
     assert cfg.image_backend == DEFAULT_IMAGE_BACKEND
     assert cfg.image_model is None
@@ -118,9 +120,9 @@ def test_shop_gen_config_defaults_match_spec(tmp_path: Path) -> None:
     assert cfg.final_eval_visual_max_concurrency == DEFAULT_FINAL_EVAL_VISUAL_MAX_CONCURRENCY
 
 
-def test_default_model_for_returns_per_runtime_pinned_opus() -> None:
-    """Per-runtime defaults pin Opus in each runtime's native grammar."""
-    assert default_model_for("pi") == "anthropic/claude-opus-4-7"
+def test_default_model_for_returns_per_runtime_defaults() -> None:
+    """Per-runtime defaults use each runtime's native model grammar."""
+    assert default_model_for("pi") == "openai/gpt-5.5"
     assert default_model_for("claude_code") == "opus"
 
 
@@ -157,6 +159,25 @@ def test_shop_gen_config_default_max_iters_is_30() -> None:
 def test_shop_gen_config_default_image_backend_is_placeholder() -> None:
     """Spec §4.1: v0.1 ships ``placeholder`` as the default backend."""
     assert DEFAULT_IMAGE_BACKEND == "placeholder"
+
+
+def test_shop_gen_config_default_template_is_hydrogen() -> None:
+    """Hydrogen remains the default storefront template."""
+    assert DEFAULT_TEMPLATE == "hydrogen"
+
+
+def test_shop_gen_config_accepts_react_vite_template(tmp_path: Path) -> None:
+    """The React Vite SSR template must be selected explicitly."""
+    seed = _seed(tmp_path)
+    cfg = ShopGenConfig(seeds=[seed], template="react-vite")
+    assert cfg.template == "react-vite"
+
+
+def test_shop_gen_config_rejects_unknown_template(tmp_path: Path) -> None:
+    """Template ids are a closed set."""
+    seed = _seed(tmp_path)
+    with pytest.raises(ValidationError):
+        ShopGenConfig(seeds=[seed], template="static-spa")  # type: ignore[arg-type]
 
 
 # --------------------------------------------------------------------------- #
@@ -629,6 +650,8 @@ def _result(out_dir: Path) -> ShopGenResult:
         identity_path=out_dir / "identity.json",
         data_dir=out_dir / "data",
         hydrogen_dir=out_dir / "hydrogen",
+        storefront_dir=out_dir / "hydrogen",
+        template_metadata_path=out_dir / ".shop_gen" / "template.json",
         data_validation_path=out_dir / "data_validation.json",
         final_eval_path=out_dir / "final_eval.json",
         build_run_dir=out_dir / "runs" / "build",
@@ -649,6 +672,8 @@ def test_shop_gen_result_rejects_extra_fields(tmp_path: Path) -> None:
             identity_path=tmp_path / "identity.json",
             data_dir=tmp_path / "data",
             hydrogen_dir=tmp_path / "hydrogen",
+            storefront_dir=tmp_path / "hydrogen",
+            template_metadata_path=tmp_path / ".shop_gen" / "template.json",
             data_validation_path=tmp_path / "data_validation.json",
             final_eval_path=tmp_path / "final_eval.json",
             build_run_dir=tmp_path / "runs" / "build",

@@ -36,6 +36,8 @@ from functools import cache
 from pathlib import Path
 from typing import Final
 
+from shop_arena.gen.template_registry import TemplateId, TemplateSpec, get_template
+
 _PROMPTS_DIR: Final[Path] = Path(__file__).resolve().parent / "prompts"
 _AGENTS_FILE: Final[str] = "agents.md"
 _PLANNER_FILE: Final[str] = "planner.md"
@@ -54,7 +56,7 @@ exact token string without re-deriving it.
 
 
 @cache
-def load_agents_md() -> str:
+def load_agents_md(template_id: TemplateId = "hydrogen") -> str:
     """Return the build-harness-loop AGENTS.md constitution.
 
     The whole file body is the agents-md text. The harness writes it
@@ -67,11 +69,11 @@ def load_agents_md() -> str:
     Raises:
         FileNotFoundError: ``agents.md`` is missing.
     """
-    return _read_prompt_file(_AGENTS_FILE)
+    return _with_template_context(_read_prompt_file(_AGENTS_FILE), get_template(template_id))
 
 
 @cache
-def load_planner_prompt() -> str:
+def load_planner_prompt(template_id: TemplateId = "hydrogen") -> str:
     """Return the planner-iteration prompt body.
 
     The whole file body is the planner prompt. The harness writes it
@@ -84,11 +86,11 @@ def load_planner_prompt() -> str:
     Raises:
         FileNotFoundError: ``planner.md`` is missing.
     """
-    return _read_prompt_file(_PLANNER_FILE)
+    return _with_template_context(_read_prompt_file(_PLANNER_FILE), get_template(template_id))
 
 
 @cache
-def load_execute_prompt() -> str:
+def load_execute_prompt(template_id: TemplateId = "hydrogen") -> str:
     """Return the executor body for every ``gen_*`` task.
 
     Carries a ``{{verifier_feedback}}`` placeholder — the harness
@@ -105,7 +107,7 @@ def load_execute_prompt() -> str:
             injects feedback when the placeholder is present, so a
             silently dropped placeholder would mask retry failures.
     """
-    body = _read_prompt_file(_EXECUTE_FILE)
+    body = _with_template_context(_read_prompt_file(_EXECUTE_FILE), get_template(template_id))
     if VERIFIER_FEEDBACK_PLACEHOLDER not in body:
         raise ValueError(
             f"{_EXECUTE_FILE}: executor prompt must contain "
@@ -216,6 +218,40 @@ def copy_fixes_into(prompts_dir: Path) -> None:
 def _read_prompt_file(name: str) -> str:
     """Read ``<prompts dir>/<name>`` as UTF-8 text."""
     return (_PROMPTS_DIR / name).read_text(encoding="utf-8")
+
+
+def _with_template_context(body: str, template: TemplateSpec) -> str:
+    """Append selected-template context to a build-loop prompt body.
+
+    Hydrogen is the legacy default, so its prompt bodies are returned
+    unchanged. Non-Hydrogen templates get a concise override block that
+    maps old Hydrogen-oriented wording to the selected app path and
+    commands without duplicating the full prompt set.
+    """
+    if template.id == "hydrogen":
+        return body
+    context = f"""
+
+---
+
+## Selected Storefront Template Context
+
+Template id: `{template.id}`.
+Mutable app tree: `artifact/{template.app_dir.as_posix()}/`.
+App source tree: `artifact/{(template.app_dir / "app").as_posix()}/`.
+Env file: `artifact/{template.env_path.as_posix()}`.
+Install command: `{" ".join(template.install_command)}` from the app tree.
+Typecheck command: `{" ".join(template.typecheck_command)}` from the app tree.
+Build command: `{" ".join(template.build_command)}` from the app tree.
+
+When the base prompt says `Hydrogen`, `hydrogen/`, or
+`artifact/hydrogen/`, apply that instruction to the selected storefront
+tree above. Do not add `@shopify/hydrogen` or Hydrogen APIs to this
+template. Use the template-local Storefront client and React Router
+loaders/actions; the sparse baseline UI is intentional and should stay
+easy for the generator to restyle.
+"""
+    return body.rstrip() + context + "\n"
 
 
 __all__ = [

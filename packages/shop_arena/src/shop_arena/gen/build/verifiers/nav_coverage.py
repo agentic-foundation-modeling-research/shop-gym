@@ -44,7 +44,12 @@ class NavCoverageVerifier:
 
     name: str = _NAME
 
-    def __init__(self, *, data_dir: Path) -> None:
+    def __init__(
+        self,
+        *,
+        data_dir: Path,
+        app_dir: Path = Path(_HYDROGEN_APP_DIR),
+    ) -> None:
         """Build the verifier bound to a published ``data/`` directory.
 
         Args:
@@ -52,8 +57,12 @@ class NavCoverageVerifier:
                 ``collections.json`` (typically
                 ``<out_dir>/data/`` — the same directory the sidecar
                 serves from).
+            app_dir: Storefront ``app/`` directory relative to
+                ``VerifierContext.artifact_dir``. Defaults to
+                ``hydrogen/app`` for backward compatibility.
         """
         self._data_dir = data_dir
+        self._app_dir = app_dir
 
     def applies_to(self, task_id: str) -> bool:
         """Match only ``gen_navigation`` (spec §5.5.3).
@@ -91,13 +100,13 @@ class NavCoverageVerifier:
                 details={"collections_path": str(collections_path)},
             )
 
-        app_dir = ctx.artifact_dir / _HYDROGEN_APP_DIR
+        app_dir = ctx.artifact_dir / self._app_dir
         if not app_dir.is_dir():
             return VerifierResult(
                 verdict=Verdict.FAIL,
                 feedback=(
                     "nav_coverage could not find the hydrogen app tree "
-                    f"at `{_HYDROGEN_APP_DIR}/`. Did `clone_template` run?"
+                    f"at `{self._app_dir.as_posix()}/`. Did `clone_template` run?"
                 ),
                 details={"app_dir": str(app_dir), "exists": False},
             )
@@ -196,7 +205,7 @@ def _render_failure_markdown(missing: list[str], *, total: int) -> str:
     """Render the failure feedback body (one bullet per missing handle)."""
     lines = [
         f"`nav_coverage` failed: {len(missing)} of {total} collection "
-        "handle(s) are not referenced anywhere under `hydrogen/app/`.",
+        "handle(s) are not referenced anywhere under the storefront `app/` tree.",
         "",
         "Add a navigation entry (header, footer, or mega-menu) for each "
         "missing handle so it is reachable from the rendered storefront.",

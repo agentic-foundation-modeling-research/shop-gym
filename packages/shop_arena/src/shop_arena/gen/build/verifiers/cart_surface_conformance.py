@@ -104,6 +104,16 @@ class CartSurfaceConformanceVerifier:
 
     name: str = _NAME
 
+    def __init__(self, *, app_rel: Path = _HYDROGEN_APP_REL) -> None:
+        """Build the verifier for a selected storefront app subtree.
+
+        Args:
+            app_rel: Storefront ``app/`` directory relative to
+                ``VerifierContext.artifact_dir``. Defaults to
+                ``hydrogen/app`` for backward compatibility.
+        """
+        self._app_rel = app_rel
+
     def applies_to(self, task_id: str) -> bool:
         """Return whether this verifier should run for ``task_id``."""
         return task_id in _APPLICABLE_TASKS
@@ -144,13 +154,13 @@ class CartSurfaceConformanceVerifier:
                 },
             )
 
-        app_dir = ctx.artifact_dir / _HYDROGEN_APP_REL
+        app_dir = ctx.artifact_dir / self._app_rel
         if not app_dir.is_dir():
             return VerifierResult(
                 verdict=Verdict.FAIL,
                 feedback=(
-                    f"`{_NAME}` could not read `{_HYDROGEN_APP_REL.as_posix()}`. "
-                    "Did the Hydrogen template clone run?"
+                    f"`{_NAME}` could not read `{self._app_rel.as_posix()}`. "
+                    "Did the storefront template clone run?"
                 ),
                 details={"app_dir": str(app_dir), "exists": False},
             )

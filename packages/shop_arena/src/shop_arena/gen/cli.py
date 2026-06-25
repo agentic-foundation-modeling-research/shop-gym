@@ -42,6 +42,7 @@ from shop_arena.gen.config import (
     DEFAULT_MAX_ITERS,
     DEFAULT_MODEL_BY_RUNTIME,
     DEFAULT_RUNTIME,
+    DEFAULT_TEMPLATE,
     DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
     DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
     DEFAULT_VISUAL_RETRY_BUDGET,
@@ -62,6 +63,7 @@ from shop_arena.gen.pipeline import (
     status,
 )
 from shop_arena.gen.steps.runner import CycleError, MissingDependencyError
+from shop_arena.gen.template_registry import template_ids
 from shop_arena.util._dotenv import load_project_env
 
 EXIT_OK = 0
@@ -149,6 +151,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SLUG",
         help="Slug for the SandboxShop. Defaults: see --out-dir.",
+    )
+    parser.add_argument(
+        "--template",
+        choices=template_ids(),
+        default=DEFAULT_TEMPLATE,
+        help=(
+            "Storefront template for the build loop. Hydrogen remains the default; "
+            "select 'react-vite' explicitly to use the React Vite SSR template."
+        ),
     )
     parser.add_argument(
         "--runtime",
@@ -423,8 +434,11 @@ def _run_default(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
 
     try:
         run(config, force_ids=force_ids, stop_at=args.to_step)
-    except (CycleError, MissingDependencyError) as exc:
-        print(f"shop-gen: pipeline DAG error: {exc}", file=sys.stderr)
+    except (CycleError, MissingDependencyError, RuntimeError) as exc:
+        if isinstance(exc, (CycleError, MissingDependencyError)):
+            print(f"shop-gen: pipeline DAG error: {exc}", file=sys.stderr)
+        else:
+            print(f"shop-gen: {exc}", file=sys.stderr)
         return EXIT_RUNTIME
     except ValueError as exc:
         # ``pipeline.run`` raises ValueError for the multi-seed-without-name
@@ -474,6 +488,7 @@ def _build_config(args: argparse.Namespace) -> ShopGenConfig:
         name=args.name,
         runtime=runtime,
         model=model,
+        template=args.template,
         catalog=catalog,
         max_iters=args.max_iters,
         image_backend=image_backend,

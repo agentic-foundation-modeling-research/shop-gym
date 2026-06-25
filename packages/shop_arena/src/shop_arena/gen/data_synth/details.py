@@ -38,6 +38,7 @@ Module is import-safe: no I/O, no env reads, no side effects at import.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -59,6 +60,7 @@ _PHASE: Final[str] = "data_synth"
 _STEP_ID: Final[str] = "synth_product_details"
 _UPSTREAM_ID: Final[str] = "synth_product_skeletons"
 _STEP_VERSION: Final[int] = 1
+_LOGGER: Final[logging.Logger] = logging.getLogger(__name__)
 
 _OUT_DETAILS_DIR: Final[Path] = Path(".shop_gen") / "stage_cache" / "details"
 _OUT_MANIFEST: Final[Path] = _OUT_DETAILS_DIR / "_manifest.json"
@@ -231,6 +233,8 @@ def synth_product_details_for_collection(
             response cannot be parsed as a JSON array (after stripping
             fences). The raw response is persisted to ``debug_dir``
             first when that argument is set.
+        RuntimeError: The runtime fails to return a completion after
+            the retry budget is exhausted.
     """
     if not skeletons:
         raise StageSynthError(
@@ -307,13 +311,18 @@ def _synth_chunk_with_retries(
     for attempt in range(_MAX_RETRIES + 1):
         if not pending:
             break
-        raw = _run_completion(
-            identity=identity,
-            collection=collection,
-            skeletons=pending,
-            completer=completer,
-            allowlist=allowlist,
-        )
+        try:
+            raw = _run_completion(
+                identity=identity,
+                collection=collection,
+                skeletons=pending,
+                completer=completer,
+                allowlist=allowlist,
+            )
+        except RuntimeError:
+            if attempt < _MAX_RETRIES:
+                continue
+            raise
         try:
             details = _parse_details_payload(
                 raw,
@@ -529,59 +538,40 @@ class SynthProductDetailsStep:
         details_dir.mkdir(parents=True, exist_ok=True)
 
         total = len(skeletons)
-        results: dict[str, tuple[list[ProductDetail], int]] = {}
-        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
-            futures = {
-                pool.submit(
-                    synth_product_details_for_collection,
-                    identity=identity,
-                    collection=collection,
-                    skeletons=skeletons_by_collection[collection.handle],
-                    completer=ctx.runtime,
-                    debug_dir=details_dir,
-                ): collection.handle
-                for collection in collections
-            }
-            for future in as_completed(futures):
-                handle = futures[future]
-                # Re-raise the first exception so the runner records FAILED.
-                results[handle] = future.result()
+        manifest_path = ctx.out_dir / _OUT_MANIFEST
+        manifest_rows_by_handle, collections_to_synth = _prepare_collection_outputs(
+            details_dir=details_dir,
+            manifest_path=manifest_path,
+            collections=collections,
+            skeletons_by_collection=skeletons_by_collection,
+        )
+        first_error = _synth_missing_collections(
+            identity=identity,
+            collections=collections_to_synth,
+            skeletons_by_collection=skeletons_by_collection,
+            completer=ctx.runtime,
+            details_dir=details_dir,
+            manifest_rows_by_handle=manifest_rows_by_handle,
+        )
 
-        total_dropped = sum(dropped for _, dropped in results.values())
+        if first_error is not None:
+            raise first_error
+
+        total_dropped = sum(
+            int(row["dropped_count"]) for row in manifest_rows_by_handle.values()
+        )
         if total > 0 and total_dropped / total > _MAX_REJECTION_RATE:
             raise StageSynthError(
                 f"{_STEP_ID}: rejection rate {total_dropped}/{total} exceeds "
                 f"{_MAX_REJECTION_RATE:.0%} budget",
             )
 
-        manifest: dict[str, Any] = {"collections": []}
-        for collection in collections:
-            details, dropped = results[collection.handle]
-            file_path = details_dir / f"{collection.handle}.json"
-            file_path.write_text(
-                json.dumps(
-                    [d.model_dump(mode="json") for d in details],
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            manifest["collections"].append(
-                {
-                    "handle": collection.handle,
-                    "file": file_path.name,
-                    "details_count": len(details),
-                    "dropped_count": dropped,
-                },
-            )
-        manifest["total_products"] = total
-        manifest["total_dropped"] = total_dropped
-
-        manifest_path = ctx.out_dir / _OUT_MANIFEST
-        manifest_path.write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        _write_details_manifest(
+            manifest_path=manifest_path,
+            collections=collections,
+            manifest_rows_by_handle=manifest_rows_by_handle,
+            total_products=total,
+            total_dropped=total_dropped,
         )
 
 
@@ -666,6 +656,217 @@ def _group_by_collection(
             )
         grouped[skeleton.collection_handle].append(skeleton)
     return grouped
+
+
+def _prepare_collection_outputs(
+    *,
+    details_dir: Path,
+    manifest_path: Path,
+    collections: list[CollectionDraft],
+    skeletons_by_collection: dict[str, list[ProductSkeleton]],
+) -> tuple[dict[str, dict[str, Any]], list[CollectionDraft]]:
+    """Return manifest rows from partial files and collections still missing."""
+    if manifest_path.exists():
+        _clear_collection_detail_files(details_dir, collections)
+        manifest_path.unlink()
+
+    manifest_rows_by_handle: dict[str, dict[str, Any]] = {}
+    collections_to_synth: list[CollectionDraft] = []
+    for collection in collections:
+        collection_skeletons = skeletons_by_collection[collection.handle]
+        file_path = _collection_details_path(details_dir, collection.handle)
+        if not file_path.exists():
+            collections_to_synth.append(collection)
+            continue
+        details = _load_collection_details_file(
+            file_path,
+            expected_handles=[s.handle for s in collection_skeletons],
+        )
+        dropped = len(collection_skeletons) - len(details)
+        if dropped > 0:
+            file_path.unlink(missing_ok=True)
+            collections_to_synth.append(collection)
+            _LOGGER.info(
+                "retry synth_product_details collection %s — partial cache has %d dropped",
+                collection.handle,
+                dropped,
+            )
+            continue
+        manifest_rows_by_handle[collection.handle] = _manifest_row(
+            handle=collection.handle,
+            file_name=file_path.name,
+            details_count=len(details),
+            dropped_count=dropped,
+        )
+        _LOGGER.info(
+            "reuse synth_product_details collection %s — %d details from partial cache",
+            collection.handle,
+            len(details),
+        )
+    return manifest_rows_by_handle, collections_to_synth
+
+
+def _synth_missing_collections(
+    *,
+    identity: dict[str, Any],
+    collections: list[CollectionDraft],
+    skeletons_by_collection: dict[str, list[ProductSkeleton]],
+    completer: LLMCompleter,
+    details_dir: Path,
+    manifest_rows_by_handle: dict[str, dict[str, Any]],
+) -> BaseException | None:
+    """Synthesize missing collections, writing each collection as it finishes."""
+    first_error: BaseException | None = None
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(
+                synth_product_details_for_collection,
+                identity=identity,
+                collection=collection,
+                skeletons=skeletons_by_collection[collection.handle],
+                completer=completer,
+                debug_dir=details_dir,
+            ): collection.handle
+            for collection in collections
+        }
+        for future in as_completed(futures):
+            handle = futures[future]
+            try:
+                details, dropped = future.result()
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+                continue
+            file_path = _collection_details_path(details_dir, handle)
+            _write_collection_details_file(file_path, details)
+            manifest_rows_by_handle[handle] = _manifest_row(
+                handle=handle,
+                file_name=file_path.name,
+                details_count=len(details),
+                dropped_count=dropped,
+            )
+            _LOGGER.info(
+                "write synth_product_details collection %s — %d details, %d dropped",
+                handle,
+                len(details),
+                dropped,
+            )
+    return first_error
+
+
+def _write_details_manifest(
+    *,
+    manifest_path: Path,
+    collections: list[CollectionDraft],
+    manifest_rows_by_handle: dict[str, dict[str, Any]],
+    total_products: int,
+    total_dropped: int,
+) -> None:
+    """Write the final details manifest after all collection files are present."""
+    manifest: dict[str, Any] = {
+        "collections": [
+            manifest_rows_by_handle[collection.handle] for collection in collections
+        ],
+        "total_products": total_products,
+        "total_dropped": total_dropped,
+    }
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _collection_details_path(details_dir: Path, handle: str) -> Path:
+    """Return the per-collection details cache path for ``handle``."""
+    return details_dir / f"{handle}.json"
+
+
+def _clear_collection_detail_files(
+    details_dir: Path,
+    collections: list[CollectionDraft],
+) -> None:
+    """Remove collection outputs from a previously completed details run."""
+    for collection in collections:
+        path = _collection_details_path(details_dir, collection.handle)
+        path.unlink(missing_ok=True)
+        path.with_name(f"{path.name}.tmp").unlink(missing_ok=True)
+
+
+def _manifest_row(
+    *,
+    handle: str,
+    file_name: str,
+    details_count: int,
+    dropped_count: int,
+) -> dict[str, Any]:
+    """Build one collection row for ``details/_manifest.json``."""
+    return {
+        "handle": handle,
+        "file": file_name,
+        "details_count": details_count,
+        "dropped_count": dropped_count,
+    }
+
+
+def _write_collection_details_file(
+    file_path: Path,
+    details: list[ProductDetail],
+) -> None:
+    """Atomically persist one collection's product details."""
+    tmp_path = file_path.with_name(f"{file_path.name}.tmp")
+    tmp_path.write_text(
+        json.dumps(
+            [d.model_dump(mode="json") for d in details],
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    tmp_path.replace(file_path)
+
+
+def _load_collection_details_file(
+    file_path: Path,
+    *,
+    expected_handles: list[str],
+) -> list[ProductDetail]:
+    """Load and validate a partial per-collection details file."""
+    try:
+        raw: Any = json.loads(file_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise StageSynthError(
+            f"cached details at {file_path} is not valid JSON: {exc}",
+        ) from exc
+    if not isinstance(raw, list):
+        raise StageSynthError(
+            f"cached details at {file_path} must be a JSON array, "
+            f"got {type(raw).__name__}",
+        )
+
+    expected = set(expected_handles)
+    seen: set[str] = set()
+    details: list[ProductDetail] = []
+    try:
+        for item in cast("list[Any]", raw):
+            detail = ProductDetail.model_validate(item)
+            if detail.handle not in expected:
+                raise StageSynthError(
+                    f"cached details at {file_path} contains unexpected "
+                    f"handle {detail.handle!r}",
+                )
+            if detail.handle in seen:
+                raise StageSynthError(
+                    f"cached details at {file_path} contains duplicate "
+                    f"handle {detail.handle!r}",
+                )
+            seen.add(detail.handle)
+            details.append(detail)
+    except ValidationError as exc:
+        raise StageSynthError(
+            f"cached details at {file_path} failed ProductDetail schema validation: {exc}",
+        ) from exc
+    return details
 
 
 def _assert_vendor_in_allowlist(detail: ProductDetail, *, allowlist: Allowlist) -> None:

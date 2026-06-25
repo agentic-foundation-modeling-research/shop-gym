@@ -80,6 +80,7 @@ from shop_arena.gen.steps.runner import (
     select_ancestors_inclusive,
 )
 from shop_arena.gen.steps.state import read_state, state_path
+from shop_arena.gen.template_registry import get_template
 
 PHASES: Final[tuple[str, ...]] = (
     "manual_merge",
@@ -237,7 +238,7 @@ def run(
         _format_elapsed(elapsed),
     )
 
-    return _result_for(out_dir)
+    return _result_for(out_dir, config=config)
 
 
 _SECONDS_PER_MINUTE: Final[int] = 60
@@ -429,7 +430,7 @@ def _build_registry_from_branch(
         stats_aware_manual_step_ids=stats_aware_manual_step_ids,
     )
     _register_data_validation(registry)
-    _register_build(registry)
+    _register_build(registry, config=config)
     _register_final_eval(registry, config=config)
     return registry
 
@@ -548,7 +549,7 @@ def _register_data_validation(registry: Registry) -> None:
     registry.register(ValidateHostingStep())
 
 
-def _register_build(registry: Registry) -> None:
+def _register_build(registry: Registry, *, config: ShopGenConfig | None = None) -> None:
     """Register Phase 4 build-harness-loop steps.
 
     Registers the env-setup pair from impl plan T5.1, the
@@ -567,10 +568,11 @@ def _register_build(registry: Registry) -> None:
       verifier set, spawns the long-lived sidecar, and invokes
       :func:`harness.run_plan_exec_loop` (spec §5.5).
     """
-    registry.register(CloneTemplateStep())
-    registry.register(WriteEnvFileStep())
-    registry.register(StartSidecarStep())
-    registry.register(RunBuildHarnessLoopStep())
+    template_id = config.template if config is not None else "hydrogen"
+    registry.register(CloneTemplateStep(template_id=template_id))
+    registry.register(WriteEnvFileStep(template_id=template_id))
+    registry.register(StartSidecarStep(template_id=template_id))
+    registry.register(RunBuildHarnessLoopStep(template_id=template_id))
 
 
 def _register_final_eval(registry: Registry, *, config: ShopGenConfig | None = None) -> None:
@@ -636,19 +638,22 @@ def resolve_out_dir(config: ShopGenConfig) -> Path:
     return _DEFAULT_OUT_ROOT / name
 
 
-def _result_for(out_dir: Path) -> ShopGenResult:
+def _result_for(out_dir: Path, *, config: ShopGenConfig) -> ShopGenResult:
     """Build the :class:`ShopGenResult` for the canonical artifact layout.
 
     The paths are forward declarations: callers can ``Path.exists()``
     each one to see which artifacts the current step set actually
     produced. Mirrors spec §4.1.
     """
+    template = get_template(config.template)
     return ShopGenResult(
         out_dir=out_dir,
         manual_dir=out_dir / "manual",
         identity_path=out_dir / "identity.json",
         data_dir=out_dir / "data",
         hydrogen_dir=out_dir / "hydrogen",
+        storefront_dir=out_dir / template.app_dir,
+        template_metadata_path=out_dir / ".shop_gen" / "template.json",
         data_validation_path=out_dir / "data_validation.json",
         final_eval_path=out_dir / "final_eval.json",
         build_run_dir=out_dir / "runs" / "build",

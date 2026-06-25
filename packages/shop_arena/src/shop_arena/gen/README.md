@@ -114,7 +114,7 @@ uv run shop-gen <seed>... --out-dir outputs/shops/my-shop \
     --images-per-product 2 \
     --image-backend placeholder \
     --runtime pi \
-    --model anthropic/claude-opus-4-7 \
+    --model openai/gpt-5.5 \
     --max-iters 30
 ```
 
@@ -131,8 +131,16 @@ every step emits ``run`` (starting), ``done`` (ok with elapsed
 wall-clock), or ``skip`` (already fresh). Failures log ``fail`` at
 ERROR before re-raising.
 
+Long data-synthesis steps write cache files incrementally where the
+downstream contract allows it. In particular, `synth_product_details`
+writes `.shop_gen/stage_cache/details/<collection>.json` as each
+collection completes and writes `_manifest.json` only after every
+collection succeeds. If the stage is interrupted before the manifest is
+written, the next run resumes from valid collection files already on
+disk.
+
 ```
-23:32:21 shop-gen INFO: start run — out_dir=outputs/shops/my-shop seeds=1 runtime=pi model=anthropic/claude-opus-4-7
+23:32:21 shop-gen INFO: start run — out_dir=outputs/shops/my-shop seeds=1 runtime=pi model=openai/gpt-5.5
 23:32:21 shop-gen INFO: run  copy_seed_manual (manual_merge) — starting
 23:32:21 shop-gen INFO: done copy_seed_manual (manual_merge) — ok in 0.42s
 23:32:21 shop-gen INFO: skip synth_identity (data_synth) — fresh
@@ -174,7 +182,7 @@ loop. Resolution goes through `harness.get_runtime` (see
 
 | Runtime       | Default model                  | Notes                                                                  |
 | ------------- | ------------------------------ | ---------------------------------------------------------------------- |
-| `pi`          | `anthropic/claude-opus-4-7`    | **Default.** Native `pi` runtime; required for live runs. Model follows `pi`'s grammar (`sonnet:high`, `anthropic/...`). |
+| `pi`          | `openai/gpt-5.5`               | **Default.** Native `pi` runtime; required for live runs. Model follows `pi`'s grammar (`sonnet:high`, `openai/...`, `anthropic/...`). |
 | `claude_code` | `opus`                         | Alternative runtime; `--model` is forwarded as `claude --model` and follows the `claude` CLI's grammar (aliases like `opus`/`sonnet`, or pinned IDs like `claude-opus-4-5`). |
 
 The default model is per-runtime so the same `--model`-omitted invocation

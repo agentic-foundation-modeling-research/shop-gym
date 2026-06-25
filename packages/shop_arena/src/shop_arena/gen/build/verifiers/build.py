@@ -20,6 +20,7 @@ the mandatory ``visual_fix`` task (spec §5.5.4).
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from typing import Final
 
 from harness.verifiers import Verdict, VerifierContext, VerifierResult
@@ -58,17 +59,25 @@ class BuildVerifier:
     def __init__(
         self,
         *,
+        app_dir: Path = Path(_HYDROGEN_DIR),
+        argv: tuple[str, ...] = _ARGV,
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         runner: SubprocessRunner = default_subprocess_runner,
     ) -> None:
         """Build the verifier with optional injection seams.
 
         Args:
+            app_dir: Storefront app directory relative to
+                ``VerifierContext.artifact_dir``. Defaults to
+                ``hydrogen`` for backward compatibility.
+            argv: Build command to run from ``app_dir``.
             timeout_s: Wall-clock budget for the ``pnpm`` invocation.
                 Defaults to :data:`_DEFAULT_TIMEOUT_S`.
             runner: Subprocess runner used to spawn ``pnpm``. Tests
                 inject a stub; production callers leave the default.
         """
+        self._app_dir = app_dir
+        self._argv = argv
         self._timeout_s = timeout_s
         self._runner = runner
 
@@ -99,11 +108,11 @@ class BuildVerifier:
             the budget was exhausted; the harness records the result
             without re-raising.
         """
-        hydrogen_dir = ctx.artifact_dir / _HYDROGEN_DIR
+        app_dir = ctx.artifact_dir / self._app_dir
         try:
             completed = self._runner(
-                _ARGV,
-                cwd=hydrogen_dir,
+                self._argv,
+                cwd=app_dir,
                 timeout=self._timeout_s,
             )
         except subprocess.TimeoutExpired:
@@ -127,7 +136,7 @@ class BuildVerifier:
             feedback=feedback,
             details={
                 "returncode": completed.returncode,
-                "argv": list(_ARGV),
+                "argv": list(self._argv),
             },
         )
 

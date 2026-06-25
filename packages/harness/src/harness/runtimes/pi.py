@@ -81,6 +81,7 @@ _ANTHROPIC_BASE_URL_ENV: Final[str] = "ANTHROPIC_BASE_URL"
 _ANTHROPIC_API_KEY_ENV: Final[str] = "ANTHROPIC_API_KEY"
 _OPENAI_BASE_URL_ENV: Final[str] = "OPENAI_BASE_URL"
 _OPENAI_API_KEY_ENV: Final[str] = "OPENAI_API_KEY"
+_MAX_ONESHOT_ERROR_CHARS: Final[int] = 4_000
 
 type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
 
@@ -371,8 +372,8 @@ def prepare_isolated_config(
     The isolated agent directory must not copy ``~/.pi/agent``. When the
     project ``.env`` supplies provider base URLs, this writes the minimal
     ``models.json`` override that ``pi`` needs to route built-in models
-    through those endpoints. API keys are referenced by environment
-    variable name, not copied into the file.
+    through those endpoints. API keys are referenced through Pi's
+    ``$ENV_VAR`` interpolation syntax, not copied into the file.
 
     Args:
         agent_dir: Per-call config directory for ``PI_CODING_AGENT_DIR``.
@@ -443,7 +444,7 @@ def _provider_models_config(
     config: dict[str, JsonValue] = {"baseUrl": base_url}
     api_key_env = _select_api_key_env(env, provider_api_key_env)
     if api_key_env is not None:
-        config["apiKey"] = api_key_env
+        config["apiKey"] = f"${api_key_env}"
     return config
 
 
@@ -541,34 +542,65 @@ def _spawn_oneshot(
     """Run ``argv`` with ``prompt`` on stdin, returning captured stdout.
 
     Mirrors `_spawn_and_capture`'s timeout / process-group discipline,
-    but captures stdout into memory and discards stderr — the call
-    pattern is a pure prompt → text completion, so tee'ing to a log file
-    would just leave a debug artifact behind. On `subprocess.TimeoutExpired`
+    but captures stdout / stderr into memory rather than tee'ing to a
+    debug artifact. On `subprocess.TimeoutExpired`
     we send ``SIGTERM`` to the process group, give it a brief grace
     window, then escalate to ``SIGKILL`` and re-raise.
 
     Returns:
         The child's UTF-8-decoded stdout, with trailing whitespace
-        stripped. Returns an empty string when the child writes nothing
-        (e.g. immediate non-zero exit).
+        stripped.
+
+    Raises:
+        RuntimeError: The child exits non-zero. The message includes
+            trimmed stderr/stdout so provider auth and model-routing
+            failures are visible to callers.
     """
     proc = subprocess.Popen(
         argv,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         start_new_session=True,
         env=env,
     )
     try:
-        stdout_bytes, _ = proc.communicate(input=prompt.encode("utf-8"), timeout=timeout)
+        stdout_bytes, stderr_bytes = proc.communicate(
+            input=prompt.encode("utf-8"),
+            timeout=timeout,
+        )
     except subprocess.TimeoutExpired:
         _terminate_group(proc)
         raise
     finally:
         if proc.poll() is None:
             _terminate_group(proc)
-    return stdout_bytes.decode("utf-8", errors="replace").rstrip()
+    stdout = stdout_bytes.decode("utf-8", errors="replace").rstrip()
+    stderr = stderr_bytes.decode("utf-8", errors="replace").rstrip()
+    returncode = proc.returncode if proc.returncode is not None else -1
+    if returncode != 0:
+        detail = _format_oneshot_error(stdout=stdout, stderr=stderr)
+        raise RuntimeError(f"pi completion failed with exit code {returncode}: {detail}")
+    return stdout
+
+
+def _format_oneshot_error(*, stdout: str, stderr: str) -> str:
+    """Return a compact diagnostic for a failed one-shot subprocess."""
+    parts: list[str] = []
+    if stderr:
+        parts.append(f"stderr: {_truncate_error_text(stderr)}")
+    if stdout:
+        parts.append(f"stdout: {_truncate_error_text(stdout)}")
+    if not parts:
+        return "no stdout/stderr"
+    return " ".join(parts)
+
+
+def _truncate_error_text(value: str) -> str:
+    """Trim very large subprocess output before raising it as an exception."""
+    if len(value) <= _MAX_ONESHOT_ERROR_CHARS:
+        return value
+    return value[: _MAX_ONESHOT_ERROR_CHARS - 1].rstrip() + "…"
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any, Final, cast
 
 from harness.verifiers import Verdict, VerifierContext, VerifierResult
@@ -85,6 +86,7 @@ class CrossTaskConsistencyVerifier:
     def __init__(
         self,
         *,
+        app_dir: Path = Path(_HYDROGEN_APP_DIR),
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         max_bytes_per_file: int = _DEFAULT_MAX_BYTES_PER_FILE,
         max_total_bytes: int = _DEFAULT_MAX_TOTAL_BYTES,
@@ -93,6 +95,9 @@ class CrossTaskConsistencyVerifier:
         """Build the verifier with optional injection seams.
 
         Args:
+            app_dir: Storefront ``app/`` directory relative to
+                ``VerifierContext.artifact_dir``. Defaults to
+                ``hydrogen/app`` for backward compatibility.
             timeout_s: Wall-clock budget for the LLM judge call.
                 Defaults to :data:`_DEFAULT_TIMEOUT_S`.
             max_bytes_per_file: Per-file source-byte cap; longer files
@@ -105,6 +110,7 @@ class CrossTaskConsistencyVerifier:
                 Defaults to :data:`_DEFAULT_TASKS` (``{"visual_fix"}``
                 per spec §5.5.4).
         """
+        self._app_dir = app_dir
         self._timeout_s = timeout_s
         self._max_bytes_per_file = max_bytes_per_file
         self._max_total_bytes = max_total_bytes
@@ -150,13 +156,13 @@ class CrossTaskConsistencyVerifier:
                 details={"collections_path": str(collections_path), "exists": False},
             )
 
-        app_dir = ctx.artifact_dir / _HYDROGEN_APP_DIR
+        app_dir = ctx.artifact_dir / self._app_dir
         if not app_dir.is_dir():
             return VerifierResult(
                 verdict=Verdict.FAIL,
                 feedback=(
                     f"`cross_task_consistency` could not find the hydrogen "
-                    f"app tree at `{_HYDROGEN_APP_DIR}/`. Did `clone_template` run?"
+                    f"app tree at `{self._app_dir.as_posix()}/`. Did `clone_template` run?"
                 ),
                 details={"app_dir": str(app_dir), "exists": False},
             )

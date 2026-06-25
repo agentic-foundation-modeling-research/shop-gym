@@ -160,6 +160,7 @@ class VisualJudgeVerifier:
         *,
         data_dir: Path,
         dev_server_factory: DevServerFactory,
+        app_dir: Path = Path(_HYDROGEN_DIRNAME),
         retry_budget: int = _DEFAULT_RETRY_BUDGET,
         timeout_s: float = DEFAULT_VISUAL_JUDGE_TIMEOUT_S,
         pass_threshold: float = _DEFAULT_PASS_THRESHOLD,
@@ -178,6 +179,9 @@ class VisualJudgeVerifier:
                 production wiring is the ``pnpm dev`` runner that
                 lands in T6.1, tests inject a stub yielding a
                 deterministic base URL.
+            app_dir: Storefront app directory relative to
+                ``VerifierContext.artifact_dir``. Defaults to
+                ``hydrogen`` for backward compatibility.
             retry_budget: Per-task cap on consecutive ``visual_judge``
                 FAILs before the verifier downgrades to ADVISORY.
                 ``0`` disables the budget entirely (spec §5.4).
@@ -195,6 +199,7 @@ class VisualJudgeVerifier:
         """
         self._data_dir = data_dir
         self._dev_server_factory = dev_server_factory
+        self._app_dir = app_dir
         self._retry_budget = retry_budget
         self._timeout_s = timeout_s
         self._pass_threshold = pass_threshold
@@ -290,13 +295,13 @@ class VisualJudgeVerifier:
             )
         capabilities = cast(Mapping[str, Any], capabilities_payload)
 
-        hydrogen_dir = ctx.artifact_dir / _HYDROGEN_DIRNAME
+        hydrogen_dir = ctx.artifact_dir / self._app_dir
         if not hydrogen_dir.is_dir():
             return VerifierResult(
                 verdict=Verdict.FAIL,
                 feedback=(
                     f"`visual_judge` could not find the hydrogen tree at "
-                    f"`{_HYDROGEN_DIRNAME}/`. Did `clone_template` run?"
+                    f"`{self._app_dir.as_posix()}/`. Did `clone_template` run?"
                 ),
                 details={"hydrogen_dir": str(hydrogen_dir), "exists": False},
             )

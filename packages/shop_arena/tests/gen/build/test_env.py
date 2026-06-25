@@ -83,6 +83,19 @@ def test_clone_template_step_satisfies_step_protocol() -> None:
     assert step.version == 3
 
 
+def test_clone_template_react_vite_step_satisfies_step_protocol() -> None:
+    """React Vite clone outputs point at the selected app directory."""
+    step = CloneTemplateStep(template_id="react-vite")
+
+    assert isinstance(step, Step)
+    assert step.id == "clone_template"
+    assert step.phase == "build"
+    assert step.inputs == []
+    assert step.outputs == [Path("react-vite") / "package.json"]
+    assert step.depends_on == []
+    assert step.version == 3
+
+
 # --------------------------------------------------------------------------- #
 # CloneTemplateStep — run
 # --------------------------------------------------------------------------- #
@@ -100,6 +113,24 @@ def test_clone_template_copies_tree_into_hydrogen_subdir(tmp_path: Path) -> None
     assert (target / "server.mjs").is_file()
     # Nested directories are preserved.
     assert (target / "app").is_dir()
+
+
+def test_clone_template_copies_react_vite_tree_and_metadata(tmp_path: Path) -> None:
+    """React Vite clones into ``react-vite/`` and records template metadata."""
+    ctx = _make_ctx(tmp_path)
+
+    CloneTemplateStep(template_id="react-vite").run(ctx)
+
+    target = ctx.out_dir / "react-vite"
+    assert target.is_dir()
+    assert (target / "package.json").is_file()
+    assert (target / "server.mjs").is_file()
+    assert (target / "app").is_dir()
+    assert not (target / "node_modules").exists()
+
+    metadata = (ctx.out_dir / ".shop_gen" / "template.json").read_text(encoding="utf-8")
+    assert '"template_id": "react-vite"' in metadata
+    assert '"app_dir": "react-vite"' in metadata
 
 
 def test_clone_template_tree_is_byte_equivalent_to_template(tmp_path: Path) -> None:
@@ -218,6 +249,19 @@ def test_write_env_file_step_satisfies_step_protocol() -> None:
     assert step.version == 1
 
 
+def test_write_env_file_react_vite_step_satisfies_step_protocol() -> None:
+    """React Vite env output points at ``react-vite/.env``."""
+    step = WriteEnvFileStep(template_id="react-vite")
+
+    assert isinstance(step, Step)
+    assert step.id == "write_env_file"
+    assert step.phase == "build"
+    assert step.inputs == [StepInput(step_id="clone_template")]
+    assert step.outputs == [Path("react-vite") / ".env"]
+    assert step.depends_on == ["clone_template"]
+    assert step.version == 1
+
+
 # --------------------------------------------------------------------------- #
 # WriteEnvFileStep — run
 # --------------------------------------------------------------------------- #
@@ -235,6 +279,20 @@ def test_write_env_file_writes_expected_keys(tmp_path: Path) -> None:
     contents = env_path.read_text(encoding="utf-8")
     for key in _EXPECTED_ENV_KEYS:
         assert f"{key}=" in contents, f"missing {key} in .env"
+
+
+def test_write_env_file_react_vite_writes_backend_alias(tmp_path: Path) -> None:
+    """React Vite receives both backend URL env names in its selected env file."""
+    ctx = _make_ctx(tmp_path)
+    CloneTemplateStep(template_id="react-vite").run(ctx)
+
+    WriteEnvFileStep(template_id="react-vite").run(ctx)
+
+    env_path = ctx.out_dir / "react-vite" / ".env"
+    contents = env_path.read_text(encoding="utf-8")
+    assert "PUBLIC_STORE_DOMAIN=http://localhost:" in contents
+    assert "SHOP_BACKEND_URL=http://localhost:" in contents
+    assert "SESSION_SECRET=" in contents
 
 
 def test_write_env_file_resolves_sidecar_url_to_localhost_port(tmp_path: Path) -> None:

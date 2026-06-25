@@ -70,6 +70,7 @@ from shop_arena.gen.build.verifiers import (
 )
 from shop_arena.gen.build.verifiers._subprocess import CompletedSubprocess
 from shop_arena.gen.config import (
+    DEFAULT_TEMPLATE,
     DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
     DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
     DEFAULT_VISUAL_RETRY_BUDGET,
@@ -135,7 +136,13 @@ class _StubRuntime:
         raise AssertionError("stub runtime should not run iterations")
 
 
-def _materialise_workspace(out_dir: Path, *, port: int = _PORT) -> None:
+def _materialise_workspace(
+    out_dir: Path,
+    *,
+    port: int = _PORT,
+    app_dir: Path = Path("hydrogen"),
+    package_name: str = "hydrogen",
+) -> None:
     """Create the minimum on-disk workspace the loop step expects.
 
     Builds the four upstream sub-trees the step reads:
@@ -175,9 +182,12 @@ def _materialise_workspace(out_dir: Path, *, port: int = _PORT) -> None:
         encoding="utf-8",
     )
 
-    hydrogen_dir = out_dir / "hydrogen"
+    hydrogen_dir = out_dir / app_dir
     (hydrogen_dir / "app").mkdir(parents=True)
-    (hydrogen_dir / "package.json").write_text('{"name":"hydrogen"}\n', encoding="utf-8")
+    (hydrogen_dir / "package.json").write_text(
+        f'{{"name":"{package_name}"}}\n',
+        encoding="utf-8",
+    )
     (hydrogen_dir / "app" / "root.tsx").write_text("// root\n", encoding="utf-8")
     (hydrogen_dir / ".env").write_text(
         f"PUBLIC_STORE_DOMAIN=http://localhost:{port}\n",
@@ -189,6 +199,7 @@ def _build_ctx(
     out_dir: Path,
     *,
     max_iters: int = 5,
+    template: str = DEFAULT_TEMPLATE,
     visual_retry_budget: int = 3,
     visual_judge_pass_threshold: float | None = None,
     visual_judge_max_concurrency: int | None = None,
@@ -201,6 +212,7 @@ def _build_ctx(
         "seeds": (seed,),
         "out_dir": out_dir,
         "max_iters": max_iters,
+        "template": template,
         "visual_retry_budget": visual_retry_budget,
     }
     if judges is not None:
@@ -230,10 +242,12 @@ def _empty_verifiers_factory(
     visual_retry_budget: int = 3,
     visual_judge_pass_threshold: float = 7.0,
     visual_judge_max_concurrency: int = 3,
+    template_id: str = DEFAULT_TEMPLATE,
 ) -> tuple[Verifier, ...]:
     """Return an empty verifier tuple; reused across tests that don't care about dispatch."""
     del out_dir, sidecar, judges, visual_retry_budget
     del visual_judge_pass_threshold, visual_judge_max_concurrency
+    del template_id
     return ()
 
 
@@ -286,6 +300,19 @@ def test_run_build_harness_loop_inputs_cover_upstream_steps_and_env_files() -> N
     )
 
 
+def test_run_build_harness_loop_inputs_use_selected_template_files() -> None:
+    """React Vite inputs point at ``react-vite`` rather than ``hydrogen``."""
+    step = RunBuildHarnessLoopStep(template_id="react-vite")
+
+    file_inputs = [ref for ref in step.inputs if isinstance(ref, FileInput)]
+    assert sorted(str(ref.path) for ref in file_inputs) == sorted(
+        [
+            str(Path("react-vite") / "package.json"),
+            str(Path("react-vite") / ".env"),
+        ],
+    )
+
+
 def test_run_build_harness_loop_registered_in_build_phase() -> None:
     """``--list-steps`` surfaces ``run_build_harness_loop`` last in the build phase."""
     grouped = list_steps()
@@ -315,9 +342,10 @@ def test_step_forwards_visual_retry_budget_to_verifiers_factory(
         visual_retry_budget: int = 3,
         visual_judge_pass_threshold: float = 7.0,
         visual_judge_max_concurrency: int = 3,
+        template_id: str = DEFAULT_TEMPLATE,
     ) -> tuple[Verifier, ...]:
         del out_dir, sidecar, judges
-        del visual_judge_pass_threshold, visual_judge_max_concurrency
+        del visual_judge_pass_threshold, visual_judge_max_concurrency, template_id
         captured_budgets.append(visual_retry_budget)
         return ()
 
@@ -370,8 +398,10 @@ def test_step_forwards_visual_judge_score_and_concurrency_to_verifiers_factory(
         visual_retry_budget: int = 3,
         visual_judge_pass_threshold: float = 7.0,
         visual_judge_max_concurrency: int = 3,
+        template_id: str = DEFAULT_TEMPLATE,
     ) -> tuple[Verifier, ...]:
         del out_dir, sidecar, judges, visual_retry_budget
+        del template_id
         captured.append(
             (visual_judge_pass_threshold, visual_judge_max_concurrency),
         )
@@ -432,9 +462,10 @@ def test_step_forwards_judges_to_verifiers_factory(
         visual_retry_budget: int = 3,
         visual_judge_pass_threshold: float = 7.0,
         visual_judge_max_concurrency: int = 3,
+        template_id: str = DEFAULT_TEMPLATE,
     ) -> tuple[Verifier, ...]:
         del out_dir, sidecar, visual_retry_budget
-        del visual_judge_pass_threshold, visual_judge_max_concurrency
+        del visual_judge_pass_threshold, visual_judge_max_concurrency, template_id
         captured_judges.append(judges)
         return ()
 
@@ -516,9 +547,10 @@ def test_step_run_passes_expected_loop_config_to_harness(tmp_path: Path) -> None
         visual_retry_budget: int = 3,
         visual_judge_pass_threshold: float = 7.0,
         visual_judge_max_concurrency: int = 3,
+        template_id: str = DEFAULT_TEMPLATE,
     ) -> tuple[Verifier, ...]:
         del out_dir, judges, visual_retry_budget
-        del visual_judge_pass_threshold, visual_judge_max_concurrency
+        del visual_judge_pass_threshold, visual_judge_max_concurrency, template_id
         captured_handles.append(sidecar)
         return (sentinel,)
 
@@ -572,6 +604,93 @@ def test_step_run_passes_expected_loop_config_to_harness(tmp_path: Path) -> None
     assert cfg.max_iters == _CFG_MAX_ITERS
     # Verifier set is what the factory returned.
     assert cfg.verifiers == (sentinel,)
+
+
+def test_step_run_uses_react_vite_artifact_and_prompt_context(tmp_path: Path) -> None:
+    """React Vite runs install and harness setup against ``artifact/react-vite``."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(
+        out_dir,
+        app_dir=Path("react-vite"),
+        package_name="react-vite",
+    )
+
+    captured_configs: list[PlanExecLoopConfig] = []
+    captured_template_ids: list[str] = []
+    install_invocations: list[tuple[tuple[str, ...], Path]] = []
+
+    def _tracking_install_runner(
+        argv: Sequence[str],
+        *,
+        cwd: Path,
+        timeout: float,
+    ) -> CompletedSubprocess:
+        del timeout
+        install_invocations.append((tuple(argv), cwd))
+        return CompletedSubprocess(returncode=0, stdout="", stderr="")
+
+    def _verifiers_factory(
+        *,
+        out_dir: Path,
+        sidecar: SidecarHandle,
+        judges: frozenset[str] = frozenset(),
+        visual_retry_budget: int = 3,
+        visual_judge_pass_threshold: float = 7.0,
+        visual_judge_max_concurrency: int = 3,
+        template_id: str = DEFAULT_TEMPLATE,
+    ) -> tuple[Verifier, ...]:
+        del out_dir, sidecar, judges, visual_retry_budget
+        del visual_judge_pass_threshold, visual_judge_max_concurrency
+        captured_template_ids.append(template_id)
+        return ()
+
+    def _loop_runner(
+        config: PlanExecLoopConfig,
+        runtime: AgentRuntime,
+        *,
+        force: bool,
+    ) -> PlanExecLoopResult:
+        del runtime, force
+        captured_configs.append(config)
+        return PlanExecLoopResult(
+            run_dir=config.run_dir,
+            final_status=FinalStatus.COMPLETED,
+            plan_iter_count=0,
+            exec_iter_count=0,
+        )
+
+    step = RunBuildHarnessLoopStep(
+        template_id="react-vite",
+        loop_runner=_loop_runner,
+        runtime_factory=_stub_runtime_factory_for(_StubRuntime()),
+        sidecar_factory=_stub_sidecar_factory,
+        verifiers_factory=_verifiers_factory,
+        install_runner=_tracking_install_runner,
+    )
+
+    with patch(
+        "shop_arena.gen.build.loop.find_shop_backend_cli",
+        return_value=_shop_backend_cli_stub(),
+    ):
+        step.run(_build_ctx(out_dir, template="react-vite"))
+
+    artifact = out_dir / "runs" / "build" / "artifact"
+    assert (artifact / "react-vite" / "package.json").is_file()
+    assert (artifact / "react-vite" / "app" / "root.tsx").is_file()
+    assert not (artifact / "hydrogen").exists()
+    assert install_invocations == [
+        (
+            ("pnpm", "install", "--ignore-workspace", "--frozen-lockfile"),
+            artifact / "react-vite",
+        ),
+    ]
+    assert captured_template_ids == ["react-vite"]
+    assert len(captured_configs) == 1
+    cfg = captured_configs[0]
+    assert "Template id: `react-vite`." in cfg.agents_md
+    assert "artifact/react-vite/" in cfg.prompts.planner
+    assert "pnpm typecheck" in cfg.prompts.execute
 
 
 def test_step_run_seeds_only_manual_and_layers_hydrogen_data_after(tmp_path: Path) -> None:
@@ -1055,6 +1174,50 @@ def test_default_verifiers_factory_returns_v01_set_when_skill_missing(
     ]
     assert len(visual_warnings) == 1
     assert "pi-playwright" in visual_warnings[0].getMessage()
+
+
+def test_default_verifiers_factory_react_vite_uses_selected_paths(
+    tmp_path: Path,
+) -> None:
+    """React Vite verifiers target ``react-vite`` and skip Hydrogen-only checks."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _materialise_workspace(
+        out_dir,
+        app_dir=Path("react-vite"),
+        package_name="react-vite",
+    )
+
+    sidecar = _stub_handle()
+    with patch("shop_arena.gen.build.loop.is_playwright_skill_available", return_value=False):
+        verifiers = default_verifiers_factory(
+            out_dir=out_dir,
+            sidecar=sidecar,
+            template_id="react-vite",
+        )
+
+    types = [type(v) for v in verifiers]
+    assert NavigationPrimitiveUsageVerifier not in types
+    assert types == [
+        TscVerifier,
+        BuildVerifier,
+        DataInUseVerifier,
+        NavCoverageVerifier,
+        CartSurfaceConformanceVerifier,
+        Routes200Verifier,
+        QualityJudgeVerifier,
+        CrossTaskConsistencyVerifier,
+    ]
+
+    tsc = next(v for v in verifiers if isinstance(v, TscVerifier))
+    build = next(v for v in verifiers if isinstance(v, BuildVerifier))
+    data_in_use = next(v for v in verifiers if isinstance(v, DataInUseVerifier))
+    nav_coverage = next(v for v in verifiers if isinstance(v, NavCoverageVerifier))
+    assert tsc._argv == ("pnpm", "typecheck")
+    assert tsc._app_dir == Path("react-vite")
+    assert build._app_dir == Path("react-vite")
+    assert data_in_use._app_dir == Path("react-vite") / "app"
+    assert nav_coverage._app_dir == Path("react-vite") / "app"
 
 
 def test_default_verifiers_factory_includes_visual_judge_when_skill_present(

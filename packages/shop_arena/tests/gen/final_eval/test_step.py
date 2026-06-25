@@ -34,6 +34,7 @@ from shop_arena.gen.final_eval.playwright_smoke import (
     SmokeAction,
     SmokeFailure,
     SmokeFlow,
+    SmokeReport,
 )
 from shop_arena.gen.final_eval.step import FinalEvalStep, run_final_eval
 from shop_arena.gen.pipeline import list_steps
@@ -354,6 +355,49 @@ def test_final_eval_step_writes_pass_verdict(tmp_path: Path) -> None:
     assert _BASE_URL in rendered
     # Capabilities body is embedded verbatim.
     assert '"section_types"' in rendered
+
+
+def test_run_final_eval_uses_template_metadata_storefront_dir(tmp_path: Path) -> None:
+    """Template metadata selects ``artifact/react-vite`` for smoke/final eval."""
+    out_dir = _materialise_workspace(tmp_path / "out")
+    react_vite_dir = out_dir / "runs" / "build" / "artifact" / "react-vite"
+    (react_vite_dir / "app").mkdir(parents=True)
+    (react_vite_dir / "package.json").write_text(
+        '{"name":"react-vite"}\n',
+        encoding="utf-8",
+    )
+    metadata_dir = out_dir / ".shop_gen"
+    metadata_dir.mkdir()
+    (metadata_dir / "template.json").write_text(
+        json.dumps({"template_id": "react-vite", "app_dir": "react-vite"}),
+        encoding="utf-8",
+    )
+
+    captured_dirs: list[Path] = []
+
+    def _capturing_smoke_runner(
+        *,
+        hydrogen_dir: Path,
+        screenshots_dir: Path,
+        flow: SmokeFlow,
+        dev_server_factory: Any,
+        browser_driver: Any,
+    ) -> SmokeReport:
+        del screenshots_dir, dev_server_factory, browser_driver
+        captured_dirs.append(hydrogen_dir)
+        return SmokeReport(base_url=_BASE_URL, flow=flow)
+
+    report = run_final_eval(
+        out_dir=out_dir,
+        completer=_StubCompleter(_PASS_RESPONSE),
+        dev_server_factory=_stub_dev_server_factory,
+        browser_driver=_stub_browser_driver,
+        smoke_runner=_capturing_smoke_runner,
+        visual_sweep_runner=_stub_visual_sweep_runner,
+    )
+
+    assert captured_dirs == [react_vite_dir]
+    assert report["smoke"]["error"] is None
 
 
 # --------------------------------------------------------------------------- #
