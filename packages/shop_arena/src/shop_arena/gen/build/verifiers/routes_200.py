@@ -106,6 +106,7 @@ class Routes200Verifier:
         *,
         data_dir: Path,
         dev_server_factory: DevServerFactory,
+        app_dir: Path = Path(_HYDROGEN_DIRNAME),
         request_timeout_s: float = _REQUEST_TIMEOUT_S,
     ) -> None:
         """Build the verifier with the bucket axis + dev-server seam.
@@ -119,11 +120,15 @@ class Routes200Verifier:
             dev_server_factory: Callable that boots a transient dev
                 server. See
                 :class:`~shop_arena.gen.final_eval.playwright_smoke.DevServerFactory`.
+            app_dir: Storefront app directory relative to
+                ``VerifierContext.artifact_dir``. Defaults to
+                ``hydrogen`` for backward compatibility.
             request_timeout_s: Per-request HTTP timeout. Defaults to
                 :data:`_REQUEST_TIMEOUT_S`.
         """
         self._data_dir = data_dir
         self._dev_server_factory = dev_server_factory
+        self._app_dir = app_dir
         self._request_timeout_s = request_timeout_s
 
     def applies_to(self, task_id: str) -> bool:
@@ -176,19 +181,19 @@ class Routes200Verifier:
                 },
             )
 
-        hydrogen_dir = ctx.artifact_dir / _HYDROGEN_DIRNAME
-        if not hydrogen_dir.is_dir():
+        app_dir = ctx.artifact_dir / self._app_dir
+        if not app_dir.is_dir():
             return VerifierResult(
                 verdict=Verdict.FAIL,
                 feedback=(
                     "routes_200 could not find the hydrogen tree at "
-                    f"`{_HYDROGEN_DIRNAME}/`. Did `clone_template` run?"
+                    f"`{self._app_dir.as_posix()}/`. Did `clone_template` run?"
                 ),
-                details={"hydrogen_dir": str(hydrogen_dir), "exists": False},
+                details={"hydrogen_dir": str(app_dir), "exists": False},
             )
 
         return self._probe_with_server(
-            hydrogen_dir=hydrogen_dir,
+            hydrogen_dir=app_dir,
             routes=routes,
             buckets=tuple(sorted(buckets)),
         )

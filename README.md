@@ -63,10 +63,9 @@ pnpm install
 ```
 
 Storefront templates live under
-`packages/shop_arena/src/shop_arena/gen/templates/`. The generation build
-step expects a Hydrogen-compatible template at
-`packages/shop_arena/src/shop_arena/gen/templates/hydrogen/`; an open-source
-template can be adapted there to bootstrap generated shops.
+`packages/shop_arena/src/shop_arena/gen/templates/`. Hydrogen remains the
+default generation template. A minimal React Vite SSR template is also
+available and can be selected explicitly with `shop-gen --template react-vite`.
 
 `shop_arena.gen` reads `OPENAI_API_KEY` / `OPENAI_BASE_URL` from a project
 `.env` for `--image-backend openai` runs. The `pi` harness runtime also
@@ -82,6 +81,12 @@ cp .env.example .env
 ```
 
 Shell exports take precedence over `.env` values.
+
+If a `shop-gen` run fails during an early LLM-backed step such as
+`synth_identity`, first verify the provider credentials visible to the
+`pi` subprocess. The isolated runtime resolves `PI_PROXY_API_KEY` or provider
+API keys through the generated Pi `models.json`; stale shell exports override
+corrected values in `.env`.
 
 ### Verify Playwright installs
 
@@ -127,9 +132,15 @@ uv run shop-explore https://example-shop.com
 ```bash
 # Without image gen — placeholder PNGs (fast, deterministic, offline).
 uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop
+# Optional: use the minimal React Vite SSR storefront instead of Hydrogen.
+uv run shop-gen outputs/shop_manuals/<domain>/<run_id> --name mock_shop --template react-vite
 ```
 
 Output lands in `outputs/shops/mock_shop/`. Re-running with the same `--name` resumes from the cached state.
+Long LLM-backed data-synthesis stages persist cache artifacts as they
+complete where possible; for example, `synth_product_details` writes
+one details file per collection before the final manifest, so an
+interrupted run can resume from valid partial collection files.
 If the final visual sweep is resource-constrained on your machine, reduce
 browser fan-out with `--final-eval-visual-max-concurrency 1` or `2`; this is
 separate from the in-loop `--visual-judge-max-concurrency` setting.
@@ -145,7 +156,7 @@ See [Hosting a generated shop](#hosting-a-generated-shop) for stop / logs / list
 ### 4. Generate a benchmark for the shop
 
 Add the shop to a `shop_guru` config (see [`packages/shop_guru/configs/default.yaml`](packages/shop_guru/configs/default.yaml)
-for the format — `shop_url` should match the Hydrogen URL printed in step 3), then:
+for the format — `shop_url` should match the storefront URL printed in step 3), then:
 
 ```bash
 uv run shop-guru build --shop mock_shop
@@ -190,28 +201,31 @@ pnpm format                      # biome format
 
 `pnpm shop:host` (alias for [`scripts/run-shop.sh`](scripts/run-shop.sh)) brings
 up a generated shop end-to-end: the `shop_backend` GraphQL server pointed at
-`outputs/shops/<name>/data/` plus the Hydrogen storefront wired to it. Both
-processes run detached; logs live under `.run/shops/`.
+`outputs/shops/<name>/data/` plus the selected storefront artifact wired to it.
+Both processes run detached; logs live under `.run/shops/`.
 
-Hydrogen runs on `<port>`, `shop_backend` on `<port>+1000`. The port arg is
-optional — if omitted, a free port is auto-picked from `4100..4199` (api:
-`5100..5199`). The script also refuses to start if either port is already
-bound by another process.
+The storefront runs on `<port>`, `shop_backend` on `<port>+1000`. The port arg
+is optional — if omitted, a free port is auto-picked from `4100..4199` (api:
+`5100..5199`). The script also refuses to start if either port is already bound
+by another process.
 
 ```bash
 pnpm shop:host start mock_shop             # auto-pick a free port
 pnpm shop:host start mock_shop 8000        # or pick explicitly
-# → shop_backend on http://localhost:9000, Hydrogen on http://localhost:8000
+# → shop_backend on http://localhost:9000, storefront on http://localhost:8000
 
 pnpm shop:host list -a                      # all shops, running + available
 pnpm shop:host stop mock_shop           # or `stop all`
 pnpm shop:host restart mock_shop
 ```
 
-By default the script hosts the build-loop Hydrogen tree at
-`outputs/shops/<name>/runs/build/artifact/hydrogen/`, where dependencies
-and the compiled production bundle live. Set `HYDROGEN_DIR=<path>` only
-when you intentionally want to host a different hydrated Hydrogen tree.
+By default the script reads `outputs/shops/<name>/.shop_gen/template.json` and
+hosts the matching build-loop artifact at
+`outputs/shops/<name>/runs/build/artifact/<app-dir>/`, where dependencies and
+the compiled production bundle live. Older Hydrogen shops without metadata
+fall back to `artifact/hydrogen/`. Set `STOREFRONT_DIR=<path>` only when you
+intentionally want to host a different hydrated storefront tree; `HYDROGEN_DIR`
+is still accepted for older Hydrogen-only workflows.
 
 ## Repository layout
 

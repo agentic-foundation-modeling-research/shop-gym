@@ -55,6 +55,7 @@ import httpx
 
 from shop_arena.gen.data_validation.hosting_check import find_shop_backend_cli
 from shop_arena.gen.steps.base import InputRef, StepContext, StepInput
+from shop_arena.gen.template_registry import TemplateId, TemplateSpec, get_template
 
 _PHASE: Final[str] = "build"
 _STEP_ID: Final[str] = "start_sidecar"
@@ -242,8 +243,9 @@ class StartSidecarStep:
         version: Bumped when the sidecar lifecycle contract changes.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, template_id: TemplateId = "hydrogen") -> None:
         """Build the step bound to the upstream ``write_env_file`` producer."""
+        self._template: TemplateSpec = get_template(template_id)
         self.id: str = _STEP_ID
         self.phase: str = _PHASE
         self.inputs: list[InputRef] = [
@@ -268,7 +270,7 @@ class StartSidecarStep:
             shop_arena.gen.data_validation.hosting_check.HostingValidationError:
                 ``packages/shop_backend/dist/cli.js`` cannot be located.
         """
-        env_path = ctx.out_dir / _HYDROGEN_ENV
+        env_path = ctx.out_dir / self._template.env_path
         port = parse_port_from_env(env_path)
         cli_path = find_shop_backend_cli()
         data_dir = ctx.out_dir / _DATA_DIR

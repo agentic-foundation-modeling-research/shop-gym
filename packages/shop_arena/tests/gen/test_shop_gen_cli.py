@@ -35,6 +35,7 @@ from shop_arena.gen.config import (
     DEFAULT_JUDGES,
     DEFAULT_MAX_ITERS,
     DEFAULT_RUNTIME,
+    DEFAULT_TEMPLATE,
     DEFAULT_VISUAL_RETRY_BUDGET,
     KNOWN_JUDGES,
     ShopGenConfig,
@@ -198,6 +199,7 @@ def test_default_run_builds_config_with_defaults(
     assert config.name is None
     assert config.runtime == DEFAULT_RUNTIME
     assert config.model == default_model_for("pi")
+    assert config.template == DEFAULT_TEMPLATE
     assert config.max_iters == DEFAULT_MAX_ITERS
     assert config.image_backend == DEFAULT_IMAGE_BACKEND
     assert config.visual_retry_budget == DEFAULT_VISUAL_RETRY_BUDGET
@@ -259,6 +261,27 @@ def test_empty_model_flag_skips_runtime_default(
     rc = main([str(seed), "--out-dir", str(tmp_path / "out"), "--model", ""])
     assert rc == EXIT_OK
     assert captured_run["config"].model is None
+
+
+def test_template_flag_propagates_to_config(
+    tmp_path: Path,
+    captured_run: dict[str, Any],
+) -> None:
+    """``--template react-vite`` selects the React Vite SSR storefront template."""
+    seed = _make_seed(tmp_path)
+
+    rc = main(
+        [
+            str(seed),
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--template",
+            "react-vite",
+        ],
+    )
+
+    assert rc == EXIT_OK
+    assert captured_run["config"].template == "react-vite"
 
 
 def test_visual_retry_budget_flag_propagates_to_config(
@@ -814,6 +837,32 @@ def test_default_run_surfaces_runner_dag_error(
     rc = main([str(seed), "--out-dir", str(tmp_path / "out")])
     assert rc != EXIT_OK
     assert "DAG error" in capsys.readouterr().err
+
+
+def test_default_run_surfaces_runtime_error_without_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runtime failures exit cleanly with the underlying diagnostic."""
+
+    def boom(
+        _config: ShopGenConfig,
+        *,
+        force_ids: frozenset[str] = frozenset(),
+        stop_at: str | None = None,
+    ) -> None:
+        del force_ids, stop_at
+        raise RuntimeError("pi completion failed with exit code 1: stderr: auth failed")
+
+    monkeypatch.setattr(cli_mod, "run", boom)
+    seed = _make_seed(tmp_path)
+    rc = main([str(seed), "--out-dir", str(tmp_path / "out")])
+
+    err = capsys.readouterr().err
+    assert rc == EXIT_RUNTIME
+    assert "pi completion failed" in err
+    assert "Traceback" not in err
 
 
 # --------------------------------------------------------------------------- #

@@ -146,6 +146,14 @@ def _details_response(handles: list[str], **kwargs: Any) -> str:
     return json.dumps([_detail_dict(handle=h, **kwargs) for h in handles])
 
 
+def _empty_responses() -> dict[str, list[str | RuntimeError]]:
+    return {}
+
+
+def _empty_prompts() -> list[str]:
+    return []
+
+
 @dataclass
 class _StubCompleter:
     """Thread-safe :class:`LLMCompleter` returning a dict of canned responses.
@@ -157,8 +165,8 @@ class _StubCompleter:
     (used to test the retry path).
     """
 
-    responses: dict[str, list[str]] = field(default_factory=dict)
-    prompts: list[str] = field(default_factory=list)
+    responses: dict[str, list[str | RuntimeError]] = field(default_factory=_empty_responses)
+    prompts: list[str] = field(default_factory=_empty_prompts)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def complete(self, prompt: str, *, timeout: float) -> str:
@@ -172,7 +180,10 @@ class _StubCompleter:
                     f"unexpected LLM call for collection={handle!r}; "
                     f"prompts so far={len(self.prompts)}",
                 )
-            return queue.pop(0)
+            response = queue.pop(0)
+            if isinstance(response, RuntimeError):
+                raise response
+            return response
 
 
 def _route_prompt(prompt: str, handles: list[str]) -> str:
@@ -557,6 +568,49 @@ def test_synth_details_retry_recovers_from_parse_failure() -> None:
     assert [d.handle for d in details] == ["warm-winter-coat", "waterproof-rain-jacket"]
 
 
+def test_synth_details_retry_recovers_from_runtime_failure() -> None:
+    """A transient runtime stream failure consumes the same retry budget."""
+    good = _details_response(["warm-winter-coat", "waterproof-rain-jacket"])
+    completer = _StubCompleter(
+        responses={
+            "outerwear": [
+                RuntimeError(
+                    "pi completion failed with exit code 1: stderr: "
+                    "OpenAI Responses stream ended before a terminal response event"
+                ),
+                good,
+            ],
+        },
+    )
+
+    details, dropped = synth_product_details_for_collection(
+        identity=_IDENTITY,
+        collection=_OUTERWEAR,
+        skeletons=_OUTERWEAR_SKELETONS,
+        completer=cast(LLMCompleter, completer),
+    )
+
+    assert len(completer.prompts) == _MAX_RETRIES + 1
+    assert dropped == 0
+    assert [d.handle for d in details] == ["warm-winter-coat", "waterproof-rain-jacket"]
+
+
+def test_synth_details_reraises_runtime_failure_after_retry() -> None:
+    """Repeated runtime failures keep the provider diagnostic visible."""
+    err = RuntimeError("pi completion failed with exit code 1: stderr: stream ended")
+    completer = _StubCompleter(responses={"outerwear": [err, err]})
+
+    with pytest.raises(RuntimeError, match="stream ended"):
+        synth_product_details_for_collection(
+            identity=_IDENTITY,
+            collection=_OUTERWEAR,
+            skeletons=_OUTERWEAR_SKELETONS,
+            completer=cast(LLMCompleter, completer),
+        )
+
+    assert len(completer.prompts) == _MAX_RETRIES + 1
+
+
 def test_synth_details_no_dump_when_debug_dir_unset(tmp_path: Path) -> None:
     """Without ``debug_dir`` the parse error still propagates but no file is written."""
     completer = _StubCompleter(
@@ -676,6 +730,102 @@ def test_step_run_writes_per_collection_files_and_manifest(tmp_path: Path) -> No
     by_handle = {row["handle"]: row for row in manifest["collections"]}
     assert by_handle["outerwear"]["details_count"] == _PER_COLLECTION_COUNT
     assert by_handle["kitchen-tools"]["details_count"] == _PER_COLLECTION_COUNT
+
+
+def test_step_run_persists_completed_collection_before_failure(tmp_path: Path) -> None:
+    """A late collection failure leaves earlier successful collection files on disk."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    _materialise_workspace(out_dir)
+    completer = _StubCompleter(
+        responses={
+            "outerwear": [
+                _details_response(["warm-winter-coat", "waterproof-rain-jacket"]),
+            ],
+            "kitchen-tools": [
+                RuntimeError("pi completion failed: stream ended"),
+                RuntimeError("pi completion failed: stream ended"),
+            ],
+        },
+    )
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    ctx = StepContext(config=config, out_dir=out_dir, runtime=cast(LLMCompleter, completer))
+
+    step = SynthProductDetailsStep()
+    with pytest.raises(RuntimeError, match="stream ended"):
+        step.run(ctx)
+
+    details_dir = out_dir / ".shop_gen" / "stage_cache" / "details"
+    assert (details_dir / "outerwear.json").exists()
+    assert not (details_dir / "kitchen-tools.json").exists()
+    assert not (details_dir / "_manifest.json").exists()
+
+
+def test_step_run_reuses_partial_collection_files(tmp_path: Path) -> None:
+    """A retry resumes from valid collection files when the manifest is absent."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    _materialise_workspace(out_dir)
+    details_dir = out_dir / ".shop_gen" / "stage_cache" / "details"
+    details_dir.mkdir(parents=True)
+    (details_dir / "outerwear.json").write_text(
+        _details_response(["warm-winter-coat", "waterproof-rain-jacket"]) + "\n",
+        encoding="utf-8",
+    )
+    completer = _StubCompleter(
+        responses={
+            "kitchen-tools": [
+                _details_response(["ceramic-coffee-mug", "stainless-mixing-bowl"]),
+            ],
+        },
+    )
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    ctx = StepContext(config=config, out_dir=out_dir, runtime=cast(LLMCompleter, completer))
+
+    step = SynthProductDetailsStep()
+    step.run(ctx)
+
+    assert len(completer.prompts) == 1
+    assert '"handle": "kitchen-tools"' in completer.prompts[0]
+    manifest = json.loads((details_dir / "_manifest.json").read_text(encoding="utf-8"))
+    by_handle = {row["handle"]: row for row in manifest["collections"]}
+    assert by_handle["outerwear"]["details_count"] == _PER_COLLECTION_COUNT
+    assert by_handle["kitchen-tools"]["details_count"] == _PER_COLLECTION_COUNT
+
+
+def test_step_run_regenerates_partial_collection_with_drops(tmp_path: Path) -> None:
+    """Partial collection files with missing handles are regenerated."""
+    seed = _make_seed(tmp_path)
+    out_dir = tmp_path / "out"
+    _materialise_workspace(out_dir)
+    details_dir = out_dir / ".shop_gen" / "stage_cache" / "details"
+    details_dir.mkdir(parents=True)
+    (details_dir / "outerwear.json").write_text(
+        _details_response(["warm-winter-coat"]) + "\n",
+        encoding="utf-8",
+    )
+    completer = _StubCompleter(
+        responses={
+            "outerwear": [
+                _details_response(["warm-winter-coat", "waterproof-rain-jacket"]),
+            ],
+            "kitchen-tools": [
+                _details_response(["ceramic-coffee-mug", "stainless-mixing-bowl"]),
+            ],
+        },
+    )
+    config = ShopGenConfig(seeds=[seed], out_dir=out_dir)
+    ctx = StepContext(config=config, out_dir=out_dir, runtime=cast(LLMCompleter, completer))
+
+    step = SynthProductDetailsStep()
+    step.run(ctx)
+
+    assert len(completer.prompts) == 2
+    outerwear = json.loads((details_dir / "outerwear.json").read_text(encoding="utf-8"))
+    assert [d["handle"] for d in outerwear] == [
+        "warm-winter-coat",
+        "waterproof-rain-jacket",
+    ]
 
 
 def test_step_run_tolerates_drops_under_budget(tmp_path: Path) -> None:

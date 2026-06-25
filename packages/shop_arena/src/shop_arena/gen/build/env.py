@@ -30,12 +30,14 @@ import.
 from __future__ import annotations
 
 import contextlib
+import json
 import shutil
 import socket
 from pathlib import Path
 from typing import Final, cast
 
 from shop_arena.gen.steps.base import InputRef, StepContext, StepInput
+from shop_arena.gen.template_registry import TemplateId, TemplateSpec, get_template
 
 _PHASE: Final[str] = "build"
 
@@ -52,6 +54,9 @@ _HYDROGEN_DIR: Final[Path] = Path("hydrogen")
 
 _TEMPLATE_DIR: Final[Path] = Path(__file__).resolve().parent.parent / "templates" / "hydrogen"
 """Vendored Hydrogen template shipped with the package wheel."""
+
+_TEMPLATE_METADATA: Final[Path] = Path(".shop_gen") / "template.json"
+"""Run-relative template metadata path."""
 
 _CLONE_SENTINEL: Final[Path] = _HYDROGEN_DIR / "package.json"
 """Single sentinel output for ``clone_template``.
@@ -110,12 +115,13 @@ class CloneTemplateStep:
         version: Bumped when the template is rev'd (spec §5.7.1).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, template_id: TemplateId = "hydrogen") -> None:
         """Build the step with no per-run configuration."""
+        self._template: TemplateSpec = get_template(template_id)
         self.id: str = _CLONE_STEP_ID
         self.phase: str = _PHASE
         self.inputs: list[InputRef] = []
-        self.outputs: list[Path] = [_CLONE_SENTINEL]
+        self.outputs: list[Path] = [self._template.app_dir / "package.json"]
         self.depends_on: list[str] = []
         self.version: int = _CLONE_STEP_VERSION
 
@@ -130,12 +136,13 @@ class CloneTemplateStep:
             FileNotFoundError: The vendored template directory is
                 missing from the installed package (packaging bug).
         """
-        if not _TEMPLATE_DIR.is_dir():
+        source_dir = _TEMPLATE_DIR if self._template.id == "hydrogen" else self._template.source_dir
+        if not source_dir.is_dir():
             raise FileNotFoundError(
-                f"Hydrogen template not found at {_TEMPLATE_DIR}; "
+                f"{self._template.id} template not found at {source_dir}; "
                 "this indicates a broken shop_arena install.",
             )
-        target = ctx.out_dir / _HYDROGEN_DIR
+        target = ctx.out_dir / self._template.app_dir
         # ``copytree`` rejects an existing destination unless
         # ``dirs_exist_ok=True``; re-runs are legitimate (the runner
         # may force-rerun via ``--from`` even when outputs already
@@ -171,11 +178,12 @@ class CloneTemplateStep:
         if target_node_modules.exists():
             shutil.rmtree(target_node_modules)
         shutil.copytree(
-            _TEMPLATE_DIR,
+            source_dir,
             target,
             dirs_exist_ok=True,
             ignore=shutil.ignore_patterns("node_modules"),
         )
+        _write_template_metadata(ctx.out_dir, self._template, source_dir)
 
 
 class WriteEnvFileStep:
@@ -210,7 +218,12 @@ class WriteEnvFileStep:
         version: Bumped when the env-file schema changes (spec §5.7.1).
     """
 
-    def __init__(self, *, footer_menu_handles: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        template_id: TemplateId = "hydrogen",
+        footer_menu_handles: list[str] | None = None,
+    ) -> None:
         """Build the step bound to the ``clone_template`` upstream.
 
         Args:
@@ -222,13 +235,14 @@ class WriteEnvFileStep:
                 falls back to ``["footer"]`` so legacy single-menu
                 artifacts keep working.
         """
+        self._template: TemplateSpec = get_template(template_id)
         self._footer_menu_handles: tuple[str, ...] = _normalize_footer_handles(
             footer_menu_handles,
         )
         self.id: str = _WRITE_ENV_STEP_ID
         self.phase: str = _PHASE
         self.inputs: list[InputRef] = [StepInput(step_id=_CLONE_STEP_ID)]
-        self.outputs: list[Path] = [_ENV_FILE]
+        self.outputs: list[Path] = [self._template.env_path]
         self.depends_on: list[str] = [_CLONE_STEP_ID]
         self.version: int = _WRITE_ENV_STEP_VERSION
 
@@ -243,13 +257,13 @@ class WriteEnvFileStep:
             FileNotFoundError: ``<out_dir>/hydrogen/`` does not exist
                 (the upstream ``clone_template`` step did not run).
         """
-        hydrogen_dir = ctx.out_dir / _HYDROGEN_DIR
-        if not hydrogen_dir.is_dir():
+        app_dir = ctx.out_dir / self._template.app_dir
+        if not app_dir.is_dir():
             raise FileNotFoundError(
-                f"hydrogen tree not found at {hydrogen_dir}; did clone_template run?",
+                f"{self._template.id} tree not found at {app_dir}; did clone_template run?",
             )
         port = _allocate_free_port()
-        env_path = ctx.out_dir / _ENV_FILE
+        env_path = ctx.out_dir / self._template.env_path
         env_path.write_text(
             _render_env_file(port, self._footer_menu_handles),
             encoding="utf-8",
@@ -277,6 +291,7 @@ def _render_env_file(port: int, footer_menu_handles: tuple[str, ...]) -> str:
     lines = (
         "# Resolved sidecar URL written by shop_arena.gen write_env_file (spec §5.5.1).",
         f"PUBLIC_STORE_DOMAIN=http://{_DEFAULT_HOST}:{port}",
+        f"SHOP_BACKEND_URL=http://{_DEFAULT_HOST}:{port}",
         f"SESSION_SECRET={_MOCK_SESSION_SECRET}",
         f"PUBLIC_STOREFRONT_API_TOKEN={_MOCK_STOREFRONT_API_TOKEN}",
         f"PUBLIC_STOREFRONT_ID={_MOCK_STOREFRONT_ID}",
@@ -327,6 +342,25 @@ def _normalize_footer_handles(raw: list[str] | None) -> tuple[str, ...]:
     if not handles:
         return (_DEFAULT_FOOTER_MENU_HANDLE,)
     return tuple(handles)
+
+
+def _write_template_metadata(
+    out_dir: Path,
+    template: TemplateSpec,
+    source_dir: Path,
+) -> None:
+    """Persist selected template metadata for host/final-eval consumers."""
+    metadata = {
+        "template_id": template.id,
+        "app_dir": template.app_dir.as_posix(),
+        "source_dir": str(source_dir),
+    }
+    path = out_dir / _TEMPLATE_METADATA
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 __all__ = [

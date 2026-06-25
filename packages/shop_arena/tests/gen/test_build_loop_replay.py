@@ -101,10 +101,11 @@ def _empty_verifiers_factory(
     visual_retry_budget: int = 3,
     visual_judge_pass_threshold: float = 7.0,
     visual_judge_max_concurrency: int = 3,
+    template_id: str = "hydrogen",
 ) -> tuple[Verifier, ...]:
     """Skip the v0.1 verifier set — T5.9 covers the loop driver only."""
     del out_dir, sidecar, judges, visual_retry_budget
-    del visual_judge_pass_threshold, visual_judge_max_concurrency
+    del visual_judge_pass_threshold, visual_judge_max_concurrency, template_id
     return ()
 
 

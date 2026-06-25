@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -385,6 +386,41 @@ def test_runtime_satisfies_llm_completer_protocol() -> None:
     assert isinstance(runtime, LLMCompleter)
 
 
+def test_runtime_complete_returns_trimmed_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Successful one-shot subprocesses return stdout with trailing whitespace stripped."""
+    def fake_argv(*, binary: str, model: str | None) -> list[str]:
+        del binary, model
+        return [sys.executable, "-c", "print('ok')"]
+
+    monkeypatch.setattr(pi_runtime, "build_complete_argv", fake_argv)
+
+    output = PiRuntime(binary="ignored").complete("ignored", timeout=5.0)
+
+    assert output == "ok"
+
+
+def test_runtime_complete_raises_with_stderr_on_nonzero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-zero one-shot exits preserve stderr so provider failures are diagnosable."""
+    def fake_argv(*, binary: str, model: str | None) -> list[str]:
+        del binary, model
+        return [
+            sys.executable,
+            "-c",
+            "import sys; sys.stderr.write('auth failed\\n'); sys.exit(7)",
+        ]
+
+    monkeypatch.setattr(pi_runtime, "build_complete_argv", fake_argv)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        PiRuntime(binary="ignored").complete("ignored", timeout=5.0)
+
+    message = str(exc_info.value)
+    assert "exit code 7" in message
+    assert "stderr: auth failed" in message
+
+
 def test_run_iteration_spawns_with_dotenv_and_isolated_pi_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -451,7 +487,7 @@ def test_run_iteration_spawns_with_dotenv_and_isolated_pi_config(
     assert models_config == {
         "providers": {
             "anthropic": {
-                "apiKey": "PI_PROXY_API_KEY",
+                "apiKey": "$PI_PROXY_API_KEY",
                 "baseUrl": "https://proxy.example/anthropic",
             }
         }
@@ -474,11 +510,11 @@ def test_build_models_config_from_env_routes_base_urls_without_secrets() -> None
     assert config == {
         "providers": {
             "anthropic": {
-                "apiKey": "PI_PROXY_API_KEY",
+                "apiKey": "$PI_PROXY_API_KEY",
                 "baseUrl": "https://proxy.example/anthropic",
             },
             "openai": {
-                "apiKey": "PI_PROXY_API_KEY",
+                "apiKey": "$PI_PROXY_API_KEY",
                 "baseUrl": "https://proxy.example/openai",
             },
         }
@@ -497,7 +533,7 @@ def test_build_models_config_from_env_uses_provider_key_without_proxy_key() -> N
     assert config == {
         "providers": {
             "anthropic": {
-                "apiKey": "ANTHROPIC_API_KEY",
+                "apiKey": "$ANTHROPIC_API_KEY",
                 "baseUrl": "https://proxy.example/anthropic",
             }
         }

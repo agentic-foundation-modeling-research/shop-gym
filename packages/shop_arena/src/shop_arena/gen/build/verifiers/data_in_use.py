@@ -171,14 +171,23 @@ class DataInUseVerifier:
 
     name: str = _NAME
 
-    def __init__(self, *, introspect: Introspector) -> None:
+    def __init__(
+        self,
+        *,
+        introspect: Introspector,
+        app_dir: Path = Path(_HYDROGEN_APP_DIR),
+    ) -> None:
         """Build the verifier with an introspection seam.
 
         Args:
             introspect: Callable that returns the current schema's
                 root-field index. See :class:`Introspector`.
+            app_dir: Storefront ``app/`` directory relative to
+                ``VerifierContext.artifact_dir``. Defaults to
+                ``hydrogen/app`` for backward compatibility.
         """
         self._introspect = introspect
+        self._app_dir = app_dir
 
     def applies_to(self, task_id: str) -> bool:
         """Match every ``gen_*`` task (spec §5.5.3).
@@ -209,13 +218,13 @@ class DataInUseVerifier:
             propagated — verifier dispatch should never deadlock the
             loop.
         """
-        app_dir = ctx.artifact_dir / _HYDROGEN_APP_DIR
+        app_dir = ctx.artifact_dir / self._app_dir
         if not app_dir.is_dir():
             return VerifierResult(
                 verdict=Verdict.FAIL,
                 feedback=(
                     "data_in_use could not find the hydrogen app tree "
-                    f"at `{_HYDROGEN_APP_DIR}/`. Did `clone_template` "
+                    f"at `{self._app_dir.as_posix()}/`. Did `clone_template` "
                     "run?"
                 ),
                 details={"app_dir": str(app_dir), "exists": False},

@@ -26,6 +26,7 @@ from typing import Final, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from harness.runtimes import validate_model_grammar
+from shop_arena.gen.template_registry import DEFAULT_TEMPLATE_ID, TemplateId
 
 RuntimeName = Literal["pi", "claude_code"]
 """Name of the agent runtime to drive the build-loop plan/exec phase."""
@@ -58,16 +59,17 @@ DEFAULT_RUNTIME: Final[RuntimeName] = "pi"
 """Default agent runtime forwarded to the build harness loop."""
 
 DEFAULT_MODEL_BY_RUNTIME: Final[Mapping[RuntimeName, str]] = {
-    "pi": "anthropic/claude-opus-4-7",
+    "pi": "openai/gpt-5.5",
     "claude_code": "opus",
 }
 """Per-runtime default model identifier in each runtime's native grammar.
 
-``pi`` uses provider-prefixed IDs (``anthropic/...``); the ``claude_code``
+``pi`` uses provider-prefixed IDs (``openai/...``, ``anthropic/...``);
+the ``claude_code``
 CLI uses bare aliases (``opus``, ``sonnet``) or pinned IDs
-(``claude-opus-4-5``). The mapping pins the same Opus tier across both,
-expressed in the grammar each runtime expects — a single-grammar default
-would silently break the other runtime's CLI three layers downstream.
+(``claude-opus-4-5``). The mapping is expressed in the grammar each
+runtime expects — a single-grammar default would silently break the
+other runtime's CLI three layers downstream.
 
 Pinned at the application layer (not the harness runtimes) so the
 repo-wide defaults are visible at the user-facing entrypoint and the
@@ -110,6 +112,9 @@ DEFAULT_MAX_ITERS: Final[int] = 30
 
 DEFAULT_IMAGE_BACKEND: Final[ImageBackend] = "placeholder"
 """Default image backend (spec §4.1)."""
+
+DEFAULT_TEMPLATE: Final[TemplateId] = DEFAULT_TEMPLATE_ID
+"""Default storefront template. Hydrogen remains the default."""
 
 DEFAULT_COLLECTIONS: Final[int] = 10
 """Default number of synthesised collections (spec §4.1)."""
@@ -250,6 +255,8 @@ class ShopGenConfig(BaseModel):
             Strictly positive.
         image_backend: ``placeholder`` (default) emits deterministic
             SVGs; ``openai`` calls an OpenAI-compatible image API.
+        template: Storefront template id. ``hydrogen`` is the default;
+            ``react-vite`` must be selected explicitly.
         image_model: Model id forwarded to the backend. ``None`` →
             backend default (``gpt-image-1`` for ``openai``). Accepts
             org-prefixed ids to support compatible vendors.
@@ -309,6 +316,7 @@ class ShopGenConfig(BaseModel):
     name: str | None = None
     runtime: RuntimeName = DEFAULT_RUNTIME
     model: str | None = None
+    template: TemplateId = DEFAULT_TEMPLATE
     catalog: CatalogConfig = Field(default_factory=CatalogConfig)
     max_iters: int = Field(default=DEFAULT_MAX_ITERS, gt=0)
     image_backend: ImageBackend = DEFAULT_IMAGE_BACKEND
@@ -481,6 +489,9 @@ class ShopGenResult(BaseModel):
         data_dir: ``<out_dir>/data/`` — SandboxShop dataset accepted by
             ``shop_backend.loadShopData``.
         hydrogen_dir: ``<out_dir>/hydrogen/`` — generated Hydrogen app.
+        storefront_dir: ``<out_dir>/<selected app_dir>/`` — generated
+            storefront app selected by the template registry.
+        template_metadata_path: ``<out_dir>/.shop_gen/template.json``.
         data_validation_path: ``<out_dir>/data_validation.json``.
         final_eval_path: ``<out_dir>/final_eval.json`` — advisory.
         build_run_dir: ``<out_dir>/runs/build/`` — harness run workspace
@@ -494,6 +505,8 @@ class ShopGenResult(BaseModel):
     identity_path: Path
     data_dir: Path
     hydrogen_dir: Path
+    storefront_dir: Path
+    template_metadata_path: Path
     data_validation_path: Path
     final_eval_path: Path
     build_run_dir: Path

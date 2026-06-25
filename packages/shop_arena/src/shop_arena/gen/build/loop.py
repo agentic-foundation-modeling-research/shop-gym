@@ -108,6 +108,7 @@ from shop_arena.gen.data_validation.hosting_check import find_shop_backend_cli
 from shop_arena.gen.final_eval.dev_server import pnpm_dev_factory
 from shop_arena.gen.final_eval.playwright_smoke import DevServerFactory
 from shop_arena.gen.steps.base import FileInput, InputRef, StepContext, StepInput
+from shop_arena.gen.template_registry import TemplateId, TemplateSpec, get_template
 
 _log = logging.getLogger(__name__)
 
@@ -245,6 +246,7 @@ class VerifiersFactory(Protocol):
         visual_retry_budget: int = ...,
         visual_judge_pass_threshold: float = ...,
         visual_judge_max_concurrency: int = ...,
+        template_id: TemplateId = ...,
     ) -> tuple[Verifier, ...]:
         """Return the verifier tuple the harness should dispatch."""
         ...
@@ -281,6 +283,7 @@ class RunBuildHarnessLoopStep:
     def __init__(
         self,
         *,
+        template_id: TemplateId = "hydrogen",
         loop_runner: LoopRunner | None = None,
         runtime_factory: RuntimeFactory | None = None,
         sidecar_factory: SidecarFactory | None = None,
@@ -320,14 +323,15 @@ class RunBuildHarnessLoopStep:
                 ``run.json``); the seam stays open for the redo flow
                 landing under T5.7.
         """
+        self._template: TemplateSpec = get_template(template_id)
         self.id: str = _STEP_ID
         self.phase: str = _PHASE
         self.inputs: list[InputRef] = [
             StepInput(step_id=_UPSTREAM_START_SIDECAR),
             StepInput(step_id=_UPSTREAM_ASSEMBLE_DATA),
             StepInput(step_id=_UPSTREAM_VALIDATE_HOSTING),
-            FileInput(path=_HYDROGEN_SENTINEL),
-            FileInput(path=_HYDROGEN_ENV),
+            FileInput(path=self._template.app_dir / "package.json"),
+            FileInput(path=self._template.env_path),
         ]
         self.outputs: list[Path] = [_RUN_SUMMARY]
         self.depends_on: list[str] = [
@@ -374,12 +378,12 @@ class RunBuildHarnessLoopStep:
         out_dir = ctx.out_dir
         manual_dir = out_dir / _MANUAL_DIR
         data_dir = out_dir / _DATA_DIR
-        hydrogen_src = out_dir / _HYDROGEN_DIR
+        app_src = out_dir / self._template.app_dir
         run_dir = out_dir / _RUN_DIR
-        env_path = out_dir / _HYDROGEN_ENV
+        env_path = out_dir / self._template.env_path
 
         _require_dir(manual_dir, "manual_dir")
-        _require_dir(hydrogen_src, "hydrogen tree")
+        _require_dir(app_src, "storefront app tree")
         _require_dir(data_dir, "data dir")
 
         port = parse_port_from_env(env_path)
@@ -398,7 +402,7 @@ class RunBuildHarnessLoopStep:
         # *after* the seed manifest is captured (spec §5.5).
         force = self._setup_run_dir(
             harness_config,
-            hydrogen_src=hydrogen_src,
+            app_src=app_src,
             data_dir=data_dir,
         )
 
@@ -412,6 +416,7 @@ class RunBuildHarnessLoopStep:
                 visual_retry_budget=ctx.config.visual_retry_budget,
                 visual_judge_pass_threshold=ctx.config.visual_judge_pass_threshold,
                 visual_judge_max_concurrency=ctx.config.visual_judge_max_concurrency,
+                template_id=self._template.id,
             )
             loop_config = harness_config.model_copy(update={"verifiers": verifiers})
             self._loop_runner(loop_config, runtime, force=force)
@@ -430,13 +435,13 @@ class RunBuildHarnessLoopStep:
     ) -> PlanExecLoopConfig:
         """Assemble the :class:`PlanExecLoopConfig` for this step's invocation."""
         prompts = Prompts(
-            planner=load_planner_prompt(),
-            execute=load_execute_prompt(),
+            planner=load_planner_prompt(self._template.id),
+            execute=load_execute_prompt(self._template.id),
         )
         return PlanExecLoopConfig(
             run_dir=run_dir,
             prompts=prompts,
-            agents_md=load_agents_md(),
+            agents_md=load_agents_md(self._template.id),
             artifact_seed_dir=manual_dir,
             max_iters=max_iters,
             timeout=self._iter_timeout_s,
@@ -447,7 +452,7 @@ class RunBuildHarnessLoopStep:
         self,
         harness_config: PlanExecLoopConfig,
         *,
-        hydrogen_src: Path,
+        app_src: Path,
         data_dir: Path,
     ) -> bool:
         """Materialise the workspace and inject the mutable subtrees.
@@ -503,7 +508,7 @@ class RunBuildHarnessLoopStep:
                 the runner records the step ``FAILED``.
         """
         run_dir = harness_config.run_dir
-        current_fp = _compute_source_fingerprint(hydrogen_src, data_dir)
+        current_fp = _compute_source_fingerprint(app_src, data_dir, app_dir=self._template.app_dir)
 
         if run_dir.exists() and any(run_dir.iterdir()):
             if _read_source_stamp(run_dir / _ARTIFACT_DIRNAME) == current_fp:
@@ -536,8 +541,8 @@ class RunBuildHarnessLoopStep:
         # here: a ``node_modules/`` showing up in ``hydrogen_src`` is a
         # clone_template bug, not something to silently work around.
         shutil.copytree(
-            hydrogen_src,
-            artifact_dir / _HYDROGEN_DIR.name,
+            app_src,
+            artifact_dir / self._template.app_dir,
             dirs_exist_ok=False,
         )
         shutil.copytree(
@@ -545,12 +550,12 @@ class RunBuildHarnessLoopStep:
             artifact_dir / _DATA_DIR.name,
             dirs_exist_ok=False,
         )
-        self._install_artifact_deps(artifact_dir / _HYDROGEN_DIR.name)
+        self._install_artifact_deps(artifact_dir / self._template.app_dir)
         _write_source_stamp(artifact_dir, current_fp)
         return self._force
 
-    def _install_artifact_deps(self, hydrogen_dir: Path) -> None:
-        """Run ``pnpm install --ignore-workspace --frozen-lockfile`` in ``hydrogen_dir``.
+    def _install_artifact_deps(self, app_dir: Path) -> None:
+        """Run the template install command in ``app_dir``.
 
         Idempotent on a populated ``node_modules/`` matching the
         lockfile: pnpm's own up-to-date check short-circuits the
@@ -558,14 +563,14 @@ class RunBuildHarnessLoopStep:
         truncated stdout/stderr embedded for debugging.
         """
         completed = self._install_runner(
-            ("pnpm", "install", "--ignore-workspace", "--frozen-lockfile"),
-            cwd=hydrogen_dir,
+            self._template.install_command,
+            cwd=app_dir,
             timeout=self._install_timeout_s,
         )
         if completed.returncode != 0:
             raise RuntimeError(
-                "pnpm install failed inside the artifact hydrogen tree "
-                f"({hydrogen_dir}); returncode={completed.returncode}.\n"
+                "dependency install failed inside the artifact storefront tree "
+                f"({app_dir}); returncode={completed.returncode}.\n"
                 f"stdout:\n{truncate_stream(completed.stdout)}\n"
                 f"stderr:\n{truncate_stream(completed.stderr)}",
             )
@@ -576,7 +581,12 @@ class RunBuildHarnessLoopStep:
 # --------------------------------------------------------------------------- #
 
 
-def _compute_source_fingerprint(hydrogen_src: Path, data_dir: Path) -> str:
+def _compute_source_fingerprint(
+    app_src: Path,
+    data_dir: Path,
+    *,
+    app_dir: Path = _HYDROGEN_DIR,
+) -> str:
     """Hash the upstream source state into a deterministic stamp.
 
     The digest mixes three signals:
@@ -608,13 +618,13 @@ def _compute_source_fingerprint(hydrogen_src: Path, data_dir: Path) -> str:
     digest.update(b"clone_template_version\x00")
     digest.update(str(_CLONE_STEP_VERSION).encode("ascii"))
     digest.update(b"\n")
-    for label, root in (("hydrogen", hydrogen_src), ("data", data_dir)):
+    for label, root in ((app_dir.as_posix(), app_src), ("data", data_dir)):
         for path in sorted(root.rglob("*")):
             if not path.is_file():
                 continue
             if "node_modules" in path.parts:
                 continue
-            if root is hydrogen_src and path.name == ".env":
+            if root is app_src and path.name == ".env":
                 continue
             digest.update(label.encode("utf-8"))
             digest.update(b"\x00")
@@ -710,6 +720,7 @@ def default_verifiers_factory(
     visual_retry_budget: int = DEFAULT_VISUAL_RETRY_BUDGET,
     visual_judge_pass_threshold: float = DEFAULT_VISUAL_JUDGE_PASS_THRESHOLD,
     visual_judge_max_concurrency: int = DEFAULT_VISUAL_JUDGE_MAX_CONCURRENCY,
+    template_id: TemplateId = "hydrogen",
 ) -> tuple[Verifier, ...]:
     """Build the v0.1 verifier set documented in spec §5.5.3 + §5.5.4.
 
@@ -750,6 +761,8 @@ def default_verifiers_factory(
         visual_judge_max_concurrency: Page-bucket fan-out worker count
             (spec §5.2.1 step 5, §5.6). Forwarded to the verifier ctor;
             consumed by the M5 fan-out arm.
+        template_id: Selected storefront template id. Used to resolve
+            verifier paths and skip Hydrogen-only checks.
 
     Returns:
         Ordered verifier tuple suitable for
@@ -758,20 +771,18 @@ def default_verifiers_factory(
         chosen for readability in ``feedback.md``.
     """
     factory: DevServerFactory = dev_server_factory or _default_dev_server_factory
+    template = get_template(template_id)
+    app_dir = template.app_dir
+    app_source_dir = template.app_dir / "app"
     verifiers: list[Verifier] = [
-        TscVerifier(),
-        BuildVerifier(),
+        TscVerifier(app_dir=app_dir, argv=template.typecheck_command),
+        BuildVerifier(app_dir=app_dir, argv=template.build_command),
         DataInUseVerifier(
             introspect=_GraphqlIntrospector(base_url=sidecar.base_url),
+            app_dir=app_source_dir,
         ),
-        NavCoverageVerifier(data_dir=out_dir / _DATA_DIR),
-        # `navigation_primitive_usage` registers as HARD-FAIL in M5 (impl plan T5.1):
-        # the verifier blocks the iteration when `gen_navigation` outputs bypass the
-        # navigation primitives, locking in the contract validated end-to-end by the post-M2
-        # cassette (`test_build_loop_replay_post_build_artifact_imports_navigation_primitives`).
-        # Was advisory in M4 (T4.2); promotion drops the `advisory=True` kwarg.
-        NavigationPrimitiveUsageVerifier(),
-        CartSurfaceConformanceVerifier(),
+        NavCoverageVerifier(data_dir=out_dir / _DATA_DIR, app_dir=app_source_dir),
+        CartSurfaceConformanceVerifier(app_rel=app_source_dir),
         # `routes_200` boots a transient dev server and asserts every bucket
         # route returns HTTP 2xx (spec §5.3 / impl plan T4.1). Slotted before
         # the LLM judges so a broken hydrogen tree (e.g. SSR 500s) surfaces
@@ -781,11 +792,16 @@ def default_verifiers_factory(
         Routes200Verifier(
             data_dir=out_dir / _DATA_DIR,
             dev_server_factory=factory,
+            app_dir=app_dir,
         ),
         # NoBrandLeakVerifier(),  # temporarily disabled — broken; re-add import + line to revive.
     ]
+    if template.run_navigation_primitive_verifier:
+        # `navigation_primitive_usage` is Hydrogen-specific: it checks
+        # Hydrogen's shared NavMenu primitive files and class names.
+        verifiers.insert(4, NavigationPrimitiveUsageVerifier())
     if "quality_judge" in judges:
-        verifiers.append(QualityJudgeVerifier())
+        verifiers.append(QualityJudgeVerifier(app_dir=app_source_dir))
     if "visual_judge" in judges:
         if is_playwright_skill_available():
             _log.info(
@@ -800,6 +816,7 @@ def default_verifiers_factory(
                 VisualJudgeVerifier(
                     data_dir=out_dir / _DATA_DIR,
                     dev_server_factory=factory,
+                    app_dir=app_dir,
                     retry_budget=visual_retry_budget,
                     pass_threshold=visual_judge_pass_threshold,
                     max_concurrency=visual_judge_max_concurrency,
@@ -811,7 +828,7 @@ def default_verifiers_factory(
                 "Install with `pnpm add -g pi-playwright` (or `npm i -g pi-playwright`) to enable.",
             )
     if "cross_task_consistency" in judges:
-        verifiers.append(CrossTaskConsistencyVerifier())
+        verifiers.append(CrossTaskConsistencyVerifier(app_dir=app_source_dir))
     return tuple(verifiers)
 
 
