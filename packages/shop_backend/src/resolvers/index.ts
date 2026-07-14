@@ -14,6 +14,7 @@
 
 import type { SandboxShopData } from '../data/types.js';
 import type { SandboxSchemaResolvers } from '../schema.js';
+import type { ImageUrlMode } from './builders.js';
 import { type CartStore, cartResolvers } from './cart.js';
 import { contentResolvers } from './content.js';
 import { metafieldResolvers } from './metafields.js';
@@ -24,13 +25,13 @@ import { shopResolvers } from './shop.js';
 /**
  * Per-request context passed to every resolver. `data` is the loaded dataset
  * snapshot; `carts` is the per-server in-memory cart store (spec §5.5);
- * `baseUrl` is the public origin (e.g. `https://shop.example`) used when
- * rewriting relative image paths into absolute URLs (see spec §5.3).
+ * `baseUrl` is the public GraphQL origin exposed by the server handle.
  */
 export interface ResolverContext {
   readonly data: SandboxShopData;
   readonly carts: CartStore;
   readonly baseUrl: string;
+  readonly imageUrlMode?: ImageUrlMode;
 }
 
 /**

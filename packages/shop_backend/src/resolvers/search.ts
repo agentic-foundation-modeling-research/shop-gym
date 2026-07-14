@@ -173,7 +173,13 @@ export const searchResolvers = {
       return ranked
         .slice(0, MAX_RECOMMENDATIONS)
         .map((p) =>
-          buildProductNode(p, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
+          buildProductNode(
+            p,
+            ctx.data.store,
+            ctx.baseUrl,
+            ctx.data.inventoryByVariantId,
+            ctx.imageUrlMode,
+          ),
         );
     },
 
@@ -214,7 +220,13 @@ function collectProducts(out: ScoredEntry[], ctx: ResolverContext, query: string
   for (const product of ctx.data.products) {
     if (!matchesSearch(query, productHaystack(product))) continue;
     out.push({
-      node: buildProductNode(product, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
+      node: buildProductNode(
+        product,
+        ctx.data.store,
+        ctx.baseUrl,
+        ctx.data.inventoryByVariantId,
+        ctx.imageUrlMode,
+      ),
       score: scoreProduct(query, product),
       price: minVariantPrice(product),
     });
@@ -413,7 +425,13 @@ function matchProducts(ctx: ResolverContext, query: string): readonly ProductNod
   for (const product of ctx.data.products) {
     if (matchesSearch(query, productHaystack(product))) {
       out.push(
-        buildProductNode(product, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
+        buildProductNode(
+          product,
+          ctx.data.store,
+          ctx.baseUrl,
+          ctx.data.inventoryByVariantId,
+          ctx.imageUrlMode,
+        ),
       );
     }
   }
@@ -424,7 +442,7 @@ function matchCollections(ctx: ResolverContext, query: string): readonly Collect
   const out: CollectionNode[] = [];
   for (const collection of ctx.data.collections) {
     if (matchesSearch(query, collectionHaystack(collection))) {
-      out.push(buildCollectionNode(collection, ctx.baseUrl));
+      out.push(buildCollectionNode(collection, ctx.baseUrl, ctx.imageUrlMode));
     }
   }
   return out;

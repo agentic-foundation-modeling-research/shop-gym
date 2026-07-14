@@ -24,7 +24,7 @@
  *   - `GET /images/pixel.png` returns the file with the spec MIME type and
  *     immutable cache headers (satisfies SC5).
  *   - `Product.featuredImage.url` rewrites the dataset's relative `src` to
- *     the public `<baseUrl>/images/<src>` route (spec §5.3).
+ *     the same-origin `/images/<src>` route (spec §5.3).
  *
  * Together these exercise SC1 (loader), SC2 (every §5.2 area answers a
  * canonical query), SC3 (cart lifecycle), SC5 (image asset), and SC6 (this
@@ -258,7 +258,7 @@ describe('Storefront API — end-to-end (M6 acceptance, T6.4)', () => {
     expect(body.product?.availableForSale).toBe(true);
     expect(body.product?.priceRange.minVariantPrice.amount).toBe('54.99');
     expect(body.product?.featuredImage?.url).toBe(
-      `${baseUrl}/images/products/agoracage-skin-and-coat-chicken-with-grains-12lb-1.jpg`,
+      '/images/products/agoracage-skin-and-coat-chicken-with-grains-12lb-1.jpg',
     );
     expect(body.product?.metafield).toEqual({ namespace: 'specs', value: 'chicken' });
 

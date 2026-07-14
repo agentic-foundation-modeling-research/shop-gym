@@ -92,7 +92,13 @@ export const productResolvers = {
     ): ProductNode | null => {
       const product = ctx.data.productsByHandle.get(args.handle);
       if (product === undefined) return null;
-      return buildProductNode(product, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId);
+      return buildProductNode(
+        product,
+        ctx.data.store,
+        ctx.baseUrl,
+        ctx.data.inventoryByVariantId,
+        ctx.imageUrlMode,
+      );
     },
 
     products: (
@@ -103,7 +109,13 @@ export const productResolvers = {
       const filtered = filterProducts(ctx.data.products, args.query ?? null);
       const sorted = sortProducts(filtered, args.sortKey ?? null, args.reverse ?? false);
       const nodes = sorted.map((p) =>
-        buildProductNode(p, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
+        buildProductNode(
+          p,
+          ctx.data.store,
+          ctx.baseUrl,
+          ctx.data.inventoryByVariantId,
+          ctx.imageUrlMode,
+        ),
       );
       const connection = paginate(nodes, args);
       return { ...connection, totalCount: filtered.length };
@@ -117,7 +129,7 @@ export const productResolvers = {
       if (args.handle === ALL_HANDLE) return buildAllCollectionNode();
       const collection = findCollection(ctx.data, args.handle);
       if (collection === null) return null;
-      return buildCollectionNode(collection, ctx.baseUrl);
+      return buildCollectionNode(collection, ctx.baseUrl, ctx.imageUrlMode);
     },
 
     collections: (
@@ -130,7 +142,7 @@ export const productResolvers = {
         args.sortKey ?? null,
         args.reverse ?? false,
       );
-      const nodes = sorted.map((c) => buildCollectionNode(c, ctx.baseUrl));
+      const nodes = sorted.map((c) => buildCollectionNode(c, ctx.baseUrl, ctx.imageUrlMode));
       return paginate(nodes, args);
     },
   },
@@ -177,7 +189,13 @@ export const productResolvers = {
     ): ProductConnectionNode => {
       const products = collectionProducts(ctx.data, parent.handle);
       const nodes = products.map((p) =>
-        buildProductNode(p, ctx.data.store, ctx.baseUrl, ctx.data.inventoryByVariantId),
+        buildProductNode(
+          p,
+          ctx.data.store,
+          ctx.baseUrl,
+          ctx.data.inventoryByVariantId,
+          ctx.imageUrlMode,
+        ),
       );
       const connection = paginate(nodes, args);
       return { ...connection, totalCount: nodes.length };

@@ -12,7 +12,7 @@
  * (type, key) pair always yields the same GID across server instances.
  *
  * Image URLs follow §5.3 too: an absolute http(s) `images[].src` passes
- * through unchanged; anything else is rewritten to `<baseUrl>/images/<src>`.
+ * through unchanged; anything else is rewritten to same-origin `/images/<src>`.
  *
  * Brand colors come from `store.brand.colors`, replacing the mock-api
  * `#000000`/`#ffffff` hardcode.
@@ -148,6 +148,8 @@ export interface ShopPolicyNode {
   readonly url: string;
 }
 
+export type ImageUrlMode = 'same-origin' | 'absolute';
+
 // ── GID ────────────────────────────────────────────────────────────────────
 
 const GID_PREFIX = 'gid://shopify';
@@ -223,24 +225,34 @@ function formatMoney(amount: string): string {
 const ABSOLUTE_URL = /^https?:\/\//i;
 
 /**
- * Build an `Image` node, rewriting relative `src` paths to the local
+ * Build an `Image` node, rewriting relative `src` paths to the same-origin
  * `/images/` route. Absolute http(s) URLs (e.g. CDN) pass through unchanged.
  */
-export function buildImageNode(image: ProductImage, baseUrl: string): ImageNode {
+export function buildImageNode(
+  image: ProductImage,
+  baseUrl: string,
+  imageUrlMode: ImageUrlMode = 'same-origin',
+): ImageNode {
   return {
     id: gid('ProductImage', image.id),
-    url: rewriteImageUrl(image.src, baseUrl),
+    url: rewriteImageUrl(image.src, baseUrl, imageUrlMode),
     altText: image.alt,
     width: image.width,
     height: image.height,
   };
 }
 
-function rewriteImageUrl(src: string, baseUrl: string): string {
+function rewriteImageUrl(src: string, baseUrl: string, imageUrlMode: ImageUrlMode): string {
   if (ABSOLUTE_URL.test(src)) return src;
-  const trimmedBase = baseUrl.replace(/\/+$/, '');
   const trimmedSrc = src.replace(/^\/+/, '');
-  return `${trimmedBase}/images/${trimmedSrc}`;
+  const imagePath = trimmedSrc.startsWith('images/')
+    ? trimmedSrc.slice('images/'.length)
+    : trimmedSrc;
+  if (imageUrlMode === 'absolute') {
+    const trimmedBase = baseUrl.replace(/\/+$/, '');
+    return `${trimmedBase}/images/${imagePath}`;
+  }
+  return `/images/${imagePath}`;
 }
 
 // ── Product / variant ──────────────────────────────────────────────────────
@@ -260,6 +272,7 @@ export function buildProductVariantNode(
   store: Store,
   baseUrl: string,
   inventory?: InventoryLookup,
+  imageUrlMode: ImageUrlMode = 'same-origin',
 ): ProductVariantNode {
   const featured = pickFeaturedImage(product);
   const entry = inventory?.get(variant.id);
@@ -275,7 +288,7 @@ export function buildProductVariantNode(
         : buildMoneyV2(variant.compare_at_price, store.currency_code),
     unitPrice: null,
     selectedOptions: buildSelectedOptions(product.options, variant),
-    image: featured === null ? null : buildImageNode(featured, baseUrl),
+    image: featured === null ? null : buildImageNode(featured, baseUrl, imageUrlMode),
     product: {
       id: gid('Product', product.id),
       title: product.title,
@@ -336,11 +349,12 @@ export function buildProductNode(
   store: Store,
   baseUrl: string,
   inventory?: InventoryLookup,
+  imageUrlMode: ImageUrlMode = 'same-origin',
 ): ProductNode {
   const variants = product.variants.map((v) =>
-    buildProductVariantNode(product, v, store, baseUrl, inventory),
+    buildProductVariantNode(product, v, store, baseUrl, inventory, imageUrlMode),
   );
-  const images = product.images.map((img) => buildImageNode(img, baseUrl));
+  const images = product.images.map((img) => buildImageNode(img, baseUrl, imageUrlMode));
   const featured = pickFeaturedImage(product);
   return {
     id: gid('Product', product.id),
@@ -363,7 +377,7 @@ export function buildProductNode(
       product.variants.map((v) => v.compare_at_price ?? '0'),
       store.currency_code,
     ),
-    featuredImage: featured === null ? null : buildImageNode(featured, baseUrl),
+    featuredImage: featured === null ? null : buildImageNode(featured, baseUrl, imageUrlMode),
     images,
     variants,
     options: product.options.map((option) => buildProductOptionNode(product, option, variants)),
@@ -410,14 +424,19 @@ function computePriceRange(prices: readonly string[], currencyCode: string): Pro
 // ── Collection / menu / policy ─────────────────────────────────────────────
 
 /** Build a `Collection` node. Member products are resolved separately. */
-export function buildCollectionNode(collection: Collection, baseUrl: string): CollectionNode {
+export function buildCollectionNode(
+  collection: Collection,
+  baseUrl: string,
+  imageUrlMode: ImageUrlMode = 'same-origin',
+): CollectionNode {
   return {
     id: gid('Collection', collection.id),
     handle: collection.handle,
     title: collection.title,
     description: collection.description ?? '',
     descriptionHtml: collection.description_html ?? '',
-    image: collection.image === null ? null : buildImageNode(collection.image, baseUrl),
+    image:
+      collection.image === null ? null : buildImageNode(collection.image, baseUrl, imageUrlMode),
     updatedAt: collection.updated_at,
   };
 }

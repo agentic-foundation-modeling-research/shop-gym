@@ -68,8 +68,9 @@ class ProductImage(BaseModel):
     Attributes:
         id: Numeric image id (assigned deterministically by
             :func:`assemble_data`).
-        src: Absolute URL or path under ``/images/`` (rewritten by
-            ``shop_backend`` at resolve time per spec §8.1.4).
+        src: Absolute URL or local image path (rewritten by
+            ``shop_backend`` to same-origin ``/images/...`` at resolve
+            time per spec §8.1.4).
         alt: Alt text or ``None`` if not authored yet.
         width: Pixel width.
         height: Pixel height.

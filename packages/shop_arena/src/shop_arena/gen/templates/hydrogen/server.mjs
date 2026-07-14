@@ -47,6 +47,7 @@ if (!isProduction) {
 
 const app = express();
 
+app.get('/images/*', proxyBackendImage);
 app.use(compression());
 app.disable('x-powered-by');
 
@@ -174,3 +175,47 @@ async function getContext(req) {
 
   return hydrogenContext;
 }
+
+async function proxyBackendImage(req, res, next) {
+  try {
+    const target = new URL(req.originalUrl, resolveBackendUrl()).toString();
+    const upstream = await fetch(target);
+    res.status(upstream.status);
+    copyResponseHeaders(upstream.headers, res);
+    if (upstream.body === null) {
+      res.end();
+      return;
+    }
+    const body = Buffer.from(await upstream.arrayBuffer());
+    res.send(body);
+  } catch (error) {
+    next(error);
+  }
+}
+
+function resolveBackendUrl() {
+  const raw = process.env.SHOP_BACKEND_URL || process.env.PUBLIC_STORE_DOMAIN;
+  if (!raw) {
+    throw new Error('Set SHOP_BACKEND_URL or PUBLIC_STORE_DOMAIN for image proxy.');
+  }
+  return raw.replace(/\/+$/, '');
+}
+
+function copyResponseHeaders(headers, res) {
+  for (const [name, value] of headers) {
+    if (!HOP_BY_HOP_HEADERS.has(name.toLowerCase())) {
+      res.setHeader(name, value);
+    }
+  }
+}
+
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);

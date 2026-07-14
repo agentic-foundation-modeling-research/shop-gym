@@ -69,12 +69,12 @@ describe('buildMoneyV2', () => {
 });
 
 describe('buildImageNode', () => {
-  it('rewrites a relative src to the local /images/ route', () => {
+  it('rewrites a relative src to the same-origin /images/ route', () => {
     const node = buildImageNode(
       { id: 1, src: 'products/foo.jpg', alt: null, width: 100, height: 200, position: 1 },
       BASE_URL,
     );
-    expect(node.url).toBe('https://shop.example/images/products/foo.jpg');
+    expect(node.url).toBe('/images/products/foo.jpg');
   });
 
   it('passes an absolute http(s) src through unchanged', () => {
@@ -87,10 +87,27 @@ describe('buildImageNode', () => {
     expect(node.altText).toBe('cover');
   });
 
-  it('strips trailing slashes on baseUrl and leading slashes on src', () => {
+  it('strips leading slashes on src', () => {
     const node = buildImageNode(
       { id: 1, src: '/products/foo.jpg', alt: null, width: 1, height: 1, position: 1 },
       `${BASE_URL}/`,
+    );
+    expect(node.url).toBe('/images/products/foo.jpg');
+  });
+
+  it('does not duplicate a dataset src already rooted under images', () => {
+    const node = buildImageNode(
+      { id: 1, src: '/images/products/foo.jpg', alt: null, width: 1, height: 1, position: 1 },
+      BASE_URL,
+    );
+    expect(node.url).toBe('/images/products/foo.jpg');
+  });
+
+  it('can preserve absolute backend image URLs for proxy-less storefronts', () => {
+    const node = buildImageNode(
+      { id: 1, src: '/images/products/foo.jpg', alt: null, width: 1, height: 1, position: 1 },
+      BASE_URL,
+      'absolute',
     );
     expect(node.url).toBe('https://shop.example/images/products/foo.jpg');
   });
@@ -226,9 +243,7 @@ describe('buildProductNode', () => {
   it('picks the lowest-position image as featuredImage', () => {
     const product = productByHandle('shopliseum-mushroom-dog-toys');
     const node = buildProductNode(product, data.store, BASE_URL);
-    expect(node.featuredImage?.url).toBe(
-      'https://shop.example/images/products/shopliseum-mushroom-dog-toys-1.jpg',
-    );
+    expect(node.featuredImage?.url).toBe('/images/products/shopliseum-mushroom-dog-toys-1.jpg');
   });
 });
 

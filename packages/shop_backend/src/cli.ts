@@ -1,18 +1,23 @@
 #!/usr/bin/env node
 import { loadShopData } from './data/loader.js';
+import type { ImageUrlMode } from './resolvers/builders.js';
 import { createSandboxServer } from './server.js';
 
-const USAGE = 'Usage: shop-backend <data-dir> [port] [--cart-store <path>]';
+const USAGE =
+  'Usage: shop-backend <data-dir> [port] [--cart-store <path>] ' +
+  '[--image-url-mode <same-origin|absolute>]';
 
 interface ParsedArgs {
   readonly dataDir: string;
   readonly port: number | null;
   readonly cartStorePath: string | undefined;
+  readonly imageUrlMode: ImageUrlMode | undefined;
 }
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
   const positional: string[] = [];
   let cartStorePath: string | undefined;
+  let imageUrlMode: ImageUrlMode | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--cart-store') {
@@ -28,6 +33,15 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
       cartStorePath = arg.slice('--cart-store='.length);
       continue;
     }
+    if (arg === '--image-url-mode') {
+      imageUrlMode = parseImageUrlMode(argv[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (arg?.startsWith('--image-url-mode=')) {
+      imageUrlMode = parseImageUrlMode(arg.slice('--image-url-mode='.length));
+      continue;
+    }
     if (arg !== undefined) {
       positional.push(arg);
     }
@@ -41,7 +55,14 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   if (port !== null && !Number.isFinite(port)) {
     throw new Error(`Invalid port: '${portArg}'`);
   }
-  return { dataDir, port, cartStorePath };
+  return { dataDir, port, cartStorePath, imageUrlMode };
+}
+
+function parseImageUrlMode(value: string | undefined): ImageUrlMode {
+  if (value === 'same-origin' || value === 'absolute') {
+    return value;
+  }
+  throw new Error(`Invalid image URL mode: '${value ?? ''}'. ${USAGE}`);
 }
 
 async function main(): Promise<void> {
@@ -73,6 +94,7 @@ async function main(): Promise<void> {
     data,
     dataDir: parsed.dataDir,
     port,
+    ...(parsed.imageUrlMode !== undefined ? { imageUrlMode: parsed.imageUrlMode } : {}),
     ...(parsed.cartStorePath !== undefined ? { cartStorePath: parsed.cartStorePath } : {}),
   });
   await server.listen();
