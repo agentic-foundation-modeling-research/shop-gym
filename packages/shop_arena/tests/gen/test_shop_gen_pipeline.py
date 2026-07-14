@@ -301,7 +301,7 @@ def test_run_creates_out_dir_and_returns_artifact_paths(tmp_path: Path) -> None:
     with (
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         result = run(config)
@@ -327,7 +327,7 @@ def test_run_with_no_registered_steps_writes_no_state(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(ShopGenConfig(seeds=[seed], out_dir=out_dir))
@@ -348,7 +348,7 @@ def test_run_drives_registered_step_to_completion(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config)
@@ -375,7 +375,7 @@ def test_run_default_out_dir_for_single_seed(tmp_path: Path) -> None:
         _chdir(cwd),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         result = run(ShopGenConfig(seeds=[seed]))
@@ -406,7 +406,7 @@ def test_run_uses_explicit_name_for_default_out_dir(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_manual_merge", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         result = run(ShopGenConfig(seeds=seeds, name="acme"))
@@ -435,7 +435,7 @@ def test_run_is_idempotent_on_second_invocation(tmp_path: Path) -> None:
     with (
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config)
@@ -482,7 +482,7 @@ def test_run_stop_at_only_executes_target_and_ancestors(tmp_path: Path) -> None:
             lambda reg, **_: _register_chain(reg, chain),
         ),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config, stop_at="beta")
@@ -505,7 +505,7 @@ def test_run_stop_at_unknown_step_raises_value_error(tmp_path: Path) -> None:
             lambda reg, **_: _register_chain(reg, chain),
         ),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
         pytest.raises(ValueError, match="ghost"),
     ):
@@ -527,7 +527,7 @@ def test_run_stop_at_rejects_force_id_outside_cone(tmp_path: Path) -> None:
             lambda reg, **_: _register_chain(reg, chain),
         ),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
         pytest.raises(ValueError, match="upstream cone"),
     ):
@@ -580,7 +580,7 @@ def test_run_resolves_runtime_from_config_when_omitted(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config)
@@ -614,7 +614,7 @@ def test_run_drops_model_kwarg_when_config_model_is_none(tmp_path: Path) -> None
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config)
@@ -645,7 +645,7 @@ def test_run_drops_skill_paths_for_non_pi_runtime(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config)
@@ -730,7 +730,7 @@ def test_run_accepts_explicit_runtime_override(tmp_path: Path) -> None:
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config, runtime=cast("LLMCompleter", explicit))
@@ -762,7 +762,7 @@ def test_run_logs_start_and_end_summary(
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(config, runtime=cast("LLMCompleter", _StubCompleter("x")))
@@ -792,7 +792,7 @@ def test_run_includes_stop_at_in_start_log(
         patch.object(pipeline, "_register_single_seed_manual", lambda reg, **_: None),
         patch.object(pipeline, "_register_data_synth", _register),
         patch.object(pipeline, "_register_data_validation", lambda reg: None),
-        patch.object(pipeline, "_register_build", lambda reg: None),
+        patch.object(pipeline, "_register_build", lambda reg, **_: None),
         patch.object(pipeline, "_register_final_eval", lambda reg, **_: None),
     ):
         run(
