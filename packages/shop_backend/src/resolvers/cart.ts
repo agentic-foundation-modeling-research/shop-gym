@@ -55,6 +55,7 @@ import type {
 } from '../__generated__/resolvers-types.js';
 import type { ProductVariant, SandboxShopData, VariantLookup } from '../data/types.js';
 import {
+  type ImageUrlMode,
   type MoneyV2Node,
   type ProductVariantNode,
   buildMoneyV2,
@@ -677,7 +678,7 @@ export const cartResolvers = {
     cart: (_parent: unknown, args: QueryCartArgs, ctx: ResolverContext): CartNode | null => {
       const state = ctx.carts.get(args.id);
       if (state === undefined) return null;
-      return buildCartNode(state, ctx.data, ctx.baseUrl);
+      return buildCartNode(state, ctx.data, ctx.baseUrl, ctx.imageUrlMode);
     },
   },
 
@@ -832,7 +833,7 @@ export const cartResolvers = {
 
 function successPayload(state: CartState, ctx: ResolverContext): CartMutationPayloadNode {
   return {
-    cart: buildCartNode(state, ctx.data, ctx.baseUrl),
+    cart: buildCartNode(state, ctx.data, ctx.baseUrl, ctx.imageUrlMode),
     userErrors: [],
     warnings: [],
   };
@@ -864,8 +865,13 @@ function cartNotFoundPayload(): CartMutationPayloadNode {
  * lands with the mutations + extra-field milestones (T4.3 / T4.4); v0.1
  * Cart consumers that read `updatedAt` get the resolution timestamp.
  */
-function buildCartNode(state: CartState, data: SandboxShopData, baseUrl: string): CartNode {
-  const lineNodes = materializeLines(state, data, baseUrl);
+function buildCartNode(
+  state: CartState,
+  data: SandboxShopData,
+  baseUrl: string,
+  imageUrlMode: ImageUrlMode = 'same-origin',
+): CartNode {
+  const lineNodes = materializeLines(state, data, baseUrl, imageUrlMode);
   const totalQuantity = lineNodes.reduce((sum, line) => sum + line.quantity, 0);
   const subtotalCents = lineNodes.reduce(
     (sum, line) => sum + parsePriceCents(line.merchandise.price.amount) * line.quantity,
@@ -916,12 +922,13 @@ function materializeLines(
   state: CartState,
   data: SandboxShopData,
   baseUrl: string,
+  imageUrlMode: ImageUrlMode,
 ): readonly CartLineNode[] {
   const nodes: CartLineNode[] = [];
   for (const line of state.lines) {
     const lookup = data.variantsByGid.get(line.merchandiseId);
     if (lookup === undefined) continue;
-    nodes.push(buildCartLineNode(line, lookup, data, baseUrl));
+    nodes.push(buildCartLineNode(line, lookup, data, baseUrl, imageUrlMode));
   }
   return nodes;
 }
@@ -931,6 +938,7 @@ function buildCartLineNode(
   lookup: VariantLookup,
   data: SandboxShopData,
   baseUrl: string,
+  imageUrlMode: ImageUrlMode,
 ): CartLineNode {
   const merchandise = buildProductVariantNode(
     lookup.product,
@@ -938,6 +946,7 @@ function buildCartLineNode(
     data.store,
     baseUrl,
     data.inventoryByVariantId,
+    imageUrlMode,
   );
   return {
     id: line.id,

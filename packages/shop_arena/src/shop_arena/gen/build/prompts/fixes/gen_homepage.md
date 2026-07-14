@@ -76,8 +76,8 @@ Do this for collection/category cards, hero media, promo banners, and
 - For collections whose `image` is `null`, fall back to the first
   product's `featuredImage`.
 - Render with Hydrogen's `<Image data={...}>` or a plain `<img>` using
-  the returned `url`; keep a fixed aspect ratio on the container so
-  lazy loading cannot collapse the layout.
+  the returned same-origin `/images/...` URL; keep a fixed aspect ratio
+  on the container so lazy loading cannot collapse the layout.
 
 Do not satisfy an image slot with only a gradient block, initials,
 `role="img"` text badge, "Portrait — ..." label, or other CSS-drawn

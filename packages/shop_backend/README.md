@@ -117,8 +117,10 @@ Optional files:
 
 Image assets may live under `<data-dir>/images/` and are served at
 `/images/<path>`. Product image `src` values can be absolute URLs or relative
-image paths; relative paths are rewritten to the running server's `/images/*`
-URL at resolve time.
+image paths; relative paths are rewritten to same-origin `/images/*` URLs at
+resolve time. For older local storefront artifacts that cannot serve
+same-origin `/images/*`, start the server with `--image-url-mode absolute` to
+return backend-origin image URLs instead.
 
 Datasets are produced by ShopArena's generation pipeline and consumed as a
 frozen snapshot for the lifetime of the server instance.

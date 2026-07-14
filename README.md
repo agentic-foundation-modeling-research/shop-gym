@@ -209,6 +209,14 @@ is optional — if omitted, a free port is auto-picked from `4100..4199` (api:
 `5100..5199`). The script also refuses to start if either port is already bound
 by another process.
 
+Generated local product images are exposed as same-origin `/images/...` URLs in
+new storefront markup. The storefront server proxies those requests to
+`shop_backend`, which serves the files from `outputs/shops/<name>/data/images/`.
+For older Hydrogen artifacts with the legacy static `/images` route,
+`shop:host` wires that route to the generated dataset images. For storefront
+artifacts with no `/images` route at all, `shop:host` falls back to
+backend-origin image URLs.
+
 ```bash
 pnpm shop:host start mock_shop             # auto-pick a free port
 pnpm shop:host start mock_shop 8000        # or pick explicitly

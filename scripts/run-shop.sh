@@ -93,6 +93,34 @@ process.stdout.write(appDir);
 ' "$metadata"
 }
 
+supports_image_proxy() {
+  local server="$1/server.mjs"
+  [ -f "$server" ] || return 1
+  grep -Eq "app\\.get\\(['\"]\/images\/\\*['\"]|proxyBackendImage" "$server"
+}
+
+supports_static_image_route() {
+  local server="$1/server.mjs"
+  [ -f "$server" ] || return 1
+  grep -Eq "['\"]\/images['\"]" "$server" &&
+    grep -Eq "express\\.static\\(['\"]\\.\\.\/data\/images['\"]" "$server"
+}
+
+ensure_static_image_data_link() {
+  local storefront_dir="$1" data_dir="$2"
+  supports_static_image_route "$storefront_dir" || return 0
+  [ -d "$data_dir/images" ] || return 0
+
+  local artifact_data_dir="$storefront_dir/../data"
+  local artifact_images="$artifact_data_dir/images"
+  if [ -e "$artifact_images" ] || [ -L "$artifact_images" ]; then
+    return 0
+  fi
+
+  mkdir -p "$artifact_data_dir"
+  ln -s "$data_dir/images" "$artifact_images"
+}
+
 # Recursively kill a PID and all its descendants
 kill_tree() {
   local pid="${1:-}"
@@ -200,10 +228,23 @@ cmd_start() {
   hyd_log="$(log_file "$name" storefront)"
   : >"$api_log"; :>"$hyd_log"
 
-  echo "▶ shop_backend → http://localhost:$api_port  ($data_dir)"
-  # Absolute data_dir: pnpm --filter shifts cwd into the package dir.
-  ( cd "$REPO_ROOT" && exec pnpm --filter @shop-gym/shop-backend shop-backend \
-      "$data_dir" "$api_port" >"$api_log" 2>&1 ) &
+  local image_url_mode="same-origin"
+  if supports_static_image_route "$hyd_dir"; then
+    ensure_static_image_data_link "$hyd_dir" "$data_dir"
+  elif ! supports_image_proxy "$hyd_dir"; then
+    image_url_mode="absolute"
+  fi
+
+  echo "▶ shop_backend → http://localhost:$api_port  ($data_dir, images=$image_url_mode)"
+  local backend_dir="$REPO_ROOT/packages/shop_backend"
+  local backend_tsx="$backend_dir/node_modules/.bin/tsx"
+  if [ -x "$backend_tsx" ]; then
+    ( cd "$backend_dir" && exec "$backend_tsx" src/cli.ts \
+        "$data_dir" "$api_port" --image-url-mode "$image_url_mode" >"$api_log" 2>&1 ) &
+  else
+    ( cd "$REPO_ROOT" && exec pnpm --filter @shop-gym/shop-backend shop-backend \
+        "$data_dir" "$api_port" --image-url-mode "$image_url_mode" >"$api_log" 2>&1 ) &
+  fi
   local api_pid=$!
   disown "$api_pid" 2>/dev/null || true
 

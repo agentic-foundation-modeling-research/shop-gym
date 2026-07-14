@@ -125,7 +125,11 @@ Before you mutate anything:
 4. **The dataset** — query the sidecar at `${PUBLIC_STORE_DOMAIN}` (read
    from `artifact/hydrogen/.env`) when you need real data shapes. Do not
    open `data/*.json` from app code; the build verifier set explicitly
-   forbids it.
+   forbids it. Storefront API image fields for generated local assets
+   resolve to browser-safe same-origin `/images/...` URLs; render those
+   values directly and do not rebuild them into `localhost`, `127.0.0.1`,
+   or sidecar-origin URLs. This applies to both `<img src>` and CSS
+   `background-image` values.
 5. **Task-specific guardrails.** Read `prompts/fixes/common.md`, and —
    if a file exists for your selected task — `prompts/fixes/<task_id>.md`
    (for example `prompts/fixes/gen_homepage.md` when your task is

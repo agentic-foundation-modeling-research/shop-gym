@@ -92,7 +92,7 @@ images at `/images/*`.
 | ------------------------ | -------------------------------------------------------------------------------------- |
 | `loadShopData(dir)`      | Read the dataset directory, return a typed `SandboxShopData` (eager, single pass).     |
 | `createSandboxSchema()`  | Build the graphql-yoga `GraphQLSchema` from the SDL + resolvers.                       |
-| `createSandboxServer({ data, dataDir, port?, host?, baseUrl?, cartStorePath? })` | Wire schema + HTTP wrapper (`/graphql`, `/images/*`, `/health`, versioned routing). Returns `{ listen, close, url }`. |
+| `createSandboxServer({ data, dataDir, port?, host?, baseUrl?, imageUrlMode?, cartStorePath? })` | Wire schema + HTTP wrapper (`/graphql`, `/images/*`, `/health`, versioned routing). Returns `{ listen, close, url }`. |
 | `SandboxShopData`        | Public TS type for the loaded dataset.                                                 |
 
 **CLI** (`shop-backend <data-dir> [port]`):
@@ -137,7 +137,7 @@ on startup and the GraphQL endpoint URL.
 | SC2 | The server boots against a fixture dataset and responds to one Storefront-API canonical query per area in §5.2 (shop, product, collection, menu, page, search, predictiveSearch, cart). |
 | SC3 | A full cart lifecycle (`cartCreate` → `cartLinesAdd` → `cartLinesUpdate` → `cartLinesRemove`) succeeds and totals + GIDs round-trip correctly. |
 | SC4 | A versioned URL (`POST /api/2024-01/graphql.json`) is routed to `/graphql` and returns the same response.  |
-| SC5 | An image URL written by `loadShopData` (e.g. `<server>/images/<file>.jpg`) returns the file with the expected MIME type. |
+| SC5 | An image URL written by `loadShopData` (e.g. `/images/<file>.jpg`) returns the file with the expected MIME type when requested from the serving origin. |
 | SC6 | `tsc --strict` and `biome check` are clean; `vitest` passes with no `any` casts in shipped code.           |
 
 ---
@@ -229,7 +229,10 @@ validation; deferred execution is not required for the local backend.
 - **Currency.** Single currency from `store.currency_code`. All
   `MoneyV2.currencyCode` echoes that value.
 - **Images.** `Image.url` is the raw `images[].src` from the dataset
-  if it's an absolute URL; otherwise rewritten to
+  if it's an absolute URL; otherwise rewritten to a same-origin
+  `/images/<path>` URL. `imageUrlMode: "absolute"` is available as a
+  local-hosting compatibility mode for older storefront artifacts whose
+  server does not proxy `/images/*`; it rewrites local image assets to
   `<base-url>/images/<path>`.
 - **Brand colors.** Plumbed from `store.brand.colors.{primary,secondary}`
   (mock-api hardcodes `#000000`/`#ffffff` — fix here).
@@ -614,8 +617,9 @@ Variant metafields are **out of v0.1**.
 `<data-dir>/images/<path>` is served by `/images/<path>`. The
 directory is optional; if absent, `/images/*` returns 404. Files
 referenced in `products[].images[].src` may be absolute (CDN URL,
-passed through) or paths under `/images/` (rewritten to
-`<base-url>/images/<path>` at resolve time).
+passed through) or paths under `/images/` (rewritten to a same-origin
+`/images/<path>` URL at resolve time, unless the server is explicitly
+started with `imageUrlMode: "absolute"` for legacy local hosting).
 
 ### 8.2 GraphQL SDL
 

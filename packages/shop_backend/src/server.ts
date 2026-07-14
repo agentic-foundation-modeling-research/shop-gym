@@ -1,10 +1,10 @@
 /**
  * SandboxShop server entry point (T6.2).
  *
- * `createSandboxServer({ data, dataDir, port?, host?, baseUrl? })` wires the
- * SDL + resolvers built by `createSandboxSchema()` against a freshly
- * constructed `CartStore` (spec §5.5) and serves the surface defined in
- * spec §5.4 over `node:http`:
+ * `createSandboxServer({ data, dataDir, port?, host?, baseUrl?, imageUrlMode? })`
+ * wires the SDL + resolvers built by `createSandboxSchema()` against a
+ * freshly constructed `CartStore` (spec §5.5) and serves the surface defined
+ * in spec §5.4 over `node:http`:
  *
  *   - `POST /graphql` — yoga-mounted GraphQL endpoint.
  *   - `POST /api/<version>/graphql.json` — rewritten to `/graphql` for
@@ -26,6 +26,7 @@ import { type CORSOptions, createYoga } from 'graphql-yoga';
 import type { SandboxShopData } from './data/types.js';
 import { buildHttpHandler } from './http.js';
 import { createInContextValidationPlugin } from './in-context.js';
+import type { ImageUrlMode } from './resolvers/builders.js';
 import { CartStore } from './resolvers/cart.js';
 import type { ResolverContext } from './resolvers/index.js';
 import { createSandboxSchema } from './schema.js';
@@ -51,11 +52,18 @@ export interface ServerOptions {
   /** Host interface to bind. Defaults to `127.0.0.1`. */
   readonly host?: string;
   /**
-   * Public origin used to rewrite relative image paths (spec §5.3). When
-   * omitted, derived from `host:port` after the listener is bound. Tests can
-   * pin this to a stable value.
+   * Public GraphQL origin exposed through `server.url`. When omitted, derived
+   * from `host:port` after the listener is bound. Tests can pin this to a
+   * stable value.
    */
   readonly baseUrl?: string;
+  /**
+   * URL form used for generated local image assets. `same-origin` returns
+   * `/images/...` so deployed storefronts do not leak backend-local origins.
+   * `absolute` preserves older local artifacts whose storefront server does
+   * not proxy `/images/*`.
+   */
+  readonly imageUrlMode?: ImageUrlMode;
   /**
    * File path to back the cart store (T7.4). When set, the store rehydrates
    * from the file on startup and writes the full snapshot back after every
@@ -102,6 +110,7 @@ export function createSandboxServer(options: ServerOptions): SandboxServer {
       data,
       carts,
       baseUrl: baseUrlOverride ?? resolvedUrl,
+      imageUrlMode: options.imageUrlMode ?? 'same-origin',
     }),
   });
 

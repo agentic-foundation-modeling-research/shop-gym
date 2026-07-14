@@ -432,7 +432,7 @@ describe('productResolvers — Product.selectedOrFirstAvailableVariant', () => {
           nodes: [
             {
               id: 'gid://shopify/ProductImage/43482199916718',
-              url: `${BASE_URL}/images/products/aislearena-anti-tick-collar-1.jpg`,
+              url: '/images/products/aislearena-anti-tick-collar-1.jpg',
               width: 3264,
               height: 2448,
             },
