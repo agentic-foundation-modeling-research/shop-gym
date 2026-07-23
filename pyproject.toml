@@ -51,6 +51,7 @@ ignore = ["PLR0913"]
 # Reformatting these would change the prompt text or hurt readability.
 "**/eval/judge.py" = ["E501"]
 "**/generators/e2e.py" = ["E501"]
+"**/shop_guru/explorer.py" = ["E501"]
 # Lazy imports inside the eval CLI keep `--help` / arg parsing fast by
 # deferring heavy deps (browsergym, agentlab, ray) to the actual run path.
 "**/eval/run.py" = ["PLC0415"]

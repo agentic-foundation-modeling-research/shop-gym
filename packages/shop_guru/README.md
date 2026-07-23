@@ -4,6 +4,47 @@ Automated dataset generation pipeline that ingests a sandbox shop's catalog,
 navigation structure, and store policies to synthesize diverse, grounded
 evaluation tasks across 7 distinct skill categories.
 
+## Updated pipeline
+
+We use the Playwright MCP for exploration and task generation. For Pi based agents, first install the MCP adapter extension.
+
+### 1. Run the crawler
+```sh
+cd shop-gym
+
+uv run python packages/shop_guru/url_crawler.py <SHOP_URL> \ 
+    --out outputs/shop_guru/url_crawls/<shop_name> \
+    --max-pages 1000 --max-depth 5 --traversal bfs
+```
+The crawler will generate URLs of pages ordered by the depth in the website graph in `outputs/shop_guru/url_crawls/<shop_name>/urls.json`
+
+`outputs/shop_guru/url_crawls/<shop_name>/urls.json` is used by the explore script to iteratively invoke a Pi agent to 
+explore each URL.
+
+
+### 2. Run the explorer
+```sh
+# Note: the nickname should be all caps between __ and __
+# this makes it easier to replace URLs in the configs
+# during evaluation.
+
+# The default timeout for exploring each page is 20 minutes
+# but should only take about 5-6 minutes per page.
+# use --timeout-seconds to increase the timeout
+uv run python packages/shop_guru/explore.py \
+    --crawl-dir outputs/shop_guru/url_crawls/<shop_name> \
+    --exp-dir outputs/shop_guru/task_gen/<shop_name> \
+    --website-url <SHOP_URL> \
+    --website-nickname __WEBSITE_NICKNAME__
+```
+
+By default, the number of pages explored per depth of the graph are:
+- 0 -> 1 (homepage)
+- 1 -> 0 (the agent explores around the homepage and ends up exploring a few depth 1 pages)
+- 2 -> 10 (these are mostly product pages)
+
+This can be changed using the `--explore-per-depth` argument. For example, `--explore-per-depth 1,3,6` will explore
+1 page at depth 0, 3 pages at depth 1 and 6 pages at depth 2.
 
 ## Why this exists
 

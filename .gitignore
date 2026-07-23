@@ -45,3 +45,4 @@ uv.lock
 
 # playwright
 .playwright-cli/
+.playwright-mcp/
