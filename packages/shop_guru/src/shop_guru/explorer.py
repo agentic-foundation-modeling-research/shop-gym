@@ -1,11 +1,6 @@
 import logging
-import json
-import os
-import time
 import subprocess
 from pathlib import Path
-
-import requests
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +114,6 @@ A strong task should combine two or more of:
 - choosing a suitable product from a category without the task naming the exact
   final product.
 
-  
 ## Patterns to Avoid
 - Avoid making the task too easy. Do not overproduce tasks where the final answer
   is visible after one navigation step, or where the goal names the exact final
@@ -139,6 +133,8 @@ A strong task should combine two or more of:
 
 - IMPORTANT: Do not construct tasks based on reviews, as they are unreliable. Do not ask
   for review details in the task.
+
+- IMPORTANT: Do not paraphrase product names when generating the tasks, always use exact names.
 
 Prefer concrete constraints with hidden resolution:
 - Too hinty: "Use the Engraved Gifts collection rather than an exact product
@@ -403,7 +399,7 @@ class Explorer:
         self.website_nickname = website_nickname
 
     def build_prompt(self, _id):
-        
+
         memories_dir = self.exp_dir / "progress_logs"
         memories_dir.mkdir(parents=True, exist_ok=True)
 
@@ -421,11 +417,11 @@ class Explorer:
         status_file = status_dir / f"{_id}.txt"
 
         if status_file.exists():
-            with open(status_file, "r") as f:
+            with open(status_file) as f:
                 contents = f.read()
             if "Done" in contents:
                 print(f"{_id} complete.")
-                return
+                return None
 
         task_tool_prompt = tool_prompt.format(
             core_tools=core_tools(),
@@ -462,13 +458,13 @@ class Explorer:
             f.write(prompt)
 
         return prompt
-    
+
     def explore(self, _id, cwd, timeout=5*60):
-        
+
         prompts_dir = self.exp_dir / "prompts"
         prompt_file_path = prompts_dir / f"{_id}.md"
 
-        with open(prompt_file_path, "r") as f:
+        with open(prompt_file_path) as f:
             prompt = f.read()
 
         env = None
@@ -490,6 +486,7 @@ class Explorer:
             text=True,
             timeout=timeout,
             env=env,
+            check=False,
         )
         if result.returncode:
             output = result.stderr.strip() or result.stdout.strip()
@@ -497,5 +494,5 @@ class Explorer:
             if output:
                 message = f"{message}: {output}"
             raise RuntimeError(message)
-        
+
         return result
