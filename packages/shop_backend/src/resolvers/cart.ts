@@ -688,6 +688,8 @@ export const cartResolvers = {
       args: MutationCartCreateArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
+      const unknown = unknownMerchandiseIds(merchandiseIdsOf(args.input?.lines), ctx);
+      if (unknown.length > 0) return merchandiseNotFoundPayload(unknown, null);
       const state = ctx.carts.create(args.input);
       return successPayload(state, ctx);
     },
@@ -697,10 +699,14 @@ export const cartResolvers = {
       args: MutationCartLinesAddArgs,
       ctx: ResolverContext,
     ): CartMutationPayloadNode => {
+      const existing = ctx.carts.get(args.cartId);
+      const unknown = unknownMerchandiseIds(merchandiseIdsOf(args.lines), ctx);
+      if (unknown.length > 0) {
+        return merchandiseNotFoundPayload(unknown, materializeCart(existing, ctx));
+      }
       // Stale cartId (e.g. client cookie outlived an in-memory store): bootstrap
       // a fresh cart with the requested lines so the client can refresh its id
       // from the response.
-      const existing = ctx.carts.get(args.cartId);
       if (existing === undefined) {
         return successPayload(ctx.carts.create({ lines: args.lines }), ctx);
       }
@@ -715,6 +721,10 @@ export const cartResolvers = {
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
       if (state === undefined) return cartNotFoundPayload();
+      const unknown = unknownMerchandiseIds(merchandiseIdsOf(args.lines), ctx);
+      if (unknown.length > 0) {
+        return merchandiseNotFoundPayload(unknown, materializeCart(state, ctx));
+      }
       ctx.carts.updateLines(state, args.lines);
       return successPayload(state, ctx);
     },
@@ -849,6 +859,62 @@ function cartNotFoundPayload(): CartMutationPayloadNode {
     userErrors: [{ code: 'INVALID', field: ['cartId'], message: 'Cart not found' }],
     warnings: [],
   };
+}
+
+/**
+ * Collect the merchandise GIDs referenced by a batch of line inputs. Handles
+ * both `CartLineInput` (where `merchandiseId` is required) and
+ * `CartLineUpdateInput` (where it is optional), skipping updates that leave
+ * the merchandise unchanged.
+ */
+function merchandiseIdsOf(
+  lines: readonly { merchandiseId?: string | null }[] | null | undefined,
+): string[] {
+  if (lines === null || lines === undefined) return [];
+  const ids: string[] = [];
+  for (const line of lines) {
+    if (line.merchandiseId !== undefined && line.merchandiseId !== null) {
+      ids.push(line.merchandiseId);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Return the subset of `merchandiseIds` that do not resolve to a known variant
+ * in the dataset. Preserves order and duplicates so the caller can report one
+ * userError per offending line, matching Storefront API behavior where an
+ * unknown merchandise GID is rejected rather than silently dropped.
+ */
+function unknownMerchandiseIds(merchandiseIds: readonly string[], ctx: ResolverContext): string[] {
+  return merchandiseIds.filter((id) => !ctx.data.variantsByGid.has(id));
+}
+
+/**
+ * Payload returned when a mutation references one or more merchandise GIDs
+ * that are not in the dataset. The cart is left unmutated; `cart` is the
+ * current materialized cart (or null when no cart exists yet, e.g. a failed
+ * `cartCreate`).
+ */
+function merchandiseNotFoundPayload(
+  unknownIds: readonly string[],
+  cart: CartNode | null,
+): CartMutationPayloadNode {
+  return {
+    cart,
+    userErrors: unknownIds.map((id) => ({
+      code: 'INVALID',
+      field: ['merchandiseId'],
+      message: `Merchandise not found: ${id}`,
+    })),
+    warnings: [],
+  };
+}
+
+/** Materialize a cart into a `CartNode`, or null when the cart is absent. */
+function materializeCart(state: CartState | undefined, ctx: ResolverContext): CartNode | null {
+  if (state === undefined) return null;
+  return buildCartNode(state, ctx.data, ctx.baseUrl, ctx.imageUrlMode);
 }
 
 // ── Cart materialization ──────────────────────────────────────────────────

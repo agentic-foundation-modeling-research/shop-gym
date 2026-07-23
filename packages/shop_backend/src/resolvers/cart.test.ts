@@ -541,6 +541,7 @@ describe('cartResolvers — Query.cart', () => {
 // ── Cart mutations (T4.3) ─────────────────────────────────────────────────
 
 const CARTHAEUM_VARIANT = 'gid://shopify/ProductVariant/47694728298670'; // $12.99
+const BOGUS_VARIANT = 'gid://shopify/ProductVariant/999999999'; // not in the dataset
 
 interface CartLineSummary {
   readonly id: string;
@@ -753,6 +754,138 @@ describe('cartResolvers — line mutations (T4.3)', () => {
     expect(cart.totalQuantity).toBe(1);
     expect(cart.lines).toHaveLength(1);
     expect(cart.lines[0]?.merchandiseId).toBe(AISLEARENA_VARIANT);
+  });
+});
+
+// Merchandise validation
+
+interface UserErrorPayload {
+  readonly code: string | null;
+  readonly field: readonly string[] | null;
+  readonly message: string;
+}
+
+function userErrorsOf(payload: unknown, key: string): readonly UserErrorPayload[] {
+  const node = (payload as Record<string, Record<string, unknown>>)?.[key];
+  return (node?.userErrors as readonly UserErrorPayload[] | undefined) ?? [];
+}
+
+function cartIdOf(payload: unknown, key: string): string | null {
+  const node = (payload as Record<string, Record<string, unknown>>)?.[key];
+  const cart = node?.cart as { readonly id: string } | null | undefined;
+  return cart?.id ?? null;
+}
+
+describe('cartResolvers - merchandise validation', () => {
+  it('cartCreate rejects an unknown merchandiseId without allocating a phantom cart', async () => {
+    const carts = new CartStore();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartCreate(input: { lines: [{ merchandiseId: "${BOGUS_VARIANT}", quantity: 1 }] }) {
+          cart { id }
+          userErrors { code field message }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(cartIdOf(result.data, 'cartCreate')).toBeNull();
+    expect(userErrorsOf(result.data, 'cartCreate')).toEqual([
+      {
+        code: 'INVALID',
+        field: ['merchandiseId'],
+        message: `Merchandise not found: ${BOGUS_VARIANT}`,
+      },
+    ]);
+    // The failed create must not consume the counter. The next real cart is cart-1.
+    expect(carts.create().id).toBe('gid://shopify/Cart/cart-1');
+  });
+
+  it('cartLinesAdd rejects an unknown merchandiseId and leaves the existing cart unchanged', async () => {
+    const carts = new CartStore();
+    const cart = carts.create({ lines: [{ merchandiseId: AISLEARENA_VARIANT, quantity: 1 }] });
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartLinesAdd(
+          cartId: "${cart.id}"
+          lines: [{ merchandiseId: "${BOGUS_VARIANT}", quantity: 2 }]
+        ) {
+          cart { id }
+          userErrors { code field message }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(cartIdOf(result.data, 'cartLinesAdd')).toBe(cart.id);
+    expect(userErrorsOf(result.data, 'cartLinesAdd')).toEqual([
+      {
+        code: 'INVALID',
+        field: ['merchandiseId'],
+        message: `Merchandise not found: ${BOGUS_VARIANT}`,
+      },
+    ]);
+    // No phantom line was stored.
+    expect(cart.lines).toHaveLength(1);
+    expect(cart.lines[0]?.merchandiseId).toBe(AISLEARENA_VARIANT);
+    expect(cart.lines[0]?.quantity).toBe(1);
+  });
+
+  it('cartLinesAdd rejects an unknown merchandiseId instead of bootstrapping a new cart', async () => {
+    const carts = new CartStore();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartLinesAdd(
+          cartId: "gid://shopify/Cart/cart-999"
+          lines: [{ merchandiseId: "${BOGUS_VARIANT}", quantity: 1 }]
+        ) {
+          cart { id }
+          userErrors { code field message }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(cartIdOf(result.data, 'cartLinesAdd')).toBeNull();
+    expect(userErrorsOf(result.data, 'cartLinesAdd')).toEqual([
+      {
+        code: 'INVALID',
+        field: ['merchandiseId'],
+        message: `Merchandise not found: ${BOGUS_VARIANT}`,
+      },
+    ]);
+    // No cart was bootstrapped for the bad id.
+    expect(carts.create().id).toBe('gid://shopify/Cart/cart-1');
+  });
+
+  it('cartLinesUpdate rejects switching a line to an unknown merchandiseId', async () => {
+    const carts = new CartStore();
+    const cart = carts.create({ lines: [{ merchandiseId: AISLEARENA_VARIANT, quantity: 1 }] });
+    const lineId = cart.lines[0]?.id;
+    if (lineId === undefined) throw new Error('unreachable');
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      mutation {
+        cartLinesUpdate(
+          cartId: "${cart.id}"
+          lines: [{ id: "${lineId}", merchandiseId: "${BOGUS_VARIANT}", quantity: 3 }]
+        ) {
+          cart { id }
+          userErrors { code field message }
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(userErrorsOf(result.data, 'cartLinesUpdate')).toEqual([
+      {
+        code: 'INVALID',
+        field: ['merchandiseId'],
+        message: `Merchandise not found: ${BOGUS_VARIANT}`,
+      },
+    ]);
+    // The line keeps its original merchandise and quantity.
+    expect(cart.lines[0]?.merchandiseId).toBe(AISLEARENA_VARIANT);
+    expect(cart.lines[0]?.quantity).toBe(1);
   });
 });
 
