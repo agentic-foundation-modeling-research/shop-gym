@@ -6,6 +6,8 @@ evaluation tasks across 7 distinct skill categories.
 
 ## Updated pipeline
 
+We use the Playwright MCP for exploration and task generation. For Pi based agents, first install the MCP adapter extension.
+
 ### 1. Run the crawler
 ```sh
 cd shop-gym
