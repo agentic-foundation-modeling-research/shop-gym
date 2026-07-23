@@ -6,7 +6,6 @@ from .ax_crawler import (
     TraversalMode,
     crawl_ax_links,
 )
-from .shopgym_task import create_env_for_task
 
 __all__ = [
     "AxCrawlResult",
@@ -15,5 +14,4 @@ __all__ = [
     "AxPageRecord",
     "TraversalMode",
     "crawl_ax_links",
-    "create_env_for_task",
 ]
