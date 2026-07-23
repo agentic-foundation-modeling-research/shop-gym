@@ -46,6 +46,23 @@ By default, the number of pages explored per depth of the graph are:
 This can be changed using the `--explore-per-depth` argument. For example, `--explore-per-depth 1,3,6` will explore
 1 page at depth 0, 3 pages at depth 1 and 6 pages at depth 2.
 
+### 3. Run the solver
+
+The solver consumes explorer-generated task configs and writes prompts,
+snapshots, and answer artifacts next to the task-generation run:
+
+```sh
+uv run python packages/shop_guru/solver.py \
+    --task-gen-dir outputs/shop_guru/task_gen/<shop_name> \
+    --website-url <SHOP_URL> \
+    --website-nickname __WEBSITE_NICKNAME__
+```
+
+Outputs are written under `outputs/shop_guru/task_gen/<shop_name>/solutions/`.
+Use `--task-id <ID>` to solve selected tasks or `--build-only` to generate
+solver prompts without invoking the agent. Use `--max-tasks <N>` to stop after
+building or solving at most `N` supported tasks.
+
 ## Why this exists
 
 Evaluating LLM-based shopping agents is hard because:
