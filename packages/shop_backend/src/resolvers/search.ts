@@ -322,7 +322,10 @@ function sortResults(
 ): readonly ScoredEntry[] {
   const copy = [...entries];
   if (sortKey === 'PRICE') {
-    copy.sort((a, b) => a.price - b.price);
+    copy.sort((a, b) => {
+      if (a.price === b.price) return 0;
+      return a.price < b.price ? -1 : 1;
+    });
   } else {
     copy.sort((a, b) => b.score - a.score);
   }

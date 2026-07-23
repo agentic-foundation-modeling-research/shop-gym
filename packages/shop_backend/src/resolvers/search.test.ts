@@ -209,6 +209,72 @@ describe('searchResolvers — Query.search sort + pagination', () => {
       },
     });
   });
+
+  it('PRICE sort keeps a stable order when multiple entries share an infinite price', async () => {
+    // Pages, articles, and products with no finite variant price all carry
+    // price = +Infinity. PRICE ordering must place the finitely-priced product
+    // first, then every infinite-priced entry in collection order (products,
+    // pages, articles). This produces deterministic, stable ordering regardless
+    // of how many entries tie at +Infinity.
+    const priceData: SandboxShopData = {
+      store: TEST_STORE,
+      products: [makePricedProduct(1, 'a-priced', '5.00'), makePricedProduct(2, 'b-priceless', '')],
+      collections: [],
+      navigation: {},
+      pages: [
+        { handle: 'page-1', title: 'Page One', body_html: '' },
+        { handle: 'page-2', title: 'Page Two', body_html: '' },
+      ],
+      policies: [],
+      blogs: [
+        {
+          handle: 'news',
+          title: 'News',
+          articles: [
+            {
+              handle: 'art-1',
+              title: 'Article One',
+              content_html: '',
+              author: null,
+              published_at: null,
+            },
+            {
+              handle: 'art-2',
+              title: 'Article Two',
+              content_html: '',
+              author: null,
+              published_at: null,
+            },
+          ],
+        },
+      ],
+      metafields: { shop: [], products: {}, collections: {} },
+      productsByHandle: new Map(),
+      variantsByGid: new Map(),
+    };
+    const priceYoga = createYoga({
+      schema: createSandboxSchema(resolvers),
+      context: (): ResolverContext => ({ data: priceData, carts, baseUrl: BASE_URL }),
+    });
+    const response = await priceYoga.fetch(`${BASE_URL}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: NODES_QUERY, variables: { q: '', sortKey: 'PRICE' } }),
+    });
+    const payload = (await response.json()) as {
+      readonly data: {
+        readonly search: { readonly nodes: ReadonlyArray<{ readonly handle: string }> };
+      };
+    };
+    expect(payload.data.search.nodes.map((n) => n.handle)).toEqual([
+      'a-priced',
+      'b-priceless',
+      'page-1',
+      'page-2',
+      'art-1',
+      'art-2',
+    ]);
+  });
 });
 
 // ── Query.predictiveSearch ────────────────────────────────────────────────
@@ -415,6 +481,14 @@ function makeProduct(
       },
     ],
     images: [],
+  };
+}
+
+function makePricedProduct(id: number, handle: string, price: string): Product {
+  const product = makeProduct(id, handle, '', []);
+  return {
+    ...product,
+    variants: product.variants.map((variant) => ({ ...variant, price })),
   };
 }
 
