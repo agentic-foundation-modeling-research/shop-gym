@@ -17,24 +17,27 @@ from shop_arena.env_eval.schema.metrics import (
     Observation,
     PageOk,
     Pages,
+    SearchPageOk,
     Shop,
     Transition,
     dump_metrics,
 )
 from shop_arena.env_eval.structure.snapshot import extract_snapshot
-from shop_arena.env_eval.transition.graph import (
-    GraphEdge,
-    GraphNode,
-    TransitionGraph,
-    write_graph_json,
-)
 from shop_arena.env_eval.transition.node_artifacts import node_folder_name
 
 _URL = "https://shop.example/"
+_ALL_CANONICAL_IDS = (
+    "/",
+    "/collections/<*>",
+    "/products/<*>",
+    "/policies/<*>",
+    "/cart",
+    "/search",
+)
 
 
 def _axtree(*, heading_name: str) -> dict[str, Any]:
-    """Return a small ordered tree with content text that must be ignored."""
+    """Return a small tree with content text that must be ignored."""
     return {
         "nodes": [
             {
@@ -93,13 +96,39 @@ def _write_run(
     run_dir: Path,
     *,
     heading_name: str,
-    include_extra_url: bool = False,
+    all_page_types: bool = False,
 ) -> None:
-    """Write the minimum valid EnvEval artifact set consumed by extraction."""
+    """Write the minimum valid EnvEval artifacts consumed by extraction."""
     run_dir.mkdir(parents=True)
-    metrics = Metrics(
-        shop=Shop(url=_URL, domain="shop.example"),
-        pages=Pages(
+    pages = (
+        Pages(
+            homepage=PageOk(url="/", selected_by="input"),
+            collection=PageOk(
+                url="/collections/coffee",
+                canonical_url="/collections/<*>",
+                selected_by="first_href",
+            ),
+            product=PageOk(
+                url="/products/coffee",
+                canonical_url="/products/<*>",
+                selected_by="first_href",
+            ),
+            policy=PageOk(
+                url="/policies/privacy-policy",
+                canonical_url="/policies/<*>",
+                selected_by="first_href",
+            ),
+            cart_and_search=CartAndSearch(
+                cart=PageOk(url="/cart", selected_by="convention"),
+                search=SearchPageOk(
+                    url="/search?q=coffee",
+                    query="coffee",
+                    selected_by="product_title",
+                ),
+            ),
+        )
+        if all_page_types
+        else Pages(
             homepage=PageOk(url="/", selected_by="input"),
             collection=NotFound(reason="not_needed"),
             product=NotFound(reason="not_needed"),
@@ -108,7 +137,11 @@ def _write_run(
                 cart=NotFound(reason="not_needed"),
                 search=NotFound(reason="not_needed"),
             ),
-        ),
+        )
+    )
+    metrics = Metrics(
+        shop=Shop(url=_URL, domain="shop.example"),
+        pages=pages,
         observation=Observation(
             node_count=8,
             interactive_count=0,
@@ -120,11 +153,11 @@ def _write_run(
         action=Action(),
         transition=Transition(
             node_count=1,
-            edge_count=1,
+            edge_count=0,
             state_node_count=0,
-            avg_out_degree=1.0,
-            max_out_degree=1,
-            dead_end_count=0,
+            avg_out_degree=0.0,
+            max_out_degree=0,
+            dead_end_count=1,
             diameter=None,
             reachable_pct_from_homepage=1.0,
             homepage_to_cart_min_clicks=None,
@@ -132,44 +165,19 @@ def _write_run(
     )
     dump_metrics(metrics, run_dir / "metrics.json")
 
-    nodes = {"/": GraphNode(canonical_id="/", representative_url=_URL)}
-    edges = [
-        GraphEdge(
-            source="/",
-            target="/",
-            label=f"click({_URL}?content-specific=true)",
-        ),
-    ]
-    if include_extra_url:
-        nodes["/pages/about"] = GraphNode(
-            canonical_id="/pages/about",
-            representative_url=f"{_URL}pages/about",
-        )
-        edges.append(
-            GraphEdge(
-                source="/",
-                target="/pages/about",
-                label=f"click({_URL}pages/about)",
-            ),
-        )
-    graph = TransitionGraph(
-        nodes=nodes,
-        edges=edges,
-        seeds=["/"],
-    )
-    (run_dir / "transition").mkdir()
-    write_graph_json(graph, run_dir / "transition" / "graph.json")
     observation_dir = run_dir / "observation"
     observation_dir.mkdir()
-    folder = node_folder_name("/")
-    (observation_dir / f"{folder}.axtree.json").write_text(
-        json.dumps(_axtree(heading_name=heading_name)),
-        encoding="utf-8",
-    )
+    canonical_ids = _ALL_CANONICAL_IDS if all_page_types else ("/",)
+    for canonical_id in canonical_ids:
+        folder = node_folder_name(canonical_id)
+        (observation_dir / f"{folder}.axtree.json").write_text(
+            json.dumps(_axtree(heading_name=heading_name)),
+            encoding="utf-8",
+        )
 
 
 def test_extract_snapshot_ignores_content(tmp_path: Path) -> None:
-    """Accessible names and edge href labels do not enter the snapshot."""
+    """Accessible names do not enter element types or maximum depth."""
     first_run = tmp_path / "first"
     second_run = tmp_path / "second"
     _write_run(first_run, heading_name="Coffee collection")
@@ -178,35 +186,31 @@ def test_extract_snapshot_ignores_content(tmp_path: Path) -> None:
     first = extract_snapshot(first_run)
     second = extract_snapshot(second_run)
 
-    assert first.graph == second.graph
     assert first.pages == second.pages
-    assert first.graph.url_edges[0].model_dump() == {
-        "source": "/",
-        "target": "/",
-        "action": "click",
-    }
     page = first.pages[0]
     assert page.page_type == "homepage"
-    assert page.semantic_node_count == 6
-    assert page.semantic_max_depth == 2
-    assert "generic" not in page.role_histogram
-    assert "rootwebarea" not in page.role_histogram
+    assert page.maximum_depth == 2
+    assert sum(page.element_type_histogram.values()) == 6
+    assert "generic" not in page.element_type_histogram
+    assert "rootwebarea" not in page.element_type_histogram
 
 
-def test_extract_snapshot_uses_only_discovered_representative_pages(tmp_path: Path) -> None:
-    """Crawled URL nodes remain navigational but do not add page samples."""
+def test_extract_snapshot_selects_all_six_representative_page_types(
+    tmp_path: Path,
+) -> None:
+    """Exactly one AXTree is retained for every discovered typical page."""
     run_dir = tmp_path / "run"
-    _write_run(
-        run_dir,
-        heading_name="Heading",
-        include_extra_url=True,
-    )
+    _write_run(run_dir, heading_name="Heading", all_page_types=True)
 
     snapshot = extract_snapshot(run_dir)
 
-    assert snapshot.graph.url_nodes == ("/", "/pages/about")
     assert [(page.page_type, page.canonical_id) for page in snapshot.pages] == [
         ("homepage", "/"),
+        ("collection", "/collections/<*>"),
+        ("product", "/products/<*>"),
+        ("policy", "/policies/<*>"),
+        ("cart", "/cart"),
+        ("search", "/search"),
     ]
 
 

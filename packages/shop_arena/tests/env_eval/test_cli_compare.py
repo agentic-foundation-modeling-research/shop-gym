@@ -36,6 +36,7 @@ def test_compare_cli_threads_urls_and_options(
             "compare",
             "https://a.example",
             "https://b.example",
+            "https://c.example",
             "--out",
             str(tmp_path),
             "--viewport",
@@ -49,7 +50,11 @@ def test_compare_cli_threads_urls_and_options(
     assert rc == EXIT_OK
     assert capsys.readouterr().out.strip() == str(report_path)
     (config,) = captured
-    assert config.urls == ("https://a.example", "https://b.example")
+    assert config.urls == (
+        "https://a.example",
+        "https://b.example",
+        "https://c.example",
+    )
     assert config.out_dir == tmp_path
     assert config.viewport == (1280, 720)
     assert config.max_hops == 2

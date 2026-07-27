@@ -1,27 +1,27 @@
-"""Pure pairwise distance functions for structural snapshots."""
+"""Pure mean-centered distance functions for structural snapshots."""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
-from itertools import combinations
+from collections.abc import Iterable, Mapping, Sequence
 from statistics import fmean, median
 from typing import Final
 
 from shop_arena.env_eval.structure.schema import (
+    CohortMean,
     DistanceSummary,
+    MeanPageProfile,
     PageDistance,
     PageStructure,
-    PairDistance,
+    ProfileDistance,
+    ProfileSummary,
     RepresentativePageType,
-    RoleProfileDistance,
-    RoleProfileSummary,
-    StructureEdge,
+    SampleDistance,
     StructureSnapshot,
-    VarianceSummary,
 )
 
 _ROUND_DIGITS = 6
+_MEAN_ROUND_DIGITS = 12
 _MIN_SAMPLES = 2
 _PAGE_TYPE_ORDER: Final[tuple[RepresentativePageType, ...]] = (
     "homepage",
@@ -31,176 +31,170 @@ _PAGE_TYPE_ORDER: Final[tuple[RepresentativePageType, ...]] = (
     "cart",
     "search",
 )
-type _RoleProfileComponents = tuple[float, float, float, float]
+type _ProfileComponents = tuple[float, float]
 
 
-def compare_snapshots(
-    left: StructureSnapshot,
-    right: StructureSnapshot,
-    *,
-    left_index: int,
-    right_index: int,
-) -> PairDistance:
-    """Compute deterministic navigation and role-profile distances."""
-    navigation = fmean(
-        (
-            _jaccard_distance(set(left.graph.url_nodes), set(right.graph.url_nodes)),
-            _jaccard_distance(_edge_set(left.graph.url_edges), _edge_set(right.graph.url_edges)),
-        ),
-    )
-
-    left_pages: dict[RepresentativePageType, PageStructure] = {
-        page.page_type: page for page in left.pages
-    }
-    right_pages: dict[RepresentativePageType, PageStructure] = {
-        page.page_type: page for page in right.pages
-    }
-    shared_ids: list[RepresentativePageType] = []
-    for page_type in _PAGE_TYPE_ORDER:
-        if page_type in left_pages and page_type in right_pages:
-            shared_ids.append(page_type)
-    if not shared_ids:
-        raise ValueError("snapshots must share at least one representative page type")
-
-    page_distances: list[PageDistance] = []
-    role_profile_components: list[_RoleProfileComponents] = []
-    for page_type in shared_ids:
-        left_page = left_pages[page_type]
-        right_page = right_pages[page_type]
-        components = _role_profile_components(left_page, right_page)
-        role_profile_components.append(components)
-        page_distances.append(
-            PageDistance(
-                page_type=page_type,
-                left_canonical_id=left_page.canonical_id,
-                right_canonical_id=right_page.canonical_id,
-                role_profile=_role_profile_distance(components),
-            ),
-        )
-    return PairDistance(
-        left=left_index,
-        right=right_index,
-        shared_page_count=len(shared_ids),
-        pages=tuple(page_distances),
-        navigation=_rounded(navigation),
-        role_profile=_aggregate_role_profile(role_profile_components),
-    )
-
-
-def pairwise_distances(
-    snapshots: Sequence[StructureSnapshot],
-) -> tuple[PairDistance, ...]:
-    """Return distances for every unordered pair in input order."""
+def compute_cohort_mean(snapshots: Sequence[StructureSnapshot]) -> CohortMean:
+    """Compute one mean AXTree profile per available page type."""
     if len(snapshots) < _MIN_SAMPLES:
         raise ValueError("at least two structural snapshots are required")
-    return tuple(
-        compare_snapshots(
-            snapshots[left_index],
-            snapshots[right_index],
-            left_index=left_index,
-            right_index=right_index,
+
+    page_groups: dict[RepresentativePageType, list[PageStructure]] = {
+        page_type: [] for page_type in _PAGE_TYPE_ORDER
+    }
+    for snapshot in snapshots:
+        for page in snapshot.pages:
+            page_groups[page.page_type].append(page)
+
+    pages: list[MeanPageProfile] = []
+    for page_type in _PAGE_TYPE_ORDER:
+        samples = page_groups[page_type]
+        if not samples:
+            continue
+        pages.append(
+            MeanPageProfile(
+                page_type=page_type,
+                sample_count=len(samples),
+                element_type_distribution=_mean_distribution(samples),
+                maximum_depth=_mean_rounded(page.maximum_depth for page in samples),
+            ),
         )
-        for left_index, right_index in combinations(range(len(snapshots)), 2)
-    )
+    return CohortMean(pages=tuple(pages))
 
 
-def summarize_distances(pairwise: Sequence[PairDistance]) -> VarianceSummary:
-    """Summarize deterministic pairwise distances by metric and component."""
-    if not pairwise:
-        raise ValueError("at least one pairwise distance is required")
-    profiles = [pair.role_profile for pair in pairwise]
-    return VarianceSummary(
-        navigation=_summarize([pair.navigation for pair in pairwise]),
-        role_profile=RoleProfileSummary(
-            role_distribution=_summarize(
-                [profile.role_distribution for profile in profiles],
+def distances_from_mean(
+    snapshots: Sequence[StructureSnapshot],
+    cohort_mean: CohortMean,
+) -> tuple[SampleDistance, ...]:
+    """Compute every shop's distance from the supplied cohort mean."""
+    if len(snapshots) < _MIN_SAMPLES:
+        raise ValueError("at least two structural snapshots are required")
+    mean_pages = {page.page_type: page for page in cohort_mean.pages}
+
+    distances: list[SampleDistance] = []
+    for sample_index, snapshot in enumerate(snapshots):
+        sample_pages = {page.page_type: page for page in snapshot.pages}
+        page_distances: list[PageDistance] = []
+        components: list[_ProfileComponents] = []
+        for page_type in _PAGE_TYPE_ORDER:
+            page = sample_pages.get(page_type)
+            mean_page = mean_pages.get(page_type)
+            if page is None or mean_page is None:
+                continue
+            page_components = _page_components(page, mean_page)
+            components.append(page_components)
+            page_distances.append(
+                PageDistance(
+                    page_type=page_type,
+                    canonical_id=page.canonical_id,
+                    profile=_profile_distance(page_components),
+                ),
+            )
+        if not components:
+            raise ValueError(f"snapshot {sample_index} has no representative pages")
+        distances.append(
+            SampleDistance(
+                sample=sample_index,
+                page_count=len(page_distances),
+                pages=tuple(page_distances),
+                profile=_aggregate_profile(components),
             ),
-            node_count=_summarize([profile.node_count for profile in profiles]),
-            interactive_ratio=_summarize(
-                [profile.interactive_ratio for profile in profiles],
-            ),
-            maximum_depth=_summarize([profile.maximum_depth for profile in profiles]),
-            score=_summarize([profile.score for profile in profiles]),
+        )
+    return tuple(distances)
+
+
+def summarize_distances(distances: Sequence[SampleDistance]) -> ProfileSummary:
+    """Summarize shop-to-mean distances by retained component."""
+    if not distances:
+        raise ValueError("at least one sample distance is required")
+    profiles = [distance.profile for distance in distances]
+    return ProfileSummary(
+        element_type_distribution=_summarize(
+            [profile.element_type_distribution for profile in profiles],
         ),
+        maximum_depth=_summarize([profile.maximum_depth for profile in profiles]),
     )
 
 
-def _role_profile_components(
-    left: PageStructure,
-    right: PageStructure,
-) -> _RoleProfileComponents:
-    """Return the four order-independent role-profile components."""
-    left_interactive_ratio = left.interactive_count / max(left.semantic_node_count, 1)
-    right_interactive_ratio = right.interactive_count / max(right.semantic_node_count, 1)
+def _mean_distribution(pages: Sequence[PageStructure]) -> dict[str, float]:
+    """Return the mean normalized element-type distribution for pages."""
+    distributions = [_normalized_distribution(page.element_type_histogram) for page in pages]
+    keys: set[str] = set()
+    for distribution in distributions:
+        keys.update(distribution)
+    return {
+        key: round(
+            fmean(distribution.get(key, 0.0) for distribution in distributions),
+            _MEAN_ROUND_DIGITS,
+        )
+        for key in sorted(keys)
+    }
+
+
+def _page_components(
+    page: PageStructure,
+    mean_page: MeanPageProfile,
+) -> _ProfileComponents:
+    """Return one page's two distances from its page-type mean."""
     return (
-        _histogram_distance(left.role_histogram, right.role_histogram),
-        _relative_difference(left.semantic_node_count, right.semantic_node_count),
-        abs(left_interactive_ratio - right_interactive_ratio),
-        _relative_difference(left.semantic_max_depth, right.semantic_max_depth),
+        _distribution_distance(
+            _normalized_distribution(page.element_type_histogram),
+            mean_page.element_type_distribution,
+        ),
+        _relative_difference(page.maximum_depth, mean_page.maximum_depth),
     )
 
 
-def _role_profile_distance(
-    components: _RoleProfileComponents,
-) -> RoleProfileDistance:
-    """Build a rounded role-profile distance from its raw components."""
-    role_distribution, node_count, interactive_ratio, maximum_depth = components
-    return RoleProfileDistance(
-        role_distribution=_rounded(role_distribution),
-        node_count=_rounded(node_count),
-        interactive_ratio=_rounded(interactive_ratio),
+def _profile_distance(components: _ProfileComponents) -> ProfileDistance:
+    """Build a rounded profile distance from its raw components."""
+    element_type_distribution, maximum_depth = components
+    return ProfileDistance(
+        element_type_distribution=_rounded(element_type_distribution),
         maximum_depth=_rounded(maximum_depth),
-        score=_rounded(fmean(components)),
     )
 
 
-def _aggregate_role_profile(
-    pages: Sequence[_RoleProfileComponents],
-) -> RoleProfileDistance:
-    """Average raw role-profile components across representative pages."""
-    components: _RoleProfileComponents = (
+def _aggregate_profile(pages: Sequence[_ProfileComponents]) -> ProfileDistance:
+    """Average raw profile components across one shop's pages."""
+    components: _ProfileComponents = (
         fmean(page[0] for page in pages),
         fmean(page[1] for page in pages),
-        fmean(page[2] for page in pages),
-        fmean(page[3] for page in pages),
     )
-    return _role_profile_distance(components)
+    return _profile_distance(components)
 
 
-def _edge_set(edges: Sequence[StructureEdge]) -> set[tuple[str, str, str]]:
-    """Project structural edges onto hashable content-independent triples."""
-    return {(edge.source, edge.target, edge.action) for edge in edges}
+def _normalized_distribution(histogram: Mapping[str, int]) -> dict[str, float]:
+    """Normalize non-negative element-type counts to a probability vector."""
+    total = sum(histogram.values())
+    if total <= 0:
+        return {}
+    return {key: value / total for key, value in histogram.items()}
 
 
-def _jaccard_distance[T](left: set[T], right: set[T]) -> float:
-    """Return Jaccard distance, defining two empty sets as identical."""
-    union = left | right
-    if not union:
-        return 0.0
-    return 1.0 - (len(left & right) / len(union))
+def _distribution_distance(
+    sample: Mapping[str, float],
+    mean: Mapping[str, float],
+) -> float:
+    """Return total-variation distance from a mean element distribution."""
+    keys = sample.keys() | mean.keys()
+    element_difference = sum(abs(sample.get(key, 0.0) - mean.get(key, 0.0)) for key in keys)
+    sample_empty_mass = max(0.0, 1.0 - sum(sample.values()))
+    mean_empty_mass = max(0.0, 1.0 - sum(mean.values()))
+    return 0.5 * (element_difference + abs(sample_empty_mass - mean_empty_mass))
 
 
-def _histogram_distance(left: Mapping[str, int], right: Mapping[str, int]) -> float:
-    """Return total-variation distance between normalized role histograms."""
-    left_total = sum(left.values())
-    right_total = sum(right.values())
-    if left_total == 0 and right_total == 0:
-        return 0.0
-    if left_total == 0 or right_total == 0:
-        return 1.0
-    keys = left.keys() | right.keys()
-    return 0.5 * sum(
-        abs((left.get(key, 0) / left_total) - (right.get(key, 0) / right_total)) for key in keys
-    )
+def _relative_difference(sample: int, mean: float) -> float:
+    """Return scale-independent absolute difference from a non-negative mean."""
+    return abs(sample - mean) / max(sample, mean, 1.0)
 
 
-def _relative_difference(left: int, right: int) -> float:
-    """Return scale-independent absolute difference for non-negative counts."""
-    return abs(left - right) / max(left, right, 1)
+def _mean_rounded(values: Iterable[int]) -> float:
+    """Return a stable, high-precision mean for a published centroid."""
+    return round(fmean(values), _MEAN_ROUND_DIGITS)
 
 
 def _summarize(values: Sequence[float]) -> DistanceSummary:
-    """Return deterministic descriptive statistics for one layer."""
+    """Return deterministic descriptive statistics for one component."""
     ordered = sorted(values)
     return DistanceSummary(
         count=len(ordered),
@@ -228,4 +222,4 @@ def _rounded(value: float) -> float:
     return round(value, _ROUND_DIGITS)
 
 
-__all__ = ["compare_snapshots", "pairwise_distances", "summarize_distances"]
+__all__ = ["compute_cohort_mean", "distances_from_mean", "summarize_distances"]

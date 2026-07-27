@@ -17,7 +17,11 @@ from shop_arena.env_eval.config import (
     EvalConfig,
 )
 from shop_arena.env_eval.pipeline import RUN_ID_TIMESTAMP_FORMAT, evaluate
-from shop_arena.env_eval.structure.distance import pairwise_distances, summarize_distances
+from shop_arena.env_eval.structure.distance import (
+    compute_cohort_mean,
+    distances_from_mean,
+    summarize_distances,
+)
 from shop_arena.env_eval.structure.schema import (
     REPORT_FILENAME,
     SNAPSHOT_FILENAME,
@@ -108,13 +112,14 @@ def compare_urls(config: CompareConfig) -> CompareResult:
             ),
         )
 
-    pairwise = pairwise_distances(snapshots)
+    cohort_mean = compute_cohort_mean(snapshots)
+    distances = distances_from_mean(snapshots, cohort_mean)
     report = VarianceReport(
         sample_count=len(samples),
-        pair_count=len(pairwise),
         samples=tuple(samples),
-        pairwise=pairwise,
-        summary=summarize_distances(pairwise),
+        cohort_mean=cohort_mean,
+        distances=distances,
+        summary=summarize_distances(distances),
     )
     report_path = dump_report(report, comparison_dir / REPORT_FILENAME)
     return CompareResult(comparison_dir=comparison_dir, report_path=report_path)

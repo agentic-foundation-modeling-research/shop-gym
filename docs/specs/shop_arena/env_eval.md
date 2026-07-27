@@ -744,9 +744,9 @@ shop-env-eval visualize <run_dir> [--out PATH]
 shop-env-eval compare <url> <url> [<url> ...] [--out PATH]
 ```
 
-- `run` measures one shop. `compare` runs that measurement for a URL cohort
-  and derives deterministic structural snapshots and pairwise distances;
-  its contract is defined in `structural_variance.md`.
+- `run` measures one shop. `compare` runs that measurement for a URL cohort,
+  derives deterministic structural snapshots, and measures each shop against
+  the cohort mean; its contract is defined in `structural_variance.md`.
 - `visualize` reads `<run_dir>/transition/graph.json` and writes a
   self-contained interactive HTML page (vis-network from CDN) to
   `<run_dir>/transition/graph.html` (or `--out PATH`). Seeds, discovered
@@ -955,7 +955,7 @@ native selects, radios, checkboxes, or popup buttons.
    care about for a real cohort.
 3. ~~Should generic comparison diff raw artifacts?~~ Resolved by the narrower
    structural comparison in `structural_variance.md`, which reads canonical
-   graph and accessibility-tree artifacts.
+   representative-page accessibility-tree artifacts.
 4. **Should EnvEval reuse `shop_guru.eval.run`'s subset choice
    (`("chat","infeas","bid","nav","tab")`) or expose its own flag?**
    v0.1 hard-codes the same subset for parity; consider exposing

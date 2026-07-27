@@ -8,8 +8,8 @@ from shop_arena.env_eval.structure.compare import (
     compare_urls,
 )
 from shop_arena.env_eval.structure.distance import (
-    compare_snapshots,
-    pairwise_distances,
+    compute_cohort_mean,
+    distances_from_mean,
     summarize_distances,
 )
 from shop_arena.env_eval.structure.schema import (
@@ -24,10 +24,10 @@ __all__ = [
     "CompareResult",
     "StructureSnapshot",
     "VarianceReport",
-    "compare_snapshots",
     "compare_urls",
+    "compute_cohort_mean",
+    "distances_from_mean",
     "extract_snapshot",
     "load_snapshot",
-    "pairwise_distances",
     "summarize_distances",
 ]
