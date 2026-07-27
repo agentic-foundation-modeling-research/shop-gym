@@ -215,8 +215,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Measure structural variance across hosted shop URLs.",
         description=(
             "Evaluate at least two hosted shops, derive content-independent "
-            "navigation and accessibility-role profiles without LLM calls, "
-            "and write variance.json. Prints the report path on stdout."
+            "AXTree element-type and maximum-depth profiles without LLM calls, "
+            "compare each shop with the cohort mean, and write variance.json. "
+            "Prints the report path on stdout."
         ),
     )
     compare.add_argument(

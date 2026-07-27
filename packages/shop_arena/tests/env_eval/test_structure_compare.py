@@ -11,7 +11,6 @@ from shop_arena.env_eval.config import EvalConfig, EvalResult
 from shop_arena.env_eval.structure import compare as compare_mod
 from shop_arena.env_eval.structure.compare import CompareConfig, compare_urls
 from shop_arena.env_eval.structure.schema import (
-    GraphStructure,
     PageStructure,
     SnapshotShop,
     StructureSnapshot,
@@ -23,18 +22,12 @@ def _snapshot(url: str) -> StructureSnapshot:
     """Return a minimal identical-structure sample for orchestration tests."""
     return StructureSnapshot(
         shop=SnapshotShop(url=url, eval_version="test"),
-        graph=GraphStructure(
-            url_nodes=("/",),
-            url_edges=(),
-        ),
         pages=(
             PageStructure(
                 page_type="homepage",
                 canonical_id="/",
-                role_histogram={"main": 1},
-                semantic_node_count=1,
-                interactive_count=0,
-                semantic_max_depth=1,
+                element_type_histogram={"main": 1},
+                maximum_depth=1,
             ),
         ),
     )
@@ -57,7 +50,9 @@ def test_compare_urls_evaluates_each_url_and_writes_report(
 
     def _fake_extract(run_dir: Path | str) -> StructureSnapshot:
         index = int(Path(run_dir).name.split("-", 1)[0])
-        return _snapshot(("https://a.example", "https://b.example")[index])
+        return _snapshot(
+            ("https://a.example", "https://b.example", "https://c.example")[index],
+        )
 
     monkeypatch.setattr(compare_mod, "evaluate", _fake_evaluate)
     monkeypatch.setattr(compare_mod, "extract_snapshot", _fake_extract)
@@ -65,23 +60,26 @@ def test_compare_urls_evaluates_each_url_and_writes_report(
 
     result = compare_urls(
         CompareConfig(
-            urls=("https://a.example", "https://b.example"),
+            urls=("https://a.example", "https://b.example", "https://c.example"),
             out_dir=out_dir,
             max_hops=2,
         ),
     )
 
-    assert len(captured) == 2
+    assert len(captured) == 3
     assert all(config.no_rubric for config in captured)
     assert all(config.max_hops == 2 for config in captured)
     assert captured[0].out_dir == out_dir / "runs" / "000-a.example"
     assert captured[1].out_dir == out_dir / "runs" / "001-b.example"
+    assert captured[2].out_dir == out_dir / "runs" / "002-c.example"
     assert result.report_path == out_dir / "variance.json"
     report = VarianceReport.model_validate_json(result.report_path.read_text(encoding="utf-8"))
-    assert report.sample_count == 2
-    assert report.pair_count == 1
-    assert report.summary.navigation.mean == 0.0
-    assert report.summary.role_profile.score.mean == 0.0
+    assert report.version == "0.4"
+    assert report.sample_count == 3
+    assert report.cohort_mean.pages[0].sample_count == 3
+    assert len(report.distances) == 3
+    assert report.summary.element_type_distribution.mean == 0.0
+    assert report.summary.maximum_depth.mean == 0.0
     assert report.samples[0].structure == "runs/000-a.example/structure.json"
     assert (out_dir / report.samples[0].structure).is_file()
 

@@ -90,15 +90,20 @@ render_graph_html(result.run_dir)  # writes <run_dir>/transition/graph.html
 
 comparison = compare_urls(
     CompareConfig(
-        urls=("https://shop-a.example", "https://shop-b.example"),
+        urls=(
+            "https://shop-a.example",
+            "https://shop-b.example",
+            "https://shop-c.example",
+        ),
     ),
 )
 print(comparison.report_path)  # .../variance.json
 ```
 
 `compare` is intentionally structural rather than a composite quality score.
-It reports Navigation and an order-independent AXTree Role Profile. Comparison
-always disables rubric/classifier calls and does not load LLM credentials.
+It computes the cohort mean for AXTree Element Type Distribution and Maximum
+Depth, then reports every shop's distance from that mean. Comparison always
+disables rubric/classifier calls and does not load LLM credentials.
 
 ---
 
@@ -207,8 +212,8 @@ outputs/shop_env_evals/<shop_name>/<run_id>/
 ```
 
 `metrics.json` is the published single-shop digest. Structural comparison also
-reads `transition/graph.json` and the per-node accessibility trees because
-website-level totals discard page identity and per-role detail.
+reads per-node accessibility trees because website-level totals discard page
+identity and per-element-type detail.
 The schema is closed (`extra="forbid"` on every model); unknown keys are
 rejected. Unavailable sample pages serialize as explicit closed status
 objects under `pages` (e.g. `{"status": "not_found", "reason": "no_product_link"}`),
@@ -255,31 +260,28 @@ render_graph_html("outputs/shop_env_evals/sandbox-a/2026-05-...")
 ### `shop-env-eval compare <url> <url> [<url> ...] [--out PATH]`
 
 Runs EnvEval once per hosted URL, writes `structure.json` into every child run,
-and publishes pairwise and cohort statistics to `variance.json`. Concrete
-product names, accessible text, href labels, hostnames, generated ids, and CSS
-classes are excluded from structural signatures.
+computes a cohort mean, and publishes each shop's distance from that mean to
+`variance.json`. Concrete product names, accessible text, hostnames, generated
+ids, and CSS classes are excluded from structural signatures.
 
-Role Profile distances use the accessibility tree of one deterministically
-discovered representative for each available typical page type: homepage,
-collection, product detail page, policy, cart, and search.
-Additional URLs found by the transition crawl contribute only to navigation;
-they do not overweight sites with more content pages.
-Every pair in `variance.json` includes a per-page-type Role Profile breakdown
-as well as the aggregate Navigation and Role Profile distances.
+Element Type Distribution and Maximum Depth use one deterministically discovered
+AXTree representative for each available typical page type: homepage,
+collection, product detail page, policy, cart, and search. The mean is computed
+per page type, then every shop receives per-page and aggregate deviations.
 
 ```text
 outputs/shop_env_evals/comparisons/<run_id>/
 ├── runs/000-<host>/{metrics.json,structure.json,...}
 ├── runs/001-<host>/{metrics.json,structure.json,...}
+├── runs/002-<host>/{metrics.json,structure.json,...}
 └── variance.json
 ```
 
 Comparison is always LLM-free: it forces `no_rubric=True`, exposes no model or
-rubric options, and does not load project LLM credentials. The Role Profile
-score is the equal mean of role-distribution, semantic-node-count,
-interactive-ratio, and semantic-maximum-depth distances. It ignores AXTree
-ordering and accessible text. The report has no Composition, Interaction,
-Overall, or LLM-derived score.
+rubric options, and does not load project LLM credentials. The report contains
+only Element Type Distribution and Maximum Depth distance; it has no Navigation,
+node-count, interactive-ratio, combined score, order-aware, pairwise, or
+LLM-derived metric.
 
 All three subcommands are deterministic for fixed artifacts (SC5).
 

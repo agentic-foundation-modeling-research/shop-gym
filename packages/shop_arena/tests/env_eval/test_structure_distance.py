@@ -1,4 +1,4 @@
-"""Pure structural-distance and cohort-summary tests."""
+"""Mean-centered structural-distance and cohort-summary tests."""
 
 from __future__ import annotations
 
@@ -6,16 +6,14 @@ import pytest
 from pydantic import ValidationError
 
 from shop_arena.env_eval.structure.distance import (
-    compare_snapshots,
-    pairwise_distances,
+    compute_cohort_mean,
+    distances_from_mean,
     summarize_distances,
 )
 from shop_arena.env_eval.structure.schema import (
-    GraphStructure,
     PageStructure,
     RepresentativePageType,
     SnapshotShop,
-    StructureEdge,
     StructureSnapshot,
 )
 
@@ -23,181 +21,141 @@ from shop_arena.env_eval.structure.schema import (
 def _snapshot(
     *,
     url: str,
-    page_node: str,
-    page_edge: StructureEdge,
-    roles: dict[str, int],
-    node_count: int,
-    interactive_count: int,
+    elements: dict[str, int],
     depth: int,
     page_type: RepresentativePageType = "homepage",
-    page_canonical_id: str = "/",
+    canonical_id: str = "/",
 ) -> StructureSnapshot:
     """Build one compact structural snapshot."""
     return StructureSnapshot(
         shop=SnapshotShop(url=url, eval_version="test"),
-        graph=GraphStructure(
-            url_nodes=("/", page_node),
-            url_edges=(page_edge,),
-        ),
         pages=(
             PageStructure(
                 page_type=page_type,
-                canonical_id=page_canonical_id,
-                role_histogram=roles,
-                semantic_node_count=node_count,
-                interactive_count=interactive_count,
-                semantic_max_depth=depth,
+                canonical_id=canonical_id,
+                element_type_histogram=elements,
+                maximum_depth=depth,
             ),
         ),
     )
 
 
-def test_identical_snapshots_have_zero_distance() -> None:
-    """Navigation and every role-profile component are zero when identical."""
-    snapshot = _snapshot(
-        url="https://a.example/",
-        page_node="/products/<*>",
-        page_edge=StructureEdge(source="/", target="/products/<*>", action="click"),
-        roles={"main": 1, "heading": 1},
-        node_count=10,
-        interactive_count=2,
-        depth=2,
-    )
-
-    distance = compare_snapshots(snapshot, snapshot, left_index=0, right_index=1)
-
-    assert distance.navigation == 0.0
-    assert len(distance.pages) == 1
-    assert distance.pages[0].page_type == "homepage"
-    assert distance.role_profile.model_dump() == {
-        "role_distribution": 0.0,
-        "node_count": 0.0,
-        "interactive_ratio": 0.0,
-        "maximum_depth": 0.0,
-        "score": 0.0,
-    }
-
-
-def test_distance_reports_role_profile_components() -> None:
-    """Role-profile score is the mean of its four order-independent parts."""
-    left = _snapshot(
-        url="https://a.example/",
-        page_node="/products/<*>",
-        page_edge=StructureEdge(source="/", target="/products/<*>", action="click"),
-        roles={"main": 1, "heading": 1},
-        node_count=10,
-        interactive_count=2,
-        depth=2,
-    )
-    right = _snapshot(
-        url="https://b.example/",
-        page_node="/collections/<*>",
-        page_edge=StructureEdge(source="/", target="/collections/<*>", action="click"),
-        roles={"main": 1, "region": 1, "heading": 1},
-        node_count=20,
-        interactive_count=8,
-        depth=3,
-    )
-
-    distance = compare_snapshots(left, right, left_index=0, right_index=1)
-
-    assert distance.shared_page_count == 1
-    assert distance.navigation == 0.833333
-    assert distance.role_profile.model_dump() == {
-        "role_distribution": 0.333333,
-        "node_count": 0.5,
-        "interactive_ratio": 0.2,
-        "maximum_depth": 0.333333,
-        "score": 0.341667,
-    }
-    assert distance.pages[0].role_profile == distance.role_profile
-
-
-def test_page_structure_is_compared_by_type_not_route() -> None:
-    """Equivalent page types remain comparable when their URL shapes differ."""
-    left = _snapshot(
-        url="https://a.example/",
-        page_node="/policies/<*>",
-        page_edge=StructureEdge(source="/", target="/policies/<*>", action="click"),
-        roles={"main": 1, "heading": 1},
-        node_count=2,
-        interactive_count=0,
-        depth=2,
-        page_type="policy",
-        page_canonical_id="/policies/<*>",
-    )
-    right = _snapshot(
-        url="https://b.example/",
-        page_node="/pages/privacy-policy",
-        page_edge=StructureEdge(
-            source="/",
-            target="/pages/privacy-policy",
-            action="click",
-        ),
-        roles={"main": 1, "heading": 1},
-        node_count=2,
-        interactive_count=0,
-        depth=2,
-        page_type="policy",
-        page_canonical_id="/pages/privacy-policy",
-    )
-
-    distance = compare_snapshots(left, right, left_index=0, right_index=1)
-
-    assert distance.shared_page_count == 1
-    assert distance.pages[0].model_dump() == {
-        "page_type": "policy",
-        "left_canonical_id": "/policies/<*>",
-        "right_canonical_id": "/pages/privacy-policy",
-        "role_profile": {
-            "role_distribution": 0.0,
-            "node_count": 0.0,
-            "interactive_ratio": 0.0,
-            "maximum_depth": 0.0,
-            "score": 0.0,
-        },
-    }
-    assert distance.role_profile.score == 0.0
-
-
-def test_pairwise_summary_reports_mean_and_p90() -> None:
-    """A three-sample cohort produces three pairs and layer summaries."""
-    base = _snapshot(
-        url="https://a.example/",
-        page_node="/products/<*>",
-        page_edge=StructureEdge(source="/", target="/products/<*>", action="click"),
-        roles={"main": 1},
-        node_count=1,
-        interactive_count=0,
-        depth=1,
-    )
+def test_identical_snapshots_have_zero_distance_from_mean() -> None:
+    """Identical shops equal their cohort mean on both retained metrics."""
     snapshots = (
-        base,
-        base.model_copy(
-            update={"shop": SnapshotShop(url="https://b.example/", eval_version="test")}
+        _snapshot(
+            url="https://a.example/",
+            elements={"main": 1, "heading": 1},
+            depth=2,
         ),
-        base.model_copy(
-            update={"shop": SnapshotShop(url="https://c.example/", eval_version="test")}
+        _snapshot(
+            url="https://b.example/",
+            elements={"main": 1, "heading": 1},
+            depth=2,
         ),
     )
 
-    pairs = pairwise_distances(snapshots)
-    summary = summarize_distances(pairs)
+    cohort_mean = compute_cohort_mean(snapshots)
+    distances = distances_from_mean(snapshots, cohort_mean)
 
-    assert len(pairs) == 3
-    assert summary.navigation.count == 3
-    assert summary.navigation.mean == 0.0
-    assert summary.navigation.p90 == 0.0
-    assert summary.role_profile.score.count == 3
-    assert summary.role_profile.score.mean == 0.0
-    assert summary.role_profile.role_distribution.mean == 0.0
+    assert cohort_mean.pages[0].model_dump() == {
+        "page_type": "homepage",
+        "sample_count": 2,
+        "element_type_distribution": {"heading": 0.5, "main": 0.5},
+        "maximum_depth": 2.0,
+    }
+    assert len(distances) == 2
+    assert distances[0].profile.model_dump() == {
+        "element_type_distribution": 0.0,
+        "maximum_depth": 0.0,
+    }
+    assert distances[1].profile == distances[0].profile
+
+
+def test_three_shop_distances_are_computed_from_cohort_mean() -> None:
+    """Each shop is compared with one centroid, not with every other shop."""
+    snapshots = (
+        _snapshot(url="https://a.example/", elements={"button": 1}, depth=2),
+        _snapshot(url="https://b.example/", elements={"button": 1}, depth=2),
+        _snapshot(url="https://c.example/", elements={"heading": 1}, depth=5),
+    )
+
+    cohort_mean = compute_cohort_mean(snapshots)
+    distances = distances_from_mean(snapshots, cohort_mean)
+    summary = summarize_distances(distances)
+
+    assert cohort_mean.pages[0].element_type_distribution == {
+        "button": 0.666666666667,
+        "heading": 0.333333333333,
+    }
+    assert cohort_mean.pages[0].maximum_depth == 3.0
+    assert [distance.profile.model_dump() for distance in distances] == [
+        {
+            "element_type_distribution": 0.333333,
+            "maximum_depth": 0.333333,
+        },
+        {
+            "element_type_distribution": 0.333333,
+            "maximum_depth": 0.333333,
+        },
+        {
+            "element_type_distribution": 0.666667,
+            "maximum_depth": 0.4,
+        },
+    ]
+    assert summary.element_type_distribution.mean == 0.444444
+    assert summary.maximum_depth.mean == 0.355555
+
+
+def test_distances_preserve_page_type_and_shop_route() -> None:
+    """Equivalent page types share a mean even when their routes differ."""
+    snapshots = (
+        _snapshot(
+            url="https://a.example/",
+            elements={"main": 1, "heading": 1},
+            depth=2,
+            page_type="policy",
+            canonical_id="/policies/<*>",
+        ),
+        _snapshot(
+            url="https://b.example/",
+            elements={"main": 1, "heading": 1},
+            depth=2,
+            page_type="policy",
+            canonical_id="/pages/privacy-policy",
+        ),
+    )
+
+    cohort_mean = compute_cohort_mean(snapshots)
+    distances = distances_from_mean(snapshots, cohort_mean)
+
+    assert cohort_mean.pages[0].page_type == "policy"
+    assert distances[0].pages[0].canonical_id == "/policies/<*>"
+    assert distances[1].pages[0].canonical_id == "/pages/privacy-policy"
+    assert distances[0].pages[0].profile.maximum_depth == 0.0
+
+
+def test_empty_element_profile_is_measured_as_missing_distribution_mass() -> None:
+    """A blank profile and populated profile are equally far from their mean."""
+    snapshots = (
+        _snapshot(url="https://blank.example/", elements={}, depth=0),
+        _snapshot(url="https://button.example/", elements={"button": 1}, depth=0),
+    )
+
+    cohort_mean = compute_cohort_mean(snapshots)
+    distances = distances_from_mean(snapshots, cohort_mean)
+
+    assert cohort_mean.pages[0].element_type_distribution == {"button": 0.5}
+    assert [distance.profile.element_type_distribution for distance in distances] == [
+        0.5,
+        0.5,
+    ]
 
 
 def test_snapshot_schema_rejects_unknown_fields() -> None:
     """Published structure documents remain closed."""
     payload: dict[str, object] = {
         "shop": {"url": "https://a.example/", "eval_version": "test"},
-        "graph": {"url_nodes": [], "url_edges": []},
         "pages": [],
         "unexpected": True,
     }
