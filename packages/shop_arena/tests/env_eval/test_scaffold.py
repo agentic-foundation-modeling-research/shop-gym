@@ -37,6 +37,11 @@ EXPECTED_MODULES = (
     "shop_arena.env_eval.schema",
     "shop_arena.env_eval.schema.manifest",
     "shop_arena.env_eval.schema.metrics",
+    "shop_arena.env_eval.structure",
+    "shop_arena.env_eval.structure.compare",
+    "shop_arena.env_eval.structure.distance",
+    "shop_arena.env_eval.structure.schema",
+    "shop_arena.env_eval.structure.snapshot",
     "shop_arena.env_eval.visualize",
     "shop_arena.env_eval.visualize.transition_graph",
 )

@@ -9,13 +9,10 @@ plus a closed-schema ``metrics.json`` digest.
 Public surface (spec §5.10 + impl plan M0):
 
 * :data:`__version__` — package version (M0).
-* :mod:`errors` and the five error classes — failure vocabulary (M0).
-* ``evaluate``, ``EvalConfig``, ``EvalResult`` — single-shop evaluation
-  (lands in M1 via :mod:`shop_arena.env_eval.pipeline` /
-  :mod:`shop_arena.env_eval.config`).
-
-Cross-run analysis is no longer part of the public API: callers consume
-``metrics.json`` directly (e.g. from a Jupyter notebook).
+* :mod:`errors` and its error classes — failure vocabulary.
+* ``evaluate``, ``EvalConfig``, ``EvalResult`` — single-shop evaluation.
+* ``compare_urls``, ``CompareConfig``, ``CompareResult`` — URL-cohort
+  structural variance measurement.
 
 As each milestone lands, its names are added to :data:`__all__` below
 alongside a top-level ``from … import …`` so callers can do
@@ -33,11 +30,15 @@ from shop_arena.env_eval.errors import (
     PageDiscoveryError,
     ResumeError,
     ShopUnreachableError,
+    StructureComparisonError,
 )
 from shop_arena.env_eval.pipeline import evaluate
+from shop_arena.env_eval.structure import CompareConfig, CompareResult, compare_urls
 from shop_arena.env_eval.visualize import render_graph_html
 
 __all__ = [
+    "CompareConfig",
+    "CompareResult",
     "EnvEvalError",
     "EvalConfig",
     "EvalResult",
@@ -45,7 +46,9 @@ __all__ = [
     "PageDiscoveryError",
     "ResumeError",
     "ShopUnreachableError",
+    "StructureComparisonError",
     "__version__",
+    "compare_urls",
     "errors",
     "evaluate",
     "render_graph_html",

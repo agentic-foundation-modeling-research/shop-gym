@@ -2,7 +2,7 @@
 
 Implements the §5.9 CLI surface of ``docs/specs/shop_arena/env_eval.md``.
 
-v0.1 wires two subcommands:
+The CLI wires three subcommands:
 
 * ``shop-env-eval run <url>`` evaluates a single shop URL via
   :func:`shop_arena.env_eval.pipeline.evaluate` and prints the resulting
@@ -11,10 +11,8 @@ v0.1 wires two subcommands:
   graph as an interactive HTML page via
   :func:`shop_arena.env_eval.visualize.render_graph_html` and prints the
   written path on stdout.
-
-Cross-run analysis (compare / aggregate / cohort report) is no longer
-exposed as a CLI surface; consume ``metrics.json`` from a notebook
-instead.
+* ``shop-env-eval compare <url> <url> [...]`` evaluates a URL cohort and
+  writes deterministic structural snapshots plus ``variance.json``.
 
 Argparse rejects unknown subcommands with a usage error.
 
@@ -40,6 +38,7 @@ from shop_arena.env_eval.config import (
 )
 from shop_arena.env_eval.errors import EnvEvalError
 from shop_arena.env_eval.pipeline import evaluate
+from shop_arena.env_eval.structure.compare import CompareConfig, compare_urls
 from shop_arena.env_eval.visualize import render_graph_html
 from shop_arena.util._dotenv import load_project_env
 from shop_arena.util._llm import LLMConfigError
@@ -69,15 +68,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    # Surface ANTHROPIC_API_KEY / OPENAI_API_KEY etc. from a project ``.env``
-    # before the rubric client reads ``os.environ``. Shell exports still win
-    # via ``override=False`` inside the loader. Mirrors ``shop_arena.gen.cli``.
-    load_project_env()
-
     if args.command == "run":
+        # Surface provider credentials before the optional rubric client reads
+        # the environment. Structural comparison is deliberately LLM-free and
+        # does not load project credentials.
+        load_project_env()
         return _run(args)
     if args.command == "visualize":
         return _visualize(args)
+    if args.command == "compare":
+        return _compare(args)
     # argparse with ``required=True`` rejects missing/unknown subcommands
     # before reaching this branch; the fallback exists so future
     # subcommands cannot silently no-op.
@@ -90,9 +90,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=PROG,
         description=(
-            "Evaluate a SandboxShop end-to-end and emit observation, action, "
-            "and transition artifacts under "
-            "outputs/shop_env_evals/<shop_name>/<run_id>/."
+            "Evaluate hosted SandboxShops and optionally compare their "
+            "website structure. Per-shop artifacts are written under "
+            "outputs/shop_env_evals/."
         ),
     )
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
@@ -210,6 +210,52 @@ def _build_parser() -> argparse.ArgumentParser:
         help=("Output HTML path. Defaults to <run_dir>/transition/graph.html."),
     )
 
+    compare = sub.add_parser(
+        "compare",
+        help="Measure structural variance across hosted shop URLs.",
+        description=(
+            "Evaluate at least two hosted shops, derive content-independent "
+            "navigation and accessibility-role profiles without LLM calls, "
+            "and write variance.json. Prints the report path on stdout."
+        ),
+    )
+    compare.add_argument(
+        "urls",
+        nargs="+",
+        metavar="URL",
+        help="Hosted storefront URLs. At least two are required.",
+    )
+    compare.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Comparison directory. Defaults to "
+            "outputs/shop_env_evals/comparisons/<run_id>/. Existing child "
+            "run directories use normal EnvEval resume behavior."
+        ),
+    )
+    compare.add_argument(
+        "--viewport",
+        type=_parse_viewport,
+        default=None,
+        metavar="WIDTHxHEIGHT",
+        help=f"Desktop viewport. Defaults to {DEFAULT_VIEWPORT[0]}x{DEFAULT_VIEWPORT[1]}.",
+    )
+    compare.add_argument(
+        "--max-hops",
+        type=int,
+        default=None,
+        metavar="N",
+        help=f"BFS depth for each transition graph. Defaults to {DEFAULT_MAX_HOPS}.",
+    )
+    compare.add_argument(
+        "--rediscover",
+        action="store_true",
+        help="Re-run page selection in every child EnvEval run.",
+    )
+
     return parser
 
 
@@ -281,6 +327,34 @@ def _visualize(args: argparse.Namespace) -> int:
         print(f"{PROG}: {exc}", file=sys.stderr)
         return EXIT_USAGE
     print(str(out_path))
+    return EXIT_OK
+
+
+def _compare(args: argparse.Namespace) -> int:
+    """Build a :class:`CompareConfig`, evaluate its URLs, and print the report."""
+    kwargs: dict[str, Any] = {"urls": tuple(args.urls)}
+    if args.out is not None:
+        kwargs["out_dir"] = args.out
+    if args.viewport is not None:
+        kwargs["viewport"] = args.viewport
+    if args.max_hops is not None:
+        kwargs["max_hops"] = args.max_hops
+    if args.rediscover:
+        kwargs["rediscover"] = True
+
+    try:
+        config = CompareConfig(**kwargs)
+    except ValidationError as exc:
+        print(f"{PROG}: invalid comparison configuration: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    try:
+        result = compare_urls(config)
+    except EnvEvalError as exc:
+        print(f"{PROG}: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    print(str(result.report_path))
     return EXIT_OK
 
 
