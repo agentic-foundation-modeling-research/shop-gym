@@ -6,8 +6,11 @@ through a fixed pipeline and emits a closed-schema `metrics.json` plus the
 raw artifacts behind it. EnvEval does **not** generate shops, manuals, or
 tasks; it does **not** evaluate agents. Its consumer is anyone deciding
 whether a storefront is rich enough to serve as an RL environment.
+It also compares two or more hosted shop URLs by deriving deterministic,
+content-independent structural snapshots from those artifacts.
 
 - Spec: [`docs/specs/shop_arena/env_eval.md`](../../../../../docs/specs/shop_arena/env_eval.md)
+- Structural variance spec: [`docs/specs/shop_arena/structural_variance.md`](../../../../../docs/specs/shop_arena/structural_variance.md)
 - Implementation plan: [`docs/internal/impl/env_eval_impl.md`](../../../../../docs/internal/impl/env_eval_impl.md)
 - Status: **v0.1.2** — M0–M11 landed.
 
@@ -57,6 +60,9 @@ shop-env-eval run https://example-shop.myshopify.com
 # Smoke a sandbox shop without spending tokens
 shop-env-eval run https://shop-arena-...run.app --no-rubric
 
+# Compare generated shops as hosted black boxes (always LLM-free)
+shop-env-eval compare https://shop-a.example https://shop-b.example
+
 # Visualize an existing run's transition graph
 shop-env-eval visualize outputs/shop_env_evals/sandbox-a/2026-01-...
 ```
@@ -69,7 +75,9 @@ The `run` subcommand prints the absolute path to `metrics.json` on stdout
 
 ```python
 from shop_arena.env_eval import (
+    CompareConfig,
     EvalConfig,
+    compare_urls,
     evaluate,
     render_graph_html,
 )
@@ -79,12 +87,18 @@ print(result.run_dir)        # outputs/shop_env_evals/example-shop.com/<run_id>/
 print(result.metrics_path)   # .../metrics.json — ready for notebook analysis
 
 render_graph_html(result.run_dir)  # writes <run_dir>/transition/graph.html
+
+comparison = compare_urls(
+    CompareConfig(
+        urls=("https://shop-a.example", "https://shop-b.example"),
+    ),
+)
+print(comparison.report_path)  # .../variance.json
 ```
 
-Cross-run analysis (compare / aggregate / cohort report) is intentionally
-not part of the public API: `metrics.json` is a closed pydantic v2
-schema and is meant to be loaded directly from a Jupyter notebook (or
-any other downstream tool).
+`compare` is intentionally structural rather than a composite quality score.
+It reports Navigation and an order-independent AXTree Role Profile. Comparison
+always disables rubric/classifier calls and does not load LLM credentials.
 
 ---
 
@@ -192,7 +206,9 @@ outputs/shop_env_evals/<shop_name>/<run_id>/
 └── manifest.json                    # run/reuse summary + config
 ```
 
-`metrics.json` is the single file consumed by `compare` and `aggregate`.
+`metrics.json` is the published single-shop digest. Structural comparison also
+reads `transition/graph.json` and the per-node accessibility trees because
+website-level totals discard page identity and per-role detail.
 The schema is closed (`extra="forbid"` on every model); unknown keys are
 rejected. Unavailable sample pages serialize as explicit closed status
 objects under `pages` (e.g. `{"status": "not_found", "reason": "no_product_link"}`),
@@ -236,7 +252,36 @@ from shop_arena.env_eval import render_graph_html
 render_graph_html("outputs/shop_env_evals/sandbox-a/2026-05-...")
 ```
 
-Both subcommands are deterministic for fixed inputs (SC5).
+### `shop-env-eval compare <url> <url> [<url> ...] [--out PATH]`
+
+Runs EnvEval once per hosted URL, writes `structure.json` into every child run,
+and publishes pairwise and cohort statistics to `variance.json`. Concrete
+product names, accessible text, href labels, hostnames, generated ids, and CSS
+classes are excluded from structural signatures.
+
+Role Profile distances use the accessibility tree of one deterministically
+discovered representative for each available typical page type: homepage,
+collection, product detail page, policy, cart, and search.
+Additional URLs found by the transition crawl contribute only to navigation;
+they do not overweight sites with more content pages.
+Every pair in `variance.json` includes a per-page-type Role Profile breakdown
+as well as the aggregate Navigation and Role Profile distances.
+
+```text
+outputs/shop_env_evals/comparisons/<run_id>/
+├── runs/000-<host>/{metrics.json,structure.json,...}
+├── runs/001-<host>/{metrics.json,structure.json,...}
+└── variance.json
+```
+
+Comparison is always LLM-free: it forces `no_rubric=True`, exposes no model or
+rubric options, and does not load project LLM credentials. The Role Profile
+score is the equal mean of role-distribution, semantic-node-count,
+interactive-ratio, and semantic-maximum-depth distances. It ignores AXTree
+ordering and accessible text. The report has no Composition, Interaction,
+Overall, or LLM-derived score.
+
+All three subcommands are deterministic for fixed artifacts (SC5).
 
 ---
 
@@ -252,6 +297,7 @@ CLI maps each to exit code `2`:
 | `MetricsValidationError`  | A `metrics.json` fails closed-schema validation.                 |
 | `PagesClassifierError`    | The `/pages/<slug>` classifier returned an invalid response.     |
 | `ResumeError`             | An existing `--out` is inconsistent with the current config.     |
+| `StructureComparisonError` | Required structural comparison artifacts are missing or invalid. |
 | `EnvEvalError`            | Common base — catch this in library callers.                     |
 
 ---
@@ -277,6 +323,7 @@ uv run --frozen --package shop-arena pytest packages/shop_arena/tests/env_eval -
 # Show CLI help — exercises argparse wiring
 uv run --frozen shop-env-eval --help
 uv run --frozen shop-env-eval run --help
+uv run --frozen shop-env-eval compare --help
 ```
 
 Live smoke tests (against the sandbox URLs in the impl plan) are

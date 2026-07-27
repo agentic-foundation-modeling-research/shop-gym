@@ -90,6 +90,8 @@ repo (after `shop_guru.eval`), so it intentionally stays inside the
 - The shipping CLI surface is:
   - `shop-env-eval run <url>` for single-shop measurement and cached
     resume against an output directory;
+  - `shop-env-eval compare <url> <url> [...]` for URL-only structural
+    variance as specified in `structural_variance.md`;
   - `shop-env-eval visualize <run_dir>` for rendering the transition
     graph as a self-contained HTML page.
 - The implementation includes page selection, BrowserGym-backed
@@ -100,9 +102,9 @@ repo (after `shop_guru.eval`), so it intentionally stays inside the
 - `packages/shop_arena/pyproject.toml` now depends on `browsergym` and
   Playwright; `--no-rubric` skips LLM calls while keeping
   schema-valid stub artifacts.
-- Cross-run comparison and aggregation are intentionally left to
-  downstream notebooks or tools that load `metrics.json`; they are not
-  part of the public CLI despite earlier index wording.
+- General metrics aggregation remains downstream. URL-only structural
+  comparison is implemented by the additive sibling specification
+  [`structural_variance.md`](structural_variance.md).
 
 ---
 
@@ -738,10 +740,13 @@ shop-env-eval run <url> [--out PATH] [--max-hops N]
                         [--rediscover]
 
 shop-env-eval visualize <run_dir> [--out PATH]
+
+shop-env-eval compare <url> <url> [<url> ...] [--out PATH]
 ```
 
-- `run` is the only measurement command. Cross-run analysis is done
-  downstream (e.g. notebooks) by loading `metrics.json` directly.
+- `run` measures one shop. `compare` runs that measurement for a URL cohort
+  and derives deterministic structural snapshots and pairwise distances;
+  its contract is defined in `structural_variance.md`.
 - `visualize` reads `<run_dir>/transition/graph.json` and writes a
   self-contained interactive HTML page (vis-network from CDN) to
   `<run_dir>/transition/graph.html` (or `--out PATH`). Seeds, discovered
@@ -907,9 +912,9 @@ accounting in `manifest.json`. Deliverable: SC4 passes for a second
 invocation against the same `--out` (zero browser/LLM work for reused
 steps).
 
-**M7 — (removed).** Cross-run analysis (compare / aggregate / cohort
-report) is no longer part of EnvEval; downstream tools consume
-`metrics.json` directly. The CLI surface stays at `run` + `visualize`.
+**M7 — (removed).** The original generic metrics aggregation proposal was
+removed. The later, narrower URL-only structural comparison is specified in
+`structural_variance.md`; arbitrary cohort aggregation remains downstream.
 
 **M8 — v0.1.0.** README, CLI help, module CHANGELOG, docs/specs index
 updated. Tag `shop-env-eval-v0.1.0`.
@@ -930,13 +935,14 @@ native selects, radios, checkboxes, or popup buttons.
 
 ### 8.1 Public surface (informative)
 
-- **Types** (`shop_arena.env_eval.config`): `EvalConfig`, `EvalResult`.
+- **Types**: `EvalConfig`, `EvalResult`, `CompareConfig`, `CompareResult`.
 - **Schemas** (`shop_arena.env_eval.metrics`): `Metrics`, `Observation`,
   `Action`, `Transition`, `AxtreeStats`, `Rubric`.
 - **Functions**: `evaluate(config) -> EvalResult`,
+  `compare_urls(config) -> CompareResult`,
   `render_graph_html(run_dir, out_path=None) -> Path`.
 - **Errors**: `ShopUnreachableError`, `PageDiscoveryError`,
-  `MetricsValidationError`, `ResumeError`.
+  `MetricsValidationError`, `ResumeError`, `StructureComparisonError`.
 
 ### 8.2 Open questions
 
@@ -947,8 +953,9 @@ native selects, radios, checkboxes, or popup buttons.
 2. **Stateful rule list.** Same — v0.1 list is opinionated; expand
    only if a missing rule changes a `metrics.transition` number we
    care about for a real cohort.
-3. ~~Should `compare` also diff raw artifacts?~~ Moot — cross-run
-   analysis is now downstream of EnvEval.
+3. ~~Should generic comparison diff raw artifacts?~~ Resolved by the narrower
+   structural comparison in `structural_variance.md`, which reads canonical
+   graph and accessibility-tree artifacts.
 4. **Should EnvEval reuse `shop_guru.eval.run`'s subset choice
    (`("chat","infeas","bid","nav","tab")`) or expose its own flag?**
    v0.1 hard-codes the same subset for parity; consider exposing
