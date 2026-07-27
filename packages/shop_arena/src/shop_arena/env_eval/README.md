@@ -7,7 +7,8 @@ raw artifacts behind it. EnvEval does **not** generate shops, manuals, or
 tasks; it does **not** evaluate agents. Its consumer is anyone deciding
 whether a storefront is rich enough to serve as an RL environment.
 It also compares two or more hosted shop URLs by deriving deterministic,
-content-independent structural snapshots from those artifacts.
+content-independent structural snapshots from those artifacts, with an
+optional model-separated visual judge over representative-page screenshots.
 
 - Spec: [`docs/specs/shop_arena/env_eval.md`](../../../../../docs/specs/shop_arena/env_eval.md)
 - Structural variance spec: [`docs/specs/shop_arena/structural_variance.md`](../../../../../docs/specs/shop_arena/structural_variance.md)
@@ -33,7 +34,7 @@ uv run --frozen playwright install chromium    # one-time, for BrowserGym
 That installs the `shop-env-eval` console script defined by
 `packages/shop_arena/pyproject.toml`.
 
-### LLM credentials (only when the rubric or stateful pass runs)
+### LLM credentials (only when an LLM-backed option runs)
 
 Provider is selected by model-id prefix:
 
@@ -46,6 +47,9 @@ Provider is selected by model-id prefix:
 `/pages/<slug>` classifier (transition layer) and writes stub
 `*.rubric.json` plus a stub `transition/pages_classification.json` so
 `metrics.json` stays schema-valid.
+
+`compare` needs no credentials by default. It loads them only when at least one
+`--visual-judge-model` is supplied.
 
 ---
 
@@ -60,8 +64,13 @@ shop-env-eval run https://example-shop.myshopify.com
 # Smoke a sandbox shop without spending tokens
 shop-env-eval run https://shop-arena-...run.app --no-rubric
 
-# Compare generated shops as hosted black boxes (always LLM-free)
+# Compare generated shops as hosted black boxes (LLM-free by default)
 shop-env-eval compare https://shop-a.example https://shop-b.example
+
+# Add independent visual judges; repeat the option for multiple models
+shop-env-eval compare https://shop-a.example https://shop-b.example \
+  --visual-judge-model gpt-5 \
+  --visual-judge-model claude-sonnet-4-6
 
 # Visualize an existing run's transition graph
 shop-env-eval visualize outputs/shop_env_evals/sandbox-a/2026-01-...
@@ -103,7 +112,8 @@ print(comparison.report_path)  # .../variance.json
 `compare` is intentionally structural rather than a composite quality score.
 It computes the cohort mean for AXTree Element Type Distribution and Maximum
 Depth, then reports every shop's distance from that mean. Comparison always
-disables rubric/classifier calls and does not load LLM credentials.
+disables the EnvEval rubric/classifier calls. Visual judging is a separate,
+explicit option and never changes the deterministic scores.
 
 ---
 
@@ -257,7 +267,7 @@ from shop_arena.env_eval import render_graph_html
 render_graph_html("outputs/shop_env_evals/sandbox-a/2026-05-...")
 ```
 
-### `shop-env-eval compare <url> <url> [<url> ...] [--out PATH]`
+### `shop-env-eval compare <url> <url> [<url> ...] [--out PATH] [--visual-judge-model MODEL]...`
 
 Runs EnvEval once per hosted URL, writes `structure.json` into every child run,
 computes a cohort mean, and publishes each shop's distance from that mean to
@@ -274,16 +284,28 @@ outputs/shop_env_evals/comparisons/<run_id>/
 ├── runs/000-<host>/{metrics.json,structure.json,...}
 ├── runs/001-<host>/{metrics.json,structure.json,...}
 ├── runs/002-<host>/{metrics.json,structure.json,...}
+├── visual/000-<model>/{homepage.json,...,result.json}
 └── variance.json
 ```
 
-Comparison is always LLM-free: it forces `no_rubric=True`, exposes no model or
-rubric options, and does not load project LLM credentials. The report contains
-only Element Type Distribution and Maximum Depth distance; it has no Navigation,
-node-count, interactive-ratio, combined score, order-aware, pairwise, or
-LLM-derived metric.
+The deterministic comparison always forces `no_rubric=True` and contains only
+Element Type Distribution and Maximum Depth distance; it has no Navigation,
+node-count, interactive-ratio, combined score, order-aware, or pairwise metric.
+Without `--visual-judge-model`, it does not load project credentials or make LLM
+calls.
 
-All three subcommands are deterministic for fixed artifacts (SC5).
+With one or more visual models, the command makes one vision call per eligible
+page type and model. Each call receives all cohort screenshots for that page
+type. The prompt compares layout, hierarchy, typography, colors, spacing, and
+component treatment while ignoring product identity, text semantics, and the
+depicted product images. It returns a `[0, 1]` distance for every shop from the
+cohort's shared visual design. Code computes the page mean, each shop's mean
+across pages, and the model mean across page types. Results, rationales, raw
+responses, and parse errors are stored per model; scores from different models
+are never averaged together.
+
+All deterministic subcommand paths are byte-stable for fixed artifacts (SC5).
+Visual-judge artifacts additionally pin the model and prompt version for audit.
 
 ---
 

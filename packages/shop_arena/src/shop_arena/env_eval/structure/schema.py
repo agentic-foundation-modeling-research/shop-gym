@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 SNAPSHOT_FILENAME = "structure.json"
 SNAPSHOT_VERSION: Literal["0.4"] = "0.4"
 REPORT_FILENAME = "variance.json"
-REPORT_VERSION: Literal["0.4"] = "0.4"
+REPORT_VERSION: Literal["0.5"] = "0.5"
 
 type RepresentativePageType = Literal[
     "homepage",
@@ -21,6 +21,15 @@ type RepresentativePageType = Literal[
     "cart",
     "search",
 ]
+
+REPRESENTATIVE_PAGE_TYPES: Final[tuple[RepresentativePageType, ...]] = (
+    "homepage",
+    "collection",
+    "product",
+    "policy",
+    "cart",
+    "search",
+)
 
 
 class _Closed(BaseModel):
@@ -119,15 +128,64 @@ class ProfileSummary(_Closed):
     maximum_depth: DistanceSummary
 
 
+class VisualShopDistance(_Closed):
+    """One judge's visual distance for one shop and representative page."""
+
+    sample: int = Field(ge=0)
+    screenshot: str = Field(min_length=1)
+    distance: float = Field(ge=0.0, le=1.0)
+    rationale: str = Field(min_length=1)
+
+
+class VisualPageJudgment(_Closed):
+    """Auditable result of one model call for one representative page type."""
+
+    prompt_version: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    temperature: float = Field(ge=0.0)
+    page_type: RepresentativePageType
+    sample_count: int = Field(ge=2)
+    artifact: str = Field(min_length=1)
+    cohort_distance: float | None = Field(default=None, ge=0.0, le=1.0)
+    shops: tuple[VisualShopDistance, ...] = ()
+    rationale: str = ""
+    raw_response: str
+    parse_errors: tuple[str, ...] = ()
+
+
+class VisualSampleSummary(_Closed):
+    """One shop's mean visual distance across successfully judged pages."""
+
+    sample: int = Field(ge=0)
+    page_count: int = Field(ge=1)
+    distance: float = Field(ge=0.0, le=1.0)
+
+
+class VisualModelResult(_Closed):
+    """Model-specific visual comparison, kept separate from other judges."""
+
+    prompt_version: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    temperature: float = Field(ge=0.0)
+    artifact: str = Field(min_length=1)
+    page_count: int = Field(ge=0)
+    successful_page_count: int = Field(ge=0)
+    llm_calls: int = Field(ge=0)
+    visual_distance: float | None = Field(default=None, ge=0.0, le=1.0)
+    shops: tuple[VisualSampleSummary, ...] = ()
+    pages: tuple[VisualPageJudgment, ...] = ()
+
+
 class VarianceReport(_Closed):
     """Published mean-centered website-structure variance report."""
 
-    version: Literal["0.4"] = REPORT_VERSION
+    version: Literal["0.5"] = REPORT_VERSION
     sample_count: int = Field(ge=2)
     samples: tuple[SampleReference, ...]
     cohort_mean: CohortMean
     distances: tuple[SampleDistance, ...]
     summary: ProfileSummary
+    visual_judges: tuple[VisualModelResult, ...] = ()
 
 
 def dump_snapshot(snapshot: StructureSnapshot, path: Path | str) -> Path:
@@ -160,6 +218,7 @@ def dump_report(report: VarianceReport, path: Path | str) -> Path:
 __all__ = [
     "REPORT_FILENAME",
     "REPORT_VERSION",
+    "REPRESENTATIVE_PAGE_TYPES",
     "SNAPSHOT_FILENAME",
     "SNAPSHOT_VERSION",
     "CohortMean",
@@ -175,6 +234,10 @@ __all__ = [
     "SnapshotShop",
     "StructureSnapshot",
     "VarianceReport",
+    "VisualModelResult",
+    "VisualPageJudgment",
+    "VisualSampleSummary",
+    "VisualShopDistance",
     "dump_report",
     "dump_snapshot",
     "load_snapshot",

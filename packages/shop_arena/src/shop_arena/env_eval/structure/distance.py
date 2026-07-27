@@ -5,9 +5,9 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from statistics import fmean, median
-from typing import Final
 
 from shop_arena.env_eval.structure.schema import (
+    REPRESENTATIVE_PAGE_TYPES,
     CohortMean,
     DistanceSummary,
     MeanPageProfile,
@@ -23,14 +23,6 @@ from shop_arena.env_eval.structure.schema import (
 _ROUND_DIGITS = 6
 _MEAN_ROUND_DIGITS = 12
 _MIN_SAMPLES = 2
-_PAGE_TYPE_ORDER: Final[tuple[RepresentativePageType, ...]] = (
-    "homepage",
-    "collection",
-    "product",
-    "policy",
-    "cart",
-    "search",
-)
 type _ProfileComponents = tuple[float, float]
 
 
@@ -40,14 +32,14 @@ def compute_cohort_mean(snapshots: Sequence[StructureSnapshot]) -> CohortMean:
         raise ValueError("at least two structural snapshots are required")
 
     page_groups: dict[RepresentativePageType, list[PageStructure]] = {
-        page_type: [] for page_type in _PAGE_TYPE_ORDER
+        page_type: [] for page_type in REPRESENTATIVE_PAGE_TYPES
     }
     for snapshot in snapshots:
         for page in snapshot.pages:
             page_groups[page.page_type].append(page)
 
     pages: list[MeanPageProfile] = []
-    for page_type in _PAGE_TYPE_ORDER:
+    for page_type in REPRESENTATIVE_PAGE_TYPES:
         samples = page_groups[page_type]
         if not samples:
             continue
@@ -76,7 +68,7 @@ def distances_from_mean(
         sample_pages = {page.page_type: page for page in snapshot.pages}
         page_distances: list[PageDistance] = []
         components: list[_ProfileComponents] = []
-        for page_type in _PAGE_TYPE_ORDER:
+        for page_type in REPRESENTATIVE_PAGE_TYPES:
             page = sample_pages.get(page_type)
             mean_page = mean_pages.get(page_type)
             if page is None or mean_page is None:

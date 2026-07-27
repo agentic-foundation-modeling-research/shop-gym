@@ -742,11 +742,14 @@ shop-env-eval run <url> [--out PATH] [--max-hops N]
 shop-env-eval visualize <run_dir> [--out PATH]
 
 shop-env-eval compare <url> <url> [<url> ...] [--out PATH]
+                      [--visual-judge-model MODEL]...
 ```
 
 - `run` measures one shop. `compare` runs that measurement for a URL cohort,
   derives deterministic structural snapshots, and measures each shop against
-  the cohort mean; its contract is defined in `structural_variance.md`.
+  the cohort mean. It optionally runs model-separated visual judges over the
+  representative screenshots; its contract is defined in
+  `structural_variance.md`.
 - `visualize` reads `<run_dir>/transition/graph.json` and writes a
   self-contained interactive HTML page (vis-network from CDN) to
   `<run_dir>/transition/graph.html` (or `--out PATH`). Seeds, discovered

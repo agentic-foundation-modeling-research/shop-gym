@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Final
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shop_arena.env_eval.config import (
     DEFAULT_MAX_HOPS,
@@ -32,6 +32,11 @@ from shop_arena.env_eval.structure.schema import (
     dump_snapshot,
 )
 from shop_arena.env_eval.structure.snapshot import extract_snapshot
+from shop_arena.env_eval.structure.visual import (
+    VisionClientBuilder,
+    run_visual_judges,
+)
+from shop_arena.util._llm import build_default_client
 
 DEFAULT_COMPARISON_ROOT: Final[Path] = Path("outputs/shop_env_evals/comparisons")
 
@@ -46,6 +51,18 @@ class CompareConfig(BaseModel):
     viewport: tuple[int, int] = DEFAULT_VIEWPORT
     max_hops: int = Field(default=DEFAULT_MAX_HOPS, ge=0)
     rediscover: bool = False
+    visual_judge_models: tuple[str, ...] = ()
+
+    @field_validator("visual_judge_models")
+    @classmethod
+    def _validate_visual_judge_models(cls, models: tuple[str, ...]) -> tuple[str, ...]:
+        """Require non-empty, unique model ids while preserving CLI order."""
+        normalized = tuple(model.strip() for model in models)
+        if any(not model for model in normalized):
+            raise ValueError("visual judge model ids must be non-empty")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("visual judge model ids must be unique")
+        return normalized
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +87,11 @@ def resolve_comparison_dir(
     return root / timestamp
 
 
-def compare_urls(config: CompareConfig) -> CompareResult:
+def compare_urls(
+    config: CompareConfig,
+    *,
+    visual_client_builder: VisionClientBuilder = build_default_client,
+) -> CompareResult:
     """Evaluate hosted shop URLs and write their structural-variance report.
 
     Completed child EnvEval runs are retained if a later URL fails. The report
@@ -78,6 +99,8 @@ def compare_urls(config: CompareConfig) -> CompareResult:
 
     Args:
         config: Shared evaluation settings and at least two shop URLs.
+        visual_client_builder: Vision-client constructor used only when visual
+            judge models are configured. Tests inject fakes through this seam.
 
     Returns:
         Comparison directory and published report path.
@@ -88,6 +111,7 @@ def compare_urls(config: CompareConfig) -> CompareResult:
 
     snapshots: list[StructureSnapshot] = []
     samples: list[SampleReference] = []
+    run_dirs: list[Path] = []
     for index, url in enumerate(config.urls):
         run_dir = runs_dir / f"{index:03d}-{_url_folder_name(url)}"
         result = evaluate(
@@ -103,6 +127,7 @@ def compare_urls(config: CompareConfig) -> CompareResult:
         snapshot = extract_snapshot(result.run_dir)
         snapshot_path = dump_snapshot(snapshot, result.run_dir / SNAPSHOT_FILENAME)
         snapshots.append(snapshot)
+        run_dirs.append(result.run_dir)
         samples.append(
             SampleReference(
                 index=index,
@@ -114,12 +139,24 @@ def compare_urls(config: CompareConfig) -> CompareResult:
 
     cohort_mean = compute_cohort_mean(snapshots)
     distances = distances_from_mean(snapshots, cohort_mean)
+    visual_judges = (
+        run_visual_judges(
+            models=config.visual_judge_models,
+            snapshots=snapshots,
+            run_dirs=run_dirs,
+            comparison_dir=comparison_dir,
+            client_builder=visual_client_builder,
+        )
+        if config.visual_judge_models
+        else ()
+    )
     report = VarianceReport(
         sample_count=len(samples),
         samples=tuple(samples),
         cohort_mean=cohort_mean,
         distances=distances,
         summary=summarize_distances(distances),
+        visual_judges=visual_judges,
     )
     report_path = dump_report(report, comparison_dir / REPORT_FILENAME)
     return CompareResult(comparison_dir=comparison_dir, report_path=report_path)

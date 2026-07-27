@@ -12,7 +12,8 @@ The CLI wires three subcommands:
   :func:`shop_arena.env_eval.visualize.render_graph_html` and prints the
   written path on stdout.
 * ``shop-env-eval compare <url> <url> [...]`` evaluates a URL cohort and
-  writes deterministic structural snapshots plus ``variance.json``.
+  writes deterministic structural snapshots plus ``variance.json``, with an
+  optional model-separated visual comparison.
 
 Argparse rejects unknown subcommands with a usage error.
 
@@ -70,8 +71,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         # Surface provider credentials before the optional rubric client reads
-        # the environment. Structural comparison is deliberately LLM-free and
-        # does not load project credentials.
+        # the environment. Comparison loads them conditionally in _compare.
         load_project_env()
         return _run(args)
     if args.command == "visualize":
@@ -215,9 +215,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Measure structural variance across hosted shop URLs.",
         description=(
             "Evaluate at least two hosted shops, derive content-independent "
-            "AXTree element-type and maximum-depth profiles without LLM calls, "
-            "compare each shop with the cohort mean, and write variance.json. "
-            "Prints the report path on stdout."
+            "AXTree element-type and maximum-depth profiles, compare each shop "
+            "with the cohort mean, and write variance.json. The deterministic "
+            "comparison is LLM-free; repeat --visual-judge-model to optionally "
+            "add model-separated screenshot judgments. Prints the report path "
+            "on stdout."
         ),
     )
     compare.add_argument(
@@ -250,6 +252,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="N",
         help=f"BFS depth for each transition graph. Defaults to {DEFAULT_MAX_HOPS}.",
+    )
+    compare.add_argument(
+        "--visual-judge-model",
+        action="append",
+        default=None,
+        metavar="MODEL",
+        help=(
+            "Vision model used to judge representative-page screenshots. "
+            "Repeat for multiple independent judges; scores are never averaged "
+            "across models. Without this option comparison is fully LLM-free."
+        ),
     )
     compare.add_argument(
         "--rediscover",
@@ -340,6 +353,8 @@ def _compare(args: argparse.Namespace) -> int:
         kwargs["viewport"] = args.viewport
     if args.max_hops is not None:
         kwargs["max_hops"] = args.max_hops
+    if args.visual_judge_model is not None:
+        kwargs["visual_judge_models"] = tuple(args.visual_judge_model)
     if args.rediscover:
         kwargs["rediscover"] = True
 
@@ -349,9 +364,12 @@ def _compare(args: argparse.Namespace) -> int:
         print(f"{PROG}: invalid comparison configuration: {exc}", file=sys.stderr)
         return EXIT_USAGE
 
+    if config.visual_judge_models:
+        load_project_env()
+
     try:
         result = compare_urls(config)
-    except EnvEvalError as exc:
+    except (EnvEvalError, LLMConfigError) as exc:
         print(f"{PROG}: {exc}", file=sys.stderr)
         return EXIT_USAGE
 
