@@ -188,6 +188,7 @@ uv run pyright                   # typecheck strict-clean Python packages
 # ShopArena env-eval (measure an environment)
 uv run shop-env-eval run <url> --no-rubric    # one-shot measurement → outputs/shop_env_evals/<host>/<run_id>/
 uv run shop-env-eval compare <url-a> <url-b> [...]  # LLM-free AXTree distance from cohort mean → variance.json
+uv run shop-env-eval compare <url-a> <url-b> [...] --visual-judge-model gpt-5  # optional visual comparison
 uv run shop-env-eval visualize <run_dir>      # render the transition graph as interactive HTML
 
 # TypeScript

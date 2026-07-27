@@ -1,7 +1,7 @@
 # URL-based structural variance
 
 Status: **Implemented**
-Version: **0.4**
+Version: **0.5**
 Date: 2026-07-27
 
 ## Overview
@@ -28,9 +28,12 @@ Only two order-independent measurements are retained:
 - **Maximum Depth** — the deepest semantic AXTree path after those wrappers are
   collapsed.
 
-The comparison is always LLM-free. It does not load model credentials or expose
-model and rubric options. It measures output-to-output variance only; fidelity
-to the source Shop Manual is separate because the manual is not an input.
+The deterministic comparison remains LLM-free. An optional visual-judge layer
+can compare the same representative pages from screenshots. Visual results are
+reported separately for every requested judge model and never modify or combine
+with the deterministic AXTree measurements. The comparison measures
+output-to-output variance only; fidelity to the source Shop Manual is separate
+because the manual is not an input.
 
 ## Terminology
 
@@ -48,6 +51,15 @@ to the source Shop Manual is separate because the manual is not an input.
   `0` means the shop equals the mean for that measurement.
 - **Structural variance** — the mean sample-to-cohort-mean distance. The report
   also includes median, p90, minimum, and maximum across shops.
+- **Visual judge** — an explicitly requested vision-capable LLM that compares
+  all available cohort screenshots for one representative page type in one
+  call.
+- **Shared visual design** — the dominant or common layout and styling visible
+  across a page-type cohort. It is an LLM judgment target, not a literal mean
+  image and not the mathematical AXTree cohort mean.
+- **Visual distance** — a judge-assigned sample deviation from the shared visual
+  design in `[0, 1]`, where `0` means visually indistinguishable design and `1`
+  means no meaningful visual design is shared.
 
 ## Current Status
 
@@ -71,11 +83,14 @@ measurement must:
 2. ignore content values such as product titles, accessible names, hostnames,
    generated ids, CSS classes, and concrete catalog handles;
 3. compare equivalent representative page types even when routes differ;
-4. make no LLM calls and require no LLM credentials;
+4. make no LLM calls or load credentials unless a visual judge model is
+   explicitly requested;
 5. remain order-independent because the question is which element types are
    present, not their exact traversal order;
 6. report each shop's deviation from a shared cohort mean;
-7. preserve every completed per-URL EnvEval run if a later sample fails.
+7. preserve every completed per-URL EnvEval run if a later sample fails;
+8. optionally judge visual deviation once per representative page type and
+   report every judge model independently.
 
 ## Proposal
 
@@ -86,13 +101,17 @@ The CLI surface is:
 ```bash
 shop-env-eval compare URL URL [URL ...] [--out PATH]
                       [--viewport WIDTHxHEIGHT] [--max-hops N]
+                      [--visual-judge-model MODEL]...
                       [--rediscover]
 ```
 
 The comparison always constructs each `EvalConfig` with `no_rubric=True`.
 Consequently the screenshot rubric and `/pages/<slug>` classifier are stubbed,
-and the comparison makes no LLM calls. Rubric and model options are deliberately
-absent from the compare CLI and `CompareConfig`.
+so the child EnvEval runs remain deterministic and make no LLM calls. The
+repeatable `--visual-judge-model` option is the only comparison-specific LLM
+surface. When it is absent, the command does not load project credentials,
+construct clients, or make LLM calls. When present, project credentials are
+loaded only after configuration validates.
 
 Samples run serially to bound browser and local-server resource usage. The
 default output directory is
@@ -105,6 +124,11 @@ child EnvEval run directories resumable through the existing EnvEval rules.
 │   ├── 000-<host>/{metrics.json,structure.json,...}
 │   ├── 001-<host>/{metrics.json,structure.json,...}
 │   └── 002-<host>/{metrics.json,structure.json,...}
+├── visual/
+│   └── 000-<model>/
+│       ├── homepage.json
+│       ├── collection.json
+│       └── result.json
 └── variance.json
 ```
 
@@ -163,14 +187,70 @@ representative pages. `variance.json` contains:
 - one aggregate and per-page distance record for every shop;
 - distribution summaries across the shop distances.
 
-The report intentionally has no Navigation, node-count, interactive-ratio,
-order-aware Composition, Interaction, Overall, pairwise, or LLM-derived metric.
+The deterministic profile intentionally has no Navigation, node-count,
+interactive-ratio, order-aware Composition, Interaction, Overall, or pairwise
+metric.
+
+### Optional visual judge
+
+For page type `t`, let `S^V_t` contain the samples with a captured representative
+screenshot. A visual comparison is meaningful only when `|S^V_t| >= 2`; page
+types available in fewer than two samples are omitted from visual judging. For
+each requested model `m`, the comparison makes exactly one call per eligible
+page type and supplies all screenshots in sample-index order.
+
+The prompt asks the judge to compare only visually observable design:
+
+- layout and component arrangement;
+- visual hierarchy;
+- typography;
+- color palette;
+- spacing and density;
+- visual component treatment.
+
+It explicitly instructs the judge to ignore product identity, product names and
+other text semantics, and differences in the depicted product images. Image
+placement, aspect ratio, cropping, and framing remain part of visual design.
+
+For model `m`, page type `t`, and sample `i`, the judge returns a distance
+`d^m_i,t` from the cohort's shared visual design plus a rationale. The response
+must contain each expected sample index exactly once and every distance must be
+in `[0, 1]`. The implementation, rather than the model, computes equal-weight
+aggregates:
+
+```text
+page_visual_distance^m_t =
+    (1 / |S^V_t|) * sum(i in S^V_t, d^m_i,t)
+
+sample_visual_distance^m_i =
+    (1 / |T^m_i|) * sum(t in T^m_i, d^m_i,t)
+
+model_visual_distance^m =
+    (1 / |T^m|) * sum(t in T^m, page_visual_distance^m_t)
+```
+
+`T^m` is the set of page types successfully judged by model `m`, and `T^m_i`
+is the successful subset containing sample `i`. This gives page types equal
+weight even when page availability differs. The report keeps models separate;
+it never averages scores across judge models.
+
+Every page artifact records its model, prompt version, temperature, screenshot
+references, raw response, and parse errors. A malformed response is preserved
+with a null page distance and excluded from aggregates rather than being
+converted to zero. With no successful page, the model-level visual distance is
+null. `variance.json` has an empty `visual_judges` array when no model is
+requested.
 
 ### Error behavior
 
 - Fewer than two URLs is a CLI/configuration error.
 - Invalid or missing metrics or representative-page accessibility-tree
   artifacts fail loudly. Missing optional page types are omitted.
+- When visual judging is requested, a missing screenshot for an otherwise
+  selected representative page fails loudly.
+- Unsupported models, missing credentials, and provider-call failures fail the
+  command. A completed malformed model response is instead quarantined in its
+  page artifact with parse errors.
 - A snapshot with no representative page cannot be compared.
 - If sample `k` fails, completed child runs `0..k-1` remain resumable, but no
   partial `variance.json` is written.
@@ -193,8 +273,13 @@ An order-aware AXTree traversal distance was implemented in v0.2 as
 Composition, then removed in v0.3 because it over-penalized layouts containing
 the same semantic elements in a different order.
 
-An LLM section classifier was rejected because its own run-to-run variance
-would be mixed into the quantity being measured.
+An LLM section classifier was rejected for the deterministic metric because its
+own run-to-run variance would be mixed into AXTree structure. The optional
+visual judge is deliberately separate, model-labelled, and auditable so its
+subjectivity cannot be mistaken for a deterministic measurement.
+
+Pixel-wise screenshot distance was rejected because product imagery and text
+rendering dominate raw pixels even when two shops share the same visual design.
 
 ## Execution Table
 
@@ -204,7 +289,8 @@ would be mixed into the quantity being measured.
 | URL-run snapshot extraction | `shop_arena.env_eval.structure.snapshot` | six-page AXTree fixture tests |
 | Mean and sample distances | `shop_arena.env_eval.structure.distance` | exact three-shop tests |
 | Cohort orchestration | `shop_arena.env_eval.structure.compare` | mocked evaluator tests |
-| LLM-free URL CLI | `shop_arena.env_eval.cli compare` | CLI and forced-`no_rubric` tests |
+| Optional visual judge | `shop_arena.env_eval.structure.visual` | fake-client schema and aggregation tests |
+| Conditional-LLM URL CLI | `shop_arena.env_eval.cli compare` | CLI, credential-loading, and forced-`no_rubric` tests |
 | User documentation | root and EnvEval READMEs | command and formula examples |
 
 ## Appendix
@@ -218,3 +304,8 @@ fidelity evaluation is required to detect a cohort of consistently wrong shops.
 The centroid changes when a shop is added or removed, so all sample deviations
 must be recomputed for the new cohort. This is intentional: each distance
 describes the shop relative to the exact cohort in that report.
+
+Visual distance is a calibrated judge opinion, not a metric-space distance: it
+need not satisfy symmetry or the triangle inequality. Comparing absolute values
+across judge models is therefore not supported. Repeat evaluations should pin
+the model id and prompt version, and should retain the raw page artifacts.

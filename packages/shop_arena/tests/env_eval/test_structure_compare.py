@@ -74,12 +74,13 @@ def test_compare_urls_evaluates_each_url_and_writes_report(
     assert captured[2].out_dir == out_dir / "runs" / "002-c.example"
     assert result.report_path == out_dir / "variance.json"
     report = VarianceReport.model_validate_json(result.report_path.read_text(encoding="utf-8"))
-    assert report.version == "0.4"
+    assert report.version == "0.5"
     assert report.sample_count == 3
     assert report.cohort_mean.pages[0].sample_count == 3
     assert len(report.distances) == 3
     assert report.summary.element_type_distribution.mean == 0.0
     assert report.summary.maximum_depth.mean == 0.0
+    assert report.visual_judges == ()
     assert report.samples[0].structure == "runs/000-a.example/structure.json"
     assert (out_dir / report.samples[0].structure).is_file()
 
@@ -88,6 +89,20 @@ def test_compare_config_requires_two_urls() -> None:
     """A single hosted shop cannot define output-to-output variance."""
     with pytest.raises(ValueError, match="at least 2 items"):
         CompareConfig(urls=("https://only.example",))
+
+
+def test_compare_config_requires_unique_non_empty_visual_models() -> None:
+    """Model artifact identities are unambiguous within one comparison."""
+    with pytest.raises(ValueError, match="must be unique"):
+        CompareConfig(
+            urls=("https://a.example", "https://b.example"),
+            visual_judge_models=("gpt-5", "gpt-5"),
+        )
+    with pytest.raises(ValueError, match="must be non-empty"):
+        CompareConfig(
+            urls=("https://a.example", "https://b.example"),
+            visual_judge_models=(" ",),
+        )
 
 
 def test_structure_public_surface_exports_compare() -> None:

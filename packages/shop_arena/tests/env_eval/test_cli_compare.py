@@ -83,6 +83,41 @@ def test_compare_cli_rejects_one_url(
     assert "invalid comparison configuration" in capsys.readouterr().err
 
 
+def test_compare_cli_threads_independent_visual_models_and_loads_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Repeated visual flags preserve model order and opt into project env."""
+    captured: list[CompareConfig] = []
+    loaded: list[bool] = []
+    report_path = tmp_path / "variance.json"
+
+    def _fake_compare(config: CompareConfig) -> CompareResult:
+        captured.append(config)
+        return CompareResult(comparison_dir=tmp_path, report_path=report_path)
+
+    monkeypatch.setattr(cli_mod, "compare_urls", _fake_compare)
+    monkeypatch.setattr(cli_mod, "load_project_env", lambda: loaded.append(True))
+
+    rc = main(
+        [
+            "compare",
+            "https://a.example",
+            "https://b.example",
+            "--visual-judge-model",
+            "gpt-5",
+            "--visual-judge-model",
+            "claude-sonnet-4-6",
+        ],
+    )
+
+    assert rc == EXIT_OK
+    assert capsys.readouterr().out.strip() == str(report_path)
+    assert loaded == [True]
+    assert captured[0].visual_judge_models == ("gpt-5", "claude-sonnet-4-6")
+
+
 def test_help_lists_compare_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
     """Top-level help advertises structural comparison."""
     with pytest.raises(SystemExit) as excinfo:
@@ -91,14 +126,15 @@ def test_help_lists_compare_subcommand(capsys: pytest.CaptureFixture[str]) -> No
     assert "compare" in capsys.readouterr().out
 
 
-def test_compare_help_is_explicitly_llm_free(
+def test_compare_help_describes_optional_visual_judge(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Compare exposes no model or rubric options."""
+    """Compare keeps its deterministic core while exposing one visual option."""
     with pytest.raises(SystemExit) as excinfo:
         main(["compare", "--help"])
     assert excinfo.value.code == 0
     output = capsys.readouterr().out
-    assert "without LLM calls" in output
+    assert "LLM-free" in output
+    assert "--visual-judge-model" in output
     assert "--no-rubric" not in output
     assert "--rubric-model" not in output
