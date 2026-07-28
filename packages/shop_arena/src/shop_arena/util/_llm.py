@@ -72,9 +72,8 @@ _OPENAI_API_KEY_ENV: Final[str] = "OPENAI_API_KEY"
 #: Default sampling temperature for the screenshot rubric (spec §5.3 — "Calls
 #: use temperature ``0`` where the provider supports it").  Exposed as a
 #: module-level constant so the rubric layer (M2) and tests share a single
-#: source of truth; provider-side fixed-temperature models (see
-#: :data:`_OPENAI_FIXED_TEMPERATURE_RE`) silently drop the kwarg instead of
-#: erroring at the API boundary.
+#: source of truth; provider-side fixed-temperature models silently drop the
+#: kwarg instead of erroring at the API boundary.
 DEFAULT_RUBRIC_TEMPERATURE: Final[float] = 0.0
 
 #: Hardcoded JSON tool name used by :class:`_AnthropicVisionClient`.  Anthropic
@@ -114,6 +113,13 @@ _NON_VISION_MODELS: Final[frozenset[str]] = frozenset(
 
 #: Anthropic prefix dispatched to :class:`_AnthropicVisionClient`.
 _ANTHROPIC_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^claude[-.]")
+
+#: Anthropic models that reject the now-deprecated ``temperature`` parameter.
+#: Opus 5 uses its provider default, so the requested value remains recorded in
+#: artifacts but is omitted from the wire request.
+_ANTHROPIC_FIXED_TEMPERATURE_RE: Final[re.Pattern[str]] = re.compile(
+    r"^claude-opus-5(?:[-.]|$)",
+)
 
 #: OpenAI prefixes dispatched to :class:`_OpenAIVisionClient`.  Reasoning
 #: models (``o1``/``o3``/``o4``) share the chat completions surface used by
@@ -423,16 +429,18 @@ class _AnthropicVisionClient:
             "description": "Emit the rubric counts as a JSON object.",
             "input_schema": dict(schema),
         }
+        request_kwargs: dict[str, Any] = {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "tools": [tool_def],
+            "tool_choice": {"type": "tool", "name": _ANTHROPIC_TOOL_NAME},
+            "messages": [{"role": "user", "content": content}],
+        }
+        if not _ANTHROPIC_FIXED_TEMPERATURE_RE.match(self._model):
+            request_kwargs["temperature"] = temperature
         message = _retry_on_rate_limit(
             "anthropic",
-            lambda: client.messages.create(
-                model=self._model,
-                max_tokens=self._max_tokens,
-                temperature=temperature,
-                tools=[tool_def],
-                tool_choice={"type": "tool", "name": _ANTHROPIC_TOOL_NAME},
-                messages=[{"role": "user", "content": content}],
-            ),
+            lambda: client.messages.create(**request_kwargs),
         )
         return _parse_anthropic_message(message)
 
