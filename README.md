@@ -178,6 +178,12 @@ single-task debugging, skill filters, and the full output layout.
 
 ## Common commands
 
+CI runs the Python lint, typecheck, and test commands below, plus the
+TypeScript build, tests, and lint. Python dependencies are resolved on each
+fresh checkout because `uv.lock` is not tracked; if local lint differs from
+CI, use the Ruff version reported in the failing run to reproduce it
+(`uvx ruff@<version> check .`).
+
 ```bash
 # Python
 uv run pytest                    # run all Python tests
