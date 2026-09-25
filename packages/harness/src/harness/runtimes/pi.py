@@ -83,7 +83,7 @@ _OPENAI_BASE_URL_ENV: Final[str] = "OPENAI_BASE_URL"
 _OPENAI_API_KEY_ENV: Final[str] = "OPENAI_API_KEY"
 _MAX_ONESHOT_ERROR_CHARS: Final[int] = 4_000
 
-type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
 
 
 class PiRuntime:

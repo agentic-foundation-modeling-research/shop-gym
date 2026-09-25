@@ -49,9 +49,12 @@ ignore = ["PLR0913"]
 [tool.ruff.lint.per-file-ignores]
 # Files dominated by natural-language prompt content sent to LLMs.
 # Reformatting these would change the prompt text or hurt readability.
-"**/eval/judge.py" = ["E501"]
+"**/eval/judge.py" = ["E501", "PLR0917"]
 "**/generators/e2e.py" = ["E501"]
 "**/shop_guru/explorer.py" = ["E501"]
+# Preserve positional compatibility for the judge API and model constructors.
+# The judge's PLR0917 exemption is combined with its prompt exemption above.
+"**/eval/models.py" = ["PLR0917"]
 # Lazy imports inside the eval CLI keep `--help` / arg parsing fast by
 # deferring heavy deps (browsergym, agentlab, ray) to the actual run path.
 "**/eval/run.py" = ["PLC0415"]
