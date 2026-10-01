@@ -21,6 +21,12 @@ for shipped behavior.
 | --------- | --------- | ----------- |
 | [agent/runtime.md](agent/runtime.md) | `packages/agent` | The agent seam: `AgentRuntime`, `LlmClient`, `Tool`, and `Trajectory` contracts, the pi SDK adapter with per-run routing and isolation, `FakeRuntime`, and the conformance suite every adapter runs. **Status:** Implemented (v1.1 M1). |
 
+## Browser
+
+| Spec Path | Code Path | Description |
+| --------- | --------- | ----------- |
+| [browser/tools.md](browser/tools.md) | `packages/browser` | Per-episode Playwright `BrowserSession` sending `x-shopgym-episode`, agent `browserTools` built on native aria-snapshot refs (`navigate` ... `screenshot`, gated `evaluate`, `finish`), and the `probe` helper for graders. **Status:** Implemented (v1.1 M3). |
+
 ## ShopArena
 
 | Spec Path | Code Path | Description |
