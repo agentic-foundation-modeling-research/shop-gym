@@ -21,7 +21,7 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp -R src/explore/prompts dist/explore/",
+    "build": "tsc -p tsconfig.json && cp -R src/explore/prompts dist/explore/ && cp -R src/gen/build/prompts dist/gen/build/",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -32,9 +32,11 @@
     "@shop-gym/core": "workspace:*",
     "@shop-gym/harness": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
+    "graphql": "^16.9.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@shop-gym/shop-backend": "workspace:*",
     "@types/node": "^22.7.0",
     "typescript": "^5.6.2",
     "vitest": "^2.1.0"

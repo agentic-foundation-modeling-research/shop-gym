@@ -11,7 +11,7 @@ Layout:
 src/
   explore/      explore pipeline: prefetch, harness tasks, capability merge, manual synthesis
   gen/
-    build/      build loop: template seeding, backend sidecar, verifiers, prompts
+    build/      build loop: template seeding, backend sidecar, owned-file rules, verifiers, prompts
     ...         data synth, final eval, publish (M7)
 templates.ts  STOREFRONT_TEMPLATE_DIR: absolute path of templates/storefront
 templates/
@@ -81,3 +81,47 @@ budget. Prompts live in `src/explore/prompts/*.md` and are copied into
 rendered from the zod schema at run time. Credentials come from
 `loadCredentials()` and are never written to disk. The `shopgym explore`
 CLI arrives in M10.
+
+## Build
+
+`build.runBuildLoop(options)` (namespace export `build` from
+`@shop-gym/shop-arena`) runs the verifier-gated build loop for one shop.
+It seeds both templates into `<runDir>/artifact/`, starts the shop's own
+backend copy as a sidecar, and drives `runPlanExecLoop` from
+`@shop-gym/harness`:
+
+| Piece | Module | Role |
+| --- | --- | --- |
+| seeding | `src/gen/build/seed.ts` | copies each template's `git ls-files` output into `artifact/{storefront,backend}/`, writes `template.json` (commit + content hash), runs `pnpm install --ignore-workspace` |
+| sidecar | `src/gen/build/sidecar.ts` | `node --import tsx src/cli.ts artifact/data <port>` in `artifact/backend/`, `/health` wait, `restartIfChanged()` after every assistant turn (hash of `src/` + `package.json`), logs in `<runDir>/sidecar.log` |
+| prompts | `src/gen/build/prompts/*.md` | `agents.md`, `planner.md`, `execute.md`; `{{backend_url}}` and `{{gen_backend_mode}}` are substituted, `{{verifier_feedback}}` is left for the harness |
+| owned files | `src/gen/build/owned_files.ts` | glob table per task id; `gen_backend` / `backend_*` tasks own `backend/src/{schema,resolvers,state}/**` and co-located tests, nobody may touch `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**` |
+| verifiers | `src/gen/build/verifiers/` | `owned_files` (all tasks), `backend_typecheck`, `backend_test`, `sandbox_contract` (backend tasks), `data_in_use` (all tasks: every GraphQL document under `storefront/app` validated against the sidecar's introspected schema) |
+
+```ts
+import { build, STOREFRONT_TEMPLATE_DIR } from '@shop-gym/shop-arena';
+
+const result = await build.runBuildLoop({
+  runDir: 'outputs/shops/demo/runs/build',
+  seedDir: 'outputs/shops/demo/seed', // data/ and manual/ become artifact/data, artifact/manual
+  storefrontTemplateDir: STOREFRONT_TEMPLATE_DIR,
+  backendTemplateDir: build.defaultBackendTemplateDir(),
+  genBackend: true, // adds the gen_backend task and the backend verifiers
+  runtime, // any AgentRuntime, e.g. the pi adapter
+  model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
+  tools: ['read', 'write', 'edit', 'bash'],
+  maxIters: 12,
+});
+console.log(result.finalStatus, result.build.backendUrl);
+```
+
+A run records `build.json` (`genBackend`, `backendPort`, both template
+fingerprints) so resuming with the same `runDir` renders identical
+prompts, and writes `artifact/storefront/.env` pointing
+`PUBLIC_STORE_DOMAIN` at the sidecar. The `sandbox_contract` suite runs
+on the backend fixture (its helpers hardcode the fixture path); the
+read-only drift check runs on the seeded copy. `SHOPGYM_SLOW_TESTS=1
+pnpm test` additionally runs `src/gen/build/build_loop.test.ts` with
+real `pnpm install`, a real `tsx` sidecar, and the real backend suites.
+The storefront verifiers and the `--gen-backend` CLI flag arrive in M7;
+see `docs/specs/shop_arena/backend_generation.md`.
