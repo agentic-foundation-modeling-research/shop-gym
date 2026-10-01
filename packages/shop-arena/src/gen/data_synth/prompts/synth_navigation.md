@@ -12,6 +12,12 @@ The synthesized content pages (about / contact / FAQ / etc.) are:
 {{pages}}
 ```
 
+The synthesized policies (privacy / shipping / refund / terms) are:
+
+```json
+{{policies}}
+```
+
 The merged capabilities document, ground truth for the storefront's
 information architecture, is:
 

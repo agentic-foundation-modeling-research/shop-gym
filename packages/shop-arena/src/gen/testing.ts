@@ -167,6 +167,7 @@ export class ScriptedSynthLlm implements LlmClient {
     if (first.includes('navigation menus')) {
       const collections = blocks[0] as { title: string; handle: string }[];
       const pages = blocks[1] as { title: string; handle: string }[];
+      const policies = blocks[2] as { title: string; handle: string }[];
       return {
         'main-menu': [
           { title: 'Home', url: '/', type: 'HTTP', children: [] },
@@ -177,12 +178,20 @@ export class ScriptedSynthLlm implements LlmClient {
             children: [],
           })),
         ],
-        footer: pages.map((p) => ({
-          title: p.title,
-          url: `/pages/${p.handle}`,
-          type: 'PAGE',
-          children: [],
-        })),
+        footer: [
+          ...pages.map((p) => ({
+            title: p.title,
+            url: `/pages/${p.handle}`,
+            type: 'PAGE',
+            children: [],
+          })),
+          ...policies.map((p) => ({
+            title: p.title,
+            url: `/policies/${p.handle}`,
+            type: 'PAGE',
+            children: [],
+          })),
+        ],
       };
     }
     if (first.includes('customer personas')) {

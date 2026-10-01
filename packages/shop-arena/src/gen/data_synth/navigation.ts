@@ -31,12 +31,16 @@ export function synthNavigation(
       z.unknown(),
     );
     const collectionUrls = new Set(collections.map((c) => `/collections/${c.handle}`));
-    const pageUrls = new Set([...pages, ...policies].map((p) => `/pages/${p.handle}`));
+    const pageUrls = new Set([
+      ...pages.map((p) => `/pages/${p.handle}`),
+      ...policies.map((p) => `/policies/${p.handle}`),
+    ]);
     return completeStructured(
       sc.call,
       synthPrompt(sc, 'synth_navigation', {
         collections: pretty(collections.map((c) => ({ title: c.title, handle: c.handle }))),
-        pages: pretty([...pages, ...policies].map((p) => ({ title: p.title, handle: p.handle }))),
+        pages: pretty(pages.map((p) => ({ title: p.title, handle: p.handle }))),
+        policies: pretty(policies.map((p) => ({ title: p.title, handle: p.handle }))),
         capabilities: pretty(capabilities),
       }),
       navigationDraftSchema,
@@ -49,7 +53,7 @@ export function synthNavigation(
           if (entry.type === 'COLLECTION' && !collectionUrls.has(entry.url))
             return `unknown collection url ${entry.url}`;
           if (entry.type === 'PAGE' && !pageUrls.has(entry.url))
-            return `unknown page url ${entry.url}`;
+            return `unknown page or policy url ${entry.url}`;
           if (entry.type === 'HTTP' && entry.url !== '/' && !entry.url.startsWith('/')) {
             return `HTTP links must be site-relative: ${entry.url}`;
           }
