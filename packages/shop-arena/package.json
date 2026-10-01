@@ -27,9 +27,11 @@
     "@shop-gym/browser": "workspace:*",
     "@shop-gym/core": "workspace:*",
     "@shop-gym/harness": "workspace:*",
+    "graphql": "^16.9.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@shop-gym/shop-backend": "workspace:*",
     "@types/node": "^22.7.0",
     "typescript": "^5.6.2",
     "vitest": "^2.1.0"
