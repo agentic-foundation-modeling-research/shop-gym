@@ -138,6 +138,37 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.19.17)
 
+  packages/shop-guru:
+    dependencies:
+      '@shop-gym/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@shop-gym/browser':
+        specifier: workspace:*
+        version: link:../browser
+      '@shop-gym/core':
+        specifier: workspace:*
+        version: link:../core
+      '@shop-gym/shop-backend':
+        specifier: workspace:*
+        version: link:../shop_backend
+      '@sinclair/typebox':
+        specifier: ^0.34.0
+        version: 0.34.52
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.6.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.19.17)
+
   packages/shop_backend:
     dependencies:
       graphql:
