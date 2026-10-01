@@ -124,6 +124,9 @@ importers:
       '@shop-gym/harness':
         specifier: workspace:*
         version: link:../harness
+      '@sinclair/typebox':
+        specifier: ^0.34.0
+        version: 0.34.52
       zod:
         specifier: ^4.6.5
         version: 4.6.5
