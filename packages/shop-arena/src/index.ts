@@ -10,5 +10,7 @@ export {
   type ImageBackend,
   generateShop,
 } from './gen/index.js';
+export * as finalEval from './gen/final_eval/index.js';
+export * as publish from './gen/publish/index.js';
 export { STOREFRONT_TEMPLATE_DIR } from './templates.js';
 export * from './explore/index.js';

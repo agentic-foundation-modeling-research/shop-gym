@@ -191,6 +191,49 @@ catalog instead of failing assembly; the brand-leak scan logs at
 assembly rather than failing (as in v1); `manifest.json` is written for
 single-manual runs too. The CLI (`shopgym gen`) arrives in M10.
 
+### 3.2 v1.1 publish step and final eval (M7b, 2026-09-30)
+
+The TypeScript port adds the two post-build steps of §5.7.1 as
+`Step<GenContext>`s appended to `genSteps` (`GEN_STEPS` is now the full
+six-step list). Both read `runs/build/run.json` and `runs/build/build.json`
+so a resumed or rebuilt loop reruns them; `final_eval` writes
+`final_eval/`, `publish` writes `storefront/`, `backend/` and
+`shop.json` in the shop directory. The build loop itself now owns a
+`StorefrontSidecar` next to the backend one and passes
+`storefront: { sidecar, dataDir, manualDir, judge }` to
+`buildVerifiers`, so the storefront verifiers of §5.7.1 (`typecheck`,
+`build`, `routes_200`, `nav_coverage`, `cart_conformance`,
+`visual_judge`) run in every build; the sidecar is built on the first
+verifier that needs it and rebuilt only when the copy changes. The
+underlying functions stay plain and testable on their own:
+
+- `final_eval/runFinalEval({ dataDir, manualDir?, backendUrl,
+  storefrontUrl, llm, model, outDir, log?, signal? })` runs against an
+  already-running shop. The visual sweep captures ten canonical pages
+  (home, a collection, a product, search, cart, checkout, account
+  login, the account profile after login, an order detail, a policy
+  page) at both viewports and judges each with the single
+  `visual_judge.md` rubric; the functional sweep is a fixed browser
+  script (sign up, log out, log in, add to cart, checkout, view order;
+  `requestReturn` is recorded as `skipped: not supported by backend`).
+  It writes `<outDir>/{report.json, summary.md, pages/<name>.json,
+  screenshots/}` in camelCase and returns pass/fail/skipped counts.
+  Pages whose setup the dataset cannot provide are `skipped` with a
+  reason; the eval never blocks the pipeline.
+- `publish/publishShop({ runDir, shopDir })` copies
+  `<runDir>/artifact/{storefront,backend}` into
+  `<shopDir>/{storefront,backend}` (excluding `node_modules`, `dist`,
+  `build`, `.react-router`, `.vite`, `.cache`, `*.log` and the
+  storefront's sidecar-specific `.env`), copies nothing from
+  `artifact/data`, and writes `<shopDir>/shop.json` with `name`,
+  `templates.{storefront,backend}` (each copy's `template.json`
+  fingerprint), `genBackend` (from `build.json`), `publishedAt` and
+  `finalStatus` (from the run's `run.json`, else `unknown`). It is
+  idempotent: the component directories are replaced on every call.
+  `readShopManifest(shopDir)` validates and returns the manifest. The
+  `host` step passes `PUBLIC_STORE_DOMAIN`, `PORT` and `SESSION_SECRET`
+  through the environment instead of a committed `.env`.
+
 ---
 
 ## 4. Desired Status

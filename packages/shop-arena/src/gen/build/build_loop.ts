@@ -1,13 +1,15 @@
 /**
  * The build loop: seeds the storefront and backend templates into a run,
  * starts the backend sidecar over the run's dataset, and drives the harness
- * plan-exec loop with the build prompts and verifier set.
+ * plan-exec loop with the build prompts and verifier set. The storefront
+ * sidecar is built and started by the first storefront verifier that needs
+ * it and restarted when the copy changes.
  *
  * ```
  * <runDir>/
  *   AGENTS.md  prompts/  plan.md  iters/  run.json      (harness)
  *   build.json                                          (port, flags, template fingerprints)
- *   sidecar.log                                         (backend stdout/stderr)
+ *   sidecar.log  storefront.log                         (sidecar stdout/stderr)
  *   artifact/
  *     data/ manual/            immutable seed (`artifactSeedDir`)
  *     storefront/ backend/     template copies the agent edits
@@ -31,14 +33,22 @@ import {
 import { loadBuildPrompts } from './prompts.js';
 import { type TemplateFingerprint, seedTemplate } from './seed.js';
 import { BackendSidecar, type SidecarLaunch, freePort } from './sidecar.js';
-import { OwnedFilesVerifier, type SchemaIntrospector, buildVerifiers } from './verifiers/index.js';
+import { type StorefrontLaunch, StorefrontSidecar } from './storefront_sidecar.js';
+import {
+  OwnedFilesVerifier,
+  type SchemaIntrospector,
+  type StorefrontJudge,
+  buildVerifiers,
+} from './verifiers/index.js';
 import type { CommandRunner } from './verifiers/subprocess.js';
 
 export const BUILD_JSON = 'build.json';
 export const SIDECAR_LOG = 'sidecar.log';
+export const STOREFRONT_LOG = 'storefront.log';
 export const STOREFRONT_DIRNAME = 'storefront';
 export const BACKEND_DIRNAME = 'backend';
 export const DATA_DIRNAME = 'data';
+export const MANUAL_DIRNAME = 'manual';
 const DEFAULT_TIMEOUT_MS = 3_600_000;
 
 export interface BuildLoopOptions {
@@ -58,10 +68,13 @@ export interface BuildLoopOptions {
   readonly backendPort?: number;
   /** Resume a run whose prior status would otherwise be refused. */
   readonly force?: boolean;
+  /** Visual judge for the storefront verifiers; `visual_judge` is skipped when omitted. */
+  readonly judge?: StorefrontJudge;
   readonly onEvent?: (iterId: string, event: AgentEvent) => void;
   /** Test seams. */
   readonly commandRunner?: CommandRunner;
   readonly sidecarLaunch?: SidecarLaunch;
+  readonly storefrontLaunch?: StorefrontLaunch;
   readonly introspect?: SchemaIntrospector;
 }
 
@@ -128,11 +141,24 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     logPath: path.join(options.runDir, SIDECAR_LOG),
     ...(options.sidecarLaunch !== undefined ? { launch: options.sidecarLaunch } : {}),
   });
+  const storefront = new StorefrontSidecar({
+    storefrontDir: path.join(artifactDir, STOREFRONT_DIRNAME),
+    backendUrl,
+    port: await freePort(),
+    logPath: path.join(options.runDir, STOREFRONT_LOG),
+    ...(options.storefrontLaunch !== undefined ? { launch: options.storefrontLaunch } : {}),
+  });
   const ownedFiles = new OwnedFilesVerifier();
   const verifiers = buildVerifiers({
     genBackend,
     sidecar,
     ownedFiles,
+    storefront: {
+      sidecar: storefront,
+      dataDir: path.join(artifactDir, DATA_DIRNAME),
+      manualDir: path.join(artifactDir, MANUAL_DIRNAME),
+      ...(options.judge !== undefined ? { judge: options.judge } : {}),
+    },
     ...(options.commandRunner !== undefined ? { runner: options.commandRunner } : {}),
     ...(options.introspect !== undefined ? { introspect: options.introspect } : {}),
   });
@@ -156,11 +182,13 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     );
     return { ...result, build };
   } finally {
+    await storefront.stop();
     await sidecar.stop();
   }
 }
 
-async function readBuildInfo(runDir: string): Promise<BuildRunInfo | undefined> {
+/** The run's `build.json`, or `undefined` when the run has not been seeded. */
+export async function readBuildInfo(runDir: string): Promise<BuildRunInfo | undefined> {
   const raw = await fs.readFile(path.join(runDir, BUILD_JSON), 'utf-8').catch(() => undefined);
   return raw === undefined ? undefined : (JSON.parse(raw) as BuildRunInfo);
 }

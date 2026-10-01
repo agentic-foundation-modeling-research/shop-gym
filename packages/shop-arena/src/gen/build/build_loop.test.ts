@@ -7,6 +7,7 @@ import { createSandboxServer, loadShopData } from '@shop-gym/shop-backend';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { STOREFRONT_TEMPLATE_DIR } from '../../templates.js';
+import { stubStorefrontLaunch } from '../testing.js';
 import { BUILD_JSON, type BuildRunInfo, runBuildLoop } from './build_loop.js';
 import { defaultBackendTemplateDir } from './seed.js';
 import type { SidecarLaunch, SidecarLaunchOptions } from './sidecar.js';
@@ -116,6 +117,7 @@ describe('runBuildLoop', () => {
       timeoutMs: 60_000,
       commandRunner: fakeRunner,
       sidecarLaunch: inProcessLaunch,
+      storefrontLaunch: stubStorefrontLaunch,
       onEvent: (iterId, event) => events.push(`${iterId}:${event.kind}`),
     });
 
@@ -166,8 +168,12 @@ describe('runBuildLoop', () => {
     ]);
     expect(byIter('exec-0002')).toEqual([
       ['owned_files', 'pass'],
+      ['typecheck', 'pass'],
+      ['build', 'pass'],
+      ['routes_200', 'pass'],
       ['data_in_use', 'fail'],
     ]);
+    expect(commands).toContainEqual(['pnpm', 'build']);
     expect(result.tasksFinal.map((task) => [task.id, task.status])).toEqual([
       ['gen_backend', 'done'],
       ['gen_homepage', 'in_progress'],

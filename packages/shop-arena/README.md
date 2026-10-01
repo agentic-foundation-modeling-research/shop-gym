@@ -12,7 +12,7 @@ src/
   explore/      explore pipeline: prefetch, harness tasks, capability merge, manual synthesis
   gen/
     build/      build loop: template seeding, backend sidecar, owned-file rules, verifiers, prompts
-    ...         data synth, final eval, publish (M7)
+    ...         manual_merge, data_synth, data_validation, final_eval, publish (see Gen)
 templates.ts  STOREFRONT_TEMPLATE_DIR: absolute path of templates/storefront
 templates/
   storefront/   React Router 7 SSR storefront template seeded into every shop
@@ -86,7 +86,7 @@ CLI arrives in M10.
 
 `generateShop(config, deps)` (also under the `gen` namespace export)
 turns one or more Shop Manuals into a SandboxShop under
-`outputs/shops/<name>/`. It runs four steps on the `@shop-gym/core`
+`outputs/shops/<name>/`. It runs six steps on the `@shop-gym/core`
 pipeline runner; `GEN_STEPS` lists them in order:
 
 | Step | Reads | Writes |
@@ -95,6 +95,8 @@ pipeline runner; `GEN_STEPS` lists them in order:
 | `data_synth` | `manual/` | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
 | `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
 | `build` | `data/`, `manual/`, `data_validation.json` | `runs/build/` via `build.runBuildLoop` (seed staged in `.shop_gen/build_seed/`); a final status other than `completed` fails the step so the next run resumes it |
+| `final_eval` | `runs/build/run.json`, `runs/build/build.json` | `final_eval/` via `finalEval.runFinalEval` against the build artifacts booted on the recorded backend port (sidecar logs in `final_eval/{backend,storefront}.log`); advisory, never fails the step |
+| `publish` | `runs/build/run.json`, `runs/build/build.json` | `storefront/`, `backend/`, `shop.json` via `publish.publishShop` |
 
 `data_synth` runs its sub-steps in order (`identity`, `store`, `pages`,
 `policies`, `commerce`, `collections`, `skeletons`, `details` per
@@ -183,5 +185,82 @@ on the backend fixture (its helpers hardcode the fixture path); the
 read-only drift check runs on the seeded copy. `SHOPGYM_SLOW_TESTS=1
 pnpm test` additionally runs `src/gen/build/build_loop.test.ts` with
 real `pnpm install`, a real `tsx` sidecar, and the real backend suites.
-The storefront verifiers and the `--gen-backend` CLI flag arrive in M7;
-see `docs/specs/shop_arena/backend_generation.md`.
+The `--gen-backend` CLI flag arrives in M10; see
+`docs/specs/shop_arena/backend_generation.md`.
+
+### Verifiers
+
+`build.buildVerifiers({ genBackend, sidecar, ownedFiles, storefront? })`
+returns the ordered verifier list. Without `storefront` it is the M5 set
+above. With `storefront: { sidecar, dataDir, manualDir?, judge? }` (a
+`build.StorefrontSidecar` plus the shop data directory, optionally the
+manual directory and `{ llm, model }` for the judge) the order becomes
+`owned_files`, `typecheck`, `build`, `routes_200`, the backend verifiers
+(backend tasks), `data_in_use`, `nav_coverage`, `cart_conformance`,
+`visual_judge`:
+
+| Verifier | Applies to | Checks |
+| --- | --- | --- |
+| `typecheck`, `build` | storefront tasks | `pnpm typecheck` / `pnpm build` in `artifact/storefront` |
+| `routes_200` | storefront tasks | the task's page-bucket routes plus static routes return 200; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` returns 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
+| `nav_coverage` | `gen_navigation`, `gen_theme`, `visual_fix` | every `navigation.json` target returns 200 and is linked from the rendered header or footer |
+| `cart_conformance` | `gen_cart_search`, `gen_product`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order |
+| `visual_judge` | every page task | desktop and mobile screenshots per route through `BrowserSession`, one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
+
+`runBuildLoop` always passes `storefront` (its `judge` option supplies
+the visual judge; `generateShop` sets it to the synthesis model) and
+`storefrontLaunch` is the matching test seam. `build.StorefrontSidecar`
+mirrors the backend sidecar for `artifact/storefront`: `start()` runs
+`pnpm build` and `node server.mjs` in production mode with
+`PUBLIC_STORE_DOMAIN` pointed at the backend sidecar, waits for
+`/health` and logs to `<runDir>/storefront.log`; `ensureCurrent()`, which
+every HTTP verifier calls first, starts it on first use and rebuilds only
+when the storefront's source hash changed, so a run with no storefront
+task never builds it. `SHOPGYM_SLOW_TESTS=1` also runs
+`src/gen/build/verifiers/storefront_slow.test.ts` (real template, real
+build); `SHOPGYM_LIVE=1` sends one real judge call from
+`visual_judge.test.ts`.
+
+### Final eval
+
+`finalEval.runFinalEval({ dataDir, manualDir?, backendUrl, storefrontUrl,
+llm, model, outDir, log?, signal? })` evaluates an already-running shop;
+the `final_eval` pipeline step boots the build artifacts and calls it
+with `outDir = <shopDir>/final_eval`.
+The visual sweep screenshots ten canonical pages (home, a collection, a
+product, search, cart, checkout, account login, account profile, an
+order detail, a policy page) at both viewports and judges each with the
+same rubric as `visual_judge`; the functional sweep is a fixed browser
+script: sign up, log out, log in, add to cart, checkout, view order, and
+`requestReturn` recorded as `skipped: not supported by backend`. Pages
+the dataset cannot set up (no product, no seeded customer, no order) are
+recorded as `skipped` with a reason. Output under `outDir`:
+`report.json` (counts, `visual.pages[]`, `functional.steps[]`),
+`summary.md`, `pages/<name>.json`, `screenshots/<name>__<viewport>.png`.
+The result carries `passed`, `failed`, `skipped`, `reportPath` and the
+report.
+
+### Publish
+
+`publish.publishShop({ runDir, shopDir })` (the `publish` pipeline step
+calls it with the shop directory itself) copies
+`<runDir>/artifact/storefront` and `.../backend` into
+`<shopDir>/storefront` and `<shopDir>/backend`, skipping `node_modules`,
+`dist`, `build`, `.react-router`, `.vite`, `.cache`, `*.log` and the
+storefront `.env` the build loop wrote for the sidecar (the host step
+passes `PUBLIC_STORE_DOMAIN`, `PORT` and `SESSION_SECRET` through the
+environment). Nothing is copied from `artifact/data`; the published
+backend serves its own `data/`. It writes `<shopDir>/shop.json`:
+
+```json
+{
+  "name": "<basename of shopDir>",
+  "templates": { "storefront": { "name": "storefront", "commit": "...", "contentHash": "...", "files": {}, "seededAt": "..." }, "backend": { "...": "..." } },
+  "genBackend": true,
+  "publishedAt": "2026-09-30T00:00:00.000Z",
+  "finalStatus": "completed"
+}
+```
+
+Calling it again replaces both component directories and rewrites the
+manifest. `publish.readShopManifest(shopDir)` parses and validates it.

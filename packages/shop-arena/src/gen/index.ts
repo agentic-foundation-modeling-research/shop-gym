@@ -42,8 +42,11 @@ export { MANUAL_DIR, manualMergeStep } from './manual_merge/index.js';
 export {
   BUILD_RUN_DIR,
   BuildIncompleteError,
+  FINAL_EVAL_DIR,
   type GenResult,
   buildStep,
+  finalEvalStep,
   genSteps,
   generateShop,
+  publishStep,
 } from './pipeline.js';
