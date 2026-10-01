@@ -6,3 +6,4 @@
  */
 export * as build from './gen/build/index.js';
 export { STOREFRONT_TEMPLATE_DIR } from './templates.js';
+export * from './explore/index.js';

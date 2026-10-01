@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./explore": {
+      "types": "./dist/explore/index.d.ts",
+      "import": "./dist/explore/index.js"
     }
   },
   "files": ["dist", "src", "templates"],
@@ -17,7 +21,7 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp -R src/explore/prompts dist/explore/ && cp -R src/gen/build/prompts dist/gen/build/",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -27,6 +31,7 @@
     "@shop-gym/browser": "workspace:*",
     "@shop-gym/core": "workspace:*",
     "@shop-gym/harness": "workspace:*",
+    "@sinclair/typebox": "^0.34.0",
     "graphql": "^16.9.0",
     "zod": "^4.6.5"
   },

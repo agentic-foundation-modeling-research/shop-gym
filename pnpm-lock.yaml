@@ -124,6 +124,9 @@ importers:
       '@shop-gym/harness':
         specifier: workspace:*
         version: link:../harness
+      '@sinclair/typebox':
+        specifier: ^0.34.0
+        version: 0.34.52
       graphql:
         specifier: ^16.9.0
         version: 16.13.2
