@@ -1,0 +1,30 @@
+{
+  "shop": [
+    {
+      "namespace": "shop",
+      "key": "tagline",
+      "value": "Quality food for happy pets",
+      "type": "single_line_text_field"
+    }
+  ],
+  "products": {
+    "agoracage-skin-and-coat-chicken-with-grains-12lb": [
+      {
+        "namespace": "specs",
+        "key": "protein_source",
+        "value": "chicken",
+        "type": "single_line_text_field"
+      }
+    ]
+  },
+  "collections": {
+    "dog-essentials": [
+      {
+        "namespace": "merch",
+        "key": "hero_color",
+        "value": "#1f513f",
+        "type": "color"
+      }
+    ]
+  }
+}

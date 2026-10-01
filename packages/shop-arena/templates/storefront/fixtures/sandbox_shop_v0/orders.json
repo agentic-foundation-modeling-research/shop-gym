@@ -1,0 +1,40 @@
+[
+  {
+    "id": 1001,
+    "customer_id": 1,
+    "email": "jane.doe@example.com",
+    "processed_at": "2025-07-01T16:05:00.000Z",
+    "financial_status": "PAID",
+    "fulfillment_status": "FULFILLED",
+    "currency_code": "CAD",
+    "line_items": [
+      {
+        "variant_id": 47242666836142,
+        "title": "Shopliseum Mushroom Dog Toys - Red Mushroom",
+        "quantity": 1,
+        "price": "19.99"
+      }
+    ],
+    "shipping_address": {
+      "id": 2,
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "company": null,
+      "address1": "123 Bank Street",
+      "address2": "Apt 4",
+      "city": "Ottawa",
+      "province": "Ontario",
+      "province_code": "ON",
+      "country": "Canada",
+      "country_code": "CA",
+      "zip": "K2P 1X3",
+      "phone": null
+    },
+    "shipping_method": "standard",
+    "payment_method": "card",
+    "subtotal_price": "19.99",
+    "total_shipping_price": "9.99",
+    "total_tax": "0.00",
+    "total_price": "29.98"
+  }
+]

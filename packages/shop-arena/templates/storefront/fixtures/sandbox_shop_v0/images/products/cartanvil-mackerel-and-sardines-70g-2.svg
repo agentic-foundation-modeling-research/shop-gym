@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <rect width="1200" height="900" fill="#f7fafc"/>
+  <ellipse cx="600" cy="516" rx="348" ry="166" fill="#cbd5e1" stroke="#1f2933" stroke-width="12"/>
+  <ellipse cx="600" cy="496" rx="292" ry="118" fill="#e0f2fe"/>
+  <path d="M404 486c80-54 198-54 284 0-86 54-204 54-284 0z" fill="#64748b" stroke="#1f2933" stroke-width="8"/>
+  <path d="M548 550c72-48 176-48 252 0-76 48-180 48-252 0z" fill="#94a3b8" stroke="#1f2933" stroke-width="8"/>
+  <circle cx="654" cy="478" r="10" fill="#ffffff"/>
+  <circle cx="766" cy="542" r="9" fill="#ffffff"/>
+  <path d="M326 278c144-74 404-74 548 0" fill="none" stroke="#38bdf8" stroke-width="34" stroke-linecap="round"/>
+  <text x="600" y="770" text-anchor="middle" font-family="Arial, sans-serif" font-size="46" font-weight="700" fill="#1f2933">Opened fish tin</text>
+</svg>

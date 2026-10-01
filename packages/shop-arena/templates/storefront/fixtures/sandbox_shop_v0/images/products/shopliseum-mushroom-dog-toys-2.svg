@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <rect width="1200" height="900" fill="#f5f7fb"/>
+  <rect x="92" y="78" width="1016" height="744" rx="42" fill="#ffffff" stroke="#d9e2ec" stroke-width="8"/>
+  <g transform="translate(210 160)">
+    <ellipse cx="210" cy="170" rx="170" ry="92" fill="#2563eb"/>
+    <circle cx="152" cy="132" r="26" fill="#dbeafe"/>
+    <circle cx="244" cy="104" r="22" fill="#dbeafe"/>
+    <rect x="138" y="184" width="144" height="190" rx="58" fill="#fde8c8" stroke="#1f2933" stroke-width="8"/>
+  </g>
+  <g transform="translate(570 210)">
+    <ellipse cx="210" cy="170" rx="170" ry="92" fill="#16a34a"/>
+    <circle cx="164" cy="132" r="28" fill="#dcfce7"/>
+    <circle cx="272" cy="176" r="24" fill="#dcfce7"/>
+    <rect x="138" y="184" width="144" height="190" rx="58" fill="#fde8c8" stroke="#1f2933" stroke-width="8"/>
+  </g>
+  <path d="M278 674c164 78 480 78 644 0" fill="none" stroke="#94a3b8" stroke-width="24" stroke-linecap="round"/>
+  <text x="600" y="790" text-anchor="middle" font-family="Arial, sans-serif" font-size="50" font-weight="700" fill="#1f2933">Squeaky Toy Set</text>
+</svg>

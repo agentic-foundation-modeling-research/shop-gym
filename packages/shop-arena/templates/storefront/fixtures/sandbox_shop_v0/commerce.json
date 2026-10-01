@@ -1,0 +1,12 @@
+{
+  "tax_rate": 0,
+  "free_shipping_threshold": "75.00",
+  "shipping_methods": [
+    { "handle": "standard", "title": "Standard Shipping (5-7 days)", "price": "9.99" },
+    { "handle": "express", "title": "Express Shipping (1-2 days)", "price": "19.99" }
+  ],
+  "payment_methods": [
+    { "handle": "card", "title": "Credit card" },
+    { "handle": "paypal", "title": "PayPal" }
+  ]
+}

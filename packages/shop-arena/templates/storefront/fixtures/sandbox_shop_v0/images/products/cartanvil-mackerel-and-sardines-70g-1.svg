@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <rect width="1200" height="900" fill="#f6f8fb"/>
+  <ellipse cx="600" cy="630" rx="300" ry="92" fill="#1f2933"/>
+  <rect x="300" y="300" width="600" height="330" rx="34" fill="#38bdf8" stroke="#1f2933" stroke-width="10"/>
+  <ellipse cx="600" cy="300" rx="300" ry="92" fill="#e0f2fe" stroke="#1f2933" stroke-width="10"/>
+  <text x="600" y="430" text-anchor="middle" font-family="Arial, sans-serif" font-size="58" font-weight="700" fill="#1f2933">Cartanvil</text>
+  <text x="600" y="500" text-anchor="middle" font-family="Arial, sans-serif" font-size="38" fill="#1f2933">Mackerel + Sardines</text>
+  <path d="M438 558c86-56 220-56 324 0-104 56-238 56-324 0z" fill="#e0f2fe" stroke="#1f2933" stroke-width="8"/>
+  <circle cx="716" cy="548" r="10" fill="#1f2933"/>
+  <text x="600" y="786" text-anchor="middle" font-family="Arial, sans-serif" font-size="44" font-weight="700" fill="#1f2933">70g wet cat food</text>
+</svg>

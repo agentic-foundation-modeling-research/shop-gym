@@ -69,6 +69,9 @@ Storefront templates live under
 `packages/shop_arena/src/shop_arena/gen/templates/`. Hydrogen remains the
 default generation template. A minimal React Vite SSR template is also
 available and can be selected explicitly with `shop-gen --template react-vite`.
+The v1.1 TypeScript port of that template, with account and checkout routes,
+lives at `packages/shop-arena/templates/storefront/` (see
+`docs/specs/shop_arena/storefront_template.md`).
 
 `shop_arena.gen` reads `OPENAI_API_KEY` / `OPENAI_BASE_URL` from a project
 `.env` for `--image-backend openai` runs. The `pi` harness runtime also

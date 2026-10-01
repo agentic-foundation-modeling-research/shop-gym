@@ -1,6 +1,6 @@
 # React Vite SSR Template (`packages/shop_arena/src/shop_arena/gen/templates/react-vite`)
 
-Status: **Implemented** · Version: **0.1**
+Status: **Implemented**; superseded by [storefront_template.md](storefront_template.md) (2026-09-30) · Version: **0.1**
 Owners: ShopArena
 
 > A verified, minimal React + Vite + React Router SSR storefront

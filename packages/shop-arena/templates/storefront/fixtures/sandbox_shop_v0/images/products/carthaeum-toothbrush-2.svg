@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <rect width="1200" height="900" fill="#fafafa"/>
+  <rect x="306" y="116" width="588" height="664" rx="34" fill="#ffffff" stroke="#1f2933" stroke-width="10"/>
+  <rect x="360" y="176" width="480" height="112" rx="24" fill="#22c55e"/>
+  <text x="600" y="248" text-anchor="middle" font-family="Arial, sans-serif" font-size="44" font-weight="700" fill="#ffffff">Carthaeum</text>
+  <rect x="430" y="438" width="362" height="48" rx="24" fill="#38bdf8" stroke="#1f2933" stroke-width="8" transform="rotate(-14 611 462)"/>
+  <rect x="686" y="348" width="140" height="66" rx="18" fill="#dbeafe" stroke="#1f2933" stroke-width="8" transform="rotate(-14 756 381)"/>
+  <path d="M716 336l18 66M756 326l18 66M796 316l18 66" stroke="#2563eb" stroke-width="8" stroke-linecap="round"/>
+  <path d="M416 596h368M416 656h280" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/>
+  <text x="600" y="822" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="700" fill="#1f2933">Retail sleeve view</text>
+</svg>
