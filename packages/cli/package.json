@@ -1,0 +1,34 @@
+{
+  "name": "@shop-gym/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "shopgym: one binary for explore, gen, host, guru, trace and doctor.",
+  "type": "module",
+  "bin": {
+    "shopgym": "./dist/main.js"
+  },
+  "files": ["dist", "src"],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@shop-gym/agent": "workspace:*",
+    "@shop-gym/core": "workspace:*",
+    "@shop-gym/harness": "workspace:*",
+    "@shop-gym/shop-arena": "workspace:*",
+    "@shop-gym/shop-guru": "workspace:*",
+    "playwright": "^1.63.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.0"
+  }
+}
