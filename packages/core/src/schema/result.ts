@@ -68,14 +68,21 @@ const bucketSchema = z.object({
   passRate: z.number().min(0).max(1),
 });
 
+/**
+ * Roll-up of a results set. The two breakdown keys keep their v1 snake_case
+ * names (`by_skill`, `by_shop`) so existing analysis of `aggregate.json`
+ * stays comparable.
+ */
 export const aggregateSchema = z.object({
   total: z.number().int().nonnegative(),
   passed: z.number().int().nonnegative(),
+  /** Episodes that did not pass, including `errors`. */
   failed: z.number().int().nonnegative(),
+  /** Episodes whose status is `error`. */
   errors: z.number().int().nonnegative(),
   passRate: z.number().min(0).max(1),
-  bySkill: z.record(z.string(), bucketSchema),
-  byShop: z.record(z.string(), bucketSchema),
+  by_skill: z.record(z.string(), bucketSchema),
+  by_shop: z.record(z.string(), bucketSchema),
   usage: usageSchema,
 });
 

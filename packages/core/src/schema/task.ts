@@ -62,12 +62,19 @@ const urlMatchCheckSchema = z.object({
   rule: z.enum(['exact', 'prefix', 'contains']),
 });
 
-/** Queries one DOM value on a page and compares it against reference strings. */
+/**
+ * Queries elements on a page with a Playwright selector and compares their
+ * text against reference strings.
+ *
+ * `exactMatch` passes when one matched element's trimmed inner text equals
+ * it; `mustInclude` passes when the matched elements' combined inner text
+ * contains every listed string (case-insensitive).
+ */
 const locatorProbeCheckSchema = z.object({
   type: z.literal('locator_probe'),
   /** Page to probe: `"last"` for the page the agent finished on, otherwise a URL or path. */
   url: z.string().min(1),
-  /** Side-effect-free JavaScript expression that evaluates to one value. */
+  /** Playwright selector (CSS, `text=`, `role=`, ...), e.g. `.cart-line .title`. */
   locator: z.string().min(1),
   required: z
     .object({
