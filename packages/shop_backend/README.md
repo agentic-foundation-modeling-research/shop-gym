@@ -93,8 +93,10 @@ ids minted in run A remain queryable from run B.
 
 ## Dataset layout
 
-`loadShopData(dir)` reads one snapshot from a SandboxShop dataset directory.
-Missing required files or malformed optional files fail startup.
+`loadShopData(dir)` reads one snapshot from a SandboxShop dataset directory
+and validates each file against the zod schemas in `src/data/schema.ts`
+(exported as `datasetSchema`). Missing required files or malformed optional
+files fail startup.
 
 Required files:
 
@@ -151,3 +153,7 @@ the primary dataset entity types used by the loader.
 pnpm --filter @shop-gym/shop-backend build
 pnpm --filter @shop-gym/shop-backend test
 ```
+
+`src/data/schema.parity.test.ts` additionally loads every shop found under
+`SHOPGYM_SHOPS_DIR` (default `<repo>/outputs/shops`) to confirm generated
+datasets still match the schema; it is skipped when that directory is absent.

@@ -17,7 +17,7 @@
     "shop-backend": "./dist/cli.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -32,7 +32,8 @@
   },
   "dependencies": {
     "graphql": "^16.9.0",
-    "graphql-yoga": "^5.7.0"
+    "graphql-yoga": "^5.7.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@graphql-codegen/cli": "^5.0.3",
