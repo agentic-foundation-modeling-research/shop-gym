@@ -19,7 +19,7 @@ The package is a mono-repo of these components:
 | [`packages/core`](packages/core) | TypeScript | **Core** — Shared contracts for the v1.1 TypeScript stack: task / result schemas, the file-based pipeline runner, and the project credentials loader. |
 | [`packages/agent`](packages/agent) | TypeScript | **Agent** - `AgentRuntime` / `LlmClient` / `Tool` / `Trajectory` seam and the pi SDK adapter; `FakeRuntime` + conformance suite for tests. |
 | [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server hosting SandboxShop data; owns the zod dataset schema. |
-| [`packages/harness`](packages/harness) | Python | **Harness** — Runtime-agnostic plan-then-loop engine that orchestrates LLM agents; provides process lifecycle, workspace state, and telemetry for build / eval loops. |
+| [`packages/harness`](packages/harness) | TypeScript | **Harness** - Runtime-agnostic plan-then-loop engine over the `@shop-gym/agent` seam: workspace state, protocol checks, verifier dispatch, resume, and telemetry for build / eval loops. The legacy Python engine in the same package is removed at the v1.1 cutover. |
 
 A typical loop:
 
@@ -253,7 +253,7 @@ shop-gym/
 │   ├── shop_arena/             # Python: SandboxShop factory
 │   ├── shop_guru/              # Python: dataset generation
 │   ├── shop_backend/           # TypeScript: GraphQL API server
-│   └── harness/                # Python: plan-then-loop agent engine
+│   └── harness/                # TypeScript: plan-then-loop agent engine (@shop-gym/harness)
 ├── pyproject.toml              # uv workspace root
 ├── pnpm-workspace.yaml         # pnpm workspace root
 ├── package.json                # TS tooling at repo root

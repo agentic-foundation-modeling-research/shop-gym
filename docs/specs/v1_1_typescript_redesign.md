@@ -312,6 +312,14 @@ A faithful port with the subprocess layer removed.
   `shopgym trace <iter_dir>` subcommand renders `trajectory.json`.
 - Tests: port the Python suites (loop signature, invariants, resume,
   verifiers, workspace, seed) against `FakeRuntime`.
+- Port decisions (M2, 2026-09-30): all JSON the harness writes
+  (`run.json`, `metadata.json`, `checks/*.json`, the seed manifest) uses
+  camelCase keys; `VerifierContext` drops `runtime`; `config.agentsMd` is
+  both written to `AGENTS.md` and passed as the runtime `systemPrompt`;
+  the agent's `cwd` is the run dir and `logDir` is the iteration dir; no
+  `trajectory.json` is written for `aborted` / `error` outcomes, so the raw
+  `events.jsonl` stays in the quarantined dir; `config.onEvent(iterId,
+  event)` forwards runtime events for CLI progress.
 
 ### 5.6 `@shop-gym/shop-backend` v2: the backend template
 
