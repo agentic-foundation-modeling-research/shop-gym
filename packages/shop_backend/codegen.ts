@@ -1,7 +1,7 @@
 /**
  * GraphQL codegen config (T7.1).
  *
- * Reads the SDL from `src/schema.ts` (extracted from the `/* GraphQL *\/`
+ * Reads the SDL from the per-domain modules under `src/schema/` (extracted from the `/* GraphQL *\/`
  * tagged template literal by `@graphql-tools/code-file-loader`) and emits
  * `src/__generated__/resolvers-types.ts` containing:
  *
@@ -29,7 +29,7 @@ import type { CodegenConfig } from '@graphql-codegen/cli';
 
 const config: CodegenConfig = {
   overwrite: true,
-  schema: 'src/schema.ts',
+  schema: 'src/schema/*.ts',
   generates: {
     'src/__generated__/resolvers-types.ts': {
       plugins: ['typescript', 'typescript-resolvers'],

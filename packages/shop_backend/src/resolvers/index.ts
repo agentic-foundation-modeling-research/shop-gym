@@ -9,26 +9,33 @@
  * `BaseCartLine` / `Merchandise` discriminators), cart line mutations
  * (T4.3 — `cartCreate` / `cartLinesAdd` / `cartLinesUpdate` /
  * `cartLinesRemove`), product / collection metafields (T5.1), shop
- * metafields (T5.2).
+ * metafields (T5.2), and since v1.1 the stateful customer / order /
+ * checkout domains backed by the per-episode `ShopState`.
  */
 
 import type { SandboxShopData } from '../data/types.js';
-import type { SandboxSchemaResolvers } from '../schema.js';
+import type { SandboxSchemaResolvers } from '../schema/index.js';
+import type { ShopState } from '../state/shop_state.js';
 import type { ImageUrlMode } from './builders.js';
 import { type CartStore, cartResolvers } from './cart.js';
+import { checkoutResolvers } from './checkout.js';
 import { contentResolvers } from './content.js';
+import { customerResolvers } from './customer.js';
 import { metafieldResolvers } from './metafields.js';
+import { orderResolvers } from './order.js';
 import { productResolvers } from './product.js';
 import { searchResolvers } from './search.js';
 import { shopResolvers } from './shop.js';
 
 /**
- * Per-request context passed to every resolver. `data` is the loaded dataset
- * snapshot; `carts` is the per-server in-memory cart store (spec §5.5);
- * `baseUrl` is the public GraphQL origin exposed by the server handle.
+ * Per-request context passed to every resolver. `data` is the episode's view
+ * of the loaded dataset (live inventory); `state` is the episode's mutable
+ * `ShopState` and `carts` its cart store; `baseUrl` is the public GraphQL
+ * origin exposed by the server handle.
  */
 export interface ResolverContext {
   readonly data: SandboxShopData;
+  readonly state: ShopState;
   readonly carts: CartStore;
   readonly baseUrl: string;
   readonly imageUrlMode?: ImageUrlMode;
@@ -51,9 +58,14 @@ export const sandboxResolvers: SandboxSchemaResolvers = {
     ...contentResolvers.Query,
     ...searchResolvers.Query,
     ...cartResolvers.Query,
+    ...customerResolvers.Query,
+    ...orderResolvers.Query,
+    ...checkoutResolvers.Query,
   },
   Mutation: {
     ...cartResolvers.Mutation,
+    ...customerResolvers.Mutation,
+    ...checkoutResolvers.Mutation,
   },
   Shop: { ...shopResolvers.Shop, ...metafieldResolvers.Shop },
   Product: { ...productResolvers.Product, ...metafieldResolvers.Product },
@@ -61,6 +73,9 @@ export const sandboxResolvers: SandboxSchemaResolvers = {
   Blog: contentResolvers.Blog,
   SearchResultItem: searchResolvers.SearchResultItem,
   Cart: cartResolvers.Cart,
+  CartBuyerIdentity: cartResolvers.CartBuyerIdentity,
   BaseCartLine: cartResolvers.BaseCartLine,
   Merchandise: cartResolvers.Merchandise,
+  Customer: customerResolvers.Customer,
+  Order: orderResolvers.Order,
 };

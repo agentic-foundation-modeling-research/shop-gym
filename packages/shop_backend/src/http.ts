@@ -14,7 +14,9 @@
  *      `/graphql` (preserving any query string) before the request is
  *      forwarded to yoga. Compatibility shim for versioned Storefront
  *      API clients.
- *   4. Everything else → forwarded unchanged to the wrapped yoga
+ *   4. An optional extra `route` (the episode control API in
+ *      `createSandboxServer`) gets the request next.
+ *   5. Everything else → forwarded unchanged to the wrapped yoga
  *      handler.
  *
  * `createSandboxServer` (T6.2) composes this wrapper on top of the
@@ -53,10 +55,15 @@ export type GraphQLRequestHandler = (
   res: ServerResponse,
 ) => undefined | Promise<unknown>;
 
+/** Extra route consulted before GraphQL; returns `true` when it answered the request. */
+export type HttpRoute = (req: IncomingMessage, res: ServerResponse) => boolean;
+
 /** Options accepted by `buildHttpHandler`. */
 export interface HttpHandlerOptions {
   /** Wrapped GraphQL handler — typically the result of `createYoga(...)`. */
   readonly yoga: GraphQLRequestHandler;
+  /** Optional route tried after `/health` and `/images/*` (e.g. the episode control API). */
+  readonly route?: HttpRoute;
   /**
    * SandboxShop dataset directory. Static images are served from
    * `<dataDir>/images/`. If that directory is absent every image request
@@ -76,7 +83,7 @@ export interface HttpHandlerOptions {
 export function buildHttpHandler(
   options: HttpHandlerOptions,
 ): (req: IncomingMessage, res: ServerResponse) => void {
-  const { yoga, dataDir, storeName } = options;
+  const { yoga, dataDir, storeName, route } = options;
   const imagesRoot = path.resolve(dataDir, 'images');
 
   return (req, res) => {
@@ -93,6 +100,10 @@ export function buildHttpHandler(
     if (method === 'GET' && pathname.startsWith(IMAGE_PREFIX)) {
       const relPath = pathname.slice(IMAGE_PREFIX.length);
       void serveImage(res, imagesRoot, relPath);
+      return;
+    }
+
+    if (route?.(req, res) === true) {
       return;
     }
 

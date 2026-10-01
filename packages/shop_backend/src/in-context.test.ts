@@ -24,7 +24,7 @@ import { loadShopData } from './data/loader.js';
 import { createInContextValidationPlugin } from './in-context.js';
 import { CartStore } from './resolvers/cart.js';
 import type { ResolverContext } from './resolvers/index.js';
-import { createSandboxSchema } from './schema.js';
+import { createSandboxSchema } from './schema/index.js';
 
 const FIXTURE_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

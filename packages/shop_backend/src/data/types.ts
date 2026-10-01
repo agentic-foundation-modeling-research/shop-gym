@@ -10,21 +10,30 @@
 import type { z } from 'zod';
 
 import type {
+  addressSchema,
   articleSchema,
   blogSchema,
   collectionSchema,
+  commerceSchema,
+  customerSchema,
   inventoryEntrySchema,
   inventoryFileSchema,
   metafieldSchema,
   metafieldsFileSchema,
   navigationItemTypeSchema,
   navigationSchema,
+  orderFinancialStatusSchema,
+  orderFulfillmentStatusSchema,
+  orderLineItemSchema,
+  orderSchema,
   pageSchema,
+  paymentMethodSchema,
   policySchema,
   productImageSchema,
   productOptionSchema,
   productSchema,
   productVariantSchema,
+  shippingMethodSchema,
   storeBrandColorsSchema,
   storeBrandSchema,
   storePaymentSettingsSchema,
@@ -60,6 +69,18 @@ export type Metafield = z.infer<typeof metafieldSchema>;
 export type InventoryFile = z.infer<typeof inventoryFileSchema>;
 export type InventoryEntry = z.infer<typeof inventoryEntrySchema>;
 
+export type Address = z.infer<typeof addressSchema>;
+export type Customer = z.infer<typeof customerSchema>;
+
+export type Order = z.infer<typeof orderSchema>;
+export type OrderLineItem = z.infer<typeof orderLineItemSchema>;
+export type OrderFinancialStatus = z.infer<typeof orderFinancialStatusSchema>;
+export type OrderFulfillmentStatus = z.infer<typeof orderFulfillmentStatusSchema>;
+
+export type Commerce = z.infer<typeof commerceSchema>;
+export type ShippingMethod = z.infer<typeof shippingMethodSchema>;
+export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
+
 /**
  * Lookup entry for `variantsByGid`: the variant plus the product it belongs to,
  * so cart resolvers can materialize merchandise without a second pass.
@@ -83,6 +104,12 @@ export interface SandboxShopData {
   readonly blogs: readonly Blog[];
   readonly metafields: MetafieldsFile;
   readonly inventory: InventoryFile;
+  /** Seeded accounts; empty when `customers.json` is absent. */
+  readonly customers: readonly Customer[];
+  /** Seeded order history; empty when `orders.json` is absent. */
+  readonly orders: readonly Order[];
+  /** Checkout rules; defaults when `commerce.json` is absent. */
+  readonly commerce: Commerce;
   /** `handle` → product. */
   readonly productsByHandle: ReadonlyMap<string, Product>;
   /** `gid://shopify/ProductVariant/<id>` → owning product + variant. */
