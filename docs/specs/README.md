@@ -53,4 +53,5 @@ for shipped behavior.
 
 | Spec Path | Code Path | Description |
 | --------- | --------- | ----------- |
-| [shop_guru/dataset_generation.md](shop_guru/dataset_generation.md) | `packages/shop_guru` | Deterministic benchmark-task generation from SandboxShop data across seven skills, post-generation validation, and AgentLab/BrowserGym evaluation drivers with aggregate scoring. **Status:** Implemented; this spec captures the existing contract. |
+| [shop_guru/dataset_generation.md](shop_guru/dataset_generation.md) | `packages/shop_guru` | Deterministic benchmark-task generation from SandboxShop data across seven skills, post-generation validation, and AgentLab/BrowserGym evaluation drivers with aggregate scoring. **Status:** Implemented; superseded by [benchmark_v2.md](shop_guru/benchmark_v2.md) (2026-09-30). |
+| [shop_guru/benchmark_v2.md](shop_guru/benchmark_v2.md) | `packages/shop-guru` | TypeScript benchmark pipeline: ten seed skills plus agent-discovered tasks over the `core` task schema, `AgentUnderTest` episodes isolated by `BrowserSession` and the backend control API, graders for every check kind, and `aggregate.json`. **Status:** Implemented (v1.1 M9). |
