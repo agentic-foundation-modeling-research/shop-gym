@@ -145,6 +145,39 @@ applied uniformly across the data DAG and the harness loop. See
 [`harness/verifiers.md`](../harness/verifiers.md) for the underlying
 contracts.
 
+### v1.1 publish step and final eval (M7b, 2026-09-30)
+
+The TypeScript port adds the two post-build steps as plain functions
+under `packages/shop-arena/src/gen/`, wired by the pipeline rather than
+by a step registry:
+
+- `final_eval/runFinalEval({ dataDir, manualDir?, backendUrl,
+  storefrontUrl, llm, model, outDir, log?, signal? })` runs against an
+  already-running shop. The visual sweep captures ten canonical pages
+  (home, a collection, a product, search, cart, checkout, account
+  login, the account profile after login, an order detail, a policy
+  page) at both viewports and judges each with the single
+  `visual_judge.md` rubric; the functional sweep is a fixed browser
+  script (sign up, log out, log in, add to cart, checkout, view order;
+  `requestReturn` is recorded as `skipped: not supported by backend`).
+  It writes `<outDir>/{report.json, summary.md, pages/<name>.json,
+  screenshots/}` in camelCase and returns pass/fail/skipped counts.
+  Pages whose setup the dataset cannot provide are `skipped` with a
+  reason; the eval never blocks the pipeline.
+- `publish/publishShop({ runDir, shopDir })` copies
+  `<runDir>/artifact/{storefront,backend}` into
+  `<shopDir>/{storefront,backend}` (excluding `node_modules`, `dist`,
+  `build`, `.react-router`, `.vite`, `.cache`, `*.log` and the
+  storefront's sidecar-specific `.env`), copies nothing from
+  `artifact/data`, and writes `<shopDir>/shop.json` with `name`,
+  `templates.{storefront,backend}` (each copy's `template.json`
+  fingerprint), `genBackend` (from `build.json`), `publishedAt` and
+  `finalStatus` (from the run's `run.json`, else `unknown`). It is
+  idempotent: the component directories are replaced on every call.
+  `readShopManifest(shopDir)` validates and returns the manifest. The
+  `host` step passes `PUBLIC_STORE_DOMAIN`, `PORT` and `SESSION_SECRET`
+  through the environment instead of a committed `.env`.
+
 ---
 
 ## 4. Desired Status
