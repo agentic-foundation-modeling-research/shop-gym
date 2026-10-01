@@ -27,7 +27,6 @@
     "ignore": [
       "**/dist/**",
       "**/node_modules/**",
-      "**/.venv/**",
       "**/*.generated.ts",
       "**/__generated__/**",
       "**/.react-router/**",

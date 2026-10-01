@@ -18,10 +18,7 @@ const REPO_ROOT = path.resolve(HERE, '../../../..');
 
 const FIXTURE_DIRS = [
   path.resolve(HERE, '../../tests/fixtures/sandbox_shop_v0'),
-  path.join(
-    REPO_ROOT,
-    'packages/shop_arena/src/shop_arena/gen/templates/react-vite/fixtures/sandbox_shop_v0',
-  ),
+  path.join(REPO_ROOT, 'packages/shop-arena/templates/storefront/fixtures/sandbox_shop_v0'),
 ].filter((dir) => fs.existsSync(dir));
 
 const SHOPS_DIR = process.env.SHOPGYM_SHOPS_DIR ?? path.join(REPO_ROOT, 'outputs/shops');
