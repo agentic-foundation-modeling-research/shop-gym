@@ -124,6 +124,9 @@ importers:
       '@shop-gym/harness':
         specifier: workspace:*
         version: link:../harness
+      '@shop-gym/shop-backend':
+        specifier: workspace:*
+        version: link:../shop_backend
       '@sinclair/typebox':
         specifier: ^0.34.0
         version: 0.34.52
@@ -134,9 +137,6 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
-      '@shop-gym/shop-backend':
-        specifier: workspace:*
-        version: link:../shop_backend
       '@types/node':
         specifier: ^22.7.0
         version: 22.19.17

@@ -82,6 +82,66 @@ rendered from the zod schema at run time. Credentials come from
 `loadCredentials()` and are never written to disk. The `shopgym explore`
 CLI arrives in M10.
 
+## Gen
+
+`generateShop(config, deps)` (also under the `gen` namespace export)
+turns one or more Shop Manuals into a SandboxShop under
+`outputs/shops/<name>/`. It runs four steps on the `@shop-gym/core`
+pipeline runner; `GEN_STEPS` lists them in order:
+
+| Step | Reads | Writes |
+| --- | --- | --- |
+| `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section) |
+| `data_synth` | `manual/` | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
+| `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
+| `build` | `data/`, `manual/`, `data_validation.json` | `runs/build/` via `build.runBuildLoop` (seed staged in `.shop_gen/build_seed/`); a final status other than `completed` fails the step so the next run resumes it |
+
+`data_synth` runs its sub-steps in order (`identity`, `store`, `pages`,
+`policies`, `commerce`, `collections`, `skeletons`, `details` per
+collection, `alt_text`, `images`, `navigation`, `customers`, then
+assembly with deterministic ids, inventory, and orders). Every LLM call
+asks for one JSON value against a zod-derived JSON Schema and retries
+once with the validation error. Prompts are plain Markdown under
+`src/gen/data_synth/prompts/` with `{{name}}` placeholders, and every
+prompt carries the fake-brand allowlist from
+`src/gen/brands/fake_brands.json`; vendors must come from it and titles
+and descriptions may not mention it.
+
+```ts
+import { PiLlmClient, PiRuntime } from '@shop-gym/agent';
+import { loadCredentials } from '@shop-gym/core';
+import { generateShop } from '@shop-gym/shop-arena';
+
+const credentials = loadCredentials(process.cwd(), process.env);
+const result = await generateShop(
+  {
+    name: 'demo',
+    manualDirs: ['outputs/shop_manuals/seed-a', 'outputs/shop_manuals/seed-b'],
+    model: 'anthropic/claude-opus-4-7',
+    imageBackend: 'placeholder', // or 'openai' (OPENAI_API_KEY / OPENAI_BASE_URL)
+    catalog: { collections: 10, productsPerCollection: 20, imagesPerProduct: 2 },
+    genBackend: false,
+    maxIters: 30,
+    from: undefined, // e.g. 'data_synth' forces that step and everything after it
+  },
+  { llm: new PiLlmClient({ credentials }), runtime: new PiRuntime({ credentials }), credentials },
+);
+console.log(result.dataDir, result.reports);
+```
+
+Cache and resume: a step is complete when `<shopDir>/.pipeline/<step>.json`
+records the current fingerprint of its inputs and all of its outputs
+exist. Changing an input (or passing `from`) removes that step's declared
+outputs before it reruns, which for `data_synth` includes
+`.shop_gen/stage_cache/` and `identity.json`; a step that never
+completed keeps them, so an interrupted `data_synth` resumes at the
+first missing draft (`details/<collection>.json` and image files are
+per item). `.shop_gen/image_cache/` (OpenAI responses keyed by prompt
+hash) is not a step output and survives reruns. `SHOPGYM_LIVE=1 pnpm
+test` runs `src/gen/data_synth/data_synth.live.test.ts` against a real
+model (`SHOPGYM_LIVE_MODEL=<provider>/<id>` overrides the default).
+The `shopgym gen` CLI arrives in M10.
+
 ## Build
 
 `build.runBuildLoop(options)` (namespace export `build` from
