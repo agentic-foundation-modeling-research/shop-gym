@@ -94,17 +94,39 @@ export class StorefrontSidecar {
       if (this.process === undefined) {
         return false;
       }
-      const hash = await this.currentHash();
-      if (hash === this.sourceHash) {
-        return false;
-      }
-      const current = this.process;
-      this.process = undefined;
-      await current.stop();
-      this.sourceHash = hash;
-      this.process = await this.launchProcess();
-      return true;
+      return this.relaunchIfChanged();
     });
+  }
+
+  /**
+   * Bring the served tree up to date: start when stopped, otherwise
+   * rebuild and restart when the copy changed. The build-loop verifiers
+   * call this before their first request so the storefront is only built
+   * once a task needs it.
+   */
+  ensureCurrent(): Promise<void> {
+    return this.serialise(async () => {
+      if (this.process === undefined) {
+        this.sourceHash = await this.currentHash();
+        this.process = await this.launchProcess();
+        return;
+      }
+      await this.relaunchIfChanged();
+    });
+  }
+
+  /** Caller holds the queue and `this.process` is set. */
+  private async relaunchIfChanged(): Promise<boolean> {
+    const hash = await this.currentHash();
+    if (hash === this.sourceHash) {
+      return false;
+    }
+    const current = this.process;
+    this.process = undefined;
+    await current?.stop();
+    this.sourceHash = hash;
+    this.process = await this.launchProcess();
+    return true;
   }
 
   private launchProcess(): Promise<SidecarProcess> {

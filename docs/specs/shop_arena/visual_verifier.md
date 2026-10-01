@@ -119,14 +119,17 @@ manual excerpt for the page bucket. There is one rubric,
 verifier and `gen/final_eval`'s visual sweep (`page_judge.ts` holds the
 schema, capture and judge call). `quality_judge` and
 `cross_task_consistency` are not ported; the judge is enabled by
-passing `storefront.judge` to `buildVerifiers`. The per-task retry
+passing `storefront.judge` to `buildVerifiers`, which `runBuildLoop`
+does from its `judge` option (`generateShop` supplies the synthesis
+model). The per-task retry
 budget (3 failures, then advisory) is a counter file at
 `<runDir>/checks/visual_judge_budget.json` rather than a scan of
 sibling telemetry; screenshots land in
 `<runDir>/iters/<iterId>/checks/visual_judge/<slug>__<viewport>.png`.
 The storefront is served in production mode by
-`gen/build/storefront_sidecar.ts` (rebuilt only when its source hash
-changes), not by a Vite dev server.
+`gen/build/storefront_sidecar.ts` (built by the first verifier that
+needs it, rebuilt only when its source hash changes), not by a Vite dev
+server.
 
 ---
 

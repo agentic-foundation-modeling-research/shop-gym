@@ -20,7 +20,14 @@ export const DEFAULT_LLM_TIMEOUT_MS = 600_000;
 export const DEFAULT_CONCURRENCY = 5;
 
 /** Pipeline step ids in execution order. */
-export const GEN_STEPS = ['manual_merge', 'data_synth', 'data_validation', 'build'] as const;
+export const GEN_STEPS = [
+  'manual_merge',
+  'data_synth',
+  'data_validation',
+  'build',
+  'final_eval',
+  'publish',
+] as const;
 
 export type GenStepName = (typeof GEN_STEPS)[number];
 

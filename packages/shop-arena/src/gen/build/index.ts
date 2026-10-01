@@ -5,7 +5,11 @@ export {
   type BuildLoopOptions,
   type BuildLoopResult,
   type BuildRunInfo,
+  DATA_DIRNAME,
+  MANUAL_DIRNAME,
   SIDECAR_LOG,
+  STOREFRONT_LOG,
+  readBuildInfo,
   runBuildLoop,
 } from './build_loop.js';
 export {

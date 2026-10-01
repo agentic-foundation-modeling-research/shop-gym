@@ -73,6 +73,19 @@ describe('StorefrontSidecar', () => {
     expect(await s.restartIfChanged()).toBe(false);
   });
 
+  it('ensureCurrent starts when stopped and restarts only on change', async () => {
+    const s = sidecar();
+    await s.ensureCurrent();
+    expect(launches).toHaveLength(1);
+    await s.ensureCurrent();
+    expect(launches).toHaveLength(1);
+    await fs.writeFile(path.join(storefrontDir, 'app', 'root.tsx'), 'export const a = 3;\n');
+    await s.ensureCurrent();
+    expect(launches).toHaveLength(2);
+    expect(stops).toBe(1);
+    expect(s.running).toBe(true);
+  });
+
   it('stops cleanly and does nothing when not running', async () => {
     const s = sidecar();
     expect(await s.restartIfChanged()).toBe(false);

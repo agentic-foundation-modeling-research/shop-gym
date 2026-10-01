@@ -1,15 +1,21 @@
 /**
  * Test doubles for the gen pipeline: a scripted `LlmClient` that answers
- * every synthesis prompt with a deterministic, schema-valid reply, and a
- * writer for a minimal Shop Manual fixture. No real merchant data.
+ * every synthesis prompt with a deterministic, schema-valid reply, a
+ * scripted visual judge, a stub storefront server for the HTTP verifiers
+ * and the final eval, and a writer for a minimal Shop Manual fixture. No
+ * real merchant data.
  */
 
 import * as fs from 'node:fs/promises';
+import * as http from 'node:http';
 import * as path from 'node:path';
 
 import type { CompleteRequest, Completion, LlmClient } from '@shop-gym/agent';
 
 import { capabilitiesSchema } from '../explore/capabilities.js';
+import type { StorefrontLaunch } from './build/storefront_sidecar.js';
+
+const JUDGE_USAGE = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 };
 
 /** JSON blocks of a rendered prompt, in order. */
 function jsonBlocks(prompt: string): unknown[] {
@@ -257,3 +263,138 @@ export async function writeManualFixture(
   );
   return dir;
 }
+
+/**
+ * Answers every visual-judge prompt with a passing verdict, except pages
+ * whose route starts with `/search`, which fail with one major issue.
+ */
+export class ScriptedJudge implements LlmClient {
+  readonly requests: CompleteRequest[] = [];
+  async complete(request: CompleteRequest): Promise<Completion> {
+    this.requests.push(request);
+    const failing =
+      typeof request.prompt !== 'string' && request.prompt.text.includes('Route: `/search');
+    const text = JSON.stringify({
+      verdict: failing ? 'fail' : 'pass',
+      score: failing ? 5 : 8,
+      categoryScores: { structure: 8, components: 8, visualTone: 8 },
+      feedback: failing ? 'No results grid.' : 'Looks finished.',
+      issues: failing
+        ? [{ viewport: 'both', severity: 'major', summary: 'empty results', capability: null }]
+        : [],
+    });
+    return { text, model: 'm', stopReason: 'stop', usage: JUDGE_USAGE };
+  }
+}
+
+function stubHtml(body: string, loggedIn: boolean): string {
+  const logout = loggedIn
+    ? '<form method="post" action="/account/logout"><button type="submit">Log out</button></form>'
+    : '<a href="/account/login">Log in</a>';
+  return `<!doctype html><html><head><title>Stub</title></head><body><header><nav><a href="/">Home</a><a href="/collections/dog-essentials">Dogs</a>${logout}</nav></header><main>${body}</main><footer><a href="/policies/privacy-policy">Privacy</a></footer></body></html>`;
+}
+
+/**
+ * A stand-in storefront that answers every route with a minimal page and
+ * walks the account, cart and checkout flows with two cookies:
+ * `session=1` marks a logged-in customer, `cart=1` a non-empty cart.
+ */
+export function stubStorefront(): http.Server {
+  return http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const cookies = req.headers.cookie ?? '';
+    const loggedIn = cookies.includes('session=1');
+    const hasCart = cookies.includes('cart=1');
+    const page = (body: string): void => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(stubHtml(body, loggedIn));
+    };
+    const redirect = (location: string, cookie?: string): void => {
+      res.writeHead(302, { location, ...(cookie ? { 'set-cookie': cookie } : {}) });
+      res.end();
+    };
+    if (req.method === 'POST') {
+      let raw = '';
+      req.on('data', (chunk) => {
+        raw += chunk;
+      });
+      req.on('end', () => {
+        const form = new URLSearchParams(raw);
+        switch (url.pathname) {
+          case '/account/register':
+          case '/account/login':
+            redirect('/account', 'session=1; Path=/');
+            return;
+          case '/account/logout':
+            redirect('/', 'session=; Path=/; Max-Age=0');
+            return;
+          case '/cart':
+            redirect(form.get('redirectTo') ?? '/cart', 'cart=1; Path=/');
+            return;
+          case '/checkout':
+            redirect(
+              loggedIn ? '/account/orders/1001' : '/checkout/confirmation/1001',
+              'cart=; Path=/; Max-Age=0',
+            );
+            return;
+          default:
+            redirect('/');
+        }
+      });
+      return;
+    }
+    switch (true) {
+      case url.pathname === '/account/login':
+        page(
+          '<h1>Log in</h1><form method="post"><input name="email"><input name="password" type="password"><button type="submit">Log in</button></form>',
+        );
+        return;
+      case url.pathname === '/account/register':
+        page(
+          '<h1>Create account</h1><form method="post"><input name="firstName"><input name="lastName"><input name="email"><input name="password" type="password"><button type="submit">Create account</button></form>',
+        );
+        return;
+      case url.pathname.startsWith('/account'):
+        if (!loggedIn) {
+          redirect(`/account/login?redirectTo=${encodeURIComponent(url.pathname)}`);
+          return;
+        }
+        page(
+          url.pathname.startsWith('/account/orders/')
+            ? `<h1>Order #${url.pathname.split('/').at(-1)}</h1>`
+            : '<h1>Account</h1>',
+        );
+        return;
+      case url.pathname.startsWith('/products/'):
+        page(
+          '<h1>Product</h1><form method="post" action="/cart" class="product-form"><input type="hidden" name="redirectTo" value="/cart"><input type="hidden" name="intent" value="add"><input type="radio" name="merchandiseId" value="gid://shopify/ProductVariant/1" checked><button type="submit">Add to cart</button></form>',
+        );
+        return;
+      case url.pathname === '/cart':
+        page(
+          hasCart
+            ? '<h1>Cart</h1><p>1 x Product</p><p>Subtotal CA$10.00</p>'
+            : '<h1>Cart</h1><p>Your cart is empty.</p>',
+        );
+        return;
+      case url.pathname === '/checkout':
+        if (!hasCart) {
+          redirect('/cart');
+          return;
+        }
+        page(
+          '<h1>Checkout</h1><form method="post"><input name="email"><input name="firstName"><input name="lastName"><input name="address1"><input name="city"><input name="province"><input name="country"><input name="zip"><input type="radio" name="shippingMethodHandle" value="standard"><input type="radio" name="paymentMethodHandle" value="card"><button type="submit">Place order</button></form>',
+        );
+        return;
+      default:
+        page(`<h1>${url.pathname}</h1>`);
+    }
+  });
+}
+
+/** `StorefrontLaunch` seam serving `stubStorefront()` on the requested port. */
+export const stubStorefrontLaunch: StorefrontLaunch = async (options) => {
+  const server = stubStorefront();
+  await new Promise<void>((resolve) => server.listen(options.port, '127.0.0.1', resolve));
+  return { stop: () => new Promise<void>((resolve) => server.close(() => resolve())) };
+};

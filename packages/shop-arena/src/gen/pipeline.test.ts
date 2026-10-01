@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import type { CompleteRequest, Completion, LlmClient } from '@shop-gym/agent';
 import { FakeRuntime } from '@shop-gym/agent/testing';
 import { createSandboxServer, loadShopData } from '@shop-gym/shop-backend';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -10,8 +11,15 @@ import { STOREFRONT_TEMPLATE_DIR } from '../templates.js';
 import type { SidecarLaunch } from './build/sidecar.js';
 import type { CommandRunner } from './build/verifiers/subprocess.js';
 import { GEN_STEPS } from './config.js';
+import type { FinalEvalReport } from './final_eval/final_eval.js';
 import { generateShop } from './pipeline.js';
-import { ScriptedSynthLlm, writeManualFixture } from './testing.js';
+import { readShopManifest } from './publish/publish.js';
+import {
+  ScriptedJudge,
+  ScriptedSynthLlm,
+  stubStorefrontLaunch,
+  writeManualFixture,
+} from './testing.js';
 
 const DASH = '\u2014'; // the harness plan grammar's task separator (U+2014)
 const DONE_PLAN = `# Plan - test\n\n## Tasks\n\n- [x] gen_homepage ${DASH} render the homepage [priority: 7]\n\n## Omitted Areas\n\n- (none)\n`;
@@ -42,6 +50,17 @@ const inProcessLaunch: SidecarLaunch = async (options) => {
   return { stop: () => server.close() };
 };
 
+/** Synthesis prompts are strings; judge prompts carry screenshots. */
+class PipelineLlm implements LlmClient {
+  private readonly synth = new ScriptedSynthLlm();
+  private readonly judge = new ScriptedJudge();
+  complete(request: CompleteRequest): Promise<Completion> {
+    return typeof request.prompt === 'string'
+      ? this.synth.complete(request)
+      : this.judge.complete(request);
+  }
+}
+
 let root: string;
 
 beforeEach(async () => {
@@ -53,7 +72,7 @@ afterEach(async () => {
 });
 
 describe('generateShop', () => {
-  it('runs all four steps on a tiny manual and skips them on rerun', async () => {
+  it('runs all six steps on a tiny manual and skips them on rerun', async () => {
     const manualDir = await writeManualFixture(path.join(root, 'manual'));
     const outDir = path.join(root, 'shop');
     const log: string[] = [];
@@ -68,11 +87,12 @@ describe('generateShop', () => {
           maxIters: 2,
         },
         {
-          llm: new ScriptedSynthLlm(),
+          llm: new PipelineLlm(),
           runtime: new FakeRuntime([{ writeFiles: { 'plan.md': DONE_PLAN }, reply: 'planned' }]),
           credentials: {},
           commandRunner: fakeRunner,
           sidecarLaunch: inProcessLaunch,
+          storefrontLaunch: stubStorefrontLaunch,
           log: (line) => log.push(line),
         },
       );
@@ -85,11 +105,15 @@ describe('generateShop', () => {
     expect(top).toEqual([
       '.pipeline',
       '.shop_gen',
+      'backend',
       'data',
       'data_validation.json',
+      'final_eval',
       'identity.json',
       'manual',
       'runs',
+      'shop.json',
+      'storefront',
     ]);
     expect(await fs.readdir(path.join(outDir, 'runs', 'build', 'artifact'))).toEqual(
       expect.arrayContaining(['data', 'manual', 'storefront']),
@@ -98,7 +122,31 @@ describe('generateShop', () => {
     expect(report.ok).toBe(true);
     expect(log.some((l) => l.includes('[build] completed'))).toBe(true);
 
+    const finalEval = JSON.parse(
+      await fs.readFile(path.join(result.finalEvalDir, 'report.json'), 'utf-8'),
+    ) as FinalEvalReport;
+    expect(finalEval.visual.pages).toHaveLength(10);
+    expect(finalEval.visual.pages.filter((page) => page.status === 'skipped')).toEqual([]);
+    expect(finalEval.visual.failed).toBe(1); // the scripted judge fails `/search`
+    expect(finalEval.functional.steps.map((step) => step.status)).toEqual([
+      ...Array<string>(6).fill('pass'),
+      'skipped',
+    ]);
+    expect((await fs.readdir(result.finalEvalDir)).sort()).toEqual([
+      'pages',
+      'report.json',
+      'screenshots',
+      'summary.md',
+    ]);
+
+    const manifest = await readShopManifest(outDir);
+    expect(result.manifestPath).toBe(path.join(outDir, 'shop.json'));
+    expect(manifest).toMatchObject({ name: 'shop', genBackend: false, finalStatus: 'completed' });
+    expect(manifest.templates.storefront.name).toBe('storefront');
+    expect(await fs.readdir(path.join(outDir, 'storefront'))).toContain('template.json');
+    expect(await fs.readdir(path.join(outDir, 'backend'))).toContain('template.json');
+
     const again = await run();
     expect(again.reports.every((r) => r.status === 'skipped')).toBe(true);
-  }, 60_000);
+  }, 180_000);
 });

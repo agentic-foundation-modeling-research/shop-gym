@@ -16,6 +16,7 @@ import { fileTools } from '../explore/files.js';
 import { parseModel } from '../explore/pipeline.js';
 import { repoRoot } from './build/seed.js';
 import type { SidecarLaunch } from './build/sidecar.js';
+import type { StorefrontLaunch } from './build/storefront_sidecar.js';
 import type { SchemaIntrospector } from './build/verifiers/index.js';
 import type { CommandRunner } from './build/verifiers/subprocess.js';
 import { DEFAULT_OUTPUT_ROOT, type GenConfig } from './config.js';
@@ -39,6 +40,7 @@ export interface GenDeps {
   readonly fetch?: typeof fetch;
   readonly commandRunner?: CommandRunner;
   readonly sidecarLaunch?: SidecarLaunch;
+  readonly storefrontLaunch?: StorefrontLaunch;
   readonly introspect?: SchemaIntrospector;
 }
 
@@ -58,6 +60,7 @@ export interface GenContext {
   readonly onEvent?: (iterId: string, event: AgentEvent) => void;
   readonly commandRunner?: CommandRunner;
   readonly sidecarLaunch?: SidecarLaunch;
+  readonly storefrontLaunch?: StorefrontLaunch;
   readonly introspect?: SchemaIntrospector;
 }
 
@@ -85,6 +88,7 @@ export function createGenContext(config: GenConfig, deps: GenDeps): GenContext {
     ...(deps.onEvent !== undefined ? { onEvent: deps.onEvent } : {}),
     ...(deps.commandRunner !== undefined ? { commandRunner: deps.commandRunner } : {}),
     ...(deps.sidecarLaunch !== undefined ? { sidecarLaunch: deps.sidecarLaunch } : {}),
+    ...(deps.storefrontLaunch !== undefined ? { storefrontLaunch: deps.storefrontLaunch } : {}),
     ...(deps.introspect !== undefined ? { introspect: deps.introspect } : {}),
   };
 }

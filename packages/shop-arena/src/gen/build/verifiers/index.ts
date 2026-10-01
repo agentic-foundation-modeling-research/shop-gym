@@ -25,6 +25,12 @@ import type { StorefrontTarget } from './storefront_target.js';
 import type { CommandRunner } from './subprocess.js';
 import { visualJudgeVerifier } from './visual_judge.js';
 
+/** The LLM behind `visual_judge`. */
+export interface StorefrontJudge {
+  readonly llm: LlmClient;
+  readonly model: ModelRef;
+}
+
 export interface StorefrontVerifierOptions {
   readonly sidecar: StorefrontSidecar;
   /** The dataset the sidecars serve (`artifact/data`). */
@@ -32,7 +38,7 @@ export interface StorefrontVerifierOptions {
   /** Holds `capabilities.json` and `parts/*.md` for the visual judge. */
   readonly manualDir?: string;
   /** The visual judge; omitted means no `visual_judge` verifier. */
-  readonly judge?: { readonly llm: LlmClient; readonly model: ModelRef };
+  readonly judge?: StorefrontJudge;
 }
 
 export interface BuildVerifierOptions {
@@ -94,11 +100,11 @@ export function buildVerifiers(options: BuildVerifierOptions): Verifier[] {
   return verifiers;
 }
 
-/** Point the HTTP verifiers at the sidecar and restart it before each check. */
+/** Point the HTTP verifiers at the sidecar; start or restart it before each check. */
 function storefrontTarget(options: StorefrontVerifierOptions): StorefrontTarget {
   return {
     url: options.sidecar.url,
-    prepare: () => options.sidecar.restartIfChanged(),
+    prepare: () => options.sidecar.ensureCurrent(),
   };
 }
 
