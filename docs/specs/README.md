@@ -8,6 +8,7 @@ for shipped behavior.
 
 | Spec Path | Code Path | Description |
 | --------- | --------- | ----------- |
+| [v1_1_typescript_redesign.md](v1_1_typescript_redesign.md) | `packages/*` (target layout) | v1.1 umbrella plan: single TypeScript monorepo, swappable `AgentRuntime` seam over the pi SDK, shared zod schemas and pipeline, stateful episode-scoped backend (customers, checkout, orders) shipped as an agent-editable template with a sandbox contract, single storefront template, programmatic benchmark grading. Supersedes the orchestration redesign in `shop_arena/shop_gen.md` v0.2. **Status:** Proposed; implementation on `v1_1-dev`. |
 | [harness/plan_exec_loop.md](harness/plan_exec_loop.md) | `packages/harness` | Reusable plan + exec loop harness, runtime-agnostic. **Status:** Implemented base spec; shipped extensions are tracked in the sibling harness specs below. |
 | [harness/seed_immutability.md](harness/seed_immutability.md) | `packages/harness/src/harness/seed.py` | Deterministic post-iteration check that aborts a run on any mutation, deletion, or extension of the seeded subtree under `run_dir/artifact/`. **Status:** Implemented in `harness` 0.2.0. |
 | [harness/resume.md](harness/resume.md) | `packages/harness` + `packages/shop_arena/src/shop_arena/explore` | Optional in-place resume of a partial `run_plan_exec_loop` invocation: skip the planner if its trajectory is on disk, continue executor iterations against existing `[x]` markers, quarantine partial iter dirs, and expose `shop-explore --force-resume`. **Status:** Implemented. |
