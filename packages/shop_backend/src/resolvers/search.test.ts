@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { loadShopData } from '../data/loader.js';
 import type { Product, SandboxShopData, Store } from '../data/types.js';
-import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
+import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema/index.js';
 import { CartStore } from './cart.js';
 import type { ResolverContext } from './index.js';
 import { searchResolvers } from './search.js';

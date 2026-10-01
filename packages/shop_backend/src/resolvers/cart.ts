@@ -29,10 +29,18 @@
  * cart in a `CartCreatePayload`/`CartLines*Payload`-shaped envelope. T4.4
  * extends the surface with discount-code / buyer-identity / note /
  * attribute / gift-card fields stored on the cart.
+ *
+ * Since v1.1 one `CartStore` lives inside each episode's `ShopState`.
+ * `cartBuyerIdentityUpdate` resolves `customerAccessToken` against that
+ * state so a cart can be associated with a logged-in customer, and
+ * `Cart.cost` applies the `commerce.json` tax rate when one is configured.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+
+import { fromCents, toCents } from '../state/money.js';
+import { taxCents } from '../state/pricing.js';
 
 import type {
   AttributeInput,
@@ -62,6 +70,7 @@ import {
   buildProductVariantNode,
   gid,
 } from './builders.js';
+import { type CustomerNode, buildCustomerNode } from './customer.js';
 import type { ResolverContext } from './index.js';
 
 // Re-export the SDL-derived input types so callers in the codebase keep
@@ -84,11 +93,12 @@ export interface CartLineState {
   attributes: readonly AttributeInput[];
 }
 
-/** Buyer-identity slot held on a `CartState`. `customer` always resolves to null in v0.1. */
+/** Buyer-identity slot held on a `CartState`. `customerId` is set by a valid access token. */
 export interface CartBuyerIdentityState {
   countryCode: string | null;
   email: string | null;
   phone: string | null;
+  customerId: number | null;
 }
 
 /** Mutable cart record held by the store. The `id` is immutable; the rest is rewritten in place. */
@@ -181,7 +191,7 @@ export class CartStore {
       lines: [],
       discountCodes: [],
       giftCardCodes: [],
-      buyerIdentity: { countryCode: null, email: null, phone: null },
+      buyerIdentity: { countryCode: null, email: null, phone: null, customerId: null },
       note: '',
       attributes: [],
     };
@@ -212,6 +222,19 @@ export class CartStore {
   /** Look up a cart by id. Returns `undefined` for unknown ids. */
   get(id: string): CartState | undefined {
     return this.carts.get(id);
+  }
+
+  /** Every cart in creation order. */
+  list(): readonly CartState[] {
+    return [...this.carts.values()];
+  }
+
+  /** Forget a cart (e.g. after checkout). Unknown ids are ignored. */
+  delete(id: string): void {
+    if (this.carts.delete(id)) {
+      this.lineCounters.delete(id);
+      this.persist();
+    }
   }
 
   /**
@@ -322,13 +345,26 @@ export class CartStore {
    * Merge a buyer-identity update into the cart. Fields explicitly set to
    * `null` in the input clear the corresponding stored value; omitted /
    * `undefined` fields are left untouched (matches the Storefront API's
-   * partial-update semantics). `customerAccessToken` is accepted but ignored
-   * — v0.1 has no real customer auth.
+   * partial-update semantics). `customerAccessToken` is resolved by the
+   * resolver, which then calls `setCustomer`.
    */
   setBuyerIdentity(cart: CartState, identity: CartBuyerIdentityInput): void {
     if (identity.countryCode !== undefined) cart.buyerIdentity.countryCode = identity.countryCode;
     if (identity.email !== undefined) cart.buyerIdentity.email = identity.email;
     if (identity.phone !== undefined) cart.buyerIdentity.phone = identity.phone;
+    this.persist();
+  }
+
+  /**
+   * Associate the cart with a customer (or detach it with `null`). The
+   * buyer email follows the customer, as it does on Shopify.
+   */
+  setCustomer(
+    cart: CartState,
+    customer: { readonly id: number; readonly email: string } | null,
+  ): void {
+    cart.buyerIdentity.customerId = customer === null ? null : customer.id;
+    if (customer !== null) cart.buyerIdentity.email = customer.email;
     this.persist();
   }
 
@@ -353,6 +389,12 @@ export class CartStore {
     this.carts.clear();
     this.lineCounters.clear();
     this.cartCounter = 0;
+  }
+
+  /** `clear()` that also empties the persistence file, for episode resets. */
+  purge(): void {
+    this.clear();
+    this.persist();
   }
 
   private nextLineId(cartId: string): string {
@@ -552,7 +594,20 @@ function parseBuyerIdentity(
     ),
     email: parseStringOrNull(filePath, `carts.${cartId}.buyerIdentity.email`, obj.email),
     phone: parseStringOrNull(filePath, `carts.${cartId}.buyerIdentity.phone`, obj.phone),
+    customerId: parseIntegerOrNull(
+      filePath,
+      `carts.${cartId}.buyerIdentity.customerId`,
+      obj.customerId ?? null,
+    ),
   };
+}
+
+function parseIntegerOrNull(filePath: string, ctx: string, raw: unknown): number | null {
+  if (raw === null) return null;
+  if (typeof raw !== 'number' || !Number.isInteger(raw)) {
+    throw new InvalidCartStoreFileError(filePath, `${ctx} must be an integer or null`);
+  }
+  return raw;
 }
 
 function parseStringOrNull(filePath: string, ctx: string, raw: unknown): string | null {
@@ -602,7 +657,8 @@ export interface CartLineConnectionNode {
 
 export interface CartBuyerIdentityNode {
   readonly countryCode: string | null;
-  readonly customer: null;
+  /** Resolved to a `Customer` by the `CartBuyerIdentity.customer` field resolver. */
+  readonly customerId: number | null;
   readonly email: string | null;
   readonly phone: string | null;
 }
@@ -758,6 +814,24 @@ export const cartResolvers = {
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
       if (state === undefined) return cartNotFoundPayload();
+      const token = args.buyerIdentity.customerAccessToken;
+      if (token !== undefined && token !== null) {
+        const customer = ctx.state.resolveSession(token);
+        if (customer === undefined) {
+          return {
+            cart: materializeCart(state, ctx),
+            userErrors: [
+              {
+                code: 'INVALID',
+                field: ['buyerIdentity', 'customerAccessToken'],
+                message: 'Customer access token is invalid or expired',
+              },
+            ],
+            warnings: [],
+          };
+        }
+        ctx.carts.setCustomer(state, customer);
+      }
       ctx.carts.setBuyerIdentity(state, args.buyerIdentity);
       return successPayload(state, ctx);
     },
@@ -827,6 +901,18 @@ export const cartResolvers = {
         nodes: slice,
         edges: slice.map((node) => ({ node })),
       };
+    },
+  },
+
+  CartBuyerIdentity: {
+    customer: (
+      parent: CartBuyerIdentityNode,
+      _args: unknown,
+      ctx: ResolverContext,
+    ): CustomerNode | null => {
+      if (parent.customerId === null) return null;
+      const customer = ctx.state.getCustomer(parent.customerId);
+      return customer === undefined ? null : buildCustomerNode(customer);
     },
   },
 
@@ -940,10 +1026,13 @@ function buildCartNode(
   const lineNodes = materializeLines(state, data, baseUrl, imageUrlMode);
   const totalQuantity = lineNodes.reduce((sum, line) => sum + line.quantity, 0);
   const subtotalCents = lineNodes.reduce(
-    (sum, line) => sum + parsePriceCents(line.merchandise.price.amount) * line.quantity,
+    (sum, line) => sum + toCents(line.merchandise.price.amount) * line.quantity,
     0,
   );
-  const subtotal = buildMoneyV2(centsToAmount(subtotalCents), data.store.currency_code);
+  const currency = data.store.currency_code;
+  const subtotal = buildMoneyV2(fromCents(subtotalCents), currency);
+  // Tax is only "calculated" (non-null) when the dataset configures a rate.
+  const tax = data.commerce.tax_rate > 0 ? taxCents(subtotalCents, data.commerce) : null;
   return {
     id: state.id,
     checkoutUrl: '#',
@@ -951,8 +1040,8 @@ function buildCartNode(
     updatedAt: new Date().toISOString(),
     cost: {
       subtotalAmount: subtotal,
-      totalAmount: subtotal,
-      totalTaxAmount: null,
+      totalAmount: tax === null ? subtotal : buildMoneyV2(fromCents(subtotalCents + tax), currency),
+      totalTaxAmount: tax === null ? null : buildMoneyV2(fromCents(tax), currency),
       totalDutyAmount: null,
     },
     attributes: state.attributes.map((a) => ({ key: a.key, value: a.value })),
@@ -960,7 +1049,7 @@ function buildCartNode(
     appliedGiftCards: state.giftCardCodes.map(buildAppliedGiftCardNode),
     buyerIdentity: {
       countryCode: state.buyerIdentity.countryCode,
-      customer: null,
+      customerId: state.buyerIdentity.customerId,
       email: state.buyerIdentity.email,
       phone: state.buyerIdentity.phone,
     },
@@ -1030,8 +1119,8 @@ function buildCartLineCost(
   quantity: number,
   data: SandboxShopData,
 ): CartLineCostNode {
-  const lineTotalCents = parsePriceCents(price.amount) * quantity;
-  const totalAmount = buildMoneyV2(centsToAmount(lineTotalCents), data.store.currency_code);
+  const lineTotalCents = toCents(price.amount) * quantity;
+  const totalAmount = buildMoneyV2(fromCents(lineTotalCents), data.store.currency_code);
   return {
     amountPerQuantity: price,
     compareAtAmountPerQuantity:
@@ -1041,15 +1130,4 @@ function buildCartLineCost(
     totalAmount,
     subtotalAmount: totalAmount,
   };
-}
-
-/** Parse a fixed-decimal money string (e.g. "12.99") into integer cents. */
-function parsePriceCents(amount: string): number {
-  const value = Number.parseFloat(amount);
-  if (!Number.isFinite(value)) return 0;
-  return Math.round(value * 100);
-}
-
-function centsToAmount(cents: number): string {
-  return (cents / 100).toFixed(2);
 }

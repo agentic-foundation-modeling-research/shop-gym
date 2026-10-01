@@ -12,9 +12,15 @@ Implemented as a TypeScript ESM package. The server boots against a
 SandboxShop dataset directory, serves dataset images, and answers canonical
 Storefront API queries across shop metadata, menus, products, variants,
 collections, content, search, predictive search, localization, product
-recommendations, metafields, and cart state.
+recommendations, metafields, cart state, customer accounts, checkout, and
+orders.
 
-The current GraphQL contract is the SDL in `src/schema.ts`. It includes:
+The package doubles as the **backend template** for generated shops; see
+`AGENTS.md` in this directory for how it is organised and which files a
+generated shop may change.
+
+The current GraphQL contract is the per-domain SDL under `src/schema/`
+(merged by `src/schema/index.ts`). It includes:
 
 | Area | Surface |
 | --- | --- |
@@ -25,12 +31,18 @@ The current GraphQL contract is the SDL in `src/schema.ts`. It includes:
 | Content | `page(handle)`, `blog(handle)`, `blogs(...)`, `Blog.articles(...)`, `Blog.articleByHandle(...)` |
 | Search | `search(...)`, `predictiveSearch(...)`, `productRecommendations(productId)` |
 | Localization | `localization`, plus validation for literal `@inContext(country:, language:)` values |
-| Cart | `cart(id)` and cart mutations for create, line add/update/remove, discount codes, buyer identity, note, attributes, and gift-card codes |
+| Cart | `cart(id)` and cart mutations for create, line add/update/remove, discount codes, buyer identity (including `customerAccessToken`), note, attributes, and gift-card codes |
+| Customer | `customerCreate`, `customerAccessTokenCreate`, `customerAccessTokenDelete`, `customer(customerAccessToken)` with profile, addresses, and `orders` |
+| Checkout | `commerceSettings` and `checkoutComplete(cartId, input)` (sandbox-only) converting a cart into an order |
+| Order | `order(id)` (sandbox-only) plus `Order`, `OrderLineItem`, and `MailingAddress` types |
 
-The server is deterministic and read-mostly. Cart state is mutable per server
-instance, in-memory by default, and optionally persisted with `--cart-store`.
-There is no Admin API, checkout/payment, customer account auth, order surface,
-webhook support, or Storefront access-token validation.
+Fields and operations with no Storefront API equivalent carry the `@sandbox`
+directive in the SDL.
+
+Read paths are deterministic for a given dataset. Mutable state (carts,
+customers, sessions, orders, inventory) lives in a per-episode `ShopState`;
+see "Episodes" below. There is no Admin API, real payment processing, webhook
+support, or Storefront access-token validation.
 
 ## Install (dev)
 
@@ -59,7 +71,69 @@ The CLI prints loaded counts on startup and binds:
 
 `/images/*` serves PNG, JPG, JPEG, WEBP, and SVG files with immutable cache
 headers and strips query strings before filesystem lookup. GraphQL CORS allows
-any origin for `POST` / `OPTIONS` requests with the `Content-Type` header.
+any origin for `POST` / `OPTIONS` requests with the `Content-Type` and
+`x-shopgym-episode` headers.
+
+### Episodes
+
+Every request belongs to an **episode**: an isolated branch of mutable shop
+state (carts, customer accounts, access tokens, orders, inventory) forked
+lazily from the loaded dataset. The `x-shopgym-episode: <id>` header selects
+the episode; requests without it use `default`. Ids are 1-64 characters of
+`[A-Za-z0-9._-]` and must not start with punctuation; anything else is
+rejected with HTTP 400.
+
+Episodes are deterministic: ids come from sequential counters (`cart-1`,
+`sandbox-token-1`, order `#1002`, ...) and timestamps from a clock that starts
+at `2026-01-01T00:00:00Z` and advances one second per mutation, so the same
+action sequence always yields the same state.
+
+The control API manages episodes outside GraphQL:
+
+| Route | Behavior |
+| --- | --- |
+| `GET /__shopgym/episodes/<id>/state` | `200` with the episode's `StateSnapshot` (creates it if needed). |
+| `POST /__shopgym/episodes/<id>/reset` | Re-seed the episode from the dataset; `200` with the fresh snapshot. |
+| `DELETE /__shopgym/episodes/<id>` | Forget the episode; `204`, or `404` if it was never materialised. |
+
+`StateSnapshot` (`stateSnapshotSchema`, exported) is the grader-facing view:
+`{ episodeId, now, customers, sessions, carts, orders, inventory }`, where
+`inventory` lists only variants whose quantity differs from the dataset.
+
+### Checkout flow
+
+```graphql
+mutation {
+  customerAccessTokenCreate(input: { email: "jane.doe@example.com", password: "password123" }) {
+    customerAccessToken { accessToken }
+  }
+}
+mutation {
+  cartBuyerIdentityUpdate(cartId: "gid://shopify/Cart/cart-1", buyerIdentity: { customerAccessToken: "sandbox-token-1" }) {
+    cart { buyerIdentity { customer { displayName } } }
+  }
+}
+mutation {
+  checkoutComplete(
+    cartId: "gid://shopify/Cart/cart-1"
+    input: {
+      shippingAddress: { firstName: "Jane", lastName: "Doe", address1: "123 Bank Street", city: "Ottawa", country: "Canada", zip: "K2P 1X3" }
+      shippingMethodHandle: "standard"
+      paymentMethodHandle: "card"
+    }
+  ) {
+    order { name totalPrice { amount currencyCode } }
+    userErrors { code field message }
+  }
+}
+```
+
+`checkoutComplete` validates the cart, methods, address, and stock, then
+creates a `PAID` / `UNFULFILLED` order, decrements episode inventory, and
+deletes the cart. Guest checkout works with `input.email` or a cart
+`buyerIdentity.email`. Totals follow `commerce.json`: flat `tax_rate` on the
+subtotal, the chosen shipping method's price, waived at
+`free_shipping_threshold`.
 
 ### Example query
 
@@ -79,7 +153,8 @@ exercised end-to-end in `src/storefront_api.e2e.test.ts`.
 
 By default the cart store lives in-memory only. Restarting the server
 resets every cart to "not found". Pass `--cart-store <path>` to back the
-store with a JSON snapshot file:
+`default` episode's cart store with a JSON snapshot file (other episodes are
+always in-memory):
 
 ```bash
 pnpm --filter @shop-gym/shop-backend shop-backend \
@@ -116,6 +191,13 @@ Optional files:
 | `blogs.json` | `[]` | Blogs, articles, article search results, and predictive search articles |
 | `metafields.json` | `{ shop: [], products: {}, collections: {} }` | Shop, product, and collection metafield resolvers |
 | `inventory.json` | `{}` | Per-variant `quantityAvailable` and inventory-backed availability |
+| `customers.json` | `[]` | Seeded customer accounts (plain-text sandbox passwords) with addresses |
+| `orders.json` | `[]` | Seeded order history; new orders are numbered after the highest seed (minimum `#1001`) |
+| `commerce.json` | `DEFAULT_COMMERCE` | `tax_rate`, `free_shipping_threshold`, `shipping_methods`, `payment_methods` |
+
+`DEFAULT_COMMERCE` is no tax, no free-shipping threshold, one free `standard`
+shipping method, and one `card` payment method. A partial `commerce.json`
+fills the omitted keys with `0` / `null` / `[]`, not with these defaults.
 
 Image assets may live under `<data-dir>/images/` and are served at
 `/images/<path>`. Product image `src` values can be absolute URLs or relative
@@ -143,9 +225,10 @@ await server.listen();
 console.log(server.url); // http://127.0.0.1:4000/graphql
 ```
 
-Public exports include `loadShopData`, `createSandboxSchema`,
-`createSandboxServer`, `SandboxShopData`, `ServerOptions`, `SandboxServer`, and
-the primary dataset entity types used by the loader.
+Public exports include `loadShopData`, `createSandboxSchema`, `typeDefs`,
+`createSandboxServer`, `ShopState`, `EpisodeStore`, `exportSnapshot`,
+`stateSnapshotSchema`, `EPISODE_HEADER`, `DEFAULT_EPISODE_ID`,
+`DEFAULT_COMMERCE`, and the dataset / state record types.
 
 ## Build & test
 
@@ -153,6 +236,10 @@ the primary dataset entity types used by the loader.
 pnpm --filter @shop-gym/shop-backend build
 pnpm --filter @shop-gym/shop-backend test
 ```
+
+`tests/contract/` pins read-only catalog, search, and cart behaviour against
+the bundled fixture so generated storefronts keep working as the template
+evolves.
 
 `src/data/schema.parity.test.ts` additionally loads every shop found under
 `SHOPGYM_SHOPS_DIR` (default `<repo>/outputs/shops`) to confirm generated

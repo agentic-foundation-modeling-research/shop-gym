@@ -5,7 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { InvalidDatasetError, MissingDatasetFileError, loadShopData } from './loader.js';
+import {
+  DEFAULT_COMMERCE,
+  InvalidDatasetError,
+  MissingDatasetFileError,
+  loadShopData,
+} from './loader.js';
 
 const FIXTURE_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -152,6 +157,58 @@ describe('loadShopData', () => {
     const data = loadShopData(tmpDir);
     expect(data.blogs).toEqual([]);
     expect(data.metafields).toEqual({ shop: [], products: {}, collections: {} });
+  });
+
+  it('loads customers, orders, and commerce from the fixture', () => {
+    const data = loadShopData(FIXTURE_DIR);
+    expect(data.customers.map((c) => c.email)).toEqual(['jane.doe@example.com']);
+    expect(data.orders.map((o) => o.id)).toEqual([1001]);
+    expect(data.commerce.free_shipping_threshold).toBe('75.00');
+    expect(data.commerce.shipping_methods.map((m) => m.handle)).toEqual(['standard', 'express']);
+  });
+
+  it('defaults customers, orders, and commerce when their files are absent', () => {
+    tmpDir = copyFixture();
+    fs.rmSync(path.join(tmpDir, 'customers.json'));
+    fs.rmSync(path.join(tmpDir, 'orders.json'));
+    fs.rmSync(path.join(tmpDir, 'commerce.json'));
+
+    const data = loadShopData(tmpDir);
+    expect(data.customers).toEqual([]);
+    expect(data.orders).toEqual([]);
+    expect(data.commerce).toBe(DEFAULT_COMMERCE);
+  });
+
+  it('fills commerce.json defaults for omitted keys', () => {
+    tmpDir = copyFixture();
+    fs.writeFileSync(path.join(tmpDir, 'commerce.json'), JSON.stringify({ tax_rate: 0.13 }));
+
+    const data = loadShopData(tmpDir);
+    expect(data.commerce).toEqual({
+      tax_rate: 0.13,
+      free_shipping_threshold: null,
+      shipping_methods: [],
+      payment_methods: [],
+    });
+  });
+
+  it('throws InvalidDatasetError when an order line quantity is not a positive integer', () => {
+    tmpDir = copyFixture();
+    const orders = JSON.parse(fs.readFileSync(path.join(tmpDir, 'orders.json'), 'utf8')) as {
+      line_items: { quantity: number }[];
+    }[];
+    const line = orders[0]?.line_items[0];
+    if (line === undefined) throw new Error('fixture order has no line items');
+    line.quantity = 0;
+    fs.writeFileSync(path.join(tmpDir, 'orders.json'), JSON.stringify(orders));
+
+    try {
+      loadShopData(tmpDir);
+      expect.fail('expected loadShopData to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(InvalidDatasetError);
+      expect((err as InvalidDatasetError).path).toBe('$[0].line_items[0].quantity');
+    }
   });
 
   it('defaults inventory to an empty file when inventory.json is absent', () => {

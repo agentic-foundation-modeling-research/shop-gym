@@ -3,39 +3,46 @@
  *
  * `createSandboxServer({ data, dataDir, port?, host?, baseUrl?, imageUrlMode? })`
  * wires the SDL + resolvers built by `createSandboxSchema()` against a
- * freshly constructed `CartStore` (spec §5.5) and serves the surface defined
- * in spec §5.4 over `node:http`:
+ * freshly constructed `EpisodeStore` of per-episode `ShopState` branches and
+ * serves the surface defined in spec §5.4 over `node:http`:
  *
  *   - `POST /graphql` — yoga-mounted GraphQL endpoint.
  *   - `POST /api/<version>/graphql.json` — rewritten to `/graphql` for
  *     Storefront-API-versioned clients.
  *   - `GET /images/<path>` — static images under `<dataDir>/images/`.
  *   - `GET /health` — `{ status: "ok", store }` JSON.
+ *   - `/__shopgym/episodes/<id>[/reset|/state]` — episode control API.
+ *
+ * Every GraphQL request is routed to the episode named by its
+ * `x-shopgym-episode` header (`default` when absent); a malformed header is
+ * rejected with HTTP 400 before reaching GraphQL.
  *
  * CORS follows spec §5.4: `Access-Control-Allow-Origin: *`, methods
- * `POST, OPTIONS`, headers `Content-Type`.
+ * `POST, OPTIONS`, headers `Content-Type, x-shopgym-episode`.
  *
- * Each call allocates its own `CartStore`, so concurrent server instances —
+ * Each call allocates its own `EpisodeStore`, so concurrent server instances —
  * including parallel test suites — never share cart ids. `close()` shuts
- * the listener down and clears the store, matching the spec's "cleared on
+ * the listener down and drops every episode, matching the spec's "cleared on
  * `server.close()`" contract.
  */
 
 import { type Server, createServer as createHttpServer } from 'node:http';
 import { type CORSOptions, createYoga } from 'graphql-yoga';
 import type { SandboxShopData } from './data/types.js';
-import { buildHttpHandler } from './http.js';
+import { type HttpRoute, buildHttpHandler } from './http.js';
 import { createInContextValidationPlugin } from './in-context.js';
 import type { ImageUrlMode } from './resolvers/builders.js';
-import { CartStore } from './resolvers/cart.js';
 import type { ResolverContext } from './resolvers/index.js';
-import { createSandboxSchema } from './schema.js';
+import { createControlApi } from './sandbox/control_api.js';
+import { DEFAULT_EPISODE_ID, EPISODE_HEADER, episodeIdFromHeaders } from './sandbox/episode.js';
+import { createSandboxSchema } from './schema/index.js';
+import { EpisodeStore } from './state/episodes.js';
 
-/** CORS configuration mandated by spec §5.4. */
+/** CORS configuration mandated by spec §5.4, plus the episode header. */
 const CORS: CORSOptions = {
   origin: '*',
   methods: ['POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
+  allowedHeaders: ['Content-Type', EPISODE_HEADER],
 };
 
 export interface ServerOptions {
@@ -65,10 +72,11 @@ export interface ServerOptions {
    */
   readonly imageUrlMode?: ImageUrlMode;
   /**
-   * File path to back the cart store (T7.4). When set, the store rehydrates
-   * from the file on startup and writes the full snapshot back after every
-   * cart mutation, so cart state survives across server restarts pointed at
-   * the same path. Omit for the default in-memory-only store.
+   * File path to back the `default` episode's cart store (T7.4). When set,
+   * the store rehydrates from the file on startup and writes the full
+   * snapshot back after every cart mutation, so cart state survives across
+   * server restarts pointed at the same path. Other episodes are always
+   * in-memory only. Omit for the default in-memory-only store.
    */
   readonly cartStorePath?: string;
 }
@@ -77,7 +85,7 @@ export interface ServerOptions {
 export interface SandboxServer {
   /** Start the listener. Resolves once the socket is bound. */
   listen(): Promise<void>;
-  /** Stop the listener and clear the cart store. Idempotent for a closed server. */
+  /** Stop the listener and drop every episode. Idempotent for a closed server. */
   close(): Promise<void>;
   /** GraphQL endpoint URL, available after `listen()` resolves. */
   readonly url: string;
@@ -86,16 +94,13 @@ export interface SandboxServer {
 /**
  * Build a SandboxShop server bound to a single dataset snapshot.
  *
- * Each invocation owns a fresh `CartStore`; cart ids minted by one server are
- * unknown to any other. `close()` clears that store so subsequent reads
- * return `null` (spec §5.3).
+ * Each invocation owns a fresh `EpisodeStore`; cart ids minted by one server
+ * are unknown to any other. `close()` drops every episode so subsequent
+ * reads return `null` (spec §5.3).
  */
 export function createSandboxServer(options: ServerOptions): SandboxServer {
   const { data, dataDir, port = 4000, host = '127.0.0.1', cartStorePath } = options;
-  const carts =
-    cartStorePath === undefined
-      ? new CartStore()
-      : new CartStore({ persistencePath: cartStorePath });
+  const episodes = new EpisodeStore(data, cartStorePath === undefined ? {} : { cartStorePath });
   const schema = createSandboxSchema();
 
   let resolvedUrl = formatBaseUrl(host, port);
@@ -106,18 +111,39 @@ export function createSandboxServer(options: ServerOptions): SandboxServer {
     graphqlEndpoint: '/graphql',
     cors: CORS,
     plugins: [createInContextValidationPlugin(data)],
-    context: (): ResolverContext => ({
-      data,
-      carts,
-      baseUrl: baseUrlOverride ?? resolvedUrl,
-      imageUrlMode: options.imageUrlMode ?? 'same-origin',
-    }),
+    context: ({ request }): ResolverContext => {
+      // The HTTP layer already rejected malformed ids; fall back defensively.
+      const state = episodes.get(episodeIdFromHeaders(request.headers) ?? DEFAULT_EPISODE_ID);
+      return {
+        data: state.data,
+        state,
+        carts: state.carts,
+        baseUrl: baseUrlOverride ?? resolvedUrl,
+        imageUrlMode: options.imageUrlMode ?? 'same-origin',
+      };
+    },
   });
+
+  const control = createControlApi(episodes);
+  const route: HttpRoute = (req, res) => {
+    if (control(req, res)) return true;
+    if (episodeIdFromHeaders(req.headers) === null) {
+      const body = JSON.stringify({ error: `invalid ${EPISODE_HEADER} header` });
+      res.writeHead(400, {
+        'content-type': 'application/json; charset=utf-8',
+        'content-length': Buffer.byteLength(body),
+      });
+      res.end(body);
+      return true;
+    }
+    return false;
+  };
 
   const handler = buildHttpHandler({
     yoga,
     dataDir,
     storeName: data.store.name,
+    route,
   });
 
   const http: Server = createHttpServer(handler);
@@ -143,7 +169,7 @@ export function createSandboxServer(options: ServerOptions): SandboxServer {
         // The persistence file is the source of truth across processes; a
         // fresh `CartStore` reloads it on construction (T7.4).
         if (cartStorePath === undefined) {
-          carts.clear();
+          episodes.clear();
         }
         if (!http.listening) {
           resolve();

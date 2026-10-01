@@ -45,6 +45,7 @@ for shipped behavior.
 | Spec Path | Code Path | Description |
 | --------- | --------- | ----------- |
 | [shop_backend/storefront_api.md](shop_backend/storefront_api.md) | `packages/shop_backend` | Local graphql-yoga server resolving against a SandboxShop dataset (synthesized JSON). Read-mostly Storefront-API surface (Shop, Product, Collection, Menu, Page, Blog, Search, PredictiveSearch, Localization, Metafields, Inventory) plus cart lifecycle mutations, optional file-backed cart persistence, `@inContext` validation, image serving, and `/health`. **Status:** Implemented; v0.2 additions are in code. |
+| [shop_backend/stateful_commerce.md](shop_backend/stateful_commerce.md) | `packages/shop_backend/src/{state,sandbox,schema,resolvers}` | Episode-scoped mutable state over the immutable dataset (`ShopState` with carts, customers, sessions, orders, live inventory, deterministic clock and ids), selected per request by `x-shopgym-episode`; per-domain SDL with `customer` / `checkout` / `order` domains and the `@sandbox` directive; optional `customers.json` / `orders.json` / `commerce.json`; grader-facing `StateSnapshot` and `/__shopgym/episodes/<id>` control API; standalone backend template with in-package `AGENTS.md` and read-only contract suite. **Status:** Implemented (v1.1 M4). |
 
 
 ## ShopGuru
