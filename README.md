@@ -204,45 +204,45 @@ pnpm -r typecheck                # tsc --noEmit for all TS packages
 pnpm --filter @shop-gym/shop-backend dev   # run the GraphQL server
 pnpm lint                        # biome lint for the TS packages
 pnpm format                      # biome format
+
+# shopgym CLI (packages/cli, built by `pnpm -r build`)
+node packages/cli/dist/main.js doctor         # check Node, pnpm, Chromium, templates, credentials
+node packages/cli/dist/main.js explore <url>  # storefront -> shop manual
+node packages/cli/dist/main.js gen <manual_dir> --name <shop>   # shop manual -> published shop
+pnpm shop:host start <shop> [port]            # alias for `shopgym host start`
+node packages/cli/dist/main.js trace <iter_dir>                 # render a harness trajectory
 ```
 
 ## Hosting a generated shop
 
-`pnpm shop:host` (alias for [`scripts/run-shop.sh`](scripts/run-shop.sh)) brings
-up a generated shop end-to-end: the `shop_backend` GraphQL server pointed at
-`outputs/shops/<name>/data/` plus the selected storefront artifact wired to it.
-Both processes run detached; logs live under `.run/shops/`.
+`pnpm shop:host` (alias for `shopgym host`, see
+[`packages/cli/README.md`](packages/cli/README.md)) brings up a published shop
+end-to-end: the `shop_backend` GraphQL server pointed at
+`outputs/shops/<name>/data/` plus the shop's storefront wired to it. Both
+processes run detached; pid, port and log bookkeeping lives under
+`.run/shops/<name>/`.
 
-The storefront runs on `<port>`, `shop_backend` on `<port>+1000`. The port arg
-is optional — if omitted, a free port is auto-picked from `4100..4199` (api:
-`5100..5199`). The script also refuses to start if either port is already bound
-by another process.
-
-Generated local product images are exposed as same-origin `/images/...` URLs in
-new storefront markup. The storefront server proxies those requests to
-`shop_backend`, which serves the files from `outputs/shops/<name>/data/images/`.
-For older Hydrogen artifacts with the legacy static `/images` route,
-`shop:host` wires that route to the generated dataset images. For storefront
-artifacts with no `/images` route at all, `shop:host` falls back to
-backend-origin image URLs.
+`<shop>` is a name under `outputs/shops/` or a path to a published shop
+directory (one containing `shop.json`). The storefront runs on `[port]` (a free
+port when omitted) and `shop_backend` on another free port. `start` refuses a
+port that is already bound and a shop whose `shop.json` does not record
+`finalStatus: completed` (pass `--force` to host it anyway). The first start
+runs `pnpm install --ignore-workspace` and `pnpm build` in `storefront/` and
+`backend/`; later starts reuse that output until the shop is republished.
 
 ```bash
 pnpm shop:host start mock_shop             # auto-pick a free port
-pnpm shop:host start mock_shop 8000        # or pick explicitly
-# → shop_backend on http://localhost:9000, storefront on http://localhost:8000
+pnpm shop:host start mock_shop 8000        # or pick the storefront port
+# → mock_shop storefront=http://127.0.0.1:8000 backend=http://127.0.0.1:<port>
 
-pnpm shop:host list -a                      # all shops, running + available
-pnpm shop:host stop mock_shop           # or `stop all`
-pnpm shop:host restart mock_shop
+pnpm shop:host list                        # running shops: status, URLs, pids
+pnpm shop:host list -a                     # plus every published shop under outputs/shops/
+pnpm shop:host stop mock_shop              # or `stop all`
+pnpm shop:host restart mock_shop           # same storefront port
 ```
 
-By default the script reads `outputs/shops/<name>/.shop_gen/template.json` and
-hosts the matching build-loop artifact at
-`outputs/shops/<name>/runs/build/artifact/<app-dir>/`, where dependencies and
-the compiled production bundle live. Older Hydrogen shops without metadata
-fall back to `artifact/hydrogen/`. Set `STOREFRONT_DIR=<path>` only when you
-intentionally want to host a different hydrated storefront tree; `HYDROGEN_DIR`
-is still accepted for older Hydrogen-only workflows.
+Server output goes to `.run/shops/<name>/{backend,storefront}.log`; install and
+build output to `.run/shops/<name>/build.log`.
 
 ## Repository layout
 
