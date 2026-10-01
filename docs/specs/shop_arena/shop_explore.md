@@ -87,6 +87,26 @@ exercises its public surface end-to-end.
   merging, stats, prefetch, synthesis, CLI wiring, and the harness
   integration path. Live runtime smoke and real-LLM synthesis remain
   follow-up work.
+- v1.1 TypeScript port (2026-09-30): `packages/shop-arena/src/explore/`
+  exposes `exploreStorefront(options)` and re-implements the pipeline on
+  `@shop-gym/core` `runPipeline` (steps `prefetch`, `explore`, `merge`,
+  `synthesize`; `from` replaces `--prefetch-only` / `--synthesize-only`),
+  `@shop-gym/harness` `runPlanExecLoop` with the pi runtime, and
+  `@shop-gym/browser` tools plus run-dir-scoped `read_file` /
+  `write_file` / `list_dir` tools (the pi runtime exposes only the
+  request's tools). Changes from v0.1: `capabilities.json` gains
+  `account` and `checkout` blocks (schema version `0.2`) with matching
+  canonical tasks `checkout_flow` and `account_pages`; a deterministic
+  `anonymization` verifier fails an executor iteration whose
+  `parts/*.md` mention the store domain, brand tokens from the prefetched
+  homepage, absolute store URLs, or email addresses; the manual is one
+  `LlmClient.complete` call (a response under 200 characters fails the
+  step instead of falling back to the parts concatenation); screenshots
+  are kept by the runtime under the iteration directory rather than
+  under `evidence/`. Published files (`manual.md`, `capabilities.json`,
+  `stats.json`, `manifest.json`) sit at `<run_id>/`; the harness
+  workspace lives at `<run_id>/run/` and the prefetch seed at
+  `<run_id>/seed/prefetch/`. The CLI binary is scheduled for M10.
 
 ---
 
