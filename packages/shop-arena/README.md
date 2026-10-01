@@ -157,11 +157,13 @@ backend copy as a sidecar, and drives `runPlanExecLoop` from
 | seeding | `src/gen/build/seed.ts` | copies each template's `git ls-files` output into `artifact/{storefront,backend}/`, writes `template.json` (commit + content hash), runs `pnpm install --ignore-workspace` |
 | sidecar | `src/gen/build/sidecar.ts` | `node --import tsx src/cli.ts artifact/data <port>` in `artifact/backend/`, `/health` wait, `restartIfChanged()` after every assistant turn (hash of `src/` + `package.json`), logs in `<runDir>/sidecar.log` |
 | prompts | `src/gen/build/prompts/*.md` | `agents.md`, `planner.md`, `execute.md`; `{{backend_url}}` and `{{gen_backend_mode}}` are substituted, `{{verifier_feedback}}` is left for the harness |
+| agent tools | `src/gen/build/agent_tools.ts` | added to the caller's `tools`: `run_command` (a shell line via `sh -c` inside the run dir, exit code plus head-and-tail of the output) and `screenshot_page` (rebuilds the storefront if needed and returns the judge's desktop and mobile captures of one route) |
 | owned files | `src/gen/build/owned_files.ts` | glob table per task id; `gen_backend` / `backend_*` tasks own `backend/src/{schema,resolvers,state}/**` and co-located tests, nobody may touch `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**` |
 | verifiers | `src/gen/build/verifiers/` | `owned_files` (all tasks), `backend_typecheck`, `backend_test`, `sandbox_contract` (backend tasks), `data_in_use` (all tasks: every GraphQL document under `storefront/app` validated against the sidecar's introspected schema) |
 
 ```ts
 import { build, STOREFRONT_TEMPLATE_DIR } from '@shop-gym/shop-arena';
+import { fileTools } from '@shop-gym/shop-arena/explore';
 
 const result = await build.runBuildLoop({
   runDir: 'outputs/shops/demo/runs/build',
@@ -171,7 +173,7 @@ const result = await build.runBuildLoop({
   genBackend: true, // adds the gen_backend task and the backend verifiers
   runtime, // any AgentRuntime, e.g. the pi adapter
   model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-  tools: ['read', 'write', 'edit', 'bash'],
+  tools: fileTools(), // read_file / write_file / list_dir; run_command and screenshot_page are added
   maxIters: 12,
 });
 console.log(result.finalStatus, result.build.backendUrl);
@@ -205,7 +207,7 @@ manual directory and `{ llm, model }` for the judge) the order becomes
 | `routes_200` | storefront tasks | the task's page-bucket routes plus static routes return 200; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` returns 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
 | `nav_coverage` | `gen_navigation`, `gen_theme`, `visual_fix` | every `navigation.json` target returns 200 and is linked from the rendered header or footer |
 | `cart_conformance` | `gen_cart_search`, `gen_product`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order |
-| `visual_judge` | every page task | desktop and mobile screenshots per route through `BrowserSession`, one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
+| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` routes; one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
 
 `runBuildLoop` always passes `storefront` (its `judge` option supplies
 the visual judge; `generateShop` sets it to the synthesis model) and

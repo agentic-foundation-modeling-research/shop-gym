@@ -18,6 +18,8 @@ import * as path from 'node:path';
 import {
   type AgentRunRequest,
   type AgentRuntime,
+  type ImageAttachment,
+  type PromptContent,
   type Trajectory,
   sha256,
   writeTrajectory,
@@ -45,8 +47,10 @@ import { TRAJECTORY_FILENAME, reconstruct, scanIterDirs } from './telemetry/reco
 import { type ResumeAttempt, readPriorRunSummary, writeRunSummary } from './telemetry/summary.js';
 import {
   FEEDBACK_FILENAME,
+  FEEDBACK_IMAGES_FILENAME,
   VERIFIERS_DIRNAME,
   dispatchVerifiers,
+  readFeedbackImages,
   renderFeedbackForPrompt,
 } from './verifiers/dispatch.js';
 import type { VerifierRun } from './verifiers/types.js';
@@ -55,6 +59,13 @@ import { Workspace } from './workspace.js';
 const HARNESS_CONTROL_HEADER = (taskId: string) =>
   `<<<harness-control>>>\nselected_task_id: ${taskId}\n<<<end>>>\n\n`;
 const VERIFIER_FEEDBACK_PLACEHOLDER = '{{verifier_feedback}}';
+/** Verifier images attached to one executor prompt, at most. */
+const MAX_FEEDBACK_IMAGES = 6;
+const IMAGE_MIME_TYPES: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+};
 const METADATA_FILENAME = 'metadata.json';
 const PROTOCOL_FILENAME = 'protocol.json';
 const PLAN_BEFORE_FILENAME = 'plan.before.md';
@@ -244,9 +255,10 @@ class LoopState {
     await this.workspace.snapshotPlan(planBefore);
 
     const feedback = await this.previousFeedback(n);
-    const prompt =
+    const text =
       HARNESS_CONTROL_HEADER(selected.id) +
-      this.config.prompts.execute.replaceAll(VERIFIER_FEEDBACK_PLACEHOLDER, feedback);
+      this.config.prompts.execute.replaceAll(VERIFIER_FEEDBACK_PLACEHOLDER, feedback.text);
+    const prompt = feedback.images.length === 0 ? text : { text, images: feedback.images };
     const outcome = await this.invokeRuntime(execDir, execId, prompt);
     if ('errorStatus' in outcome) {
       if (outcome.errorStatus !== 'timeout') {
@@ -331,20 +343,36 @@ class LoopState {
     await this.rewriteRunSummary();
   }
 
-  private async previousFeedback(n: number): Promise<string> {
-    if (n <= 1) {
-      return '';
+  /**
+   * The previous executor iteration's verifier feedback and the images that
+   * accompany it. Images are only loaded when the execute prompt renders the
+   * feedback placeholder, so a prompt without the slot sees neither.
+   */
+  private async previousFeedback(
+    n: number,
+  ): Promise<{ text: string; images: readonly ImageAttachment[] }> {
+    const none = { text: '', images: [] };
+    if (n <= 1 || !this.config.prompts.execute.includes(VERIFIER_FEEDBACK_PLACEHOLDER)) {
+      return none;
     }
-    const feedbackPath = path.join(
+    const checksDir = path.join(
       iterDirPath(this.workspace.itersDir, execIterId(n - 1)),
       'checks',
       VERIFIERS_DIRNAME,
-      FEEDBACK_FILENAME,
     );
-    return renderFeedbackForPrompt(feedbackPath, this.feedbackMaxChars);
+    const [text, imagePaths] = await Promise.all([
+      renderFeedbackForPrompt(path.join(checksDir, FEEDBACK_FILENAME), this.feedbackMaxChars),
+      readFeedbackImages(path.join(checksDir, FEEDBACK_IMAGES_FILENAME)),
+    ]);
+    const images = await Promise.all(imagePaths.slice(0, MAX_FEEDBACK_IMAGES).map(loadImage));
+    return { text, images };
   }
 
-  private async invokeRuntime(iterDir: string, iterId: string, prompt: string): Promise<Outcome> {
+  private async invokeRuntime(
+    iterDir: string,
+    iterId: string,
+    prompt: string | PromptContent,
+  ): Promise<Outcome> {
     const onEvent = this.config.onEvent;
     const request: AgentRunRequest = {
       cwd: this.workspace.runDir,
@@ -371,7 +399,8 @@ class LoopState {
     }
     // The harness knows which prompt it sent; recompute the digest so
     // telemetry does not depend on each runtime filling it in correctly.
-    return { trajectory: { ...trajectory, promptSha256: sha256(prompt) } };
+    const text = typeof prompt === 'string' ? prompt : prompt.text;
+    return { trajectory: { ...trajectory, promptSha256: sha256(text) } };
   }
 
   private async parsePlan(): Promise<TaskList> {
@@ -513,4 +542,13 @@ async function writeProtocolResult(iterDir: string, result: ProtocolCheckResult)
     path.join(checksDir, PROTOCOL_FILENAME),
     `${JSON.stringify(result, null, 2)}\n`,
   );
+}
+
+/** Read an image file as a base64 prompt attachment; the extension picks the MIME type. */
+async function loadImage(file: string): Promise<ImageAttachment> {
+  const mimeType = IMAGE_MIME_TYPES[path.extname(file).toLowerCase()];
+  if (mimeType === undefined) {
+    throw new Error(`verifier image ${file} is not a PNG or JPEG`);
+  }
+  return { data: (await fs.readFile(file)).toString('base64'), mimeType };
 }

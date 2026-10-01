@@ -16,9 +16,11 @@ conventions, verifier contract. Read it first. The backend sidecar serves
 If the block above is empty, this is a fresh attempt at your selected task.
 If it contains a verifier report, treat it as a hard error description: read
 it end to end, identify the failing verifier(s) by name, and fix the
-described issue **before** doing anything else. The harness re-runs the
-verifier set after this iteration; do not re-implement verifiers yourself.
-The harness owns retries; do not track retry counts in `plan.md`.
+described issue **before** doing anything else. When `visual_judge` failed,
+the screenshots of the failing pages are attached to this prompt; study
+them before editing. The harness re-runs the verifier set after this
+iteration; do not re-implement verifiers yourself. The harness owns
+retries; do not track retry counts in `plan.md`.
 
 Feedback shapes you should know how to react to:
 
@@ -33,6 +35,12 @@ Feedback shapes you should know how to react to:
   the sidecar schema. The body lists each offending operation with its file
   and the validation message. Fix the operation or (backend tasks only) add
   the missing schema surface.
+- `nav_coverage`: a `navigation.json` target is missing from the rendered
+  header or footer. Add the link where it belongs; do not rewrite the whole
+  component, which tends to drop other links and reopen `visual_judge`.
+- `visual_judge`: a page scored below the bar. Fix the listed issues in
+  order, then confirm with `screenshot_page` on the same route before you
+  mark the task done.
 
 ---
 
@@ -94,7 +102,16 @@ Rules:
 2. Talk to the sidecar through the template's GraphQL client. Reuse the
    template's queries for shape; add new operations when you need new
    fields. Only use fields the schema exposes.
-3. Type-check and build before you exit: `cd artifact/storefront && pnpm typecheck && pnpm build`.
+3. Make targeted edits. Keep the markup and links that already work; a
+   wholesale rewrite of a shared file such as `root.tsx` usually breaks
+   another verifier.
+4. Type-check and build before you exit: `run_command` with
+   `pnpm typecheck && pnpm build` and `cwd: artifact/storefront`.
+5. Look at what you built: `screenshot_page` on each route your task owns
+   (`/` for the homepage, `/collections/<handle>`, `/products/<handle>`,
+   `/cart`, `/search?q=<word>`, `/pages/<handle>`). The judge sees these
+   captures; fix clipped headers, empty media slots, overflowing tables and
+   unreflowed mobile layouts before you exit.
 
 ### 3b. `gen_backend` and `backend_*` tasks
 
@@ -110,8 +127,9 @@ Rules:
    `tests/contract/**`. The dataset contract and episode isolation are
    fixed; new state goes through `src/state/` keyed by episode.
 2. Add a focused co-located test for every new resolver.
-3. Run `cd artifact/backend && pnpm codegen && pnpm typecheck && pnpm test`
-   before you exit. The verifiers run the same commands.
+3. Run `pnpm codegen && pnpm typecheck && pnpm test` via `run_command` with
+   `cwd: artifact/backend` before you exit. The verifiers run the same
+   commands.
 4. Summarise the new schema surface (types, root fields) in your reply so the
    storefront tasks can rely on it.
 
@@ -126,12 +144,16 @@ responsive / spacing / typography pass. No new pages, sections or treatments.
 
 ### 3d. Mark `plan.md`
 
-Edit only your task's line. Choose one marker:
+Edit only your task's line and keep its shape
+`- [<marker>] <task_id> — <brief> [priority: N]`. Choose one marker:
 
 - `[x]`: your work is complete and your self-check passes.
-- `[!] needs cross-task fix in <slice>`: the issue cannot be solved inside
-  your owned slice.
-- `[!] <reason>`: blocked for another reason stated in one line.
+- `[!]` with the brief replaced by `needs cross-task fix in <slice>`: the
+  issue cannot be solved inside your owned slice.
+- `[!]` with the brief replaced by a one-line reason: blocked otherwise.
+
+Never append text after the priority or anywhere else on the line; the
+harness rejects the plan and blocks the task.
 
 Never mark `[x]` while the verifier feedback above describes an unresolved
 failure unless your edits in this iteration addressed that exact failure.
@@ -141,9 +163,11 @@ failure unless your edits in this iteration addressed that exact failure.
 ## 4. Tool-use efficiency
 
 1. Read whole files at once; template files are small.
-2. Batch `pnpm` invocations in one bash block.
+2. Chain `pnpm` scripts with `&&` in one `run_command` call.
 3. Do not leave a dev server running across tool calls.
 4. Do not re-read files you just wrote.
+5. One `screenshot_page` per route after your edits are in; do not
+   screenshot before you have changed anything.
 
 ---
 
@@ -152,6 +176,8 @@ failure unless your edits in this iteration addressed that exact failure.
 - Every file you wrote lives under your task's template copy and slice.
 - The copy's `pnpm typecheck` passes (and `pnpm build` for the storefront,
   `pnpm test` for the backend).
+- Storefront tasks: the `screenshot_page` captures of your routes show no
+  clipped, empty or overflowing regions at either viewport.
 - No real-world brand, store name, or domain is hard-coded in your diff.
 - `plan.md` shows your selected task as `[x]` or `[!] <reason>` and no other
   line changed.

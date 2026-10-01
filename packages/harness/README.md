@@ -20,7 +20,9 @@ the model; the runtime executes each iteration in-process.
 - `verifiers/` - caller-owned `Verifier` dispatch after each executor
   iteration: FAIL reopens the task to `[~]`, ERROR never blocks, feedback is
   written to `checks/verifiers/feedback.md` and rendered into the next
-  prompt's `{{verifier_feedback}}` placeholder.
+  prompt's `{{verifier_feedback}}` placeholder. A result's `images` (PNG or
+  JPEG paths) are listed in `feedback_images.json` and attached to that
+  prompt, at most six per iteration.
 - `loop.ts` - `runPlanExecLoop(config, runtime, { force? })`. Fresh or
   resume mode is inferred from `runDir`; executor-phase timeouts quarantine
   the iteration dir and skip the task; protocol violations and unparseable

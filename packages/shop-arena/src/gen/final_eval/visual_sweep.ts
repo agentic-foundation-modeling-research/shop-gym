@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
 import type { BrowserSession } from '@shop-gym/browser';
 
+import { addToCart, logIn } from '../build/verifiers/browser_steps.js';
 import {
   type PageCapture,
   type PageJudgement,
@@ -29,7 +30,6 @@ import {
   sampleProductHandles,
   searchToken,
 } from '../build/verifiers/task_routes.js';
-import { addToCart, logIn } from './browser_steps.js';
 
 const JUDGE_CONCURRENCY = 3;
 

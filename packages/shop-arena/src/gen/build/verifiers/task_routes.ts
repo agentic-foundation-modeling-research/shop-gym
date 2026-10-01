@@ -29,9 +29,11 @@ export const ALL_BUCKETS: readonly PageBucket[] = [
   'info_pages',
 ];
 
-/** Task id -> page buckets. `gen_theme` is judged on the homepage. */
+/**
+ * Task id -> page buckets. `gen_theme` has no bucket: it only lays down
+ * tokens and styles, so its pages are judged once the page tasks fill them.
+ */
 export const TASK_BUCKETS: Readonly<Record<string, readonly PageBucket[]>> = {
-  gen_theme: ['homepage'],
   gen_homepage: ['homepage'],
   gen_navigation: ['navigation'],
   gen_collections: ['collections'],

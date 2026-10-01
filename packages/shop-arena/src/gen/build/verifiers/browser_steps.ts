@@ -10,7 +10,7 @@
 
 import type { BrowserSession } from '@shop-gym/browser';
 
-import { CHECKOUT_ADDRESS } from '../build/verifiers/storefront_target.js';
+import { CHECKOUT_ADDRESS } from './storefront_target.js';
 
 export interface StepOutcome {
   readonly ok: boolean;

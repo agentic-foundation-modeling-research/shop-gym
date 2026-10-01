@@ -2,7 +2,13 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import type { AgentRunRequest, AgentRunResult, AgentRuntime } from '@shop-gym/agent';
+import {
+  type AgentRunRequest,
+  type AgentRunResult,
+  type AgentRuntime,
+  type PromptContent,
+  sha256,
+} from '@shop-gym/agent';
 import { FakeRuntime, type FakeScript } from '@shop-gym/agent/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -325,6 +331,31 @@ describe('runPlanExecLoop: verifiers', () => {
       '<<<harness-control>>>\nselected_task_id: a\n<<<end>>>\n\nEXEC\n## flaky\n\nfix a\n\nEND',
     );
     expect(runtime.requests[3]?.prompt).not.toContain('fix a');
+  });
+
+  it('attaches verifier images to the next prompt and digests only its text', async () => {
+    const png = path.join(root, 'shot.png');
+    await fs.writeFile(png, Buffer.from('not-really-a-png'));
+    let calls = 0;
+    const runtime = new FakeRuntime([planner(), exec(PLAN_A_DONE), exec(PLAN_AB_DONE)]);
+    const visual = verifier('visual', () =>
+      ++calls === 1
+        ? { verdict: 'fail', feedback: 'see shot', images: [png] }
+        : { verdict: 'pass' },
+    );
+    const result = await runPlanExecLoop(config({ verifiers: [visual] }), runtime);
+    expect(result.finalStatus).toBe('completed');
+    expect(JSON.parse(await read('iters/exec-0001/checks/verifiers/feedback_images.json'))).toEqual(
+      [png],
+    );
+    const prompt = runtime.requests[2]?.prompt as PromptContent;
+    expect(prompt.text).toContain('## visual\n\nsee shot');
+    expect(prompt.images).toEqual([
+      { data: Buffer.from('not-really-a-png').toString('base64'), mimeType: 'image/png' },
+    ]);
+    const trajectory = await readJson('iters/exec-0002/trajectory.json');
+    expect(trajectory.promptSha256).toBe(sha256(prompt.text));
+    expect(typeof runtime.requests[3]?.prompt).toBe('string');
   });
 
   it('truncates feedback only when rendering into the prompt', async () => {
