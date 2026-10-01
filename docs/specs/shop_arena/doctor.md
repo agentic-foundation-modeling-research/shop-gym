@@ -1,5 +1,11 @@
 # ShopGym Doctor
 
+> **Superseded by v1.1 (2026-10-01).** The Python implementation this spec
+> describes was deleted at the v1.1 cutover (M11); see
+> [`v1_1_typescript_redesign.md`](../v1_1_typescript_redesign.md). `shopgym doctor` (`packages/cli/src/doctor`) replaces
+> `shop-doctor`.
+> The text below is kept as history and is no longer maintained.
+
 ## Overview
 
 `shop-doctor` is a local diagnostic command for validating developer

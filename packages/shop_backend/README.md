@@ -3,7 +3,7 @@
 Local GraphQL server that backs **SandboxShop** sandboxes.
 
 ShopBackend loads one synthesized storefront dataset and exposes a
-Storefront-API-compatible GraphQL surface for generated Hydrogen storefronts,
+Storefront-API-compatible GraphQL surface for generated storefronts,
 shopping-agent benchmarks, and local environment validation.
 
 ## Status

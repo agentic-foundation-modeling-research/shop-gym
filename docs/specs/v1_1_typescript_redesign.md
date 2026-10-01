@@ -1,8 +1,9 @@
 # ShopGym v1.1: TypeScript Redesign
 
-Status: **Proposed** (plan for the `v1_1-dev` branch). Nothing in this
-document is implemented. Where a section says "today", it describes the
-Python/TS code on `main` as of 2026-09-30.
+Status: **Implemented** (M0-M11 landed on the `v1_1-dev` branch; cutover
+2026-10-01). Where a section says "today", it describes the Python/TS code
+on `main` as of 2026-09-30, before the redesign; the execution table records
+where each milestone landed.
 
 ## 1. Overview
 
@@ -587,7 +588,9 @@ log files under `.run/`, polls `/health`.
   `agent`; harness parity suite ported from Python; backend contract
   suite reused as a build verifier.
 - Live tests behind `SHOPGYM_LIVE=1` (pi adapter smoke, one gen step).
-- CI: `pnpm -r typecheck && pnpm -r test && pnpm lint && pnpm codegen:check`.
+- CI: `pnpm install --frozen-lockfile`, Playwright Chromium, then
+  `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint && pnpm codegen:check`
+  (the root `codegen:check` script forwards to `@shop-gym/shop-backend`).
 
 ## 6. Alternatives
 
@@ -623,7 +626,7 @@ Milestones are sized for one engineer plus coding agents. Columns B
 | M8 | Arena explore port | explore on harness + browser tools | M2, M3 | update `shop_arena/shop_explore.md` |
 | M9 | Guru v2 | task contract, seed generators, explore, validate, solve, grade, aggregate | M3, M4, M6 | `shop_guru/benchmark_v2.md` |
 | M10 | CLI + host | `shopgym` binary, Node host, `trace`, `doctor` | M7, M9 | implemented in `packages/cli` (`@shop-gym/cli`); host state under `.run/shops/<name>/` |
-| M11 | Cutover | delete Python packages and `uv` files, migrate docs and README, mark old specs superseded, migrate `outputs/` layout notes | M10 | - |
+| M11 | Cutover | delete Python packages and `uv` files, migrate docs and README, mark old specs superseded, migrate `outputs/` layout notes | M10 | done 2026-10-01: `packages/shop_arena`, `packages/shop_guru`, the Python half of `packages/harness`, `pyproject.toml` and `scripts/run-shop.sh` deleted; CI is the pnpm chain of §5.10 plus Playwright Chromium; `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `.env.example` and `docs/specs/README.md` rewritten for the TS packages; superseded specs carry a dated note |
 
 Each milestone lands as one or more PRs into `v1_1-dev`; `v1_1-dev`
 merges to `main` after M11.

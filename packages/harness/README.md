@@ -57,6 +57,3 @@ uses camelCase keys.
 pnpm --filter @shop-gym/harness test
 pnpm --filter @shop-gym/harness typecheck
 ```
-
-The legacy Python implementation under `src/harness/` and `tests/` is kept
-only until the v1.1 cutover removes the Python packages.
