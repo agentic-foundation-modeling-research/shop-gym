@@ -50,6 +50,31 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.19.17)
 
+  packages/browser:
+    dependencies:
+      '@shop-gym/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@shop-gym/core':
+        specifier: workspace:*
+        version: link:../core
+      '@sinclair/typebox':
+        specifier: ^0.34.0
+        version: 0.34.52
+      playwright:
+        specifier: ^1.63.0
+        version: 1.63.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.6.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.19.17)
+
   packages/core:
     dependencies:
       zod:
@@ -2301,9 +2326,19 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==, tarball: https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz}
+    engines: {node: '>=20'}
+    hasBin: true
+
   playwright@1.60.0-alpha-1777077614000:
-    resolution: {integrity: sha512-Uykk/hbDlIaw4aZZZHMni6I0Y9eBtC7+UzH3QwTh9pJEEuYVq14y7F3bcHNCNCI0sLkY0oEiWK+2VeOtB6vUDQ==}
+    resolution: {integrity: sha512-Uykk/hbDlIaw4aZZZHMni6I0Y9eBtC7+UzH3QwTh9pJEEuYVq14y7F3bcHNCNCI0sLkY0oEiWK+2VeOtB6vUDQ==, tarball: https://registry.npmjs.org/playwright/-/playwright-1.60.0-alpha-1777077614000.tgz}
     engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.63.0:
+    resolution: {integrity: sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==, tarball: https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz}
+    engines: {node: '>=20'}
     hasBin: true
 
   postcss@8.5.10:
@@ -5115,11 +5150,17 @@ snapshots:
 
   playwright-core@1.60.0-alpha-1777077614000: {}
 
+  playwright-core@1.63.0: {}
+
   playwright@1.60.0-alpha-1777077614000:
     dependencies:
       playwright-core: 1.60.0-alpha-1777077614000
     optionalDependencies:
       fsevents: 2.3.2
+
+  playwright@1.63.0:
+    dependencies:
+      playwright-core: 1.63.0
 
   postcss@8.5.10:
     dependencies:

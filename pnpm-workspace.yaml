@@ -1,6 +1,7 @@
 packages:
   - "packages/core"
   - "packages/agent"
+  - "packages/browser"
   - "packages/shop_backend"
 allowBuilds:
   '@biomejs/biome': set this to true or false
