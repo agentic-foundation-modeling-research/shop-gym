@@ -15,6 +15,12 @@ for shipped behavior.
 | [harness/verifiers.md](harness/verifiers.md) | `packages/harness` | Additive, opt-in verifier dispatch hook for `run_plan_exec_loop`: caller-owned `Verifier` implementations are run after each executor iteration, gate `[x]` marks on FAIL, and feed `{{verifier_feedback}}` into the next iteration's prompt. **Status:** Implemented in `harness` 0.3.0. |
 | [harness/protocol_violation_recovery.md](harness/protocol_violation_recovery.md) | `packages/harness/src/harness/loop.py` | Convert executor-phase protocol violations from terminal failures into per-task BLOCKED-and-continue: restore `plan.md`, force-block the violating task, skip it for the rest of the attempt, continue the loop. **Status:** Implemented for executor iterations; planner violations remain terminal. |
 
+## Agent
+
+| Spec Path | Code Path | Description |
+| --------- | --------- | ----------- |
+| [agent/runtime.md](agent/runtime.md) | `packages/agent` | The agent seam: `AgentRuntime`, `LlmClient`, `Tool`, and `Trajectory` contracts, the pi SDK adapter with per-run routing and isolation, `FakeRuntime`, and the conformance suite every adapter runs. **Status:** Implemented (v1.1 M1). |
+
 ## ShopArena
 
 | Spec Path | Code Path | Description |

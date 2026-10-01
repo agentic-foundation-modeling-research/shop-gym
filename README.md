@@ -17,6 +17,7 @@ The package is a mono-repo of these components:
 | [`packages/shop_arena`](packages/shop_arena) | Python | **ShopArena** — Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from any live storefront. |
 | [`packages/shop_guru`](packages/shop_guru) | Python | **ShopGuru** — Automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation structure, and policies to synthesize grounded evaluation tasks across 7 skill categories. |
 | [`packages/core`](packages/core) | TypeScript | **Core** — Shared contracts for the v1.1 TypeScript stack: task / result schemas, the file-based pipeline runner, and the project credentials loader. |
+| [`packages/agent`](packages/agent) | TypeScript | **Agent** - `AgentRuntime` / `LlmClient` / `Tool` / `Trajectory` seam and the pi SDK adapter; `FakeRuntime` + conformance suite for tests. |
 | [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server hosting SandboxShop data; owns the zod dataset schema. |
 | [`packages/harness`](packages/harness) | Python | **Harness** — Runtime-agnostic plan-then-loop engine that orchestrates LLM agents; provides process lifecycle, workspace state, and telemetry for build / eval loops. |
 
@@ -248,6 +249,7 @@ shop-gym/
 │   └── specs/                  # design specifications (intent, not reality)
 ├── packages/
 │   ├── core/                   # TypeScript: shared contracts + pipeline runner
+│   ├── agent/                  # TypeScript: AgentRuntime seam + pi adapter
 │   ├── shop_arena/             # Python: SandboxShop factory
 │   ├── shop_guru/              # Python: dataset generation
 │   ├── shop_backend/           # TypeScript: GraphQL API server
