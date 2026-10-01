@@ -2,8 +2,8 @@
 
 TypeScript ShopArena: storefront exploration (`src/explore/`), SandboxShop
 generation (`src/gen/`), and the storefront template under `templates/`.
-This package replaces the Python `packages/shop_arena` during the v1.1
-migration; see `docs/specs/v1_1_typescript_redesign.md`.
+The `shopgym explore` and `shopgym gen` commands in `packages/cli` drive
+it; see `docs/specs/v1_1_typescript_redesign.md`.
 
 Layout:
 
@@ -79,8 +79,8 @@ an unfinished harness run; the pipeline never deletes `run/`, so
 budget. Prompts live in `src/explore/prompts/*.md` and are copied into
 `dist/` by the build; `{{CAPABILITIES_SCHEMA}}` in `agents.md` is
 rendered from the zod schema at run time. Credentials come from
-`loadCredentials()` and are never written to disk. The `shopgym explore`
-CLI arrives in M10.
+`loadCredentials()` and are never written to disk. `shopgym explore <url>`
+wraps this function.
 
 ## Gen
 
@@ -142,7 +142,7 @@ per item). `.shop_gen/image_cache/` (OpenAI responses keyed by prompt
 hash) is not a step output and survives reruns. `SHOPGYM_LIVE=1 pnpm
 test` runs `src/gen/data_synth/data_synth.live.test.ts` against a real
 model (`SHOPGYM_LIVE_MODEL=<provider>/<id>` overrides the default).
-The `shopgym gen` CLI arrives in M10.
+`shopgym gen <manual_dir>... --name <name>` wraps this function.
 
 ## Build
 
@@ -185,7 +185,7 @@ on the backend fixture (its helpers hardcode the fixture path); the
 read-only drift check runs on the seeded copy. `SHOPGYM_SLOW_TESTS=1
 pnpm test` additionally runs `src/gen/build/build_loop.test.ts` with
 real `pnpm install`, a real `tsx` sidecar, and the real backend suites.
-The `--gen-backend` CLI flag arrives in M10; see
+`shopgym gen --gen-backend` turns `genBackend` on; see
 `docs/specs/shop_arena/backend_generation.md`.
 
 ### Verifiers

@@ -1,5 +1,11 @@
 # EnvEval (`packages/shop_arena/src/shop_arena/env_eval`)
 
+> **Superseded by v1.1 (2026-10-01).** The Python implementation this spec
+> describes was deleted at the v1.1 cutover (M11); see
+> [`v1_1_typescript_redesign.md`](../v1_1_typescript_redesign.md). EnvEval was dropped (decision 1 of that plan) and
+> has no v1.1 equivalent.
+> The text below is kept as history and is no longer maintained.
+
 Status: **Implemented (`shop_arena.env_eval` v0.1.2)**
 Version: **0.2**
 Date: 05/04/2026

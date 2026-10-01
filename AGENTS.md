@@ -1,15 +1,19 @@
 # AGENTS.md
 
-**ShopGym** is a mono-repo for building and evaluating shopping LLM agents. It contains four packages:
+**ShopGym** is a TypeScript mono-repo for building and evaluating shopping LLM agents. It contains eight packages:
 
-- `packages/shop_arena` (Python) — **ShopArena**: Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from live storefronts. Ships three top-level modules: `shop_arena.gen` (generation pipeline), `shop_arena.explore` (storefront exploration), and `shop_arena.env_eval` (per-shop environment-quality measurement; CLI: `shop-env-eval`).
-- `packages/shop_guru` (Python) — **ShopGuru**: automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation, and policies to synthesize grounded evaluation tasks across 7 skill categories.
-- `packages/shop_backend` (TypeScript) — **ShopBackend**: local GraphQL API server hosting SandboxShop data; used for benchmarking and as an RL environment.
-- `packages/harness` (Python) — **Harness**: runtime-agnostic plan-then-loop engine that orchestrates LLM agents. Owns process lifecycle, workspace state, and telemetry; prompts and tools come from the chosen `AgentRuntime` adapter (e.g. Claude Code, `pi`).
+- `packages/core` (`@shop-gym/core`) - shared task / result schemas (zod), the file-based pipeline runner, and the `.env` credentials loader.
+- `packages/agent` (`@shop-gym/agent`) - the `AgentRuntime` / `LlmClient` / `Tool` / `Trajectory` seam, the pi SDK adapter, `FakeRuntime` and the adapter conformance suite.
+- `packages/harness` (`@shop-gym/harness`) - **Harness**: runtime-agnostic plan-then-loop engine over the agent seam. Owns workspace state, seed immutability, verifier dispatch, resume, and telemetry; prompts and tools come from the caller.
+- `packages/browser` (`@shop-gym/browser`) - per-episode Playwright `BrowserSession`, agent `browserTools`, and `probe` for graders.
+- `packages/shop_backend` (`@shop-gym/shop-backend`) - **ShopBackend**: Storefront-API-compatible GraphQL server with episode-scoped state (carts, customers, checkout, orders) over a SandboxShop dataset; also the backend template seeded into every generated shop.
+- `packages/shop-arena` (`@shop-gym/shop-arena`) - **ShopArena**: Environment Factory. `src/explore` turns a live storefront into an anonymized Shop Manual; `src/gen` turns manuals into a deterministic, self-contained **SandboxShop** (data + storefront + backend); `templates/storefront` is the storefront template.
+- `packages/shop-guru` (`@shop-gym/shop-guru`) - **ShopGuru**: benchmark pipeline that generates grounded tasks from a SandboxShop, discovers more with an explorer agent, runs agents in isolated browser episodes, grades, and aggregates.
+- `packages/cli` (`@shop-gym/cli`) - the `shopgym` binary: `explore | gen | host | guru | trace | doctor`.
 
 IMPORTANT: Always refer to `README.md` for project context, setup and common commands. Always keep `README.md` up-to-date.
 
-Python packages are managed with `uv` (workspace at repo root). TypeScript packages are managed with `pnpm` workspaces.
+Packages are managed with `pnpm` workspaces (root `package.json`, `pnpm-workspace.yaml`).
 
 ## Repository Structure
 
@@ -19,22 +23,25 @@ shop-gym/
 ├── CLAUDE.md -> AGENTS.md      # alias for Claude Code
 ├── README.md                   # project overview, setup, quickstart
 ├── packages/
-│   ├── shop_arena/             # Python — SandboxShop factory (gen / explore / env_eval)
-│   ├── shop_guru/              # Python — dataset generation + eval pipeline
-│   ├── shop_backend/           # TypeScript — GraphQL API server for SandboxShops
-│   └── harness/                # Python — runtime-agnostic plan-then-loop agent engine
+│   ├── core/                   # @shop-gym/core - schemas, pipeline runner, credentials
+│   ├── agent/                  # @shop-gym/agent - AgentRuntime seam + pi adapter
+│   ├── harness/                # @shop-gym/harness - plan-then-loop agent engine
+│   ├── browser/                # @shop-gym/browser - Playwright session + browser tools
+│   ├── shop_backend/           # @shop-gym/shop-backend - GraphQL server + backend template
+│   ├── shop-arena/             # @shop-gym/shop-arena - explore, gen, templates/storefront
+│   ├── shop-guru/              # @shop-gym/shop-guru - benchmark build / explore / solve / eval
+│   └── cli/                    # @shop-gym/cli - the `shopgym` binary
 ├── docs/
 │   └── specs/                  # design specifications (intent — see `docs/specs/README.md`)
-├── scripts/                    # repo-wide helpers (e.g. `run-shop.sh`)
-├── notebooks/                  # exploratory analysis
-├── outputs/                    # generated artifacts: shop_manuals, shops, shop_guru, shop_env_evals
-├── pyproject.toml              # uv workspace root
+├── scripts/                    # thin shell helpers
+├── outputs/                    # generated artifacts (gitignored): shop_manuals, shops, shop_guru
 ├── pnpm-workspace.yaml         # pnpm workspace root
+├── package.json                # root scripts: build, test, typecheck, lint, codegen:check, shop:host
 ├── tsconfig.base.json          # shared TS compiler config
 └── biome.json                  # TS lint/format config
 ```
 
-Typical data flow: `shop_arena.explore` → `shop_arena.gen` → SandboxShop served by `shop_backend` → `shop_guru` synthesizes tasks and evaluates agents. The `harness` package provides the runtime-agnostic engine used by the build and eval loops.
+Typical data flow: `shopgym explore` -> `shopgym gen` -> `shopgym host` -> `shopgym guru` (build tasks, then evaluate agents). Dependency direction is strictly downward: `cli -> {shop-arena, shop-guru} -> {shop_backend, harness, browser} -> agent -> core`. The `harness` package provides the runtime-agnostic engine used by the explore, build and eval loops.
 
 ## Behavior Guideline
 
@@ -114,21 +121,6 @@ The test: Every changed line should trace directly to the user's request.
 
 Follow the Google Style Guide and keep the highest standard.
 NO PATCHING OR HACKING FOR SHORT TERM SUCCESS.
-
-### Python Coding Style
-
-- **Style guide**: Google Python Style Guide. `ruff` is the source of truth for lint + format (config in root `pyproject.toml`).
-- **Version**: Python ≥ 3.12. Use modern syntax (`list[int]`, `str | None`, `match`).
-- **Typing**: fully typed. `from __future__ import annotations` in every module. `pyright` in `strict` mode must pass. No `Any` unless justified in a comment.
-- **Layout**: `src/<package>/` layout. Each package exposes `py.typed`.
-- **Docstrings**: Google style (`Args:`, `Returns:`, `Raises:`). Every public module, class, and function has one. Skip trivial one-liners only when the name fully describes behavior.
-- **Imports**: stdlib → third-party → local, separated by blank lines. **Absolute imports within a package at top of the files, not local imports**. No wildcard imports.
-- **Data models**: use `pydantic` v2 for external/IO boundaries; use `dataclasses` (frozen where possible) for internal value types.
-- **Errors**: raise specific exceptions; never bare `except`. No silent fallbacks.
-- **Side effects**: keep modules import-safe — no I/O, network, or env reads at import time.
-- **Tests**: `pytest` under `packages/<pkg>/tests/`. One behavior per test. Name tests `test_<unit>_<behavior>`. No `unittest.TestCase`.
-- **CLI**: expose as `project.scripts` entrypoint; keep `cli.py` thin — argument parsing + dispatch only.
-- **Function Scope**: avoid making giant functions or wrapping one-liner code as functions. Prefer pure functions with clear boundary.
 
 ### TypeScript Coding Style
 

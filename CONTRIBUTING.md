@@ -11,14 +11,15 @@ guidelines apply to humans and agents alike.
 
 ## Getting set up
 
-Follow [README → Setup](./README.md#setup). After `uv sync` and
-`pnpm install`, verify the toolchain:
+Follow [README → Setup](./README.md#setup). After `pnpm install`, verify
+the toolchain:
 
 ```bash
-uv run pytest
-uv run ruff check .
-uv run pyright
+pnpm -r build
+pnpm -r typecheck
 pnpm -r test
+pnpm lint
+node packages/cli/dist/main.js doctor
 ```
 
 If any of these fail on a clean checkout, please open an issue — that's
@@ -34,8 +35,7 @@ on paper before they exist in code, so "this doesn't work" might be
 A useful issue includes:
 
 - What you ran, what you expected, what happened.
-- Versions: `uv --version`, `pnpm --version`, `node --version`,
-  `python --version`.
+- Versions: `pnpm --version`, `node --version`.
 - The relevant log lines or stack trace, not a screenshot of them.
 
 ## Workflow
@@ -72,31 +72,27 @@ documented in [AGENTS.md → Use Specifications](./AGENTS.md#use-specifications)
 
 [AGENTS.md](./AGENTS.md) is the binding reference. The short version:
 
-- **Python.** Google style, fully typed, `pyright --strict` clean,
-  `ruff` clean, Python ≥ 3.12 syntax. Google-style docstrings on every
-  public symbol. `pydantic` v2 at IO boundaries; `dataclass(frozen=True)`
-  for internal value types.
 - **TypeScript.** Google style, ESM only (`.js` extensions in relative
   imports), `strict` + `noUncheckedIndexedAccess` +
   `exactOptionalPropertyTypes`. `biome` clean. Named exports. No
   `any`, no non-null assertions without a justifying comment.
-- **Both.** No silent fallbacks, no hand-rolled retry loops where one
+- **Always.** No silent fallbacks, no hand-rolled retry loops where one
   exists in a library, no speculative configurability.
 
-Run formatters before pushing:
+Run the formatter before pushing:
 
 ```bash
-uv run ruff format .
 pnpm format
 ```
 
 ## Tests
 
-Every change that adjusts behaviour needs a test. Tests live under
-`packages/<pkg>/tests/` (Python, `pytest`) or co-located as
-`*.test.ts` (TypeScript, `vitest`).
+Every change that adjusts behaviour needs a test. Tests are `vitest`
+suites co-located as `*.test.ts` next to the unit under test; slow suites
+(template installs, hosting a fixture shop) are gated behind
+`SHOPGYM_SLOW_TESTS=1` and model-calling suites behind `SHOPGYM_LIVE=1`.
 
-- One behaviour per test. Name them `test_<unit>_<behaviour>`.
+- One behaviour per test, named for the unit and the behaviour.
 - Don't mock what you can run cheaply — prefer real filesystem,
   real subprocess, real GraphQL server fixtures over mocks.
 - For UI / browser changes, exercise the feature in a browser before
@@ -137,16 +133,14 @@ Report concerns to `opensource@shopify.com`.
 
 The following must pass before a PR can land:
 
-- `uv run pytest` (Python tests)
-- `uv run ruff check .` (Python lint)
-- `uv run pyright` (Python typecheck, strict)
-- `pnpm -r test` (TypeScript tests)
-- `pnpm -r build` (TypeScript build)
-- `pnpm lint` (TypeScript lint)
+- `pnpm -r build` (build)
+- `pnpm -r typecheck` (`tsc --noEmit`)
+- `pnpm -r test` (tests; CI installs Playwright Chromium first)
+- `pnpm lint` (biome)
+- `pnpm codegen:check` (`shop_backend` GraphQL codegen drift)
 
-CI runs the hosting-validation integration tests against a real
-`shop_backend` build as part of `uv run pytest` after building the TypeScript
-backend (see [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)).
+See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) for the exact
+job.
 
 ## Maintainers
 

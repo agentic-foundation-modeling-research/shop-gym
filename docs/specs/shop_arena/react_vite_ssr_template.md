@@ -1,5 +1,11 @@
 # React Vite SSR Template (`packages/shop_arena/src/shop_arena/gen/templates/react-vite`)
 
+> **Superseded by v1.1 (2026-10-01).** The Python implementation this spec
+> describes was deleted at the v1.1 cutover (M11); see
+> [`v1_1_typescript_redesign.md`](../v1_1_typescript_redesign.md). The current template spec is
+> [`storefront_template.md`](storefront_template.md).
+> The text below is kept as history and is no longer maintained.
+
 Status: **Implemented**; superseded by [storefront_template.md](storefront_template.md) (2026-09-30) · Version: **0.1**
 Owners: ShopArena
 

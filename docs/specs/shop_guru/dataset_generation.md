@@ -1,5 +1,11 @@
 # ShopGuru Dataset Generation and Evaluation (`packages/shop_guru`)
 
+> **Superseded by v1.1 (2026-10-01).** The Python implementation this spec
+> describes was deleted at the v1.1 cutover (M11); see
+> [`v1_1_typescript_redesign.md`](../v1_1_typescript_redesign.md). The current spec is
+> [`benchmark_v2.md`](benchmark_v2.md) (`packages/shop-guru`, `shopgym guru`).
+> The text below is kept as history and is no longer maintained.
+
 Status: **Implemented** - Version: **0.1**
 Owners: ShopGuru
 
