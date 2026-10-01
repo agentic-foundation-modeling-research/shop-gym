@@ -46,5 +46,13 @@ export {
   freePort,
   spawnSidecar,
 } from './sidecar.js';
+export {
+  type StorefrontLaunch,
+  type StorefrontLaunchOptions,
+  StorefrontSidecar,
+  type StorefrontSidecarOptions,
+  launchWithRunner,
+  spawnStorefront,
+} from './storefront_sidecar.js';
 export { type TreeSnapshot, diffTrees, hashSnapshot, snapshotTree } from './tree.js';
 export * from './verifiers/index.js';

@@ -21,7 +21,7 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp -R src/explore/prompts dist/explore/ && cp -R src/gen/build/prompts dist/gen/build/",
+    "build": "tsc -p tsconfig.json && cp -R src/explore/prompts dist/explore/ && cp -R src/gen/build/prompts dist/gen/build/ && cp -R src/gen/build/verifiers/prompts dist/gen/build/verifiers/",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
