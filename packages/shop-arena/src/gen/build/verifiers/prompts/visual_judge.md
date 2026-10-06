@@ -31,6 +31,13 @@ for ending at the cut. Judge the region the capture shows. A page that is
 clipped by its own layout (an element cropped by a container, a horizontal
 scrollbar on mobile) is a defect; a page cut by the capture is not.
 
+A wide data table on mobile may sit in its own horizontally scrollable
+container: its right-hand columns end at the table's edge while the header,
+footer and surrounding content stay within the viewport. A screenshot cannot
+show that scroll, so treat this pattern as acceptable, not as overflow.
+Overflow is when the page itself extends past the viewport or content is cut
+with no container of its own.
+
 ## Image loading policy
 
 The store uses synthetic images that can load asynchronously, so a single

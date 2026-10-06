@@ -1,7 +1,8 @@
 # ShopGym v1.1: TypeScript Redesign
 
 Status: **Implemented** (M0-M11 landed on the `v1_1-dev` branch; cutover
-2026-10-01). Where a section says "today", it describes the Python/TS code
+2026-10-01; validated by live `shopgym gen` runs on 2026-10-01 and
+2026-10-06). Where a section says "today", it describes the Python/TS code
 on `main` as of 2026-09-30, before the redesign; the execution table records
 where each milestone landed.
 
@@ -620,9 +621,9 @@ Milestones are sized for one engineer plus coding agents. Columns B
 | M2 | Harness port | `@shop-gym/harness` with ported parity tests; fix recorded spec drift | M1 | update `harness/*.md` |
 | M3 | Browser | `@shop-gym/browser` session, tools, probe, screenshot | M1 | `browser/tools.md` |
 | M4 | Backend template v2 | `ShopState`, per-domain SDL, customer / checkout / order domains, `commerce.json`, control API, episode scoping, `StateSnapshot`, `src/sandbox` + `tests/contract` split, standalone install, template `AGENTS.md` | M0 | `shop_backend/stateful_commerce.md` |
-| M5 | Backend generation | seeding the backend copy, `gen_backend` prompts and owned-file rules, sidecar restart on change, `backend_typecheck` / `backend_test` / `sandbox_contract` / extended `data_in_use` verifiers | M2, M4 | `shop_arena/backend_generation.md` |
-| M6 | Storefront template v2 | account and checkout routes on the react-vite template, header forwarding, fixtures; remove Hydrogen | M4 | `shop_arena/storefront_template.md` |
-| M7 | Arena gen port | pipeline steps on `core/pipeline`, data synth including customers / orders / commerce, build loop with consolidated verifiers, final eval functional sweep, `publish` step, `--gen-backend` flag wiring | M2, M3, M5, M6 | update `shop_arena/shop_gen.md` |
+| M5 | Backend generation | seeding the backend copy, `gen_backend` prompts and owned-file rules, sidecar restart on change, `backend_typecheck` / `backend_test` / `sandbox_contract` / extended `data_in_use` verifiers | M2, M4 | `shop_arena/backend_generation.md`; landed in `packages/shop-arena/src/gen/build` |
+| M6 | Storefront template v2 | account and checkout routes on the react-vite template, header forwarding, fixtures; remove Hydrogen | M4 | `shop_arena/storefront_template.md`; landed at `packages/shop-arena/templates/storefront`; account tables scroll horizontally on mobile |
+| M7 | Arena gen port | pipeline steps on `core/pipeline`, data synth including customers / orders / commerce, build loop with consolidated verifiers, final eval functional sweep, `publish` step, `--gen-backend` flag wiring | M2, M3, M5, M6 | update `shop_arena/shop_gen.md`; landed in `packages/shop-arena/src/gen`. Build-loop quality work after the first live run: executor `run_command` and `screenshot_page` tools, failing judge screenshots fed back to the next iteration, cart seeding and customer login before judging, an `account` page bucket for `visual_fix`, footer synthesis mirroring the manual, rubric calibration for the capture cut, placeholder media and scrollable tables. Second live run (2026-10-06): 14 build iterations, final eval 16 pass / 0 fail / 1 skip |
 | M8 | Arena explore port | explore on harness + browser tools | M2, M3 | update `shop_arena/shop_explore.md` |
 | M9 | Guru v2 | task contract, seed generators, explore, validate, solve, grade, aggregate | M3, M4, M6 | `shop_guru/benchmark_v2.md` |
 | M10 | CLI + host | `shopgym` binary, Node host, `trace`, `doctor` | M7, M9 | implemented in `packages/cli` (`@shop-gym/cli`); host state under `.run/shops/<name>/` |
@@ -646,11 +647,10 @@ Resolved with the user on 2026-09-30:
 
 Still open, with the default the plan proceeds on:
 
-4. **Episode isolation** (§5.6.4). Default: header-based episode branches
-   inside one backend process. The alternative, one backend plus
-   storefront process pair per episode, is simpler but costs two
-   processes and a Vite SSR boot per task. The choice is internal to M4
-   and M9 and can be revisited before M9 starts.
+4. **Episode isolation** (§5.6.4). Resolved: header-based episode branches
+   inside one backend process (`x-shopgym-episode`, validated in
+   `packages/shop_backend/src/sandbox/episode.ts`). The alternative, one
+   backend plus storefront process pair per episode, was not needed.
 
 ## 9. Appendix
 
