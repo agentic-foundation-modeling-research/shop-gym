@@ -1,5 +1,11 @@
-/** `synth_navigation`: main menu (linking every collection) and footer. */
+/**
+ * `synth_navigation`: main menu (linking every collection) and footer. The
+ * footer mirrors the manual's footer link list so the storefront that the
+ * visual judge grades against the manual and the dataset that
+ * `nav_coverage` grades against agree.
+ */
 
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { z } from 'zod';
@@ -26,10 +32,10 @@ export function synthNavigation(
   policies: readonly PageDraft[],
 ): Promise<NavigationDraft> {
   return cached(sc, 'navigation.json', navigationDraftSchema, async () => {
-    const capabilities = await readJsonFile(
-      path.join(sc.manualDir, 'capabilities.json'),
-      z.unknown(),
-    );
+    const [capabilities, navigationManual] = await Promise.all([
+      readJsonFile(path.join(sc.manualDir, 'capabilities.json'), z.unknown()),
+      fs.readFile(path.join(sc.manualDir, 'parts', 'navigation.md'), 'utf-8'),
+    ]);
     const collectionUrls = new Set(collections.map((c) => `/collections/${c.handle}`));
     const pageUrls = new Set([
       ...pages.map((p) => `/pages/${p.handle}`),
@@ -42,6 +48,7 @@ export function synthNavigation(
         pages: pretty(pages.map((p) => ({ title: p.title, handle: p.handle }))),
         policies: pretty(policies.map((p) => ({ title: p.title, handle: p.handle }))),
         capabilities: pretty(capabilities),
+        navigation_manual: navigationManual.trim(),
       }),
       navigationDraftSchema,
       (nav) => {

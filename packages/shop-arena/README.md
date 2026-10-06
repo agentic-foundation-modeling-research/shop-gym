@@ -101,7 +101,9 @@ pipeline runner; `GEN_STEPS` lists them in order:
 `data_synth` runs its sub-steps in order (`identity`, `store`, `pages`,
 `policies`, `commerce`, `collections`, `skeletons`, `details` per
 collection, `alt_text`, `images`, `navigation`, `customers`, then
-assembly with deterministic ids, inventory, and orders). Every LLM call
+assembly with deterministic ids, inventory, and orders). `navigation`
+reads the manual's `parts/navigation.md` so the footer mirrors the manual's
+footer link list and the in-loop judges agree on it. Every LLM call
 asks for one JSON value against a zod-derived JSON Schema and retries
 once with the validation error. Prompts are plain Markdown under
 `src/gen/data_synth/prompts/` with `{{name}}` placeholders, and every
@@ -207,7 +209,7 @@ manual directory and `{ llm, model }` for the judge) the order becomes
 | `routes_200` | storefront tasks | the task's page-bucket routes plus static routes return 200; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` returns 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
 | `nav_coverage` | `gen_navigation`, `gen_theme`, `visual_fix` | every `navigation.json` target returns 200 and is linked from the rendered header or footer |
 | `cart_conformance` | `gen_cart_search`, `gen_product`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order |
-| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` routes; one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
+| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` routes and the first seeded customer logged in before `/account` (the `account` bucket belongs to `visual_fix` only); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
 
 `runBuildLoop` always passes `storefront` (its `judge` option supplies
 the visual judge; `generateShop` sets it to the synthesis model) and

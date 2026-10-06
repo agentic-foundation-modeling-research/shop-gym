@@ -112,6 +112,10 @@ Rules:
    `/cart`, `/search?q=<word>`, `/pages/<handle>`). The judge sees these
    captures; fix clipped headers, empty media slots, overflowing tables and
    unreflowed mobile layouts before you exit.
+6. Nothing may overflow the 375px mobile viewport: rows of filter chips,
+   sort controls and tags wrap (`flex-wrap: wrap`), and a table wider than
+   the screen sits in a horizontally scrollable wrapper (the template's
+   `.table-scroll`) instead of pushing the page sideways.
 
 ### 3b. `gen_backend` and `backend_*` tasks
 

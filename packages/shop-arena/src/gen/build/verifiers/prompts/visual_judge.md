@@ -22,14 +22,25 @@ excerpt below have been filtered to this page; do not penalise the absence
 of features they do not list, and do not infer about pages you have not
 seen.
 
+## Capture policy
+
+Each screenshot is a full-page capture cut at three viewport heights. On a
+long page the content below the cut, typically the footer, is not in the
+image; do not report it as missing or truncated, and do not penalise a page
+for ending at the cut. Judge the region the capture shows. A page that is
+clipped by its own layout (an element cropped by a container, a horizontal
+scrollbar on mobile) is a defect; a page cut by the capture is not.
+
 ## Image loading policy
 
 The store uses synthetic images that can load asynchronously, so a single
 blank image slot is not reliable evidence of a bug. Flag an image problem
 only when the same slot is empty, shows alt text, or shows a broken-image
-icon at both viewports. Gradient or solid-colour placeholders are acceptable
-for decorative surfaces but are an issue when they replace product or
-collection media.
+icon at both viewports. The catalog's product and collection media are flat
+geometric placeholder tiles (solid or striped colour blocks); that artwork
+is the expected synthetic media, not a missing image. Judge the media slot
+(its size, aspect ratio, cropping and alignment with the surrounding
+layout), not the artwork inside it.
 
 ## Scoring
 

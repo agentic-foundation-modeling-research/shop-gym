@@ -87,7 +87,11 @@ export function routes200Verifier(options: Routes200Options): Verifier {
       const probes: RouteProbe[] = [];
       const bodies: string[] = [];
 
-      for (const route of new Set([...STATIC_ROUTES, ...taskRoutes])) {
+      // Member-only account routes are probed below in both sessions.
+      const guestRoutes = new Set(
+        [...STATIC_ROUTES, ...taskRoutes].filter((route) => !ACCOUNT_ROUTES.includes(route)),
+      );
+      for (const route of guestRoutes) {
         const result = await guest.get(route);
         probes.push(probe(route, 'status 200', result.status === 200, result));
         if (result.status === 200) {

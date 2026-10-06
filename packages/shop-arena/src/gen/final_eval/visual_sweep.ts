@@ -118,7 +118,7 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
     route: `/search?q=${encodeURIComponent(searchToken(handles))}`,
     bucket: 'cart_search',
   });
-  await capture({ name: 'accountLogin', route: '/account/login', bucket: 'cart_search' });
+  await capture({ name: 'accountLogin', route: '/account/login', bucket: 'account' });
   const policyPage: CanonicalPage = {
     name: 'policy',
     route: `/policies/${policy ?? ''}`,
@@ -151,7 +151,7 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
   const profilePage: CanonicalPage = {
     name: 'accountProfile',
     route: '/account',
-    bucket: 'cart_search',
+    bucket: 'account',
   };
   const customer = await readSeededCustomer(options.dataDir);
   const orderId =
@@ -159,7 +159,7 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
   const orderPage: CanonicalPage = {
     name: 'orderDetail',
     route: `/account/orders/${orderId ?? ''}`,
-    bucket: 'cart_search',
+    bucket: 'account',
   };
   const login =
     customer === undefined

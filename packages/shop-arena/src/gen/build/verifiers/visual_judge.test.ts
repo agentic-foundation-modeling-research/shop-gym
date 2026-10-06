@@ -182,6 +182,24 @@ describe('visual_judge', () => {
     });
   }, 60_000);
 
+  it('logs in as the seeded customer after the login page and before the account page', async () => {
+    const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));
+    const verifier = visualJudgeVerifier({
+      target: { url },
+      dataDir: FIXTURE_DIR,
+      llm: judge,
+      model: MODEL,
+    });
+    const result = await verifier.run(ctx('visual_fix'));
+    expect(result.verdict).toBe('pass');
+    const loginAttempt = requestedPaths.lastIndexOf('/account/login');
+    expect(loginAttempt).toBeGreaterThan(requestedPaths.indexOf('/account/login'));
+    expect(loginAttempt).toBeLessThan(requestedPaths.indexOf('/account'));
+    expect(result.details).toMatchObject({
+      accountSeed: expect.stringContaining('no form with the expected fields'),
+    });
+  }, 90_000);
+
   it("returns the failing pages' screenshots as images", async () => {
     const judge = new ScriptedJudge(() => JSON.stringify(FAIL_VERDICT));
     const verifier = visualJudgeVerifier({

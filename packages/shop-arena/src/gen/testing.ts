@@ -238,7 +238,18 @@ Gallery on the left, buy box on the right.
 Drawer cart with a promo input.
 `;
 
-/** Writes `manual.md`, `capabilities.json`, and `stats.json` into `dir`. */
+const NAVIGATION_PART_MD = `# Navigation
+
+## Site shell
+
+The header carries the logo and one link per collection. The footer is a
+flat row of links: About, Privacy.
+`;
+
+/**
+ * Writes `manual.md`, `capabilities.json`, `stats.json`, and
+ * `parts/navigation.md` into `dir`.
+ */
 export async function writeManualFixture(
   dir: string,
   overrides: { descriptor?: string; tone?: string[] } = {},
@@ -253,7 +264,9 @@ export async function writeManualFixture(
     homepage: { section_types: ['hero', 'featured_collection'], section_count: 2 },
     cart: { type: 'drawer', has_promo_input: true },
   });
+  await fs.mkdir(path.join(dir, 'parts'), { recursive: true });
   await fs.writeFile(path.join(dir, 'manual.md'), MANUAL_MD);
+  await fs.writeFile(path.join(dir, 'parts', 'navigation.md'), NAVIGATION_PART_MD);
   await fs.writeFile(path.join(dir, 'capabilities.json'), JSON.stringify(capabilities, null, 2));
   await fs.writeFile(
     path.join(dir, 'stats.json'),

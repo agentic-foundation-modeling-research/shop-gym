@@ -720,6 +720,10 @@ html:has(.cart-popup) {
   min-height: 0;
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;

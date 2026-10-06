@@ -25,6 +25,13 @@ information architecture, is:
 {{capabilities}}
 ```
 
+The manual's navigation section, which describes the header and footer
+the storefront ships (link labels, grouping, order), is:
+
+```markdown
+{{navigation_manual}}
+```
+
 Output one JSON object with exactly these top-level keys and nothing
 else: `"main-menu"` and `"footer"`. Each value is an array of
 navigation items. Each navigation item is an object with exactly these
@@ -54,10 +61,16 @@ Rules:
   (`type: "HTTP"`) and at most one or two grouping headers
   (`type: "HTTP"`, `url: "/"`) whose children are the collection
   links. Do not nest groupings inside groupings.
-- The `footer` SHOULD link to the supplied content pages
-  (`/pages/<handle>` with `type: "PAGE"`). It may additionally link to
-  policies (`/policies/<handle>`). Do not link to pages or policies
-  that do not exist.
+- The `main-menu` follows the header structure the manual describes
+  (grouping and order) wherever that is compatible with the rules above.
+- The `footer` mirrors the footer link list the manual describes: one
+  item per named footer link, in the manual's order, using the manual's
+  label as the title and the matching supplied page (`/pages/<handle>`)
+  or policy (`/policies/<handle>`) as the URL, both with `type: "PAGE"`.
+  Omit a manual link that matches no supplied page or policy, and add
+  nothing the manual does not name. When the manual names no footer
+  links, link the supplied content pages and policies instead. Do not
+  link to pages or policies that do not exist.
 - Titles must be plain descriptive. Do NOT mention any real-world
   company, product, or trademark.
 - Output JSON only. No markdown code fences, no commentary, no
