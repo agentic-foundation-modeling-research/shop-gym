@@ -10,7 +10,12 @@ import * as path from 'node:path';
 import type { ToolContent, ToolContext } from '@shop-gym/agent';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { buildAgentTools, runCommandTool, screenshotTool } from './agent_tools.js';
+import {
+  buildAgentTools,
+  runCommandTool,
+  screenshotEpisodeId,
+  screenshotTool,
+} from './agent_tools.js';
 import { runCommand } from './verifiers/subprocess.js';
 
 const PAGE =
@@ -130,6 +135,13 @@ describe('screenshot_page', () => {
     expect(bad.isError).toBe(true);
     expect(text(bad.content)).toContain('route must start with "/"');
   }, 60_000);
+
+  it('derives an episode id the backend accepts from any tool-call id', () => {
+    const id = screenshotEpisodeId(`call_35oquhFrAY5QjokS8VPg6ahO|fc_${'a'.repeat(50)}`);
+    expect(id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
+    expect(id.startsWith('screenshot-call_35oquhFrAY5QjokS8VPg6ahO-fc_')).toBe(true);
+    expect(screenshotEpisodeId('call-1')).toBe('screenshot-call-1');
+  });
 
   it('turns a failed prepare into an error result', async () => {
     const tool = screenshotTool({

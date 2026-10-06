@@ -109,7 +109,7 @@ export function screenshotTool(target: StorefrontTarget): Tool<typeof SCREENSHOT
       }
       const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'shopgym-screenshot-'));
       try {
-        const session = await BrowserSession.launch({ episodeId: `screenshot-${ctx.callId}` });
+        const session = await BrowserSession.launch({ episodeId: screenshotEpisodeId(ctx.callId) });
         let capture: Awaited<ReturnType<typeof capturePage>>;
         try {
           capture = await capturePage({
@@ -170,6 +170,14 @@ function clipMiddle(text: string, limit = OUTPUT_LIMIT_CHARS): string {
   const half = Math.floor(limit / 2);
   const dropped = text.length - 2 * half;
   return `${text.slice(0, half)}\n[...${dropped} characters elided...]\n${text.slice(-half)}`;
+}
+
+/**
+ * Backend episode ids match `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`; provider
+ * tool-call ids can carry other characters (`|`) and exceed that length.
+ */
+export function screenshotEpisodeId(callId: string): string {
+  return `screenshot-${callId.replace(/[^A-Za-z0-9._-]/g, '-')}`.slice(0, 64);
 }
 
 function errorResult(error: unknown): ToolResult {
