@@ -1,0 +1,45 @@
+export {
+  PiLlmClient,
+  type PiLlmClientOptions,
+  PiRuntime,
+  type PiRuntimeOptions,
+  UnknownModelError,
+} from './adapters/pi/index.js';
+export {
+  type CompleteRequest,
+  type Completion,
+  type LlmClient,
+  LlmError,
+  LlmJsonError,
+  completeJson,
+  extractJson,
+} from './llm.js';
+export {
+  type Trajectory,
+  TrajectoryRecorder,
+  type TrajectoryStep,
+  type TrajectoryStepInput,
+  addUsage,
+  readTrajectory,
+  sha256,
+  trajectorySchema,
+  trajectoryStepSchema,
+  writeTrajectory,
+} from './trajectory.js';
+export {
+  type AgentEvent,
+  type AgentRunRequest,
+  type AgentRunResult,
+  type AgentRunStatus,
+  type AgentRuntime,
+  type ImageAttachment,
+  type ModelRef,
+  type PromptContent,
+  type ThinkingLevel,
+  type Tool,
+  type ToolContent,
+  type ToolContext,
+  type ToolResult,
+  type ToolSet,
+  promptText,
+} from './types.js';

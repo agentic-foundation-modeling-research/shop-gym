@@ -10,14 +10,17 @@ ShopGym is an integrated framework for realistic simulation and scalable benchma
 
 ## Components
 
-The package is a mono-repo of three components:
+The package is a mono-repo of these components:
 
 | Package | Lang | Role |
 |---|---|---|
 | [`packages/shop_arena`](packages/shop_arena) | Python | **ShopArena** — Environment Factory that generates deterministic, self-contained sandbox shops (**SandboxShops**) from any live storefront. |
 | [`packages/shop_guru`](packages/shop_guru) | Python | **ShopGuru** — Automated dataset generation pipeline that ingests a sandbox shop's catalog, navigation structure, and policies to synthesize grounded evaluation tasks across 7 skill categories. |
-| [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server hosting SandboxShop data. |
-| [`packages/harness`](packages/harness) | Python | **Harness** — Runtime-agnostic plan-then-loop engine that orchestrates LLM agents; provides process lifecycle, workspace state, and telemetry for build / eval loops. |
+| [`packages/core`](packages/core) | TypeScript | **Core** — Shared contracts for the v1.1 TypeScript stack: task / result schemas, the file-based pipeline runner, and the project credentials loader. |
+| [`packages/agent`](packages/agent) | TypeScript | **Agent** - `AgentRuntime` / `LlmClient` / `Tool` / `Trajectory` seam and the pi SDK adapter; `FakeRuntime` + conformance suite for tests. |
+| [`packages/browser`](packages/browser) | TypeScript | **Browser** - Per-episode Playwright `BrowserSession`, agent `browserTools` on aria-snapshot refs, and `probe` for graders. |
+| [`packages/shop_backend`](packages/shop_backend) | TypeScript | **ShopBackend** — Local GraphQL API server hosting SandboxShop data; owns the zod dataset schema. |
+| [`packages/harness`](packages/harness) | TypeScript | **Harness** - Runtime-agnostic plan-then-loop engine over the `@shop-gym/agent` seam: workspace state, protocol checks, verifier dispatch, resume, and telemetry for build / eval loops. The legacy Python engine in the same package is removed at the v1.1 cutover. |
 
 A typical loop:
 
@@ -30,7 +33,7 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 ## Requirements
 
 - Python ≥ 3.12 with [`uv`](https://docs.astral.sh/uv/)
-- Node ≥ 20 with [`pnpm`](https://pnpm.io/) ≥ 9
+- Node ≥ 22.19 with [`pnpm`](https://pnpm.io/) ≥ 9 (the `pi` SDK requires it)
 - One of the supported coding-agent CLIs (required for `shop_arena.explore`
   and the `shop_arena.gen` build loop):
   - `pi` (default agent runtime) — install per the
@@ -53,7 +56,7 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 # Python workspace (shop_guru, shop_arena)
 uv sync
 
-# TypeScript workspace (shop_backend) — also installs the
+# TypeScript workspace (core, shop_backend) — also installs the
 # `pi-playwright` skill into `node_modules/`. The repo's
 # `.claude/skills/playwright-browser` symlink exposes that same skill
 # tree to Claude Code; ShopArena renders the workspace skill path into
@@ -200,8 +203,9 @@ uv run shop-env-eval visualize <run_dir>      # render the transition graph as i
 # TypeScript
 pnpm -r build                    # build all TS packages
 pnpm -r test                     # test all TS packages
+pnpm -r typecheck                # tsc --noEmit for all TS packages
 pnpm --filter @shop-gym/shop-backend dev   # run the GraphQL server
-pnpm lint                        # biome lint for shop_backend
+pnpm lint                        # biome lint for the TS packages
 pnpm format                      # biome format
 ```
 
@@ -253,10 +257,13 @@ shop-gym/
 ├── docs/
 │   └── specs/                  # design specifications (intent, not reality)
 ├── packages/
+│   ├── core/                   # TypeScript: shared contracts + pipeline runner
+│   ├── agent/                  # TypeScript: AgentRuntime seam + pi adapter
+│   ├── browser/                # TypeScript: Playwright session + browser tools
 │   ├── shop_arena/             # Python: SandboxShop factory
 │   ├── shop_guru/              # Python: dataset generation
 │   ├── shop_backend/           # TypeScript: GraphQL API server
-│   └── harness/                # Python: plan-then-loop agent engine
+│   └── harness/                # TypeScript: plan-then-loop agent engine (@shop-gym/harness)
 ├── pyproject.toml              # uv workspace root
 ├── pnpm-workspace.yaml         # pnpm workspace root
 ├── package.json                # TS tooling at repo root

@@ -69,6 +69,16 @@ coupled to neither. Its tests run against arbitrary toy tasks.
     and `{{verifier_feedback}}`.
   - [`protocol_violation_recovery.md`](protocol_violation_recovery.md)
     adds executor-phase BLOCKED-and-continue recovery.
+- **v1.1 TypeScript port (2026-09-30).** `@shop-gym/harness`
+  (`packages/harness/src/*.ts`) ports this loop onto the `AgentRuntime`
+  seam from `@shop-gym/agent`: `runPlanExecLoop(config, runtime, {force})`
+  with the same `plan.md` grammar, selection, diff, and protocol strings.
+  Differences from the Python engine: the runtime runs in-process and the
+  per-iteration timeout is an `AbortSignal`; `status: 'aborted'` maps to
+  `timeout`, `status: 'error'` and thrown errors map to `runtime_error`;
+  `run.json`, `metadata.json`, and `checks/*.json` use camelCase keys;
+  `native.log`, the `inspect` tool, replay recording, and the `CLAUDE.md`
+  symlink are dropped. The Python engine is removed at the v1.1 cutover.
 
 ---
 

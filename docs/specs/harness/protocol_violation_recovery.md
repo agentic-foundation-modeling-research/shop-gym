@@ -82,6 +82,10 @@ operator decision.
   attempts.
 - Tests cover executor protocol violation -> BLOCKED + continue, and
   keep the planner-phase terminal behavior intact.
+- **v1.1 TypeScript port (2026-09-30).** `packages/harness/src/loop.ts`
+  implements the recovery with both drift items fixed: `plan.after.md` is
+  re-snapshotted after a force-block, and `reconstruct()` only reports
+  `protocol_violation` when the planner's `checks/protocol.json` failed.
 
 ---
 

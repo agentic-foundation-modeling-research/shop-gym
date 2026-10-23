@@ -74,6 +74,9 @@ Two design choices define the extension:
 - `shop_arena.gen` (this spec's primary caller) is in design and *requires*
   per-iteration verifiers to gate the build loop. See
   [`shop_gen.md`](../shop_arena/shop_gen.md) §5.5.
+- **v1.1 TypeScript port (2026-09-30).** `packages/harness/src/verifiers/`
+  ports dispatch with the same semantics. `VerifierContext` no longer
+  carries the runtime; verifiers close over whatever they need.
 
 ---
 
