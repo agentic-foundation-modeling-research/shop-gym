@@ -160,8 +160,8 @@ override the agent and judge models. See
 fields, the `AgentUnderTest` interface, and the output layout.
 
 See the [shopping task generation proposal](docs/specs/shop_guru/task_generation_proposal.md)
-for proposed task families, difficulty tiers, generation methods, verifiers, and
-environment support gaps beyond the current benchmark pipeline.
+for sandbox limitations, three generation methods, validation and difficulty,
+and the proposed 9-shop, 540-task RL and transfer-evaluation pilot across six SandboxShops and three real shops.
 
 ## Common commands
 
