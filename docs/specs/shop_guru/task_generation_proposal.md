@@ -26,8 +26,10 @@ rankings has not been measured. [C2] [C11] [C13]
 We propose **23 task families and 6 reusable scenario variations**, spanning
 discovery, purchase, repeat shopping, and after-sales. The catalog pairs examples
 and difficulty levels with generation methods, verifiers, and current support.
-Different goals use catalog constraints, state-transition templates, or
-recommendation scenarios grounded in product evidence.
+Task generation combines parameterized shopper scenarios with product- or
+answer-first construction. An exploration agent and BFS build an interaction
+graph on each generated SandboxShop, recording typical pages, key states, and
+interactive elements. The graph grounds the workflows available to each scenario.
 
 ShopGym v2 development will add the commerce workflows and runner features
 needed for the broader catalog. Task generation will expand coverage of existing
@@ -65,6 +67,11 @@ environment support but no dedicated seed tasks or success checks. Each generate
 shop still needs validation of its account pages and seeded credentials.
 [C1] [C9] [C14] [C15]
 
+The current explorer proposes tasks and rechecks page reachability and locators.
+It does not persist a page-state interaction graph or validate full workflows.
+Browser snapshots and episode reset/state APIs provide inputs for the proposed
+graph builder. [C11] [C17] [C18] [C19]
+
 Profile editing, wishlists, reviews, and after-sales actions require environment
 changes. Coupons have no price effects, and logistics use flat shipping options.
 Clarification and changing requirements need a runner dialogue protocol. These
@@ -85,6 +92,100 @@ can exist without a generator, and a generated task can lack a reliable verifier
 
 ## Proposal
 
+### Selected generation design
+
+We will combine **1. Human-authored tasks / parameterized scenarios**,
+**2. Product- or answer-first generation**, and
+**5. Page-functionality-first generation + 7. Site-graph / state-machine search**.
+The numbers refer to the eight approaches compared in
+[Appendix B](#b-existing-work-and-task-generation-approaches).
+
+| Selected approach | Role in the pipeline | Output |
+| --- | --- | --- |
+| **5 + 7: Page functionality and graph search** | An exploration agent inspects a generated SandboxShop while BFS schedules unexplored pages and states. It records interactive elements and tests transitions. | A reusable interaction graph, page capabilities, and replayable paths. |
+| **2: Product or answer first** | Bind products, variants, policy facts, customer records, or orders to requirements; compute the valid answers and outcomes. | Grounded parameters, constraints, and supporting evidence. |
+| **1: Parameterized scenarios** | Define realistic shopper goals, required capabilities, initial state, requested changes, and success conditions. | A task instance combining a scenario, grounded data, and a supported workflow. |
+
+An LLM writes the request after grounded requirements and success conditions
+have been established.
+
+```mermaid
+flowchart TD
+    A[Generated SandboxShop] --> B[Agent + BFS: methods 5 + 7]
+    B --> C[Interaction graph]
+    D[Product and answer data: method 2] --> E[Construct task and verifier]
+    F[Scenario templates: method 1] --> E
+    C --> E
+    E --> G[Write shopper request]
+    G --> H[Replay, verifier tests, and difficulty annotation]
+    H --> I[Benchmark inclusion]
+```
+
+### Explore the SandboxShop and build the interaction graph
+
+Exploration runs on the **generated SandboxShop**, using representative home,
+collection, search, product, shopping cart, policy, account, and checkout pages.
+The agent inspects content and interactive elements, supplies meaningful inputs,
+and interprets observed results. BFS maintains the frontier and visited set,
+expanding discovered states in order of depth.
+
+A node represents a **page type and key interaction state**: for example, an
+empty or populated shopping cart, or a signed-out or signed-in account. Product
+and order IDs remain parameters. Pages with different controls or behavior are
+split even when their URL patterns match.
+
+Record each control's name, type, input requirements, and enabled state. Test
+actions from reproducible source states and record resulting UI and backend
+changes. Untested controls remain discovery candidates. The graph supports
+workflow search within recorded exploration bounds; task verifiers check actual
+answers and commerce outcomes.
+[Appendix G](#g-interaction-graph-and-exploration-details) specifies records,
+branch replay, deduplication, and coverage boundaries.
+
+### Construct tasks from the graph, data, and scenarios
+
+1. **Select a scenario and supported workflow.** The scenario defines the goal,
+   required capabilities, initial state, and permitted changes. Match these to
+   graph transitions; compose supported actions for longer workflows. An
+   uncovered capability triggers further exploration or defers the candidate.
+2. **Bind grounded parameters.** Sample products, variants, policies, customers,
+   and orders; derive satisfiable constraints and valid outcome predicates.
+   Recommendation scenarios supply a purpose and suitability rubric, with
+   product evidence supporting each claim. Multi-item scenarios need a feasible
+   selection.
+3. **Write the request.** Verbalize the fixed requirements as a shopper goal.
+   Keep reference answers, replay paths, and verifier details in the validation
+   record. The agent chooses its own valid route and solution.
+
+For “Replace the large coffee pack with two small packs and keep everything
+else,” the graph supplies observed quantity/removal controls, the catalog supplies
+variants, and the scenario supplies the initial shopping cart and preservation
+rule. The verifier checks the resulting lines and quantities.
+
+Metadata records the scenario, method IDs, required capabilities, shop/graph
+version, source records, and verification requirements. These fields require task
+schema extensions. [C2]
+
+### Validate generated candidates
+
+Each candidate enters the benchmark after four checks:
+
+1. **Evidence and action support.** Required facts must be accessible through the
+   permitted UI, and required actions must work with the bound parameters. A
+   size-selection task needs an accessible size chart; a representative product
+   transition does not establish that every variant is purchasable.
+2. **Feasibility and replay.** Independently query or solve the constraints and
+   replay a solution in a fresh episode. Graph paths provide candidates for this
+   replay. For an impossible request, retain an empty-result proof or conflicting
+   constraints and review an evidence-gathering run.
+3. **Verifier tests.** Accept valid alternatives and reject targeted mistakes:
+   wrong variants, extra lines, stale orders, incorrect totals, and unintended
+   changes to unrelated records. Exact checks and semantic rubrics are tested
+   separately.
+4. **Realism and coverage.** Confirm that the request expresses a plausible need
+   and that its requirements are stated or discoverable. Record its family,
+   variations, reference action count, difficulty, and required abilities.
+
 ### Task difficulty
 
 We propose reusing the **action-difficulty** bands from
@@ -95,23 +196,22 @@ estimated number of browser actions a human needs to complete a task:
 - **Medium:** 4–9 actions.
 - **Hard:** 10 or more actions.
 
-For ShopGym, the estimate will come from an efficient, human-reviewed solution
-replayed from the task’s declared initial state. It will count individual browser
-operations, even when a tool batches several into one call. Setup, observations,
-and the evaluated agent’s retries do not contribute to this reference count.
-The starting page, login state, shopping cart contents, and action interface must
-be recorded because they affect the label.
+For ShopGym, an efficient, human-reviewed reference replay supplies the count.
+Record the initial page, login and shopping cart state, and action interface.
+Count individual browser operations; exclude setup, observations, and evaluated
+agent retries. Graph edges can contain multiple operations, so graph distance
+does not set the tier.
 
-Action count measures interaction length. We will also annotate the abilities a
-task requires, drawing on [WorkArena++ §3.2](https://arxiv.org/html/2407.05291#S3.SS2):
-planning, information retrieval, data-driven reasoning, memory, and contextual
-understanding. These remain separate coverage tags. A short compatibility query
-can require substantial reasoning; a long form can require little.
+Separately record the abilities a task requires, drawing on
+[WorkArena++ §3.2](https://arxiv.org/html/2407.05291#S3.SS2): planning, information
+retrieval, data-driven reasoning, memory, and contextual understanding. A short
+compatibility query can require substantial reasoning; a long form can require
+little.
 
-The catalog’s ranges are **generation targets**, not measured difficulty labels
-for its example sentences. Each generated instance receives its tier after
-reference replay. [Appendix F](#f-difficulty-definitions-and-annotation) compares
-existing definitions and specifies the annotation procedure.
+Catalog ranges are **generation targets**, not measured labels for the examples.
+Each instance receives its tier after reference replay.
+[Appendix F](#f-difficulty-definitions-and-annotation) compares published definitions
+and specifies counting rules.
 
 ### Unified task catalog
 
@@ -157,93 +257,25 @@ scenario variations that can be combined with the base families.
 | V5 | Scenario variation | **Action boundaries and collateral effects.**<br>Research options without changing my shopping cart.<br>Update only the specified address while preserving every unrelated address and order. | Easy–Hard | **Partial:** snapshots exist; general state comparisons and checks for transient actions do not. [C3] [C6] | Define permitted changes and forbidden actions; seed unrelated records whose state must be preserved. | Compare initial and final state; use trusted events to check forbidden actions and required confirmation order. | **Low–Moderate / Exact; High / Mixed** for traces. |
 | V6 | Scenario variation | **Cross-shop shopping.**<br>Compare the delivered price of the same product at two shops.<br>Split a compatible shopping cart across shops while including separate shipping charges. | Medium–Hard | **Later:** coordinated setup and grading across shops are absent. [C2] [C12] | Align product identities across validated catalogs; calculate fees and a feasible allocation of purchases. | Query prices and state across shops; check equivalence and compatibility, and optimize within a bounded allocation space. | **Moderate–High / Exact or Mixed.** |
 
-### Generation methods
-
-The generation method depends on the success conditions. Product discovery uses
-catalog facts, shopping cart edits use state changes, and recommendations connect
-product evidence to a shopper’s purpose. We propose five methods:
-
-- **Catalog- or answer-first generation** derives requirements from verified
-  product facts and calculates all valid matches. This suits discovery,
-  comparison, and compatibility tasks with explicit constraints.
-- **State-transition templates** define the initial records, requested changes,
-  and records that must remain unchanged. They suit shopping cart edits, account
-  operations, checkout, and eventually after-sales workflows.
-- **Needs-first generation** starts with a shopper’s purpose and preferences,
-  then identifies products supported by catalog evidence. Recommendations use
-  explicit suitability criteria alongside exact budget and stock checks.
-- **Generation from a validated solution** checks a feasible selection before
-  deriving the request and budget. It suits multi-item planning, where
-  independently sampled constraints can easily produce an impossible task.
-- **Exploration of supported functionality** discovers goals from a shop’s actual
-  pages and controls. The explorer would produce a replayable solution and
-  independent success checks before adding the task to the benchmark.
-
-The methods share validation and metadata. Trajectory synthesis, state-machine
-search, and joint generation of environments, tasks, and verifiers offer further
-options for discovery and domain expansion. The research comparison is in
-[Appendix B](#b-generation-methods-and-research-rationale).
-
-### Task generation and validation
-
-The pipeline produces a shopper request and a separate validation record:
-
-```mermaid
-flowchart LR
-    A[Shop data and supported actions] --> B[Family and target difficulty]
-    B --> C[Initial state, constraints, solution, verifier]
-    C --> D[Shopper request]
-    D --> E[Independent replay, tier assignment, verifier tests]
-    E --> F[Coverage review and benchmark inclusion]
-```
-
-Task metadata records category, family, variations, difficulty, reference action
-count, required abilities, generation method, required shop capabilities,
-verification requirements, and source provenance. Reference answers, validated
-solutions, and hidden requirements stay outside the visible request. The metadata
-and interaction protocol require schema extensions. [C2]
-
-A candidate enters the benchmark after four validation steps:
-
-1. **Validate evidence and actions.** Every required fact must be accessible
-   through the permitted UI, and every required action must work in that shop.
-   A task about sizing, for example, needs an accessible size chart.
-2. **Establish feasibility.** Query or solve the constraints independently and
-   replay a solution in a fresh episode. For an impossible request, retain an
-   empty-result proof or conflicting constraints; an agent’s refusal alone does
-   not establish infeasibility.
-3. **Test the verifier.** Confirm that it accepts valid alternatives and rejects
-   targeted mistakes, such as the wrong variant, an extra line, a stale order,
-   an incorrect total, or an unintended change to another record.
-4. **Review realism and coverage.** Requirements must be stated or discoverable
-   within a plausible shopper request. Product swaps and paraphrases create new
-   instances, but do not establish new coverage of goals, evidence, or workflows.
-
 ### Verification and coverage
 
-Structured facts and state changes use deterministic checks. For example, a
-shopping cart verifier compares variant IDs and quantities, while a checkout
-verifier identifies the newly created order and checks its lines and total.
-Recommendations and policy explanations also use an LLM judge supplied with the
-relevant evidence. Hard constraints are checked separately so a convincing
-explanation cannot compensate for an invalid product or order.
+Structured facts and state changes use deterministic checks: compare shopping
+cart variants and quantities, or identify a new order and check its lines and
+total. Recommendations and explanations also use an LLM judge with source
+evidence. Check hard constraints separately from semantic quality. All outcomes
+satisfying the request remain acceptable.
 
-A validated solution establishes feasibility; all valid outcomes remain
-acceptable. Temporal requirements, such as confirmation before purchase, need
-trusted events. A final snapshot cannot show whether an item was temporarily
-added and removed.
-Interactive requirements and disclosure rules must be fixed before the run.
-[Appendix C](#c-verifier-design-notes) covers these extensions and domain-specific cases.
+Temporal requirements need trusted events; a final snapshot cannot show whether
+an item was temporarily added and removed. Interactive requirements and
+disclosure rules must be fixed before the run.
+[Appendix C](#c-verifier-design-notes) covers these extensions and domain cases.
 
-Coverage reports would break results down by family, difficulty, and scenario
-variation, with additional views of product domains, evidence sources, initial
-states, and interacting constraints. Where appropriate, tasks would include ties,
-multiple valid outcomes, impossible requests, and recoverable errors. Simple
-operations do not need artificial Hard variants. Pilot runs would validate the
-reference action counts, report success by tier and ability, and distinguish
-environment failures from agent failures. Family weights and sample counts remain
-open until the pilot; frequent discovery tasks should not dominate the aggregate
-score simply because they are easier to generate.
+Report results by family, difficulty, and variation, alongside product domains,
+evidence sources, initial states, and interacting constraints. Include valid
+alternatives, ties, infeasible cases, and recoverable errors where appropriate.
+Simple operations do not need artificial Hard variants. Pilot runs should check
+reference counts and distinguish environment failures from agent failures.
+Family weights and sample counts remain open until the pilot.
 
 ## Alternative
 
@@ -253,9 +285,11 @@ underrepresent suitability, trade-offs, and interaction. Using one LLM to
 generate every task and judge every result would cover more language and goals,
 but would make feasibility and state correctness harder to establish.
 
-Combining methods requires maintaining exact verifiers and semantic rubrics,
-but supports realistic decisions while keeping structured commerce outcomes
-independently checkable.
+Defining a formal FSM before exploration would make transition rules explicit,
+as in AutoWebWorld. That would require maintaining a model for each storefront
+and commerce domain as the generated implementation changes. The proposed
+interaction graph is built from observed browser behavior, with backend state
+checks and independent task replay supplying outcome validation.
 
 ## Execution Table
 
@@ -265,7 +299,8 @@ defines scope and sequencing; generator implementation remains separate.
 
 | Phase | Proposed scope | Required work | Completion criteria |
 | --- | --- | --- | --- |
-| 1. Baseline pilot | 01–02, 08–10, 14–15, basic 18–19; supported subsets of 04–06, V4–V5 | Add generators, reference action counts, ability tags, and checks for exact lines, new orders, and preserved records. Add account-access tasks and verify their session changes. | Replay tasks in fresh episodes; verify difficulty annotations; accept valid alternatives; reject targeted errors; validate infeasible cases; report coverage. |
+| 0. Interaction graph | Typical pages and supported guest/customer states | Build agent-guided BFS, page/state deduplication, control annotations, reset/replay, observed transitions, and graph versioning. | Reproduce recorded transitions; distinguish untested controls from working actions; report page, state, and action coverage within exploration bounds. |
+| 1. Baseline pilot | 01–02, 08–10, 14–15, basic 18–19; supported subsets of 04–06, V4–V5 | Combine parameterized scenarios and grounded data with graph-supported workflows; add reference action counts, ability tags, and outcome checks. Add account-access tasks and verify their session changes. | Replay tasks in fresh episodes; verify difficulty annotations; accept valid alternatives; reject targeted errors; validate infeasible cases; report coverage. |
 | 2. Richer decisions | 03–06, 11; complex 02, 08, 18–19 | Validate product attributes, compatibility, and policies; add solution search, calculations, and semantic rubrics. | Independently audit feasibility and evidence, and calibrate semantic checks against human judgments. |
 | 3. Interactive scenarios | V1–V5 on supported base families | Add shopper dialogue, disclosure rules, controlled changes, memory fixtures, and event checks. | Replay scripted interactions, verify event order, and measure user-simulator violations. |
 | 4. Commerce workflows | 07, full 12–13, 16–17, refund-aware 18, 20–22 | Add each domain’s records, rules, mutations, and UI before its generator. | Validate the domain contract, browser workflow, and verifier for each family. |
@@ -334,66 +369,41 @@ The following limits affect the proposed catalog:
   URL, prior check results, and an optional final screenshot. Supplying source
   evidence and interaction history requires additional plumbing. [C3] [C12]
 
-### B. Generation methods and research rationale
+### B. Existing work and task generation approaches
 
-The papers below motivate the proposed methods. Their application to task
-families in the catalog is a ShopGym design proposal.
+This table retains the eight approach IDs used in the research discussion.
+Approaches overlap: a paper can use templates, exploration, and validation in
+one pipeline. **Selected** marks a component of ShopGym's proposed generation
+pipeline; the other rows provide context or supporting techniques.
 
-1. **Scenario templates.** AppWorld pairs scenario setup and solutions with
-   programmatic assertions. This provides a useful pattern for account actions,
-   shopping cart edits, checkout, and after-sales: define the initial records,
-   permitted changes, and expected outcome before producing the request.
-   [AppWorld](https://arxiv.org/html/2407.18901)
-2. **Catalog- or answer-first generation.** ShoppingBench samples products,
-   extracts fields, and writes grounded queries. EComAgentBench fixes the answer
-   and typed rubrics before generating language, then distributes requirements
-   across the query, profile, and clarification. In ShopGym, the generator would
-   evaluate the constraints over the catalog and retain all valid matches.
-   [ShoppingBench](https://arxiv.org/html/2508.04266v1),
-   [EComAgentBench](https://arxiv.org/html/2606.17698v1)
-3. **Needs-first generation.** EcomScriptBench connects user objectives, script
-   steps, purchase intentions, and products. That connection can inform
-   recommendations and substitutes, provided each task also has catalog evidence
-   and explicit criteria for assessing suitability.
-   [EcomScriptBench](https://arxiv.org/html/2505.15196v1)
-4. **Generation from a validated solution.** ComboShoppingBench validates a
-   feasible shopping cart before deriving coupons, budget, query, and rubrics.
-   This avoids impossible combinations of independently sampled requirements. Its coupon
-   optimum is calculated for the submitted shopping cart; finding the best
-   product selection requires a separate objective and candidate space. Other
-   selections satisfying the task remain valid.
-   [ComboShoppingBench](https://arxiv.org/html/2608.09282v1)
-5. **Exploration of supported functionality.** Amazon-Bench grounds queries in
-   page content and interactive elements, followed by refinement and review.
-   ShopGuru’s explorer could follow this pattern with added solution replay and
-   independent assertions before benchmark inclusion.
-   [Amazon-Bench](https://arxiv.org/html/2508.15832v1), [C11]
-6. **Trajectory synthesis.** NNetNav labels explored trajectories. SynWeaver uses
-   website maps, reverse synthesis, refinement, and verification. These methods
-   can discover workflows and produce training demonstrations. For evaluation,
-   ShopGym would also need to reconstruct the initial state and check success
-   independently of the trajectory used to generate the task.
-   [NNetNav](https://arxiv.org/html/2410.02907v1),
-   [SynWeaver](https://arxiv.org/html/2608.12429v1)
-7. **State-machine search.** AutoWebWorld uses finite-state machines and graph
-   traversal to obtain reachable goals and trajectories. After modeling a
-   commerce domain, ShopGym could use this method to compose workflows. Browser
-   replay would still need to establish that the UI implements those transitions.
-   [AutoWebWorld](https://arxiv.org/html/2602.14296v1)
-8. **Joint generation of environments, tasks, and verifiers.** VeriEnv and
-   WebArena Infinity provide precedents for generating executable environments
-   with verifiable tasks. This could help add missing commerce domains. Generated
-   validators would need review against the domain contract and tests with valid
-   alternatives and deliberately wrong outcomes, since the same generation error
-   can affect both the task and its verifier.
-   [VeriEnv](https://github.com/kyle8581/VeriEnv),
-   [WebArena Infinity](https://github.com/web-arena-x/webarena-infinity)
+| ID | Approach | Construction process | Representative work and its task generation approach | Strengths and limitations | Role in ShopGym |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Human-authored tasks / parameterized scenarios | Define a shopper goal and scenario template; bind products, customers, and orders; prepare initial state and success conditions. | [WebArena](https://arxiv.org/html/2307.13854#S3.SS1) authors intent templates and variable instances. [AppWorld](https://arxiv.org/html/2407.18901#S3) uses scenario-specific Setup, Evaluation, and Solution programs. | Gives explicit semantics and controllable state changes; coverage depends on the scenario library and authoring effort. | **Selected:** define task families, parameterized goals, initial states, and expected outcomes. |
+| 2 | Product- or answer-first generation | Sample products or an answer; extract evidence; derive satisfiable requirements; write a shopper request. | [ShoppingBench](https://arxiv.org/html/2508.04266v1) samples products, extracts fields, and simulates intent-specific queries. [EComAgentBench](https://arxiv.org/html/2606.17698v1#S4) fixes the answer and typed criteria before generating the query, profile, and clarification text. | Grounds constraints in catalog facts; needs independent checks for alternatives and realistic language rather than a restatement of product fields. | **Selected:** bind grounded product, policy, and order facts to scenarios and compute valid answers before verbalization. |
+| 3 | User-purpose-first generation | Infer a shopper purpose; decompose it into activity steps; associate purchase intentions and suitable products. | [EcomScriptBench](https://arxiv.org/html/2505.15196v1#S4) mines objectives and purchase intentions from reviews, generates scripts, aligns steps with products, and adds human annotations. | Produces natural, cross-category needs; purpose, purchase necessity, and product suitability require semantic review. | Context for purpose-based scenarios in the catalog; a separate purpose-mining pipeline is not selected. |
+| 4 | Feasible-solution-first generation | Construct a valid selection or plan; derive constraints, budgets, and the shopper request around it. | [ComboShoppingBench](https://arxiv.org/html/2608.09282v1#S3) validates a purchasable shopping cart before deriving a budget, coupons, and request; evaluation accepts other valid selections. [DeepPlanning](https://arxiv.org/html/2601.18137v1#S3.SS2) progressively injects constraints and adjusts candidates to retain one optimum. | Establishes at least one solution; requires explicit rules for valid alternatives, ties, and optimization. | Supporting feasibility checks for planning scenarios; a standalone solution-first generator is not selected. |
+| 5 | Page-functionality-first generation | Explore pages; inspect content, controls, forms, and accessibility trees; propose tasks using observed functionality. | [Amazon-Bench](https://arxiv.org/html/2508.15832v1#S3) uses BFS exploration, page categorization, functionality-diversity sampling, LLM query generation, and human refinement. | Covers account and shopping workflows absent from catalog records; a visible control alone does not establish a working action. | **Selected, combined with 7:** annotate interactive elements and confirm their behavior during exploration. |
+| 6 | Trajectory-first generation | Execute exploratory interactions; infer tasks from the resulting changes, or refine tasks and trajectories together. | [NNetNav](https://arxiv.org/html/2410.02907v1) retrospectively labels exploration trajectories. [SynWeaver](https://arxiv.org/html/2608.12429v1#S3) builds a website map with DFS, learns UI priors, and jointly refines tasks and trajectories. | Can produce demonstrations at scale; may favor actions the explorer already performs and turn requests into procedural descriptions. | Reference replay is retained for validation; retrospective labeling and website-prior training are not selected as generation components. |
+| 7 | Site-graph / state-machine search | Build a page or state graph; search for evidence and reachable goals; retain paths; replay and write the task. | [GTA](https://arxiv.org/html/2605.29218v1#S2.SS1) uses BFS to cache pages and accessibility trees, then generates multi-page questions from retrieved page pairs. [AutoWebWorld](https://arxiv.org/html/2602.14296v1#S4.SS3) generates an explicit FSM and website, then uses BFS to enumerate goal-reaching action paths. | Makes reachability and composition explicit; coverage depends on exploration bounds and the state abstraction. A hyperlink graph and an executable FSM provide different guarantees. | **Selected, combined with 5:** use agent-guided BFS to build a graph of typical pages, relevant states, and observed interactions, then use it to ground task generation. |
+| 8 | Joint environment, task, and verifier generation | Generate or clone an executable environment; expose internal state or an SDK; generate tasks and programmatic checks. | [VeriEnv](https://github.com/kyle8581/VeriEnv) clones frontend, backend, and database and generates tasks with SDK-based validation. [WebArena-Infinity](https://github.com/web-arena-x/webarena-infinity) generates applications and verifiable tasks with iterative testing and auditing. | Enables resettable environments and state-based checks; shared generation errors can affect the environment, task, and verifier. | ShopArena supplies the environment. Joint generation is not selected as the task-generation strategy in this proposal. |
 
-For V1–V3, the proposed approach starts with a grounded base task and defines
-preferences, hidden requirements, and changes before interaction. Work on
-long-horizon shopping personalization motivates testing consistency across
-interactions; ShopGym would need the runner protocol described above to support
-such evaluations.
+The combined design selects **1 + 2 + (5 + 7)**. These are complementary roles:
+scenarios define shopper goals; product or answer data supplies grounded
+parameters; page exploration supplies observed controls; graph search supplies
+reachability and candidate workflows. ShopGym must still validate task outcomes
+independently of the graph and request writer.
+
+The graph methods differ in what they assume. GTA's graph represents hyperlinks
+and supporting pages. AutoWebWorld searches a formal FSM defined before the
+website is generated. ShopGym will explore generated SandboxShops, grouping nodes
+by page type and key interaction state while retaining concrete entity bindings
+and replay evidence. Graph coverage and observed state changes must be recorded
+explicitly.
+
+For V1–V3, start with a grounded base scenario and define preferences, hidden
+requirements, and changes before interaction. Work on long-horizon shopping
+personalization motivates testing consistency across interactions; ShopGym needs
+the runner protocol described in this proposal to support these evaluations.
 [Personalization Matters](https://arxiv.org/html/2610.11375v1)
 
 ### C. Verifier design notes
@@ -469,6 +479,11 @@ They support the current-state and support assessments in this proposal.
 - [C15: Task setup][C15] — login through the storefront before the agent starts.
 - [C16: Storefront HTTP smoke test][C16] — registration, logout, login, protected
   account pages, and episode isolation against the shared template.
+- [C17: Existing explorer][C17] — browser-driven task proposals without a persisted
+  interaction graph.
+- [C18: Backend client][C18] — per-episode reset and state reads.
+- [C19: Browser snapshots][C19] — URL, title, and accessibility tree with temporary
+  element references.
 
 [C1]: ../../../packages/shop-guru/src/seed/index.ts
 [C2]: ../../../packages/core/src/schema/task.ts
@@ -486,6 +501,9 @@ They support the current-state and support assessments in this proposal.
 [C14]: ../../../packages/shop_backend/src/resolvers/customer.ts
 [C15]: ../../../packages/shop-guru/src/solve/setup.ts
 [C16]: ../../../packages/shop-arena/src/templates.test.ts
+[C17]: ../../../packages/shop-guru/src/explore/explore.ts
+[C18]: ../../../packages/shop-guru/src/backend.ts
+[C19]: ../../../packages/browser/src/snapshot.ts
 
 ### E. Research scope and prior context
 
@@ -536,3 +554,77 @@ The following counting rules are proposed ShopGym conventions:
 5. **Validate in the pilot.** Report success by action tier and ability tag, with
    the agent configuration and budget. Low success on a short task can reveal a
    reasoning gap without changing the task’s action tier.
+
+### G. Interaction graph and exploration details
+
+The graph is a proposed ShopGuru artifact for a generated SandboxShop. Existing
+browser observations, episode isolation, and backend reset/state reads provide
+building blocks; the graph schema, BFS controller, state abstraction, and
+transition validation still need implementation. [C6] [C17] [C18] [C19]
+
+#### Graph records
+
+| Record | Required information | Purpose |
+| --- | --- | --- |
+| Page-state node | Page type, route pattern, representative URL and entity bindings, key interaction state, visible facts, screenshot/accessibility evidence, and a setup/replay recipe. | Distinguish states with different available actions while sharing structure across similar products or orders. |
+| Interactive element | Role, accessible name, control type, relevant locator/context, allowed inputs, required fields, enabled/disabled state, prerequisites, and observation status. | Identify how a control can be used and distinguish discovered elements from confirmed functionality. |
+| Observed transition | Source and destination node, concrete bindings, semantic action and primitive browser operations, observed prerequisites, UI result, backend state difference where relevant, and replay result. | Record how an interaction behaved for the tested case and provide an executable path segment. |
+| Graph provenance and coverage | Storefront/backend/data versions, exploration setups, depth and action budgets, discovered page types/states, tested controls, failures, and unexpanded frontier. | Identify the graph's scope and determine when changed shops require re-exploration. |
+
+The node key uses page type and key state. Useful state distinctions include a
+selected variant being available or unavailable, a shopping cart being empty or
+populated, a drawer being open or closed, and an account being signed in or out.
+Entity IDs and concrete shopping cart lines remain in the representative
+bindings and replay record. A new control signature or a different relevant
+behavior requires a separate state or page subtype.
+
+This abstraction reduces repeated exploration, but an observed transition for
+one product does not prove that every product supports it. Task construction
+must check the concrete bindings and replay the complete workflow. Similarly,
+a path through abstract nodes is a candidate workflow until its intermediate
+states and prerequisites are shown to compose.
+
+#### Agent-guided BFS
+
+1. **Prepare entry states.** Fix the generated shop version. Identify available
+   page types and initialize representative guest and customer setups. Each
+   queue entry carries the setup and action prefix needed to reproduce its
+   source state.
+2. **Inspect the next state.** Dequeue in BFS order, reproduce the state, and
+   capture its accessibility tree and rendered evidence. The exploration agent
+   classifies the page, annotates controls, and proposes meaningful action and
+   input candidates. BFS owns queue order and duplicate detection.
+3. **Test each branch independently.** Use a fresh browser context and reset the
+   episode, reapply setup, and replay the source prefix before testing a
+   candidate. Capture before/after UI and relevant backend state. Record working,
+   rejected, failed, and untested interactions separately. Backend reset reseeds
+   an episode; the existing API does not import arbitrary saved snapshots.
+   [C18]
+4. **Expand and deduplicate.** Store observed edges, including cycles. Queue a new
+   page-state key when further exploration is needed. Retain concrete evidence
+   for distinct control behavior and sample additional representatives where
+   the abstraction may hide a capability difference.
+5. **Stop with explicit bounds.** Stop when the selected frontier is exhausted
+   or an exploration budget is reached. Persist the remaining frontier and
+   unresolved actions. Report coverage of discovered page types, key states,
+   and tested interactions without claiming complete coverage of the shop.
+
+Element references in browser snapshots are temporary. Persist semantic control
+identification and evidence, then resolve fresh references during replay. [C19]
+
+#### Using the graph for task generation
+
+Scenario requirements select relevant graph capabilities; graph search retrieves
+or composes workflow candidates. Product- or answer-first construction supplies
+concrete facts and parameters. The generator then fixes the initial state,
+requirements, and independent success predicates before writing the request.
+Graph paths and backend records remain generation/validation artifacts. The
+evaluated agent receives the shopper request and permitted observations.
+
+A replay failure is evidence about the candidate or graph: it may reveal an
+invalid binding, a missing prerequisite, a stale transition, or an environment
+bug. Correct the relevant record or defer the task. A successful replay provides
+a reference solution and action count, while the verifier accepts any outcome
+satisfying the request. Abstract graph distance does not determine difficulty;
+the reference replay counts the primitive browser actions under the rules in
+[Appendix F](#f-difficulty-definitions-and-annotation).
