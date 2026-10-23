@@ -1,6 +1,6 @@
 """Public error types raised by ``shop_arena.env_eval``.
 
-The four classes defined here form the entire failure vocabulary EnvEval
+The classes defined here form the failure vocabulary EnvEval
 exposes to callers (spec §8.1). They are intentionally narrow and named
 after the pipeline phase that raises them so a downstream catch can be
 specific without depending on internal implementation details.
@@ -19,6 +19,7 @@ __all__ = [
     "PagesClassifierError",
     "ResumeError",
     "ShopUnreachableError",
+    "StructureComparisonError",
 ]
 
 
@@ -82,3 +83,7 @@ class PagesClassifierError(EnvEvalError):
     decide at the call site whether to fall back to ``stub_classification``
     or abort.
     """
+
+
+class StructureComparisonError(EnvEvalError):
+    """Raised when structural comparison artifacts are missing or invalid."""
