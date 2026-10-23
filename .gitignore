@@ -15,6 +15,8 @@ build/
 !packages/shop_arena/src/shop_arena/gen/build/**
 !packages/shop_arena/tests/gen/build/
 !packages/shop_arena/tests/gen/build/**
+!packages/shop-arena/src/gen/build/
+!packages/shop-arena/src/gen/build/**
 packages/shop_arena/src/shop_arena/gen/build/**/__pycache__/
 packages/shop_arena/tests/gen/build/**/__pycache__/
 

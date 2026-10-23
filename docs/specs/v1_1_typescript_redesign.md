@@ -622,7 +622,7 @@ Milestones are sized for one engineer plus coding agents. Columns B
 | M7 | Arena gen port | pipeline steps on `core/pipeline`, data synth including customers / orders / commerce, build loop with consolidated verifiers, final eval functional sweep, `publish` step, `--gen-backend` flag wiring | M2, M3, M5, M6 | update `shop_arena/shop_gen.md` |
 | M8 | Arena explore port | explore on harness + browser tools | M2, M3 | update `shop_arena/shop_explore.md` |
 | M9 | Guru v2 | task contract, seed generators, explore, validate, solve, grade, aggregate | M3, M4, M6 | `shop_guru/benchmark_v2.md` |
-| M10 | CLI + host | `shopgym` binary, Node host, `trace`, `doctor` | M7, M9 | - |
+| M10 | CLI + host | `shopgym` binary, Node host, `trace`, `doctor` | M7, M9 | implemented in `packages/cli` (`@shop-gym/cli`); host state under `.run/shops/<name>/` |
 | M11 | Cutover | delete Python packages and `uv` files, migrate docs and README, mark old specs superseded, migrate `outputs/` layout notes | M10 | - |
 
 Each milestone lands as one or more PRs into `v1_1-dev`; `v1_1-dev`

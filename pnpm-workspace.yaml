@@ -6,6 +6,7 @@ packages:
   - "packages/shop_backend"
   - "packages/shop-arena"
   - "packages/shop-guru"
+  - "packages/cli"
 allowBuilds:
   '@biomejs/biome': set this to true or false
   esbuild: set this to true or false
