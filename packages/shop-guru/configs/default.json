@@ -1,0 +1,25 @@
+{
+  "shop": "sandbox_shop_v0",
+  "shopUrl": "http://127.0.0.1:3000",
+  "backendUrl": "http://127.0.0.1:4000",
+  "dataDir": "../../shop_backend/tests/fixtures/sandbox_shop_v0",
+  "outDir": "../../../outputs/shop_guru",
+  "model": { "provider": "anthropic", "id": "claude-sonnet-4-5" },
+  "seed": "shopgym",
+  "caps": {
+    "exact": 5,
+    "substitute": 5,
+    "browse": 5,
+    "filter": 3,
+    "shipping": 1,
+    "returns": 1,
+    "e2e": 3,
+    "account": 3,
+    "checkout": 3,
+    "order_history": 3
+  },
+  "concurrency": 1,
+  "episodeTimeoutMs": 600000,
+  "exploreMaxTasks": 10,
+  "headless": true
+}
