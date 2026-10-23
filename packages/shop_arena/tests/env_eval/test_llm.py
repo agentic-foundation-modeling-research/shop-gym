@@ -285,6 +285,31 @@ def test_anthropic_call_builds_forced_tool_use_request(monkeypatch: pytest.Monke
     assert text_block == {"type": "text", "text": "categorise this screenshot"}
 
 
+@pytest.mark.parametrize("model", ["claude-opus-5", "claude-opus-5-20260701"])
+def test_anthropic_call_omits_temperature_for_opus_5(
+    monkeypatch: pytest.MonkeyPatch,
+    model: str,
+) -> None:
+    """Opus 5 rejects its deprecated explicit ``temperature`` parameter."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-stub")
+    response = _AnthropicMessage(content=[_ToolUseBlock(input={"nav": 1, "footer": 0})])
+    fake_client = _FakeAnthropicClient(response)
+    client = _AnthropicVisionClient(model, client_factory=lambda **_: fake_client)
+
+    out = client.call(
+        prompt="x",
+        images=(_PNG_BYTES,),
+        schema=_RUBRIC_SCHEMA,
+        temperature=DEFAULT_RUBRIC_TEMPERATURE,
+    )
+
+    assert out.parsed == {"nav": 1, "footer": 0}
+    [call] = fake_client.messages.calls
+    assert call["model"] == model
+    assert "temperature" not in call
+    assert call["max_tokens"] == 4096
+
+
 def test_anthropic_response_without_tool_use_is_parse_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

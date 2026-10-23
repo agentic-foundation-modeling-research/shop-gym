@@ -33,7 +33,7 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 ## Requirements
 
 - Python ≥ 3.12 with [`uv`](https://docs.astral.sh/uv/)
-- Node ≥ 20.12 with [`pnpm`](https://pnpm.io/) ≥ 9
+- Node ≥ 22.19 with [`pnpm`](https://pnpm.io/) ≥ 9 (the `pi` SDK requires it)
 - One of the supported coding-agent CLIs (required for `shop_arena.explore`
   and the `shop_arena.gen` build loop):
   - `pi` (default agent runtime) — install per the
@@ -184,6 +184,12 @@ single-task debugging, skill filters, and the full output layout.
 
 ## Common commands
 
+CI runs the Python lint, typecheck, and test commands below, plus the
+TypeScript build, tests, and lint. Python dependencies are resolved on each
+fresh checkout because `uv.lock` is not tracked; if local lint differs from
+CI, use the Ruff version reported in the failing run to reproduce it
+(`uvx ruff@<version> check .`).
+
 ```bash
 # Python
 uv run pytest                    # run all Python tests
@@ -193,6 +199,8 @@ uv run pyright                   # typecheck strict-clean Python packages
 
 # ShopArena env-eval (measure an environment)
 uv run shop-env-eval run <url> --no-rubric    # one-shot measurement → outputs/shop_env_evals/<host>/<run_id>/
+uv run shop-env-eval compare <url-a> <url-b> [...]  # LLM-free AXTree distance from cohort mean → variance.json
+uv run shop-env-eval compare <url-a> <url-b> [...] --visual-judge-model gpt-5  # optional visual comparison
 uv run shop-env-eval visualize <run_dir>      # render the transition graph as interactive HTML
 
 # TypeScript
