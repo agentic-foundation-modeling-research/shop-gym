@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1160" height="726" viewBox="0 0 1160 726" role="img" aria-labelledby="title description">
   <title id="title">Three task generation routes, one validation contract</title>
-  <desc id="description">Authored scenarios feed template generation. Catalog and answer facts feed product-first generation. A sandbox or real shop feeds BFS and browser exploration, with backend state available only in sandboxes. All three produce a private setup, requirements, evidence, and success predicates before goal wording. Grounding, fresh replay, and verifier tests gate admission. Evaluated agents see the goal; fixtures, checks, and reference traces remain private.</desc>
+  <desc id="description">Authored scenarios feed template generation. Catalog and answer facts feed product-first generation. A sandbox or real shop feeds BFS and browser exploration, with backend state available only in sandboxes. All three produce a task specification containing an initial prompt, setup, requirements, evidence, and success predicates. A validation agent executes the prompt from a fresh initial state with the evaluated agent's tools and visible information. Verifier validation checks the outcome, valid alternatives, and targeted mistakes. Failed executions leave feasibility unresolved. Evaluated agents receive the initial prompt; fixtures, checks, and validation traces remain private.</desc>
   <defs>
     <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
       <path d="M32 0H0V32" fill="none" stroke="#1e293b" stroke-width="0.5"/>
@@ -29,9 +29,9 @@
   <path class="edge" d="M200 344V380H580V414"/>
   <path class="edge" d="M580 344V414"/>
   <path class="edge" d="M960 344V380H580V414"/>
-  <path class="edge" d="M580 488V510H155V550"/>
-  <path class="edge" d="M280 590H330"/>
-  <path class="edge" d="M790 590H836"/>
+  <path class="edge" d="M580 488V510H240V530"/>
+  <path class="edge" d="M450 595H500"/>
+  <path class="edge" d="M830 595H890"/>
 
   <g>
     <rect x="30" y="106" width="340" height="60" rx="10" fill="#111d30" stroke="#334155"/>
@@ -66,24 +66,27 @@
   </g>
 
   <rect x="30" y="414" width="1100" height="74" rx="12" fill="#172033" stroke="#64748b"/>
-  <text x="50" y="444" class="heading">Private task specification</text>
-  <text x="50" y="473" class="body">Setup + requirements + evidence + success predicates</text>
+  <text x="50" y="444" class="heading">Task specification</text>
+  <text x="50" y="473" class="body">Initial prompt + setup + requirements + evidence + success predicates</text>
   <text x="1110" y="444" text-anchor="end" class="small">Primary route + supporting inputs recorded</text>
 
-  <rect x="30" y="550" width="250" height="80" rx="12" fill="#111d30" stroke="#64748b"/>
-  <text x="50" y="581" class="heading">Write the goal</text>
-  <text x="50" y="608" class="small">Preserve fixed requirements</text>
+  <rect x="30" y="530" width="420" height="135" rx="12" fill="#102b29" stroke="#34d399" stroke-width="1.5"/>
+  <text x="50" y="561" class="heading" style="fill:#6ee7b7">Validation agent</text>
+  <text x="50" y="590" class="body">Execute initial prompt from fresh state.</text>
+  <text x="50" y="618" class="small">Same tools and visible evidence as agent.</text>
+  <text x="50" y="642" class="small">Return trace, outcome, and failure reason.</text>
 
-  <rect x="330" y="530" width="460" height="120" rx="12" fill="#102b29" stroke="#34d399" stroke-width="1.5"/>
-  <text x="350" y="561" class="heading" style="fill:#6ee7b7">Shared validation</text>
-  <text x="350" y="590" class="body">Visible evidence → fresh replay → verifier tests</text>
-  <text x="350" y="618" class="small">Valid alternatives pass; targeted mistakes fail.</text>
-  <text x="350" y="639" class="small">Reject or repair failures; retain rejection reasons.</text>
+  <rect x="500" y="530" width="330" height="135" rx="12" fill="#102b29" stroke="#34d399" stroke-width="1.5"/>
+  <text x="520" y="561" class="heading" style="fill:#6ee7b7">Verifier validation</text>
+  <text x="520" y="590" class="body">Check outcome against requirements.</text>
+  <text x="520" y="618" class="small">Valid alternatives pass; mistakes fail.</text>
+  <text x="520" y="642" class="small">Repair or reject; keep failure reasons.</text>
 
-  <rect x="836" y="550" width="294" height="80" rx="12" fill="#102b29" stroke="#34d399"/>
-  <text x="856" y="581" class="heading" style="fill:#6ee7b7">Accepted task</text>
-  <text x="856" y="608" class="small">Goal + private validation artifacts</text>
+  <rect x="890" y="550" width="240" height="95" rx="12" fill="#102b29" stroke="#34d399"/>
+  <text x="910" y="581" class="heading" style="fill:#6ee7b7">Accepted task</text>
+  <text x="910" y="608" class="small">Initial prompt + private</text>
+  <text x="910" y="630" class="small">validation artifacts</text>
 
-  <text x="30" y="690" class="small">Agent input: goal + permitted observations</text>
-  <text x="1130" y="690" text-anchor="end" class="small">Private: fixtures, predicates, answers, reference traces</text>
+  <text x="30" y="700" class="small">Agent input: initial prompt + permitted observations</text>
+  <text x="1130" y="700" text-anchor="end" class="small">Private: fixtures, predicates, answers, validation traces</text>
 </svg>
