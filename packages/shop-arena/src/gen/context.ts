@@ -30,7 +30,7 @@ export interface GenDeps {
   readonly credentials?: Credentials;
   /** Overrides the backend named by `config.imageBackend`. */
   readonly images?: ImageBackend;
-  /** Tools handed to the build agent; defaults to the file tools. */
+  /** Caller tools for the build agent; defaults to the run-dir file tools. The build loop adds its shell and screenshot tools. */
   readonly tools?: ToolSet;
   readonly log?: (line: string) => void;
   readonly signal?: AbortSignal;

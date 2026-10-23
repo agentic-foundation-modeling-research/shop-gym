@@ -1,5 +1,10 @@
 # URL-based structural variance
 
+> **Superseded by v1.1 (2026-10-08).** The Python implementation this spec
+> describes (`shop_arena.env_eval.structure`) was deleted at the v1.1 cutover; see
+> [`v1_1_typescript_redesign.md`](../v1_1_typescript_redesign.md). It was part of
+> EnvEval, which was dropped (decision 1 of that plan) and has no v1.1 equivalent.
+
 Status: **Implemented**
 Version: **0.5**
 Date: 2026-07-27

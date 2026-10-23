@@ -108,11 +108,16 @@ iters/<exec_id>/checks/
 ├── protocol.json              # existing; harness state-machine checks
 └── verifiers/                 # NEW
     ├── <name>.json            # one file per verifier invocation
-    └── feedback.md            # NEW; concatenated feedback shown to NEXT iteration
+    ├── feedback.md            # NEW; concatenated feedback shown to NEXT iteration
+    └── feedback_images.json   # NEW; image paths (`VerifierResult.images`) attached to that prompt
 ```
 
 `feedback.md` is rewritten only when at least one verifier returned
 `FAIL` or `ADVISORY` with feedback content. Otherwise absent.
+`feedback_images.json` likewise exists only when such a verifier returned
+`images`; the loop attaches at most six of them to the next executor
+prompt as image content, and only when the execute prompt renders the
+`{{verifier_feedback}}` slot.
 
 **Out of scope (v0.1):**
 

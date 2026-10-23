@@ -1,9 +1,10 @@
 /**
  * The build loop: seeds the storefront and backend templates into a run,
  * starts the backend sidecar over the run's dataset, and drives the harness
- * plan-exec loop with the build prompts and verifier set. The storefront
- * sidecar is built and started by the first storefront verifier that needs
- * it and restarted when the copy changes.
+ * plan-exec loop with the build prompts, the agent tools and the verifier
+ * set. The storefront sidecar is built and started by the first storefront
+ * verifier (or `screenshot_page` call) that needs it and restarted when the
+ * copy changes.
  *
  * ```
  * <runDir>/
@@ -30,6 +31,7 @@ import {
   runPlanExecLoop,
 } from '@shop-gym/harness';
 
+import { buildAgentTools } from './agent_tools.js';
 import { loadBuildPrompts } from './prompts.js';
 import { type TemplateFingerprint, seedTemplate } from './seed.js';
 import { BackendSidecar, type SidecarLaunch, freePort } from './sidecar.js';
@@ -61,6 +63,7 @@ export interface BuildLoopOptions {
   readonly genBackend: boolean;
   readonly runtime: AgentRuntime;
   readonly model: ModelRef;
+  /** Caller tools (the run-dir file tools); `run_command` and `screenshot_page` are added here. */
   readonly tools: ToolSet;
   readonly maxIters: number;
   readonly timeoutMs?: number;
@@ -100,6 +103,24 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
   const genBackend = existing?.genBackend ?? options.genBackend;
   const backendUrl = `http://127.0.0.1:${port}`;
   const prompts = await loadBuildPrompts({ backendUrl, genBackend });
+  const sidecar = new BackendSidecar({
+    backendDir: path.join(artifactDir, BACKEND_DIRNAME),
+    dataDir: path.join(artifactDir, DATA_DIRNAME),
+    port,
+    logPath: path.join(options.runDir, SIDECAR_LOG),
+    ...(options.sidecarLaunch !== undefined ? { launch: options.sidecarLaunch } : {}),
+  });
+  const storefront = new StorefrontSidecar({
+    storefrontDir: path.join(artifactDir, STOREFRONT_DIRNAME),
+    backendUrl,
+    port: await freePort(),
+    logPath: path.join(options.runDir, STOREFRONT_LOG),
+    ...(options.storefrontLaunch !== undefined ? { launch: options.storefrontLaunch } : {}),
+  });
+  const agentTools = buildAgentTools({
+    target: { url: storefront.url, prepare: () => storefront.ensureCurrent() },
+    ...(options.commandRunner !== undefined ? { runner: options.commandRunner } : {}),
+  });
   const config: PlanExecLoopConfig = {
     runDir: options.runDir,
     prompts: { planner: prompts.planner, execute: prompts.execute },
@@ -108,7 +129,7 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     maxIters: options.maxIters,
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     model: options.model,
-    tools: options.tools,
+    tools: [...options.tools, ...agentTools],
   };
 
   let build = existing;
@@ -134,20 +155,6 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     );
   }
 
-  const sidecar = new BackendSidecar({
-    backendDir: path.join(artifactDir, BACKEND_DIRNAME),
-    dataDir: path.join(artifactDir, DATA_DIRNAME),
-    port,
-    logPath: path.join(options.runDir, SIDECAR_LOG),
-    ...(options.sidecarLaunch !== undefined ? { launch: options.sidecarLaunch } : {}),
-  });
-  const storefront = new StorefrontSidecar({
-    storefrontDir: path.join(artifactDir, STOREFRONT_DIRNAME),
-    backendUrl,
-    port: await freePort(),
-    logPath: path.join(options.runDir, STOREFRONT_LOG),
-    ...(options.storefrontLaunch !== undefined ? { launch: options.storefrontLaunch } : {}),
-  });
   const ownedFiles = new OwnedFilesVerifier();
   const verifiers = buildVerifiers({
     genBackend,

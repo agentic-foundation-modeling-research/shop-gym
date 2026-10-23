@@ -1,8 +1,0 @@
-{
-  "cart": {
-    "type": "drawer",
-    "has_promo_input": false,
-    "has_upsells": false,
-    "has_shipping_estimate": false
-  }
-}

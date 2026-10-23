@@ -6,7 +6,7 @@ trajectory inspection and an environment check.
 
 ```bash
 pnpm -r build                          # produces packages/cli/dist/main.js
-node packages/cli/dist/main.js --help  # or `pnpm --filter @shop-gym/cli exec shopgym --help`
+node packages/cli/dist/main.js --help  # every `shopgym <cmd>` below is run this way
 ```
 
 Every subcommand prints progress to stderr (one line per event) and reserves

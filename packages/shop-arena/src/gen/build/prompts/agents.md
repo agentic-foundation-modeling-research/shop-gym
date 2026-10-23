@@ -75,25 +75,42 @@ pick the latter.
 - Never edit `template.json` or `.env` files; the orchestrator owns them.
 
 Final action of any executor iteration: edit `plan.md` to mark **only your
-selected task** as `[x]` (success) or `[!] <one-line reason>` (blocked).
-Do not touch any other task's line.
+selected task** as `[x]` (success) or `[!]` (blocked). The task line keeps
+its exact shape `- [<marker>] <task_id> — <brief> [priority: N]`; a
+blocked reason goes into the brief after the separator, never after the
+priority. Do not touch any other task's line.
 
 ---
 
 ## 3. Tooling
 
+You have five tools. Every path is relative to `<run_dir>`.
+
+| Tool              | Use                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| `read_file`       | read a text file (`offset` continues a long one)                                     |
+| `write_file`      | create or replace a file                                                             |
+| `list_dir`        | list a directory                                                                     |
+| `run_command`     | run a shell line with `sh -c` (`cwd` picks the directory); returns exit code + output |
+| `screenshot_page` | render a storefront route at the judge's desktop and mobile viewports                |
+
 Node 20+ and pnpm are available. Both template copies are standalone pnpm
 projects (dependencies already installed; `pnpm install --ignore-workspace`
-re-runs are idempotent). Run commands from inside the copy:
+re-runs are idempotent). Run scripts from inside the copy via `run_command`:
 
-- Storefront: `cd artifact/storefront && pnpm typecheck` and `pnpm build`.
-- Backend: `cd artifact/backend && pnpm typecheck`, `pnpm test`, and
-  `pnpm codegen` after editing any SDL module under `src/schema/`.
+- Storefront: `pnpm typecheck && pnpm build` with `cwd: artifact/storefront`.
+- Backend: `pnpm typecheck`, `pnpm test`, and `pnpm codegen` after editing
+  any SDL module under `src/schema/`, with `cwd: artifact/backend`.
 - Query the sidecar with `curl -s {{backend_url}}/graphql -H 'content-type: application/json' -d '{"query":"{ shop { name } }"}'`
   when you need real data shapes.
 
-Do not start long-running dev servers across tool calls; start and stop them
-inside one bash invocation.
+`screenshot_page` rebuilds and serves the storefront copy on demand and
+returns exactly the captures the `visual_judge` verifier scores. Look at
+every page you styled before you mark the task done; the judge will.
+
+Do not start long-running dev servers across tool calls; a `run_command`
+call is killed when it times out, so start and stop servers inside one
+call.
 
 ---
 

@@ -3,9 +3,10 @@
  *
  * Runs every applicable verifier in registration order with timing and
  * exception trapping, writes one JSON file per verifier under
- * `checks/verifiers/`, writes `feedback.md` when any verifier produced
- * feedback, and reopens the selected task in `plan.md` when any verifier
- * returned `fail`.
+ * `checks/verifiers/`, writes `feedback.md` (and `feedback_images.json`,
+ * the image paths that accompany it) when any verifier produced feedback,
+ * and reopens the selected task in `plan.md` when any verifier returned
+ * `fail`.
  */
 
 import * as fs from 'node:fs/promises';
@@ -17,6 +18,7 @@ import type { Verifier, VerifierContext, VerifierResult, VerifierRun } from './t
 
 export const VERIFIERS_DIRNAME = 'verifiers';
 export const FEEDBACK_FILENAME = 'feedback.md';
+export const FEEDBACK_IMAGES_FILENAME = 'feedback_images.json';
 
 export interface DispatchInput {
   readonly verifiers: readonly Verifier[];
@@ -52,6 +54,7 @@ export async function dispatchVerifiers(input: DispatchInput): Promise<DispatchO
 
   const runs: VerifierRun[] = [];
   const sections: [string, string][] = [];
+  const images: string[] = [];
   let blocking = false;
   for (const verifier of applicable) {
     const startedAt = new Date();
@@ -93,14 +96,23 @@ export async function dispatchVerifiers(input: DispatchInput): Promise<DispatchO
     if (result.verdict === 'fail') {
       blocking = true;
     }
-    if ((result.verdict === 'fail' || result.verdict === 'advisory') && feedback !== '') {
-      sections.push([verifier.name, feedback]);
+    if (result.verdict === 'fail' || result.verdict === 'advisory') {
+      if (feedback !== '') {
+        sections.push([verifier.name, feedback]);
+      }
+      images.push(...(result.images ?? []));
     }
   }
 
   if (sections.length > 0) {
     const body = sections.map(([name, text]) => `## ${name}\n\n${text.trimEnd()}\n`).join('\n');
     await fs.writeFile(path.join(checksDir, FEEDBACK_FILENAME), body);
+  }
+  if (images.length > 0) {
+    await fs.writeFile(
+      path.join(checksDir, FEEDBACK_IMAGES_FILENAME),
+      `${JSON.stringify(images, null, 2)}\n`,
+    );
   }
   if (blocking) {
     const text = await fs.readFile(input.planPath, 'utf-8');
@@ -120,14 +132,26 @@ export async function renderFeedbackForPrompt(
   feedbackPath: string,
   maxChars: number,
 ): Promise<string> {
-  let body: string;
+  const body = await readIfExists(feedbackPath);
+  if (body === undefined) {
+    return '';
+  }
+  return body.length <= maxChars ? body : `${body.slice(0, maxChars)}\n[...truncated]`;
+}
+
+/** The image paths recorded next to a `feedback.md`; empty when the file is absent. */
+export async function readFeedbackImages(imagesPath: string): Promise<readonly string[]> {
+  const raw = await readIfExists(imagesPath);
+  return raw === undefined ? [] : (JSON.parse(raw) as string[]);
+}
+
+async function readIfExists(file: string): Promise<string | undefined> {
   try {
-    body = await fs.readFile(feedbackPath, 'utf-8');
+    return await fs.readFile(file, 'utf-8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return '';
+      return undefined;
     }
     throw error;
   }
-  return body.length <= maxChars ? body : `${body.slice(0, maxChars)}\n[...truncated]`;
 }

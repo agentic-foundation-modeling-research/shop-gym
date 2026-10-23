@@ -2,8 +2,8 @@
 
 TypeScript ShopArena: storefront exploration (`src/explore/`), SandboxShop
 generation (`src/gen/`), and the storefront template under `templates/`.
-This package replaces the Python `packages/shop_arena` during the v1.1
-migration; see `docs/specs/v1_1_typescript_redesign.md`.
+The `shopgym explore` and `shopgym gen` commands in `packages/cli` drive
+it; see `docs/specs/v1_1_typescript_redesign.md`.
 
 Layout:
 
@@ -79,8 +79,8 @@ an unfinished harness run; the pipeline never deletes `run/`, so
 budget. Prompts live in `src/explore/prompts/*.md` and are copied into
 `dist/` by the build; `{{CAPABILITIES_SCHEMA}}` in `agents.md` is
 rendered from the zod schema at run time. Credentials come from
-`loadCredentials()` and are never written to disk. The `shopgym explore`
-CLI arrives in M10.
+`loadCredentials()` and are never written to disk. `shopgym explore <url>`
+wraps this function.
 
 ## Gen
 
@@ -101,7 +101,9 @@ pipeline runner; `GEN_STEPS` lists them in order:
 `data_synth` runs its sub-steps in order (`identity`, `store`, `pages`,
 `policies`, `commerce`, `collections`, `skeletons`, `details` per
 collection, `alt_text`, `images`, `navigation`, `customers`, then
-assembly with deterministic ids, inventory, and orders). Every LLM call
+assembly with deterministic ids, inventory, and orders). `navigation`
+reads the manual's `parts/navigation.md` so the footer mirrors the manual's
+footer link list and the in-loop judges agree on it. Every LLM call
 asks for one JSON value against a zod-derived JSON Schema and retries
 once with the validation error. Prompts are plain Markdown under
 `src/gen/data_synth/prompts/` with `{{name}}` placeholders, and every
@@ -142,7 +144,7 @@ per item). `.shop_gen/image_cache/` (OpenAI responses keyed by prompt
 hash) is not a step output and survives reruns. `SHOPGYM_LIVE=1 pnpm
 test` runs `src/gen/data_synth/data_synth.live.test.ts` against a real
 model (`SHOPGYM_LIVE_MODEL=<provider>/<id>` overrides the default).
-The `shopgym gen` CLI arrives in M10.
+`shopgym gen <manual_dir>... --name <name>` wraps this function.
 
 ## Build
 
@@ -157,11 +159,13 @@ backend copy as a sidecar, and drives `runPlanExecLoop` from
 | seeding | `src/gen/build/seed.ts` | copies each template's `git ls-files` output into `artifact/{storefront,backend}/`, writes `template.json` (commit + content hash), runs `pnpm install --ignore-workspace` |
 | sidecar | `src/gen/build/sidecar.ts` | `node --import tsx src/cli.ts artifact/data <port>` in `artifact/backend/`, `/health` wait, `restartIfChanged()` after every assistant turn (hash of `src/` + `package.json`), logs in `<runDir>/sidecar.log` |
 | prompts | `src/gen/build/prompts/*.md` | `agents.md`, `planner.md`, `execute.md`; `{{backend_url}}` and `{{gen_backend_mode}}` are substituted, `{{verifier_feedback}}` is left for the harness |
+| agent tools | `src/gen/build/agent_tools.ts` | added to the caller's `tools`: `run_command` (a shell line via `sh -c` inside the run dir, exit code plus head-and-tail of the output) and `screenshot_page` (rebuilds the storefront if needed and returns the judge's desktop and mobile captures of one route) |
 | owned files | `src/gen/build/owned_files.ts` | glob table per task id; `gen_backend` / `backend_*` tasks own `backend/src/{schema,resolvers,state}/**` and co-located tests, nobody may touch `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**` |
 | verifiers | `src/gen/build/verifiers/` | `owned_files` (all tasks), `backend_typecheck`, `backend_test`, `sandbox_contract` (backend tasks), `data_in_use` (all tasks: every GraphQL document under `storefront/app` validated against the sidecar's introspected schema) |
 
 ```ts
 import { build, STOREFRONT_TEMPLATE_DIR } from '@shop-gym/shop-arena';
+import { fileTools } from '@shop-gym/shop-arena/explore';
 
 const result = await build.runBuildLoop({
   runDir: 'outputs/shops/demo/runs/build',
@@ -171,7 +175,7 @@ const result = await build.runBuildLoop({
   genBackend: true, // adds the gen_backend task and the backend verifiers
   runtime, // any AgentRuntime, e.g. the pi adapter
   model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-  tools: ['read', 'write', 'edit', 'bash'],
+  tools: fileTools(), // read_file / write_file / list_dir; run_command and screenshot_page are added
   maxIters: 12,
 });
 console.log(result.finalStatus, result.build.backendUrl);
@@ -185,7 +189,7 @@ on the backend fixture (its helpers hardcode the fixture path); the
 read-only drift check runs on the seeded copy. `SHOPGYM_SLOW_TESTS=1
 pnpm test` additionally runs `src/gen/build/build_loop.test.ts` with
 real `pnpm install`, a real `tsx` sidecar, and the real backend suites.
-The `--gen-backend` CLI flag arrives in M10; see
+`shopgym gen --gen-backend` turns `genBackend` on; see
 `docs/specs/shop_arena/backend_generation.md`.
 
 ### Verifiers
@@ -205,7 +209,7 @@ manual directory and `{ llm, model }` for the judge) the order becomes
 | `routes_200` | storefront tasks | the task's page-bucket routes plus static routes return 200; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` returns 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
 | `nav_coverage` | `gen_navigation`, `gen_theme`, `visual_fix` | every `navigation.json` target returns 200 and is linked from the rendered header or footer |
 | `cart_conformance` | `gen_cart_search`, `gen_product`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order |
-| `visual_judge` | every page task | desktop and mobile screenshots per route through `BrowserSession`, one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
+| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` routes and the first seeded customer logged in before `/account` (the `account` bucket belongs to `visual_fix` only); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
 
 `runBuildLoop` always passes `storefront` (its `judge` option supplies
 the visual judge; `generateShop` sets it to the synthesis model) and

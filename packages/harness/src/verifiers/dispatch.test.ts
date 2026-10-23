@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { parse } from '../plan/parser.js';
-import { dispatchVerifiers, renderFeedbackForPrompt } from './dispatch.js';
+import { dispatchVerifiers, readFeedbackImages, renderFeedbackForPrompt } from './dispatch.js';
 import type { Verifier, VerifierResult } from './types.js';
 
 function verifier(name: string, result: VerifierResult | Error, applies = true): Verifier {
@@ -80,6 +80,17 @@ describe('dispatchVerifiers', () => {
       'utf-8',
     );
     expect(feedback).toBe('## lint\n\nbroken\n\n## hint\n\nconsider x\n');
+  });
+
+  it('records the images of failing and advisory verifiers next to the feedback', async () => {
+    const imagesFile = path.join(iterDir, 'checks', 'verifiers', 'feedback_images.json');
+    await dispatch([verifier('ok', { verdict: 'pass', images: ['/ignored.png'] })]);
+    expect(await readFeedbackImages(imagesFile)).toEqual([]);
+    await dispatch([
+      verifier('shots', { verdict: 'fail', feedback: 'see', images: ['/a.png', '/b.png'] }),
+      verifier('hint', { verdict: 'advisory', images: ['/c.png'] }),
+    ]);
+    expect(await readFeedbackImages(imagesFile)).toEqual(['/a.png', '/b.png', '/c.png']);
   });
 
   it('turns a thrown verifier into a non-blocking error verdict', async () => {

@@ -7,7 +7,13 @@
 
 import type { BrowserSession } from '@shop-gym/browser';
 
-import { addToCart, logIn, logOut, placeOrder, register } from './browser_steps.js';
+import {
+  addToCart,
+  logIn,
+  logOut,
+  placeOrder,
+  register,
+} from '../build/verifiers/browser_steps.js';
 
 export type StepStatus = 'pass' | 'fail' | 'skipped';
 

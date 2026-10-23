@@ -35,7 +35,7 @@ episodes, grade, and aggregate. Tasks and results use the schemas in
   "shop": "my_shop",
   "shopUrl": "http://127.0.0.1:3000",
   "backendUrl": "http://127.0.0.1:4000",
-  "dataDir": "../../../outputs/shops/my_shop",
+  "dataDir": "../../../outputs/shops/my_shop/data",
   "outDir": "../../../outputs/shop_guru",
   "model": { "provider": "anthropic", "id": "claude-sonnet-4-5" },
   "caps": { "exact": 5, "account": 3, "checkout": 3 }
@@ -49,8 +49,9 @@ field and the mapping from the v1 YAML.
 ## How to run
 
 The storefront must be served over the backend with `x-shopgym-episode`
-forwarding (the template in `packages/shop-arena/templates/storefront/`).
-There is no CLI yet (M10); call the stage functions:
+forwarding (the template in `packages/shop-arena/templates/storefront/`),
+for example with `shopgym host`. `shopgym guru build|explore|solve|eval
+--config <path>` runs one stage; from code, call the stage functions:
 
 ```ts
 import { loadCredentials } from '@shop-gym/core';
