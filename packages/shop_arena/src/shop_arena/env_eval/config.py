@@ -112,9 +112,8 @@ class EvalConfig(BaseModel):
 class EvalResult(BaseModel):
     """Return value of ``evaluate()``.
 
-    Holds filesystem locators only; the parsed ``metrics.json`` document
-    is exposed as a separate field once the ``Metrics`` schema lands
-    (next M1 task). Keeping this model frozen + closed mirrors
+    Holds filesystem locators only; callers load the parsed ``metrics.json``
+    document separately. Keeping this model frozen + closed mirrors
     ``EvalConfig`` and lets callers safely use it as a dict key.
 
     Attributes:
@@ -122,8 +121,7 @@ class EvalResult(BaseModel):
             ``pages.json``, ``observation/``, ``action/``, ``transition/``,
             ``metrics.json``, and ``manifest.json`` (spec §5.6).
         metrics_path: Absolute path to ``metrics.json`` inside
-            ``run_dir``. This is the file ``compare`` and ``aggregate``
-            consume; the CLI prints it on stdout per spec SC1.
+            ``run_dir``. The single-shop CLI prints it on stdout per spec SC1.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

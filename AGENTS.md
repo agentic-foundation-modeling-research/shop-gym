@@ -133,7 +133,7 @@ NO PATCHING OR HACKING FOR SHORT TERM SUCCESS.
 ### TypeScript Coding Style
 
 - **Style guide**: Google TypeScript Style Guide. `biome` is the source of truth for lint + format (config in root `biome.json`).
-- **Version**: Node ≥ 20, TypeScript ≥ 5.6, ESM only (`"type": "module"`). Use `.js` extensions in relative imports (required by Node ESM).
+- **Version**: Node ≥ 22, TypeScript ≥ 5.6, ESM only (`"type": "module"`). Use `.js` extensions in relative imports (required by Node ESM).
 - **Typing**: `strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` (see `tsconfig.base.json`). No `any`; prefer `unknown` + narrowing. No non-null assertions (`!`) without a comment justifying why.
 - **Layout**: `src/` → `dist/`. Public API re-exported from `src/index.ts`. No deep imports across package boundaries.
 - **Naming**: `camelCase` for variables/functions, `PascalCase` for types/classes, `SCREAMING_SNAKE_CASE` for module-level constants. File names `kebab-case.ts` (tests: `*.test.ts`).

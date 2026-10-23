@@ -135,7 +135,8 @@ def _fake_openai_response(payload: dict[str, Any]) -> MagicMock:
     return resp
 
 
-def test_judge_trace_success() -> None:
+@pytest.mark.parametrize("positional", [False, True])
+def test_judge_trace_success(positional: bool) -> None:
     payload = {
         "reasoning": "all good",
         "verdict": True,
@@ -148,15 +149,26 @@ def test_judge_trace_success() -> None:
     fake_client.chat.completions.create.return_value = _fake_openai_response(payload)
 
     with patch("openai.OpenAI", return_value=fake_client):
-        result = judge_trace(
-            task="buy a hat",
-            final_result="done, hat added to cart",
-            agent_steps=["[user] buy a hat", "[assistant] done"],
-            screenshots_b64=["aGVsbG8="],  # "hello"
-            model="gpt-5",
-            base_url="https://example.test/v1",
-            api_key="sk-test",
-        )
+        if positional:
+            result = judge_trace(
+                "buy a hat",
+                "done, hat added to cart",
+                ["[user] buy a hat", "[assistant] done"],
+                ["aGVsbG8="],
+                "gpt-5",
+                "https://example.test/v1",
+                "sk-test",
+            )
+        else:
+            result = judge_trace(
+                task="buy a hat",
+                final_result="done, hat added to cart",
+                agent_steps=["[user] buy a hat", "[assistant] done"],
+                screenshots_b64=["aGVsbG8="],  # "hello"
+                model="gpt-5",
+                base_url="https://example.test/v1",
+                api_key="sk-test",
+            )
 
     assert isinstance(result, JudgementResult)
     assert result.verdict is True
