@@ -1,7 +1,7 @@
 """Behavioral tests for :mod:`shop_arena.env_eval.errors`.
 
 These tests pin down the public-surface contract from spec §8.1: the
-four named errors exist, descend from a common base, and can be raised
+the named errors exist, descend from a common base, and can be raised
 and caught with a message round-trip intact.
 """
 
@@ -21,6 +21,7 @@ def test_errors_module_all_lists_public_surface() -> None:
         "MetricsValidationError",
         "PagesClassifierError",
         "ResumeError",
+        "StructureComparisonError",
     }
 
 
@@ -32,6 +33,7 @@ def test_errors_module_all_lists_public_surface() -> None:
         errors.MetricsValidationError,
         errors.PagesClassifierError,
         errors.ResumeError,
+        errors.StructureComparisonError,
     ],
 )
 def test_each_error_inherits_from_envevalerror(subclass: type[Exception]) -> None:
