@@ -2,9 +2,9 @@
 
 Status: **Proposed**. Audience: **ShopGym developers**.
 Estimated reading time: **15–20 minutes**, excluding the appendix.
-Support baseline: `v2/5-cutover` at
+Support baseline: existing implementation at
 [`230c185a`](https://github.com/agentic-foundation-modeling-research/shop-gym/commit/230c185a6fd7f1616bb18cdf276d451f03c976ab),
-reviewed on 2026-10-22.
+reviewed on 2026-10-22; account support rechecked on 2026-10-23.
 
 ## Overview
 
@@ -30,9 +30,8 @@ Different goals use catalog constraints, state-transition templates, or
 recommendation scenarios grounded in product evidence.
 
 ShopGym v2 development will add the commerce workflows and runner features
-needed for the broader catalog. Task generation will start with existing
-capabilities, including login and simulated checkout, and expand alongside those
-v2 features.
+needed for the broader catalog. Task generation will expand coverage of existing
+commerce operations and add tasks as those v2 features become available.
 
 ## Terminology
 
@@ -53,11 +52,18 @@ records, or episode snapshots. It does not require a SQL service.
 
 ## Current Status
 
-The cutover branch has ten seed skills and supports isolated shopping carts,
-registration, login and logout, customer and address reads, order history,
-simulated checkout, and inventory changes. Grading supports text, URL, locator,
-snapshot, and opt-in LLM checks. Account-access tasks need new generators and
-verifiers, but basic authentication already exists. [C1] [C3] [C4] [C5] [C6]
+The existing implementation has ten seed skills and supports episode-isolated
+shopping carts, customer and address reads, order history, simulated checkout,
+and inventory changes. Grading supports text, URL, locator, snapshot, and opt-in
+LLM checks. [C1] [C3] [C4] [C5] [C6]
+
+The backend and shared storefront template implement registration,
+password-based login, and logout. The task runner can sign in before the agent
+starts; the current `account` seed uses this setup and only asks the agent to
+read profile information. Registration, login, and logout therefore have
+environment support but no dedicated seed tasks or success checks. Each generated
+shop still needs validation of its account pages and seeded credentials.
+[C1] [C9] [C14] [C15]
 
 Profile editing, wishlists, reviews, and after-sales actions require environment
 changes. Coupons have no price effects, and logistics use flat shipping options.
@@ -135,7 +141,7 @@ scenario variations that can be combined with the base families.
 | 12 | Shopping cart and purchase | **Promotions and total-cost optimization.**<br>Apply an eligible 10% coupon.<br>Choose the best legal coupon combination for my shopping cart, including shipping and a useful threshold top-up if it lowers the payable total. | Medium–Hard | **Partial:** tax and shipping calculations work; coupon eligibility, discounts, and stacking rules are missing. [C7] [C8] | Define promotion rules and a feasible shopping cart; compute the optimum within an explicit set of candidate choices. | Use pricing calculations, eligibility rules, and an optimizer; check that any added item serves the stated need. | **Moderate–High / Exact.** |
 | 13 | Shopping cart and purchase | **Delivery, pickup, and deadlines.**<br>Does the shop deliver to my country?<br>Find the cheapest option arriving before Friday, with pickup as a fallback. | Easy–Hard | **Partial:** policies and flat shipping rates exist; destination eligibility, arrival dates, and pickup need support. [C5] [C10] | Generate policy questions first; after extending logistics, sample destinations, deadlines, and feasible delivery or pickup slots. | Check policy evidence, destination eligibility, dates, and the selected delivery or pickup option. | **Moderate / Exact; Mixed** for prose. |
 | 14 | Shopping cart and purchase | **Checkout and order placement.**<br>Complete guest checkout for this shopping cart using supplied details.<br>Place the order to my office with the specified shipping and payment options and final amount. | Medium–Hard | **Basic:** simulated guest and customer checkout exist; the current seed starts signed in with a prefilled shopping cart. [C1] [C5] | Seed the shopping cart and customer details; calculate the expected total and order state after checkout. | Identify the new order; check lines, customer details, shipping and payment options, total, and inventory. Reject duplicate orders. | **Low–Moderate / Exact.** |
-| 15 | Accounts and repeat shopping | **Account access.**<br>Register with these details without marketing opt-in.<br>Sign in, report the default-address city, then sign out. | Easy–Medium | **Basic:** registration, login, and logout exist; the current account seed starts signed in. [C1] [C4] | Seed credentials or an unused email and define the expected account and session changes. | Check customer records, marketing consent, browser session state, and the required sequence of account actions. | **Low–Moderate / Exact.** |
+| 15 | Accounts and repeat shopping | **Account access.**<br>Register with these details without marketing opt-in.<br>Sign in, report the default-address city, then sign out. | Easy–Medium | **Basic:** backend and template routes implement registration, password login, and logout. The runner signs in for the account seed; these actions need dedicated tasks and checks. [C9] [C14] [C15] | Seed credentials or an unused email and define the expected account and session changes. | Check customer records, marketing consent, browser session state, and the required sequence of account actions. | **Low–Moderate / Exact.** |
 | 16 | Accounts and repeat shopping | **Profile, addresses, and payment preferences.**<br>Save my office address.<br>Make it the default for future purchases, remove an obsolete address, and preserve existing orders. | Easy–Hard | **Missing for edits:** profile and address reads exist; editing, default selection, and saved-payment management need mutations and UI. [C4] [C9] | Seed customer records and define the intended edits and records that must remain unchanged. | Compare profile, address, and payment records; check the default address reference and preservation of existing orders. | **Low–Moderate / Exact.** |
 | 17 | Accounts and repeat shopping | **Wishlist and saved plans.**<br>Save these two products for later.<br>Move available saved items below $30 into my shopping cart while retaining unavailable items in the wishlist. | Easy–Hard | **Missing:** wishlist records, persistence, mutations, and UI need support. [C6] | Seed saved items and derive the requested changes from stock and price constraints. | Compare wishlist and shopping cart contents; check quantities, retained items, and duplicates. | **Low–Moderate / Exact.** |
 | 18 | Accounts and repeat shopping | **Order lookup, status, and spending.**<br>Report my latest order status.<br>Calculate kitchen-category spending last quarter after partial refunds. | Easy–Hard | **Partial:** order history and detail seeds exist; aggregate checks and a partial-refund ledger need adding. [C1] [C6] | Seed dated orders with product categories and calculate reference totals; include refunds once the ledger exists. | Query the customer’s orders by date and category; calculate spending using the declared refund rules. | **Low–Moderate / Exact.** |
@@ -259,7 +265,7 @@ defines scope and sequencing; generator implementation remains separate.
 
 | Phase | Proposed scope | Required work | Completion criteria |
 | --- | --- | --- | --- |
-| 1. Baseline pilot | 01–02, 08–10, 14–15, basic 18–19; supported subsets of 04–06, V4–V5 | Add generators, reference action counts, ability tags, and checks for exact lines, new orders, and preserved records. Exercise existing authentication. | Replay tasks in fresh episodes; verify difficulty annotations; accept valid alternatives; reject targeted errors; validate infeasible cases; report coverage. |
+| 1. Baseline pilot | 01–02, 08–10, 14–15, basic 18–19; supported subsets of 04–06, V4–V5 | Add generators, reference action counts, ability tags, and checks for exact lines, new orders, and preserved records. Add account-access tasks and verify their session changes. | Replay tasks in fresh episodes; verify difficulty annotations; accept valid alternatives; reject targeted errors; validate infeasible cases; report coverage. |
 | 2. Richer decisions | 03–06, 11; complex 02, 08, 18–19 | Validate product attributes, compatibility, and policies; add solution search, calculations, and semantic rubrics. | Independently audit feasibility and evidence, and calibrate semantic checks against human judgments. |
 | 3. Interactive scenarios | V1–V5 on supported base families | Add shopper dialogue, disclosure rules, controlled changes, memory fixtures, and event checks. | Replay scripted interactions, verify event order, and measure user-simulator violations. |
 | 4. Commerce workflows | 07, full 12–13, 16–17, refund-aware 18, 20–22 | Add each domain’s records, rules, mutations, and UI before its generator. | Validate the domain contract, browser workflow, and verifier for each family. |
@@ -273,10 +279,15 @@ missing commerce workflow to prioritize first.
 
 ### A. Baseline capability audit
 
-The support assessment uses the shared backend and storefront template on
-`v2/5-cutover`. It is based on static code inspection. Generated shops can expose
-fewer features or extend the backend, so each shop needs its own data and browser
-validation before receiving tasks.
+The support assessment uses the existing implementation at the commit recorded
+above. The audit uses code inspection; account support was also checked on
+2026-10-23 with nine backend tests and two storefront HTTP smoke tests. These
+exercise registration, credential validation, token revocation, protected account
+pages, and episode isolation against fixtures. [C14] [C16]
+
+Environment capabilities and benchmark coverage are assessed separately.
+Generated shops can expose fewer features or extend the backend, so
+each shop needs its own data and browser validation before receiving tasks.
 
 The baseline provides:
 
@@ -284,9 +295,13 @@ The baseline provides:
   `shipping`, `returns`, `e2e`, `account`, `checkout`, and `order_history`.
   These names cover narrower behavior than some proposed families: `returns`,
   for example, locates a policy page rather than executing a return. [C1]
-- Shopping carts isolated by episode, customer registration, access-token login
-  and logout, customer and address reads, order history, simulated order
-  placement, inventory changes, reset, and grader snapshots. [C4] [C5] [C6] [C9]
+- Shopping carts isolated by episode, customer and address reads, order history,
+  simulated order placement, inventory changes, reset, and grader snapshots.
+  [C4] [C5] [C6]
+- Backend registration and credential validation, access-token creation and
+  revocation, and storefront routes that store or clear the session cookie.
+  These routes use sandbox customer records and episode-scoped sessions.
+  [C9] [C14]
 - `string_match`, `url_match`, `locator_probe`, `state_check`, and explicit
   `llm_judge` checks. `state_check` supports equality, subsets, and array
   membership. All configured checks must pass. Fuzzy text matching also invokes
@@ -297,9 +312,12 @@ The baseline provides:
 
 The following limits affect the proposed catalog:
 
-- Account seeds start signed in. Registration, login, and logout need dedicated
-  generators and checks. Profile and address editing, default-address changes,
-  and saved-payment management also need mutations and UI. [C1] [C4] [C9]
+- The runner posts credentials to `/account/login` before handing control to the
+  agent for account seeds. The seed checks the reported email and default-address
+  city; it does not evaluate the agent's ability to register, log in, or log out.
+  These actions need dedicated generators and checks. Profile and address editing,
+  default-address changes, and saved-payment management also need mutations and
+  UI. [C1] [C4] [C9] [C15]
 - Checkout uses configured shipping and payment handles with simulated payment.
   Pricing supports flat tax and shipping rates and a free-shipping threshold.
   Discount codes are stored and reported as applicable, but have no eligibility
@@ -446,6 +464,11 @@ They support the current-state and support assessments in this proposal.
 - [C12: Agent-under-test runner][C12] and
   [episode execution](../../../packages/shop-guru/src/solve/solve.ts).
 - [C13: Task validation][C13] — schema and reference checks, goal deduplication, and caps.
+- [C14: Customer resolvers][C14] — registration, credential validation, token creation,
+  and revocation; [backend tests](../../../packages/shop_backend/src/resolvers/customer.test.ts).
+- [C15: Task setup][C15] — login through the storefront before the agent starts.
+- [C16: Storefront HTTP smoke test][C16] — registration, logout, login, protected
+  account pages, and episode isolation against the shared template.
 
 [C1]: ../../../packages/shop-guru/src/seed/index.ts
 [C2]: ../../../packages/core/src/schema/task.ts
@@ -460,6 +483,9 @@ They support the current-state and support assessments in this proposal.
 [C11]: ../../../packages/shop-guru/src/explore/verify.ts
 [C12]: ../../../packages/shop-guru/src/solve/agent.ts
 [C13]: ../../../packages/shop-guru/src/validate.ts
+[C14]: ../../../packages/shop_backend/src/resolvers/customer.ts
+[C15]: ../../../packages/shop-guru/src/solve/setup.ts
+[C16]: ../../../packages/shop-arena/src/templates.test.ts
 
 ### E. Research scope and prior context
 
