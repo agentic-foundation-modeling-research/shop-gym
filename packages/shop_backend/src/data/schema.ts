@@ -8,7 +8,8 @@
  *
  * Required files: `store.json`, `products.json`, `collections.json`,
  * `navigation.json`, `pages.json`, `policies.json`.
- * Optional files: `blogs.json`, `metafields.json`, `inventory.json`.
+ * Optional files: `blogs.json`, `metafields.json`, `inventory.json`,
+ * `customers.json`, `orders.json`, `commerce.json`.
  */
 
 import { z } from 'zod';
@@ -262,4 +263,143 @@ export const inventoryFileSchema = z
     z.string().regex(/^-?(0|[1-9]\d*)$/, 'expected variant id key to be an integer'),
     inventoryEntrySchema,
   )
+  .readonly();
+
+// ── customers.json ─────────────────────────────────────────────────────────
+
+/** Postal address attached to a customer or an order. */
+export const addressSchema = z
+  .object({
+    id: z.number(),
+    first_name: nullableString,
+    last_name: nullableString,
+    company: nullableString,
+    address1: z.string(),
+    address2: nullableString,
+    city: z.string(),
+    province: nullableString,
+    /** Subdivision code, e.g. "ON". */
+    province_code: nullableString,
+    country: z.string(),
+    /** ISO 3166-1 alpha-2. */
+    country_code: z.string(),
+    zip: z.string(),
+    phone: nullableString,
+  })
+  .readonly();
+
+/** Element of `customers.json`: a seeded account the sandbox accepts logins for. */
+export const customerSchema = z
+  .object({
+    id: z.number(),
+    email: z.string(),
+    /** Plain text; the sandbox has no real credential store. */
+    password: z.string(),
+    first_name: nullableString,
+    last_name: nullableString,
+    phone: nullableString,
+    accepts_marketing: z.boolean(),
+    /** ISO 8601. */
+    created_at: z.string(),
+    addresses: z.array(addressSchema).readonly(),
+    /** Must reference one of `addresses[].id` when set. */
+    default_address_id: z.number().nullable(),
+  })
+  .readonly();
+
+export const customersFileSchema = z.array(customerSchema).readonly();
+
+// ── orders.json ────────────────────────────────────────────────────────────
+
+export const orderFinancialStatusSchema = z.enum([
+  'AUTHORIZED',
+  'PAID',
+  'PARTIALLY_PAID',
+  'PARTIALLY_REFUNDED',
+  'PENDING',
+  'REFUNDED',
+  'VOIDED',
+]);
+
+export const orderFulfillmentStatusSchema = z.enum([
+  'FULFILLED',
+  'IN_PROGRESS',
+  'ON_HOLD',
+  'OPEN',
+  'PARTIALLY_FULFILLED',
+  'PENDING_FULFILLMENT',
+  'RESTOCKED',
+  'SCHEDULED',
+  'UNFULFILLED',
+]);
+
+export const orderLineItemSchema = z
+  .object({
+    /** Numeric variant id; may point at a variant no longer in `products.json`. */
+    variant_id: z.number(),
+    title: z.string(),
+    quantity: z.number().int().positive(),
+    /** Unit price at order time, decimal as string. */
+    price: z.string(),
+  })
+  .readonly();
+
+/** Element of `orders.json`: a historical order seeded into every episode. */
+export const orderSchema = z
+  .object({
+    /** Also the order number; rendered as `#<id>` in `Order.name`. */
+    id: z.number(),
+    /** References `customers.json[].id`; `null` for guest orders. */
+    customer_id: z.number().nullable(),
+    email: nullableString,
+    /** ISO 8601. */
+    processed_at: z.string(),
+    financial_status: orderFinancialStatusSchema,
+    fulfillment_status: orderFulfillmentStatusSchema,
+    currency_code: z.string(),
+    line_items: z.array(orderLineItemSchema).readonly(),
+    shipping_address: addressSchema.nullable(),
+    /** Handle of a `commerce.json` shipping method; free-form for seeds. */
+    shipping_method: nullableString,
+    payment_method: nullableString,
+    subtotal_price: z.string(),
+    total_shipping_price: z.string(),
+    total_tax: z.string(),
+    total_price: z.string(),
+  })
+  .readonly();
+
+export const ordersFileSchema = z.array(orderSchema).readonly();
+
+// ── commerce.json ──────────────────────────────────────────────────────────
+
+export const shippingMethodSchema = z
+  .object({
+    handle: z.string(),
+    title: z.string(),
+    /** Flat rate, decimal as string. */
+    price: z.string(),
+  })
+  .readonly();
+
+export const paymentMethodSchema = z
+  .object({
+    handle: z.string(),
+    title: z.string(),
+  })
+  .readonly();
+
+/**
+ * `commerce.json`: checkout rules. Every field has a default so the file can
+ * be partial or absent (see `DEFAULT_COMMERCE` in the loader).
+ */
+export const commerceSchema = z
+  .object({
+    /** Fraction applied to the merchandise subtotal, e.g. 0.13. */
+    tax_rate: z.number().min(0).default(0),
+    /** Subtotal at or above which shipping is free; `null` disables. */
+    free_shipping_threshold: nullableString.default(null),
+    shipping_methods: z.array(shippingMethodSchema).readonly().default([]),
+    payment_methods: z.array(paymentMethodSchema).readonly().default([]),
+  })
   .readonly();

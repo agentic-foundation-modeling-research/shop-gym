@@ -4,6 +4,7 @@ packages:
   - "packages/harness"
   - "packages/browser"
   - "packages/shop_backend"
+  - "packages/shop-arena"
 allowBuilds:
   '@biomejs/biome': set this to true or false
   esbuild: set this to true or false
