@@ -159,6 +159,10 @@ override the agent and judge models. See
 [`packages/shop-guru/README.md`](packages/shop-guru/README.md) for the config
 fields, the `AgentUnderTest` interface, and the output layout.
 
+See the [shopping task generation proposal](docs/specs/shop_guru/task_generation_proposal.md)
+for proposed task families, difficulty tiers, generation methods, verifiers, and
+environment support gaps beyond the current benchmark pipeline.
+
 ## Common commands
 
 ```bash
