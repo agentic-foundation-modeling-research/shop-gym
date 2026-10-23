@@ -1,66 +1,228 @@
 # Shopping Task Generation Proposal
 
-Status: **Proposed**. Reviewed against `v2/5-cutover` at
-[`230c185a`](https://github.com/agentic-foundation-modeling-research/shop-gym/commit/230c185a6fd7f1616bb18cdf276d451f03c976ab)
-on 2026-10-22. Audience: ShopGym environment, task-generation, and evaluation owners.
+Status: **Proposed**. Audience: **ShopGym developers**.
+Main content: **15–20 minutes**; supporting audit and research are in the appendix.
+Support baseline: `v2/5-cutover` at
+[`230c185a`](https://github.com/agentic-foundation-modeling-research/shop-gym/commit/230c185a6fd7f1616bb18cdf276d451f03c976ab),
+reviewed on 2026-10-22.
 
 ## Overview
 
-Build a diverse shopping benchmark by choosing the generation method and verifier
-for each user goal. The proposed catalog contains **23 task families** spanning
-discovery, shopping cart operations, purchase, accounts, repeat shopping, and
-after-sales, plus **6 scenario variations** that can be applied across families.
-Start with the capabilities available on the cutover branch and expand the
-environment where realistic use cases require additional state or actions.
+Existing ShopGuru generates tasks that are too simple to represent the range of
+real shopping-agent use cases. Its deterministic seeds provide useful basic
+checks, but mostly instantiate narrow, fixed templates: `exact` asks for a named
+product and accepts any variant; `shipping` and `returns` ask the agent to open a
+policy page; `e2e` adds two named products and changes one quantity. Account and
+checkout seeds start with login or shopping-cart setup already applied. These
+exercise navigation and action execution, with limited product choice, policy
+reasoning, or planning. [C1]
 
-The agreed constraints for this proposal are:
+Changing product names or extending a prescribed action sequence does not provide
+systematic coverage of interacting constraints, suitability, compatibility,
+repeat shopping, recovery, or user clarification. ShopGuru also lacks explicit
+difficulty control and complete feasibility/verifier validation for discovered
+tasks. Consequently, its current task set gives limited evidence about whether
+an agent can handle a broader shopper goal. These are coverage/design limitations;
+we have not measured their effect on agent rankings. [C2] [C11] [C13]
 
-- Use **shopping cart** throughout the task catalog.
-- Use exactly three task difficulty tiers: **Easy, Medium, Hard**.
-- Exclude visual product matching from the proposed task set for now.
-- Keep one task catalog with category, examples, difficulty, current support,
-  generation approach, required verifier, and verification difficulty/objectivity.
-
-The catalog and rollout order below are proposals for review, rather than a
-commitment to implement every family. This document specifies task coverage and
-generation principles; implementation should be tracked separately.
+This proposal gives developers a shared catalog of **23 task families and 6
+scenario variations**, with generation methods and verifiers chosen for each
+goal. It retains exactly three task tiers—**Easy, Medium, Hard**—and uses
+**shopping cart** terminology. Visual product matching is out of scope for now.
+Review should focus on the catalog's coverage, the initial supported subset, and
+which missing capabilities to add next. The rollout remains proposed.
 
 ## Terminology
 
-- **Task family:** a shopper goal, such as revising a shopping cart or requesting
-  a return. A family can contain tasks at several difficulty levels.
-- **Category:** a grouping of families by shopping journey stage.
-- **Scenario variation:** an additional requirement, such as clarification or
-  recovery, applied to a base family. It is not a separate shopping journey.
-- **Witness:** one validated solution demonstrating feasibility. Other solutions
-  satisfying the same requirements must also pass.
-- **Verifier:** a check of the answer, resulting state, or required interaction.
-  A database query here means a query over catalog/fixture records or the episode
-  snapshot; it does not assume an existing SQL service.
+A **task family** is a shopper goal; its **category** identifies the journey stage.
+A **scenario variation** adds requirements such as recovery or clarification to a
+base family. A **witness** is one validated solution proving feasibility; every
+other solution satisfying the same requirements should also pass.
 
-**Task difficulty** describes the work required of the agent:
+Task difficulty measures reasoning and interaction demands, not clicks or length:
 
-- **Easy:** an explicit goal, direct evidence, few independent constraints, and
-  one straightforward decision or state change.
-- **Medium:** several constraints, evidence from multiple pages, comparison, or
-  a short sequence of dependent decisions/state changes.
-- **Hard:** interacting constraints or trade-offs, distributed requirements,
-  cross-item compatibility, constrained optimization, or meaningful recovery.
+- **Easy (E):** explicit goal, direct evidence, few independent constraints.
+- **Medium (M):** multiple constraints/sources or dependent decisions/state changes.
+- **Hard (H):** interacting constraints, trade-offs, compatibility, optimization,
+  distributed requirements, or meaningful recovery.
 
-Difficulty is not a click-count or prompt-length score. Adding many known SKUs
-can be straightforward; selecting one compatible replacement can require hard
-reasoning. Do not manufacture Hard variants for inherently simple operations.
-Example labels **E / M / H** below mean Easy / Medium / Hard.
-
-**Verification difficulty** is separate: **Low** for direct checks, **Moderate**
-for joins, policy calculations, or constraint/optimization checks, and **High**
-for semantic evidence assessment or interaction-sensitive evaluation. Objectivity
-is **Exact** when a deterministic predicate defines success, **Mixed** when exact
-checks are combined with semantic judgment, and **Rubric-based** when a material
-part of success depends on subjective preferences. A costly optimizer can still
-produce an objective verdict.
+Verification difficulty is separate: **Low** = direct checks; **Moderate** = joins,
+calculations or constraint checks; **High** = semantic evidence or interaction
+assessment. Objectivity is **Exact**, **Mixed** (exact plus semantic checks), or
+**Rubric-based** (materially subjective). An expensive optimizer can still yield
+an exact verdict. Database queries below refer to catalog/fixture records and
+snapshots; no SQL service is assumed.
 
 ## Current Status
+
+The cutover branch provides ten seed skills, episode-isolated shopping carts,
+basic registration/login/logout, customer/address reads, order history, simulated
+checkout and inventory changes. Grading supports text, URL, locator, snapshot and
+opt-in LLM checks. The environment therefore supports more than the existing seed
+templates exercise. [C1] [C3] [C4] [C5] [C6]
+
+Other families need domain support: account edits, reviews, wishlists and
+after-sales workflows are absent; coupons lack actual discount semantics;
+logistics are limited to flat shipping choices. Interactive user requirements
+also need a runner protocol. The table identifies these gaps. Support is audited
+from shared code, so each generated shop still needs capability/UI validation.
+See [Appendix A](#a-baseline-capability-audit) for implementation details.
+
+## Desired Status
+
+Every admitted task should express a realistic shopper intent, expose sufficient
+evidence, have a valid setup and a feasible solution or proven infeasibility, and
+accept all valid outcomes while rejecting plausible mistakes. Coverage should
+span journey stages and difficulty levels.
+
+Keep **environment support**, **generator coverage**, and **verifier readiness**
+separate. A generated prompt does not establish executability; an absent seed
+family does not imply the environment cannot perform the action.
+
+## Proposal
+
+### Unified task catalog
+
+Keep one catalog for all families and variations. Examples are illustrative:
+instantiate only facts/actions available in the target shop.
+
+Support: **Basic** = core operations exist; **Partial** = a useful subset exists;
+**Missing** = core workflow needs support; **Later** = expansion beyond the initial
+single-shop scope. Basic does not imply every example or verifier is implemented.
+Rows V1–V6 are reusable scenario variations, rather than additional base families.
+
+| ID | Category | Task family and realistic examples | Difficulty | Current ShopGym support and gaps | Proposed task generation approach | Required verifier(s) | Verification difficulty / objectivity |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 01 | Discovery and decision | **Known-item discovery.** E: Find the TrailLite 20L backpack. M: Find its available navy variant, distinguishing it from the older model. | Easy–Medium | **Basic:** search/variants exist; seeds permit any variant. [C1] | Catalog-first: choose an available target, identifying attributes, and similar-model distractors. | Catalog ID/variant query; answer/URL check; shopping-cart state when requested. | **Low / Exact.** |
+| 02 | Discovery and decision | **Constraint-based discovery.** E: Find a cotton shirt under $30. H: Find black, machine-washable trousers in my size under $80, excluding wool. | Easy–Hard | **Partial:** filters exist; combined predicates and care/material evidence need work. [C1] [C10] | Answer-first: derive constraints from a feasible item; enumerate all matches and near misses. | Catalog query for attributes, budget, size, and stock; prose evidence where needed. | **Low–Moderate / Exact; Mixed** for prose. |
+| 03 | Discovery and decision | **Occasion/use-case recommendation.** E: Suggest a housewarming gift under $25. H: Choose a gift for a beginner gardener with a small balcony and no storage space. | Easy–Hard | **Partial:** browsing exists; needs-based generation and preference rubrics are absent. [C1] | Needs-first: sample use case/persona; ground suitable products and explicit preference criteria. | Budget/stock query plus evidence-grounded LLM judge for suitability and explanation. | **High / Rubric-based.** |
+| 04 | Discovery and decision | **Comparison and value.** E: Which of two coffee packs is cheaper per kilogram? H: Compare three backpacks on capacity, weight, price, and warranty using my stated priorities. | Easy–Hard | **Partial:** prices/text exist; units, warranty, comparison and calculation checks need work. [C10] | Comparison-first: sample candidates and priorities; calculate rankings before generating the request. | Unit conversion, arithmetic/ranking; factual checks; LLM judge for qualitative trade-offs. | **Moderate / Exact or Mixed.** |
+| 05 | Discovery and decision | **Substitution and unavailability.** E: Find a cheaper alternative to this mug. H: My preferred shoe is unavailable; preserve size, material, and fit within budget. | Easy–Hard | **Partial:** similarity seeds/stock exist; attribute-preserving alternatives need stronger grounding. [C1] | Choose source item and preserved/relaxed attributes; enumerate alternatives under stock constraints. | Price/stock/attribute queries; exclude original; LLM judge for functional similarity. | **Moderate–High / Mixed.** |
+| 06 | Discovery and decision | **Sizing, fit, and compatibility.** M: Use my measurements and the size chart to choose a shirt size. H: Find a replacement filter for my exact appliance model and reject a similar incompatible filter. | Medium–Hard | **Partial:** descriptions/options exist; validated size charts and compatibility relations are not guaranteed. [C10] | Relation-first: validate charts/model compatibility, then sample matches and near misses. | Size-range lookup or compatibility query; source-backed fit/uncertainty assessment. | **Moderate / Exact; Mixed** for fit. |
+| 07 | Discovery and decision | **Review-grounded research.** M: Summarize recurring sizing complaints for these shoes. H: Compare recent verified-purchase reviews, distinguishing repeated defects from isolated complaints. | Medium–Hard | **Missing:** review data, evidence access/filtering, and corresponding UI. [C10] | Evidence-first: annotate dated reviews, purchase flags, corroboration and contradictions; generate questions. | Review-filter query; source-span checks; LLM judge for faithful, representative synthesis. | **High / Mixed.** |
+| 08 | Discovery and decision | **Policy and store information.** E: What is the return window? H: For a discounted gift shipped internationally, explain the applicable shipping and return conditions. | Easy–Hard | **Partial:** policy pages/navigation seeds exist; answer and exception checks need adding. [C1] | Policy-first: extract rules/exceptions and source spans; compute the scenario outcome. | Policy-rule query/calculation; grounded answer judge; URL check for navigation goals. | **Low / Exact** to **High / Mixed.** |
+| 09 | Shopping cart and purchase | **Variant and quantity selection.** E: Add two blue mugs. M: Add one medium black shirt and two large white shirts, using available variants only. | Easy–Medium | **Basic:** variant/shopping-cart mutations; seeds need precise variant–quantity checks. [C1] [C8] | State-first: sample available variants/quantities and generate the shopper request. | Shopping-cart line multiset by variant ID/quantity; reject unwanted lines. | **Low / Exact.** |
+| 10 | Shopping cart and purchase | **Shopping cart revision.** E: Remove the duplicate mug. H: Replace the large pack with two small packs, preserve all other lines, and keep the total under $70. | Easy–Hard | **Basic:** mutations/prefilled setup; revision generators and diff checks need adding. [C2] [C8] | Seed initial shopping cart; specify requested changes and untouched-line invariants. | Before/after shopping-cart diff plus pricing, budget and preserved-line checks. | **Low–Moderate / Exact.** |
+| 11 | Shopping cart and purchase | **Multi-item shopping cart planning.** M: Choose a notebook and pen for under $20. H: Build a cooking kit for four campers, covering required roles with compatible items within budget. | Medium–Hard | **Partial:** multi-item shopping carts exist; role/compatibility planning and set-level grading need work. [C1] | Witness-first: validate one feasible shopping cart; derive budget/request; retain independent constraints. | Quantity, budget, role-coverage and compatibility predicates; semantic suitability judge when needed. | **Moderate–High / Exact or Mixed.** |
+| 12 | Shopping cart and purchase | **Promotions and total-cost optimization.** M: Apply an eligible 10% coupon. H: Choose the best legal coupon combination for my shopping cart, including shipping and a useful threshold top-up if it lowers the payable total. | Medium–Hard | **Partial:** tax/shipping work; coupon eligibility, discounts and stacking are missing. [C7] [C8] | Rule-first: generate feasible shopping cart/coupons; compute optimum over a declared candidate space. | Pricing engine, eligibility/stacking checks, optimizer; useful-top-up predicate. | **Moderate–High / Exact.** |
+| 13 | Shopping cart and purchase | **Delivery, pickup, and deadlines.** E: Does the shop deliver to my country? H: Find the cheapest option arriving before Friday, with pickup as a fallback. | Easy–Hard | **Partial:** policies/flat shipping exist; serviceability, arrival dates and pickup need support. [C5] [C10] | Policy templates first; later sample destination, date, service rules and feasible slots. | Policy evidence; serviceability/calendar calculation; selected delivery/pickup state. | **Moderate / Exact; Mixed** for prose. |
+| 14 | Shopping cart and purchase | **Checkout and order placement.** E: Complete guest checkout for this shopping cart using supplied details. M: Place the order to my office with the specified shipping/payment options and final amount. | Easy–Medium | **Basic:** guest/customer simulated checkout exists; seed uses signed-in, prefilled setup. [C1] [C5] | Scenario templates: seed shopping cart/identity/address; calculate totals and expected order changes. | New-order delta, exact lines, identity/address/methods/totals, inventory; no duplicate orders. | **Low–Moderate / Exact.** |
+| 15 | Accounts and repeat shopping | **Account access.** E: Register with these details without marketing opt-in. M: Sign in, report the default-address city, then sign out. | Easy–Medium | **Basic:** register/login/logout exist; current account seed starts signed in. [C1] [C4] | Persona templates: seeded credentials or unused email; expected customer/session changes. | Customer/marketing state; session/cookie checks; required login/read/logout sequence. | **Low–Moderate / Exact.** |
+| 16 | Accounts and repeat shopping | **Profile, addresses, and payment preferences.** E: Save my office address. M: Make it the default for future purchases, remove an obsolete address, and preserve existing orders. | Easy–Medium | **Missing for edits:** profile/address reads exist; edit/default/payment-preference mutations and UI do not. [C4] [C9] | State-transition templates: seed records, intended changes, and preserved entities. | Customer/address/payment diff; default-reference integrity; unchanged existing orders. | **Low–Moderate / Exact.** |
+| 17 | Accounts and repeat shopping | **Wishlist and saved plans.** E: Save these two products for later. M: Move available saved items below $30 into my shopping cart while retaining unavailable items in the wishlist. | Easy–Medium | **Missing:** wishlist state, persistence, mutations and UI. [C6] | Seed saved list; derive target changes under stock/price constraints. | Wishlist/shopping-cart set diff; quantities, retained items, and duplicate checks. | **Low–Moderate / Exact.** |
+| 18 | Accounts and repeat shopping | **Order lookup, status, and spending.** E: Report my latest order status. H: Calculate kitchen-category spending last quarter after partial refunds. | Easy–Hard | **Partial:** history/detail seeds exist; aggregate checks and partial-refund ledger need adding. [C1] [C6] | History-first: seed dated orders/category links; precompute aggregates; add refunds when modeled. | Customer-scoped order/date/category queries; arithmetic and refund accounting. | **Low–Moderate / Exact.** |
+| 19 | Accounts and repeat shopping | **Reordering.** E: Add the coffee from my last order to my shopping cart. H: Repeat the office order without pens, double the paper, and substitute an unavailable item. | Easy–Hard | **Partial:** history/shopping-cart/checkout exist; reorder generation and stock-aware checks need adding. [C6] [C8] | Compose from prior order; transform quantities/exclusions; validate available alternatives. | Source-order join; shopping-cart/new-order quantities, exclusions, stock and substitution checks. | **Moderate / Exact or Mixed.** |
+| 20 | After-sales | **Order modification and cancellation.** E: Cancel my unshipped order. H: Cancel only the duplicate order and change the other order's address if policy permits. | Easy–Hard | **Missing:** cancellation/edit lifecycle, mutations and stock/payment effects. [C5] [C6] | Policy-constrained transitions: seed eligible/ineligible orders and expected changes. | Order-state diff; eligibility; inventory/payment effects; preserve unrelated orders. | **Moderate / Exact.** |
+| 21 | After-sales | **Returns, exchanges, and refunds.** E: Request a return for a damaged mug. H: Exchange a shirt's size, return one of two mugs, and explain why another line is ineligible. | Easy–Hard | **Missing:** executable return/exchange/refund workflows; policy lookup exists. [C1] [C6] | Scenario templates: order lines, dates, reasons, exceptions and replacement stock. | Line-level lifecycle/amount/stock queries; policy calculations; grounded explanation judge. | **Moderate–High / Mixed.** |
+| 22 | After-sales | **Review submission and management.** E: Submit a four-star review using my supplied feedback. M: Update my own review after a replacement while preserving its purchase relationship. | Easy–Medium | **Missing:** review state, ownership/purchase links, mutations and UI. [C6] [C10] | Authenticated templates using supplied user feedback, rating, prior review and purchase. | Review/author/purchase queries; rating/update checks; text-fidelity LLM judge. | **Low / Exact; High / Mixed** for text. |
+| 23 | After-sales | **Subscriptions and recurring replenishment.** M: Set coffee delivery to every four weeks. H: Skip the next shipment and reduce future quantity while keeping the subscription active. | Medium–Hard | **Later:** subscription lifecycle, recurrence and UI are absent. [C6] [C10] | Schedule/state-machine templates with controlled time and intended future state. | Subscription/schedule query; calendar/shipment checks; preserved history. | **Moderate / Exact.** |
+| V1 | Scenario variation | **Personalization and memory.** M: Use the size from my last purchase. H: Recommend items respecting preferences supplied across earlier sessions. | Medium–Hard | **Partial:** customer/order history exists; preference memory and cross-session control do not. [C2] [C6] | Persona/history-first: precommit preferences, evidence sources and per-session memory availability. | History/preference queries; recommendation predicates; soft-preference judge and memory-access evidence. | **Moderate–High / Mixed.** |
+| V2 | Scenario variation | **Clarification and confirmation.** M: Clarify which coffee I mean by “my usual.” H: Resolve an ambiguous delivery address and obtain the required confirmation before order placement. | Medium–Hard | **Missing:** shopper dialogue, hidden-spec/reveal protocol and confirmation-event checks. [C2] [C12] | Withhold a required field from a feasible task; fix answers/reveal rules before interaction. | Question/confirmation events and ordering; reveal log; resolved-goal state. | **High / Exact or Mixed.** |
+| V3 | Scenario variation | **Incremental requirement changes.** M: Switch my coffee request to decaf mid-task. H: Tighten the budget after a proposed shopping cart and preserve the remaining requirements. | Medium–Hard | **Missing:** controlled follow-ups and versioned requirements in the runner. [C2] [C12] | Perturb a validated task with a precommitted change and feasible revised solution. | Reveal timing; active requirement version; final constraints and removal of obsolete choices. | **High / Exact or Mixed.** |
+| V4 | Scenario variation | **Infeasibility and recovery.** M: Report that no available product meets all constraints without purchasing. H: Recover from an insufficient-stock checkout error by selecting an allowed alternative. | Medium–Hard | **Partial:** atomic checkout stock errors exist; infeasibility/recovery generators and event injection need work. [C5] | Prove an empty result set or seed stock shortfall; predefine allowed recovery. | Constraint/stock proof; error evidence; final state, preserved entities and grounded explanation. | **Moderate–High / Mixed.** |
+| V5 | Scenario variation | **Action boundaries and collateral effects.** E: Research options without changing my shopping cart. H: Update only the specified address while preserving every unrelated address and order. | Easy–Hard | **Partial:** snapshots exist; general diff and transient-event graders do not. [C3] [C6] | Attach allowed-change sets/forbidden actions; seed unrelated records to preserve. | State diffs for terminal invariants; events/trajectory for forbidden actions and confirmation order. | **Low–Moderate / Exact; High / Mixed** for traces. |
+| V6 | Scenario variation | **Cross-shop shopping.** M: Compare the delivered price of the same product at two shops. H: Split a compatible shopping cart across shops while including separate shipping charges. | Medium–Hard | **Later:** no coordinated multi-shop setup or grader. [C2] [C12] | Join validated catalogs; derive comparable identities, fees and feasible allocation. | Cross-shop price/state queries; equivalence/compatibility predicates; bounded allocation optimizer. | **Moderate–High / Exact or Mixed.** |
+
+### Choose the recipe for the goal
+
+Choose from complementary generation recipes:
+
+- **Catalog/answer-first** for discovery, comparison and compatibility: derive
+  requirements from verified facts and compute the complete valid set.
+- **Scenario/state-transition templates** for shopping-cart edits, accounts,
+  checkout and after-sales: define setup, intended changes and preserved state.
+- **Needs-first with evidence** for recommendations: connect the shopper's purpose
+  to product facts and an explicit suitability rubric.
+- **Witness-first** for multi-item planning and promotions: validate feasibility
+  before deriving the budget/request, then grade independent constraints.
+- **Functionality exploration** for coverage of actual shop affordances: convert
+  discovered actions into replayable tasks with independent assertions.
+
+Trajectory synthesis, state-machine search and environment/task/verifier
+co-generation can support discovery or later domain expansion. The research
+basis, trade-offs and limits of each method are in
+[Appendix B](#b-generation-recipes-and-research-rationale).
+
+### Generation and admission
+
+```mermaid
+flowchart LR
+    A[Shop evidence and capabilities] --> B[Family, difficulty, recipe]
+    B --> C[Setup, constraints, witness, verifier]
+    C --> D[Natural shopper request]
+    D --> E[Independent replay and verifier validation]
+    E --> F[Coverage review and admission]
+```
+
+Record family/category, scenario variations, difficulty, recipe, required
+capabilities, verifier difficulty/objectivity and provenance. Reference facts,
+witnesses and hidden requirements stay outside the agent-visible request; these
+metadata and interaction contracts require extensions to the current schema. [C2]
+
+Admission requires four checks:
+
+1. **Grounding:** evidence and actions exist and are accessible through the agent's
+   permitted UI. Do not invent size charts, compatibility, reviews or promises.
+2. **Feasibility:** independently query/solve constraints and replay a solution in
+   a fresh episode. For infeasible tasks, retain a contradiction or empty-result
+   proof; a solver failure or agent refusal is insufficient.
+3. **Verifier quality:** accept a valid outcome and legitimate alternatives;
+   reject targeted mistakes such as wrong variant, extra line, stale order,
+   wrong total or changed unrelated record.
+4. **Naturalness and diversity:** express a plausible need, make all requirements
+   stated or recoverable, and reject paraphrases/parameter swaps that add no
+   meaningful goal, evidence or workflow coverage.
+
+### Verification and coverage principles
+
+Use deterministic queries for structured facts and state changes. Check exact
+variant–quantity pairs, newly created orders, totals and preserved entities. Use
+an evidence-grounded LLM judge for suitability, synthesis and explanations;
+score hard constraints separately. A hidden witness proves feasibility without
+restricting the answer to that witness.
+
+Record trusted events for temporal requirements such as confirmation before
+purchase or login before logout. A final snapshot cannot establish that a
+forbidden transient action never occurred. Freeze hidden requirements and reveal
+rules before interactive runs. Detailed grader limits and domain-specific edge
+cases are in [Appendix C](#c-verifier-design-notes).
+
+Track **family × difficulty × scenario variation**, plus product domain,
+information source, constraint interactions and initial state. Include ties,
+multiple valid outcomes, infeasibility and recoverable errors where appropriate.
+Do not force Hard variants for simple operations. Calibrate tiers with pilot
+runs/human review, report per-family/per-tier results, and separate environment
+failures from agent failures. Prevent prolific discovery templates from
+controlling the headline score; final weights and sample counts follow the pilot.
+
+## Alternative
+
+Expanding only the current deterministic seeds is the smallest step and fits
+exact discovery/state changes, but leaves semantic decisions and interactions
+underrepresented. A single LLM generator/judge is flexible but provides weaker
+feasibility and exact-state guarantees. The proposed combination uses each where
+its grounding and verification are strongest.
+
+## Execution Table
+
+Implement by capability increment; emit only tasks supported by the target shop.
+This PR proposes coverage and sequencing, without implementing the generators.
+
+| Increment | Proposed scope | Key work | Exit evidence |
+| --- | --- | --- | --- |
+| 1. Baseline pilot | 01–02, 08–10, 14–15, basic 18–19; supported subsets of 04–06, V4–V5 | Add metadata/generators and exact line, new-order and preservation checks; exercise existing auth. | Fresh-episode replay, proven negative cases, valid alternatives accepted, targeted errors rejected, coverage report. |
+| 2. Richer decisions | 03–06, 11; complex 02, 08, 18–19 | Validate attributes/relations/policies; add witness search, calculations and semantic rubrics. | Independent feasibility/evidence audit and calibrated semantic checks. |
+| 3. Interactive scenarios | V1–V5 on supported base families | Add dialogue/reveal protocol, controlled changes, memory fixtures and event predicates. | Scripted replay, ordering checks, and measured simulator violations. |
+| 4. Commerce domains | 07, full 12–13, 16–17, refund-aware 18, 20–22 | Add domain records/rules/mutations/UI before generators; domains can ship independently. | Domain contracts, UI replay and verifier validation for each family. |
+| 5. Later expansion | 23, V6 | Subscription lifecycle/calendar and coordinated multi-shop episodes. | Reviewed semantics, isolation, replay and cross-domain checks. |
+
+Review decisions: initial family/tier allocation, treatment of subjective scores
+in the headline metric, and the first missing domain to prioritize. Supporting
+implementation and literature detail follows in the appendix.
+
+## Appendix
+
+### A. Baseline capability audit
 
 The support audit uses the **shared backend and storefront template on
 `v2/5-cutover`**, rather than `main` or a planned specification. It is a static
@@ -107,65 +269,7 @@ Important limits for the catalog:
   optional final screenshot; full source evidence and interaction history need
   explicit plumbing. [C2] [C3] [C12]
 
-## Desired Status
-
-Each admitted task should have a realistic shopper intent, sufficient accessible
-evidence, a valid setup, an executable solution or proven infeasibility, and a
-verifier that accepts every valid outcome while rejecting plausible mistakes.
-Coverage should span different goals, product domains, information sources,
-state changes, and difficulty levels.
-
-Keep environment readiness and generator coverage distinct. A task should not be
-marked supported merely because its prompt can be generated, nor blocked merely
-because its family lacks a dedicated seed generator.
-
-## Proposal
-
-### Unified task catalog
-
-All examples are illustrative. Generation must substitute products, customer
-records, policies, and supported actions from the target shop. Sizes, materials,
-compatibility, reviews, and delivery promises must never be invented.
-
-Support labels describe the family at the baseline: **Basic** = core environment
-operations exist; **Partial** = a meaningful subset exists, with named gaps;
-**Missing** = the core workflow requires additional environment support;
-**Later** = expansion beyond the initial single-shop scope. A Basic label does
-not imply that every proposed example or verifier is already implemented.
-
-| ID | Category | Task family and realistic examples | Difficulty | Current ShopGym support and gaps | Proposed task generation approach | Required verifier(s) | Verification difficulty / objectivity |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 01 | Discovery and decision | **Known-item discovery.** E: Find the TrailLite 20L backpack. M: Find its available navy variant, distinguishing it from the older model. | Easy–Medium | **Basic:** search, product pages, variants; `exact` seeds add any variant. Precise model/variant requirements need richer generation/checks. [C1] [C10] | Catalog-first: choose an available target; select identifying attributes; add similar-name distractors; phrase the request naturally. | Catalog query for matching product/variant IDs; final URL or structured answer; shopping-cart state if addition is requested. | **Low / Exact.** Accept all matching variants when the request permits alternatives. |
-| 02 | Discovery and decision | **Constraint-based discovery.** E: Find a cotton shirt under $30. H: Find black, machine-washable trousers in my size under $80, excluding wool. | Easy–Hard | **Partial:** catalog/options, search/filter UI and a single-filter count seed exist. Multi-attribute predicates and normalized care/material data need work. [C1] [C10] | Answer-first constraint sampling: choose a feasible product/variant, derive constraints, query the full valid set, and add near misses. Include independently proven empty sets. | Catalog query plus numeric/availability predicates; validate the recommended item or shopping cart against every constraint. | **Low–Moderate / Exact** with structured attributes; **Mixed** when claims require prose interpretation. |
-| 03 | Discovery and decision | **Occasion/use-case recommendation.** E: Suggest a housewarming gift under $25. H: Choose a gift for a beginner gardener with a small balcony and no storage space. | Easy–Hard | **Partial:** catalog browsing and text evidence exist. No dedicated needs-to-product generator or grounded preference rubric. [C1] [C10] | Needs-first scenario generation: select a credible use case/persona, retrieve supporting product facts, validate at least one fit, then author explicit preference criteria. | Exact budget/availability checks plus evidence-grounded LLM judge for suitability and explanation; human review for ambiguous rubrics. | **High / Rubric-based.** Several defensible recommendations may pass. |
-| 04 | Discovery and decision | **Comparison and value.** E: Which of two coffee packs is cheaper per kilogram? H: Compare three backpacks on capacity, weight, price, and warranty using my stated priorities. | Easy–Hard | **Partial:** prices/descriptions available; units, warranty fields, comparison tasks and calculation checks are not standardized. [C10] | Catalog/policy-first comparison pairs; compute reference values/rankings before writing the request; vary trade-offs and ties. | Deterministic unit conversion, arithmetic, and ranking; source-backed factual checks; LLM judge only for qualitative trade-offs. | **Moderate / Exact** for numeric ranking; **Mixed** for weighted qualitative preferences. |
-| 05 | Discovery and decision | **Substitution and unavailability.** E: Find a cheaper alternative to this mug. H: My preferred shoe is unavailable; preserve size, material, and fit within budget. | Easy–Hard | **Partial:** `substitute` seeds use a broad similarity judge; availability exists. Attribute-preserving substitutions and guaranteed alternatives need stronger grounding. [C1] [C10] | Sample a source item and explicit attributes to preserve/relax; enumerate alternatives; introduce stock constraints; optionally return no valid substitute. | Catalog/stock/price predicates and exclusion of the original; grounded semantic judge for functional similarity or fit. | **Moderate–High / Mixed.** Make preservation requirements objective wherever possible. |
-| 06 | Discovery and decision | **Sizing, fit, and compatibility.** M: Use my measurements and the size chart to choose a shirt size. H: Find a replacement filter for my exact appliance model and reject a similar incompatible filter. | Medium–Hard | **Partial:** options/descriptions/metafields can carry evidence. Size charts and compatibility relations are not guaranteed or normalized. [C10] | Relation-first: curate or synthesize validated size/compatibility facts; choose a supported match and near-miss models; generate the request from those relations. | Table lookup/range checks or compatibility-graph query; check cited evidence and uncertainty when no supported match exists. | **Moderate / Exact** for explicit relations; **Mixed** for subjective fit. No unsupported fit guarantees. |
-| 07 | Discovery and decision | **Review-grounded research.** M: Summarize recurring sizing complaints for these shoes. H: Compare recent verified-purchase reviews, distinguishing repeated defects from isolated complaints. | Medium–Hard | **Missing:** no standardized review dataset, review query/filter UI, or review-evidence verifier in the shared baseline. [C10] | Evidence-first: create/reuse a review corpus with dates, purchase flags, and annotated claims; sample corroborating and conflicting evidence; write research questions. | Review-record queries for date/purchase filters; source-span entailment and contradiction checks; LLM judge for synthesis and representativeness. | **High / Mixed.** Avoid grading a single preferred summary wording. |
-| 08 | Discovery and decision | **Policy and store information.** E: What is the return window? H: For a discounted gift shipped internationally, explain the applicable shipping and return conditions. | Easy–Hard | **Partial:** policies/pages and policy-navigation seeds exist. Answer extraction and exception reasoning need new generators/verifiers. [C1] [C10] | Policy-first templates: extract rules, conditions, and exceptions with source spans; instantiate a scenario; precompute the applicable outcome. | Policy query/rule calculation when structured; evidence-grounded answer judge for prose; URL/locator checks only for explicit navigation goals. | **Low / Exact** for direct facts; **Moderate–High / Mixed** for interacting exceptions. |
-| 09 | Shopping cart and purchase | **Variant and quantity selection.** E: Add two blue mugs. M: Add one medium black shirt and two large white shirts, using available variants only. | Easy–Medium | **Basic:** shopping-cart add/update/remove and variant options; `exact`/`e2e` seeds cover simpler cases. Exact variant–quantity assertions need strengthening. [C1] [C8] | Shopping-cart-state-first templates: sample available variants and quantities, record the intended line multiset, and express it as a shopper request. | Episode shopping-cart query keyed by variant ID and quantity; exact line multiset and no unwanted lines. | **Low / Exact.** Product titles alone cannot establish variant or quantity correctness. |
-| 10 | Shopping cart and purchase | **Shopping cart revision.** E: Remove the duplicate mug. H: Replace the large pack with two small packs, preserve all other lines, and keep the total under $70. | Easy–Hard | **Basic:** mutations and prefilled-shopping-cart setup exist. Revision generators, baseline comparisons, and general constraint checks need adding. [C2] [C8] | Initial-state plus intended-delta templates; vary duplicates, substitutions, quantity changes, and coupled budgets; store untouched-line invariants. | Before/after shopping-cart diff, exact requested changes, catalog pricing, and unchanged-line checks. | **Low–Moderate / Exact.** Needs a diff verifier beyond static snapshot matching. |
-| 11 | Shopping cart and purchase | **Multi-item shopping cart planning.** M: Choose a notebook and pen for under $20. H: Build a cooking kit for four campers, covering required roles with compatible items within budget. | Medium–Hard | **Partial:** multi-item shopping carts and simple composed `e2e` seeds exist. Role coverage, compatibility, feasibility search, and set-level grading are missing. [C1] [C8] | Witness-first: define a brief, construct and validate one feasible shopping cart, then derive a budget/request; store constraints separately from the witness. | Shopping-cart/database query; quantity, budget, role-coverage and compatibility predicates; semantic judge only for unstructured role suitability. | **Moderate–High / Exact or Mixed.** Any satisfying shopping cart passes; witness equality is invalid. |
-| 12 | Shopping cart and purchase | **Promotions and total-cost optimization.** M: Apply an eligible 10% coupon. H: Choose the best legal coupon combination for my shopping cart, including shipping and a useful threshold top-up if it lowers the payable total. | Medium–Hard | **Partial:** flat tax/shipping and a free-shipping threshold work. Coupon eligibility, discounts, stacking, and promotion pricing are **missing** despite stored codes. [C7] [C8] | Pricing-rule-first scenarios with a feasible shopping cart; enumerate legal coupon sets; independently compute costs and an optimum for the declared candidate space. | Deterministic pricing engine plus exact coupon eligibility/stacking checks and optimizer; validate useful top-up requirements separately. | **Moderate–High / Exact** for structured rules. Declare whether optimality is for a fixed shopping cart or a bounded product-choice space. |
-| 13 | Shopping cart and purchase | **Delivery, pickup, and deadlines.** E: Does the shop deliver to my country? H: Find the cheapest option arriving before Friday, with pickup as a fallback. | Easy–Hard | **Partial:** policy text and flat shipping choices exist. Geographic eligibility, delivery estimates, cutoff times, pickup locations/slots, and corresponding UI need support. [C5] [C10] | Policy templates for informational tasks; later sample destination, episode date, service rules and slots, ensuring a feasible option or proven impossibility. | Policy evidence for informational answers; serviceability query, calendar/cutoff calculation, and shipping/pickup state checks for executable tasks. | **Moderate / Exact** with structured logistics; **Mixed** for prose-only policy interpretation. |
-| 14 | Shopping cart and purchase | **Checkout and order placement.** E: Complete guest checkout for this shopping cart using supplied details. M: Place the order to my office with the specified shipping/payment options and final amount. | Easy–Medium | **Basic:** guest/customer simulated checkout, orders, stock checks, and checkout UI exist. Current seed starts signed in with a prefilled shopping cart; guest/method/total checks need extension. [C1] [C5] [C9] | Scenario templates with valid initial shopping cart, identity, address, and commerce settings; calculate expected totals and expected order delta before generating prose. | New-order delta, customer/email, exact line multiset, address, shipping/payment handles, totals, inventory delta, and no duplicate order. | **Low–Moderate / Exact.** An existing seeded order must not satisfy completion. |
-| 15 | Accounts and repeat shopping | **Account access.** E: Register with these details without marketing opt-in. M: Sign in, report the default-address city, then sign out. | Easy–Medium | **Basic:** register/login/logout routes and backend exist. Current `account` seed only reads an already-signed-in account. No password-recovery/OTP workflow. [C1] [C4] [C9] | Persona/scenario templates: choose a seeded identity or unused email, state supplied credentials, define expected customer/session changes; add explicit auth task seeds. | Customer creation/marketing flag query; session and browser-cookie/access checks; profile facts; ordered interaction checks for login-then-logout. | **Low / Exact** for terminal states; **Moderate / Exact** for required action order. Terminal logout alone does not prove login occurred. |
-| 16 | Accounts and repeat shopping | **Profile, addresses, and payment preferences.** E: Save my office address. M: Make it the default for future purchases, remove an obsolete address, and preserve existing orders. | Easy–Medium | **Missing for edits:** profile/address reads exist, but profile update, address CRUD/default changes, and saved-payment management do not. [C4] [C9] | State-transition templates: seed multiple records, define the requested delta and untouched entities; keep address/profile and payment-preference variants capability-gated. | Before/after customer/address/payment queries, default-reference integrity, and unchanged existing orders. | **Low–Moderate / Exact.** Requires domain mutations/UI and diff checks. |
-| 17 | Accounts and repeat shopping | **Wishlist and saved plans.** E: Save these two products for later. M: Move available saved items below $30 into my shopping cart while retaining unavailable items in the wishlist. | Easy–Medium | **Missing:** no shared wishlist state, mutations, persistence, or UI. [C6] [C10] | Initial saved-list plus target-state templates; compose with availability and price constraints after wishlist support exists. | Wishlist/shopping-cart set queries and before/after diff; quantity, retained-item and no-duplicate checks. | **Low–Moderate / Exact.** Multiple selected sets can be accepted when the request permits choice. |
-| 18 | Accounts and repeat shopping | **Order lookup, status, and spending.** E: Report my latest order status. H: Calculate kitchen-category spending last quarter after partial refunds. | Easy–Hard | **Partial:** customer order history/detail and latest-order seeds exist. Spending joins/calculations need verifiers; partial-refund accounting needs a refund ledger. [C1] [C6] [C9] | Order-history-first queries: seed dated orders and line/category relationships; compute aggregates before wording; add refund records only when modeled. | Customer-scoped order query; deterministic date/category joins, arithmetic and refund accounting; exact factual answer checks. | **Low–Moderate / Exact.** Define gross/net, tax/shipping allocation, and the time window. |
-| 19 | Accounts and repeat shopping | **Reordering.** E: Add the coffee from my last order to my shopping cart. H: Repeat the office order without pens, double the paper, and substitute an unavailable item. | Easy–Hard | **Partial:** history, shopping-cart operations, and checkout exist. No dedicated reorder generator; stock-aware reconstruction and substitution checks need adding. [C1] [C6] [C8] | History-to-shopping-cart composition: select a prior order, transform line constraints, validate current availability, then generate natural repeat-shopping intent. | Join source order to resulting shopping cart/new order; exact quantities/exclusions; availability and substitution predicates. | **Moderate / Exact** for fixed transformations; **Mixed** for semantic substitutes. A one-click reorder API is optional. |
-| 20 | After-sales | **Order modification and cancellation.** E: Cancel my unshipped order. H: Cancel only the duplicate order and change the other order's address if policy permits. | Easy–Hard | **Missing:** order reads/creation exist; cancellation, editable-order rules, address changes, and inventory/payment effects are absent. [C5] [C6] | Policy-constrained state transitions: seed eligible/ineligible orders and duplicates, compute permitted actions and expected deltas, then write the scenario. | Order-state diff, eligibility rules, inventory/payment effects, and unchanged unrelated orders. | **Moderate / Exact** with structured lifecycle rules. Need process checks when attempted forbidden actions matter. |
-| 21 | After-sales | **Returns, exchanges, and refunds.** E: Request a return for a damaged mug. H: Exchange a shirt's size, return one of two mugs, and explain why another line is ineligible. | Easy–Hard | **Missing:** policy lookup exists; no return/exchange/refund entities, mutations, line-level lifecycle, or UI. [C1] [C6] [C10] | Scenario templates over order lines, quantities, delivery dates, reasons, policy exceptions, and replacement stock; derive expected eligible actions and amounts. | Order-line/return/exchange/refund queries, policy/date/amount calculations, stock effects; evidence judge for the explanation. | **Moderate–High / Mixed.** State and amounts can be exact; prose eligibility explanations may require a judge. |
-| 22 | After-sales | **Review submission and management.** E: Submit a four-star review using my supplied feedback. M: Update my own review after a replacement while preserving its purchase relationship. | Easy–Medium | **Missing:** review records, ownership/purchase links, submission/edit mutations, and UI are absent. [C6] [C10] | Authenticated state-transition templates with supplied user feedback, target rating, prior review and purchase relationship. Do not fabricate user experience. | Review/author/purchase queries, rating and update checks; semantic fidelity judge for supplied feedback and unintended claims. | **Low / Exact** for structured fields; **High / Mixed** for text fidelity. |
-| 23 | After-sales | **Subscriptions and recurring replenishment.** M: Set coffee delivery to every four weeks. H: Skip the next shipment and reduce future quantity while keeping the subscription active. | Medium–Hard | **Later:** no subscription, schedule, skip/pause, recurring-order, or corresponding UI support. Treat as a later domain expansion. [C6] [C10] | Schedule/state-machine templates with episode time, recurrence rules, upcoming shipments, and intended future state. | Subscription/schedule query, calendar calculation, generated-shipment checks, and unchanged-history invariants. | **Moderate / Exact** with a controlled clock and explicit billing/shipping rules. |
-| V1 | Scenario variation | **Personalization and memory.** M: Use the size from my last purchase. H: Recommend items respecting preferences supplied across earlier sessions. | Medium–Hard | **Partial:** customer/order facts can ground history-based tasks. Persistent preference memory and controlled cross-session evaluation are absent. [C2] [C6] [C12] | Persona/history-first: precommit preferences and their sources, seed accessible history, and specify which memory is available in which session. | History/preference queries plus recommendation predicates; evidence-grounded judge for soft preferences; memory-access records for cross-session claims. | **Moderate–High / Mixed.** Hidden requirements must be recoverable through permitted observations. |
-| V2 | Scenario variation | **Clarification and confirmation.** M: Clarify which coffee I mean by “my usual.” H: Resolve an ambiguous delivery address and obtain the required confirmation before order placement. | Medium–Hard | **Missing interaction protocol:** browser episodes accept a single task goal; no built-in shopper dialogue, hidden requirements/reveal schedule, or confirmation-event checks. [C2] [C12] | Perturb a feasible task by withholding a required field; precommit the answer and reveal rule; use a scripted or constrained user simulator. | Required-question/confirmation event predicates, reveal-log validation, and final state checks against the resolved requirements. | **High / Exact** for scripted requirements and event order; **Mixed** if semantic question interpretation is needed. |
-| V3 | Scenario variation | **Incremental requirement changes.** M: Switch my coffee request to decaf mid-task. H: Tighten the budget after a proposed shopping cart and preserve the remaining requirements. | Medium–Hard | **Missing orchestration:** shopping carts are mutable, but controlled user follow-ups and turn-specific requirement versions are not in the task runner. [C2] [C12] | Start from a validated task; precommit a timed or event-triggered change and a feasible revised solution; keep a versioned requirement ledger. | Interaction/reveal log, final constraints for the active requirement version, and checks that obsolete choices were removed. | **High / Exact** for structured changes; **Mixed** for open-ended revisions. Final state alone cannot validate reveal timing. |
-| V4 | Scenario variation | **Infeasibility and recovery.** M: Report that no available product meets all constraints without purchasing. H: Recover from an insufficient-stock checkout error by selecting an allowed alternative. | Medium–Hard | **Partial:** checkout stock errors and atomic failure behavior exist. Proven-infeasible task generation, recovery predicates, and deterministic mid-episode stock injection need adding. [C5] [C2] | Perturb a feasible task and query to prove emptiness, or seed a quantity shortfall; define allowed relaxations and recovery outcomes in advance. | Empty-result/constraint proof, error or stock evidence, final shopping-cart/order checks, and no unwanted changes; grounded refusal/explanation judge. | **Moderate–High / Mixed.** A refusal by itself does not prove infeasibility. |
-| V5 | Scenario variation | **Action boundaries and collateral effects.** E: Research options without changing my shopping cart. H: Update only the specified address while preserving every unrelated address and order. | Easy–Hard | **Partial:** isolated snapshots can show final state. General before/after invariants and transient-action/event verification are not built-in graders. [C3] [C6] | Attach explicit allowed-change sets and forbidden actions to any compatible task; seed unrelated records that must be preserved. | State diff for preserved entities; event/trajectory predicates for “never purchased/changed” or confirmation-before-action requirements. | **Low–Moderate / Exact** for terminal invariants; **High / Mixed** when only browser traces expose transient actions. |
-| V6 | Scenario variation | **Cross-shop shopping.** M: Compare the delivered price of the same product at two shops. H: Split a compatible shopping cart across shops while including separate shipping charges. | Medium–Hard | **Later:** individual shops can be hosted, but the task/runner model selects one shop and one backend per episode. No coordinated multi-shop setup or grader. [C2] [C12] | Join validated catalogs across shops; precompute comparable identities, fees, and a feasible allocation; optimize only over a declared candidate space. | Cross-shop catalog/price queries and isolated state snapshots; identity/compatibility predicates and cost/allocation optimizer. | **Moderate–High / Exact** with explicit product equivalence; **Mixed** for semantic equivalents. |
-
-### Choose generation methods by task structure
+### B. Generation recipes and research rationale
 
 Use a small set of complementary recipes. The mapping in the catalog is our
 proposal; the papers provide supporting methods rather than evidence that the
@@ -228,46 +332,7 @@ testing consistency across interactions; it does not establish that our current
 browser runner supports that protocol.
 [Personalization Matters](https://arxiv.org/html/2610.11375v1)
 
-### Generation and admission flow
-
-```mermaid
-flowchart LR
-    A[Shop capabilities and evidence] --> B[Choose family, difficulty, recipe]
-    B --> C[Setup, constraints, solution witness, verifier]
-    C --> D[Natural shopper request]
-    D --> E[Independent feasibility and UI replay]
-    E --> F[Verifier checks on valid and invalid outcomes]
-    F --> G[Coverage and duplicate review]
-    G --> H[Admitted task]
-```
-
-Store category, family, scenario variations, task difficulty, generation recipe,
-required capabilities, verifier difficulty/objectivity, and provenance with each
-task. Keep private reference facts, valid-set predicates, witnesses, source spans,
-and any hidden requirements outside the agent-visible goal. These are proposed
-metadata/contract extensions; the current typed schema does not define them. [C2]
-
-Apply the following admission rules:
-
-1. **Capability and evidence gate:** required data/actions must exist in the target
-   shop and be reachable through the agent's permitted UI. An LLM's unsupported
-   inference cannot become a catalog fact.
-2. **Independent feasibility check:** query or solve the constraints, then replay a
-   solution in a fresh episode. For intentionally infeasible tasks, retain an
-   explicit empty-set result or rule contradiction. A solver failure is not proof
-   of infeasibility.
-3. **Verifier validation:** check a correct solution, any legitimate alternative,
-   and targeted errors such as wrong variant, extra item, stale seeded order,
-   wrong total, or changed unrelated record. Record what each failed predicate
-   means. Replay success alone does not establish verifier quality.
-4. **Naturalness and disclosure review:** the request should express a plausible
-   shopper need. Every necessary requirement must be stated or recoverable;
-   freeze hidden requirements and reveal rules before an interactive run.
-5. **Coverage and deduplication:** reject parameter swaps that add no meaningful
-   intent, constraint, evidence, or workflow diversity. Split train/eval by scenario
-   template and related catalog entities, rather than by paraphrase alone.
-
-### Verification strategy
+### C. Verifier design notes
 
 Prefer deterministic state/database queries for state changes and structured
 facts. Validate variant–quantity pairs as sets/multisets, query newly created
@@ -296,55 +361,25 @@ end but cannot prove that an action never occurred. The runner already records
 agent trajectories; a trusted event schema and corresponding grader predicates
 remain proposed extensions. [C6] [C12]
 
-### Diversity and difficulty coverage
+Additional task-specific rules:
 
-Track coverage by **family × difficulty × scenario variation**, then inspect
-product domain, budget range, constraint interactions, information source,
-number of valid solutions, mutation type, and initial state. Include direct
-requests, semantic needs, numeric decisions, state edits, repeat shopping, and
-supported after-sales workflows. Include ties, multiple valid answers,
-infeasibility, and recoverable errors where appropriate.
+- **Promotions (12):** declare whether optimality concerns coupon selection for a
+  fixed shopping cart or product selection over a bounded candidate space. A
+  stored coupon code is not evidence of a price reduction.
+- **Order spending (18):** define the time window, gross/net treatment, partial
+  refunds, and allocation of tax/shipping before computing a reference answer.
+  Financial-status labels cannot substitute for a refund ledger.
+- **Account access (15):** verify browser access/session effects as well as backend
+  state. Ending signed out does not establish that the required login/read steps
+  occurred. Password recovery/OTP is outside the baseline auth surface.
+- **Interactive variations (V1–V3):** keep a versioned requirement/reveal ledger;
+  validate answers and disclosure timing separately from final task success.
+  Hidden facts must be recoverable through permitted observations.
+- **Subscriptions and cross-shop tasks (23, V6):** define recurrence/billing rules,
+  product equivalence and coordinated isolation before generating tasks; these
+  remain later expansions.
 
-Assign difficulty from the required reasoning and interactions, then calibrate
-with reference-agent runs and human review. Report per-family/per-tier results
-and sample counts; keep environment failures separate from agent failures. Do not
-force every family into all three tiers or let high-volume discovery templates
-dominate the headline score. Dataset size, tier proportions, and final family
-weights remain open decisions after a pilot.
-
-## Alternative
-
-**Expand only the existing deterministic seeds:** the smallest implementation
-step and appropriate for exact discovery and straightforward state changes. It
-would leave semantic recommendation, interaction, and missing commerce domains
-underrepresented.
-
-**Use a single LLM generator and judge for all families:** easy to prototype and
-flexible, but weak at guaranteeing feasibility, exact state changes, independent
-verification, and coverage. The proposed mixed approach retains LLMs for language
-and semantic work while grounding structured requirements and outcomes in data.
-
-## Execution Table
-
-This is a proposed sequence of capability increments, not implementation work in
-this PR. Each increment should emit only tasks supported by its target shop.
-
-| Increment | Proposed scope | Environment / generation / verification work | Exit evidence |
-| --- | --- | --- | --- |
-| 1. Baseline-grounded pilot | 01–02, 08–10, 14–15, basic 18–19; supported subsets of 04–06 and V4–V5 | Add family/difficulty/recipe metadata; author generators over existing data and actions; strengthen exact variant, quantity, new-order and preservation checks. Add dedicated auth tasks. | Replayed feasible examples; proven negative cases; valid alternatives accepted; targeted wrong outcomes rejected; family/tier coverage report. |
-| 2. Richer decision tasks | 03–06 and 11; more complex subsets of 02, 08, 18–19 | Validate attribute/size/compatibility/policy evidence; add witness search, arithmetic/constraint verifiers, and source-grounded semantic rubrics. | Independent witness checks and evidence audit; judge calibration on subjective components; no invented attributes. |
-| 3. Interactive scenarios | V1–V5 on already-supported base families | Add hidden-spec/reveal protocol, shopper interaction, controlled requirement changes, memory/session fixtures, and event predicates. | Deterministic replay of scripted cases; reveal/confirmation ordering verified; simulator violations measured separately. |
-| 4. Additional commerce domains | 07, full 12–13, 16–17, refund-aware 18, 20–22 | Add each domain's records, rules, mutations, storefront UI, fixtures, and snapshot/events before its generator. Reviews, promotions, logistics, account edits, saved lists, and after-sales can be delivered independently. | Domain contract checks plus fresh-episode browser replay and verifier validation for each admitted family. |
-| 5. Later expansion | 23 and V6 | Subscription lifecycle/calendar and coordinated multi-shop episodes. Evaluate demand and cost before committing scope. | Reviewed domain semantics, isolation, replay, and cross-domain verifiers. |
-
-Review decisions still needed: initial family/tier allocation, how much subjective
-recommendation to include in the headline metric, and which missing domain to
-prioritize after the baseline pilot. These choices do not prevent drafting or
-reviewing the catalog.
-
-## Appendix
-
-### Code evidence
+### D. Code evidence
 
 These links point to the implementation inherited from the audited baseline.
 They support the Current Status and catalog support assessments; proposed
@@ -380,7 +415,7 @@ verifiers and generation recipes are not claims of shipped behavior.
 [C12]: ../../../packages/shop-guru/src/solve/agent.ts
 [C13]: ../../../packages/shop-guru/src/validate.ts
 
-### Research scope and prior context
+### E. Research scope and prior context
 
 The method selection builds on the
 [previous ShopGym research review](https://shop-gym.quick.shopify.io/public/specs/docs/shop-gym/shopgym_v2/shopgym_v2_task_research_review.html#methods)
