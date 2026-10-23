@@ -34,7 +34,7 @@ shopgym explore  ->  Shop Manual  ->  shopgym gen  ->  SandboxShop (data + store
 
 ## Requirements
 
-- Node >= 20.12 with [`pnpm`](https://pnpm.io/) >= 9 (the repo pins
+- Node >= 22.19 (required by the `pi` SDK) with [`pnpm`](https://pnpm.io/) >= 9 (the repo pins
   `pnpm@9.12.0` via `packageManager`).
 - Playwright's Chromium, used by exploration, the build-loop verifiers, and
   benchmark episodes.
