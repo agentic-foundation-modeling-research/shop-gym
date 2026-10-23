@@ -33,7 +33,7 @@ ShopArena  →  SandboxShop (static shop + data)  →  ShopBackend (GraphQL API)
 ## Requirements
 
 - Python ≥ 3.12 with [`uv`](https://docs.astral.sh/uv/)
-- Node ≥ 20.12 with [`pnpm`](https://pnpm.io/) ≥ 9
+- Node ≥ 22.19 with [`pnpm`](https://pnpm.io/) ≥ 9 (the `pi` SDK requires it)
 - One of the supported coding-agent CLIs (required for `shop_arena.explore`
   and the `shop_arena.gen` build loop):
   - `pi` (default agent runtime) — install per the
