@@ -5,6 +5,7 @@ packages:
   - "packages/browser"
   - "packages/shop_backend"
   - "packages/shop-arena"
+  - "packages/shop-guru"
 allowBuilds:
   '@biomejs/biome': set this to true or false
   esbuild: set this to true or false

@@ -22,8 +22,8 @@ describe('taskSchema', () => {
         {
           type: 'locator_probe',
           url: 'last',
-          locator: "document.querySelectorAll('li').length",
-          required: { exactMatch: '1' },
+          locator: '.cart-line .title',
+          required: { exactMatch: 'Tab Sock' },
         },
         {
           type: 'state_check',
