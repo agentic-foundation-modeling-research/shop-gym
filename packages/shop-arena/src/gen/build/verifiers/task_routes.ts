@@ -5,6 +5,9 @@
  * (`collections.json`, `products.json`, `pages.json`, `policies.json`) so
  * routes carry real handles. Sampling is deterministic (first N entries in
  * file order) and capped per bucket, so reruns judge the same evidence.
+ *
+ * The `account` bucket belongs to no `gen_*` task: the template owns the
+ * account pages, so only `visual_fix` judges them.
  */
 
 import * as fs from 'node:fs/promises';
@@ -18,7 +21,8 @@ export type PageBucket =
   | 'collections'
   | 'product'
   | 'cart_search'
-  | 'info_pages';
+  | 'info_pages'
+  | 'account';
 
 export const ALL_BUCKETS: readonly PageBucket[] = [
   'homepage',
@@ -27,11 +31,14 @@ export const ALL_BUCKETS: readonly PageBucket[] = [
   'product',
   'cart_search',
   'info_pages',
+  'account',
 ];
 
-/** Task id -> page buckets. `gen_theme` is judged on the homepage. */
+/**
+ * Task id -> page buckets. `gen_theme` has no bucket: it only lays down
+ * tokens and styles, so its pages are judged once the page tasks fill them.
+ */
 export const TASK_BUCKETS: Readonly<Record<string, readonly PageBucket[]>> = {
-  gen_theme: ['homepage'],
   gen_homepage: ['homepage'],
   gen_navigation: ['navigation'],
   gen_collections: ['collections'],
@@ -124,6 +131,8 @@ export function bucketRoutes(
         ...handles.pages.slice(0, caps.maxPages).map((h) => `/pages/${h}`),
         ...handles.policies.slice(0, caps.maxPages).map((h) => `/policies/${h}`),
       ];
+    case 'account':
+      return ['/account/login', '/account'];
   }
 }
 

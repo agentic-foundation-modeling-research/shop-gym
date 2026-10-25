@@ -14,6 +14,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check packages/core packages/agent packages/harness packages/browser packages/shop_backend packages/shop-arena packages/shop-guru packages/cli",
     "format": "biome format --write .",
+    "codegen:check": "pnpm --filter @shop-gym/shop-backend codegen:check",
     "shop:host": "node packages/cli/dist/main.js host"
   },
   "dependencies": {

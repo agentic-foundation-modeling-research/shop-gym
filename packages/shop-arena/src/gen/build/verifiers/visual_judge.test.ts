@@ -75,9 +75,11 @@ let server: http.Server;
 let url: string;
 let runDir: string;
 let manualDir: string;
+let requestedPaths: string[] = [];
 
 beforeAll(async () => {
-  server = http.createServer((_req, res) => {
+  server = http.createServer((req, res) => {
+    requestedPaths.push(req.url ?? '');
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end(PAGE);
   });
@@ -101,6 +103,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'visual-judge-'));
+  requestedPaths = [];
 });
 
 function ctx(selectedTaskId: string, iterId = 'exec-0001'): VerifierContext {
@@ -134,6 +137,7 @@ describe('visual_judge', () => {
     });
     expect(verifier.appliesTo('gen_homepage')).toBe(true);
     expect(verifier.appliesTo('visual_fix')).toBe(true);
+    expect(verifier.appliesTo('gen_theme')).toBe(false);
     expect(verifier.appliesTo('gen_backend')).toBe(false);
   });
 
@@ -157,6 +161,61 @@ describe('visual_judge', () => {
     expect(prompt.text).toContain('featured_collections');
     expect(prompt.text).toContain('Hero then grid');
     expect(result.details).toMatchObject({ buckets: ['homepage'], score: 8.5 });
+  }, 60_000);
+
+  it('adds a product to the cart before judging cart routes', async () => {
+    const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));
+    const verifier = visualJudgeVerifier({
+      target: { url },
+      dataDir: FIXTURE_DIR,
+      llm: judge,
+      model: MODEL,
+    });
+    const result = await verifier.run(ctx('gen_cart_search'));
+    expect(result.verdict).toBe('pass');
+    const productVisit = requestedPaths.findIndex((p) => p.startsWith('/products/'));
+    expect(productVisit).toBeGreaterThanOrEqual(0);
+    expect(productVisit).toBeLessThan(requestedPaths.indexOf('/cart'));
+    expect(result.details).toMatchObject({
+      buckets: ['cart_search'],
+      cartSeed: expect.stringContaining('no add-to-cart form'),
+    });
+  }, 60_000);
+
+  it('logs in as the seeded customer after the login page and before the account page', async () => {
+    const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));
+    const verifier = visualJudgeVerifier({
+      target: { url },
+      dataDir: FIXTURE_DIR,
+      llm: judge,
+      model: MODEL,
+    });
+    const result = await verifier.run(ctx('visual_fix'));
+    expect(result.verdict).toBe('pass');
+    const loginAttempt = requestedPaths.lastIndexOf('/account/login');
+    expect(loginAttempt).toBeGreaterThan(requestedPaths.indexOf('/account/login'));
+    expect(loginAttempt).toBeLessThan(requestedPaths.indexOf('/account'));
+    expect(result.details).toMatchObject({
+      accountSeed: expect.stringContaining('no form with the expected fields'),
+    });
+  }, 90_000);
+
+  it("returns the failing pages' screenshots as images", async () => {
+    const judge = new ScriptedJudge(() => JSON.stringify(FAIL_VERDICT));
+    const verifier = visualJudgeVerifier({
+      target: { url },
+      dataDir: FIXTURE_DIR,
+      llm: judge,
+      model: MODEL,
+    });
+    const result = await verifier.run(ctx('gen_homepage'));
+    expect(result.verdict).toBe('fail');
+    expect(result.feedback).toContain('screenshots of the failing pages are attached');
+    const checksDir = path.join(runDir, 'iters', 'exec-0001', 'checks', 'visual_judge');
+    expect(result.images).toEqual([
+      path.join(checksDir, 'home__desktop.png'),
+      path.join(checksDir, 'home__mobile.png'),
+    ]);
   }, 60_000);
 
   it('fails until the per-task retry budget is spent, then reports advisory', async () => {

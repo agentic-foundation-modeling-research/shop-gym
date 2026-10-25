@@ -87,6 +87,12 @@ describe('runDataSynth', () => {
     const store = datasetSchema.storeSchema.parse(await readJson(path.join(dataDir, 'store.json')));
     expect(store.name).toBe(identity.name);
     expect(await checkDataset(dataDir)).toEqual([]);
+    const navigation = datasetSchema.navigationSchema.parse(
+      await readJson(path.join(dataDir, 'navigation.json')),
+    );
+    const footerUrls = navigation.footer.map((item) => item.url);
+    expect(footerUrls.some((url) => url.startsWith('/pages/'))).toBe(true);
+    expect(footerUrls.some((url) => url.startsWith('/policies/'))).toBe(true);
     const cache = (await fs.readdir(path.join(shopDir, '.shop_gen', 'stage_cache'))).sort();
     expect(cache).toEqual([
       'alt_text.json',

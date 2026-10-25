@@ -56,7 +56,8 @@ export function checkPnpm(version: string | undefined): CheckResult {
 }
 
 export function checkChromium(chromium: DoctorFacts['chromium']): CheckResult {
-  const remedy = 'Run `pnpm exec playwright install chromium` from the repo root.';
+  const remedy =
+    'Run `pnpm --filter @shop-gym/browser exec playwright install chromium` from the repo root.';
   if (chromium === undefined) {
     return { name: 'playwright chromium', ok: false, detail: 'playwright not resolvable', remedy };
   }

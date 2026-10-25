@@ -182,6 +182,8 @@ describe('task routes', () => {
       '/pages/about-us',
       '/policies/privacy-policy',
     ]);
+    expect(bucketRoutes('account', handles, caps)).toEqual(['/account/login', '/account']);
+    expect(bucketsForTask('visual_fix')).toContain('account');
   });
 
   it('collects same-origin links from rendered bodies', () => {

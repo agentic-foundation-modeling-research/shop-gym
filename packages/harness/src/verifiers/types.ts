@@ -19,6 +19,11 @@ export interface VerifierResult {
   readonly verdict: Verdict;
   /** Markdown surfaced to the next iteration on `fail` and `advisory`. */
   readonly feedback?: string;
+  /**
+   * Absolute paths of PNG or JPEG files shown to the next iteration next to
+   * `feedback`, on `fail` and `advisory`. The harness caps how many it sends.
+   */
+  readonly images?: readonly string[];
   /** Structured payload persisted verbatim in the per-verifier file. */
   readonly details?: Readonly<Record<string, unknown>>;
 }

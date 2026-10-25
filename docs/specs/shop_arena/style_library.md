@@ -1,5 +1,11 @@
 # Style Library (`packages/shop_arena/src/shop_arena/gen/style_library`)
 
+> **Superseded by v1.1 (2026-10-01).** The Python implementation this spec
+> describes was deleted at the v1.1 cutover (M11); see
+> [`v1_1_typescript_redesign.md`](../v1_1_typescript_redesign.md). This draft was never implemented and is not carried
+> over to v1.1.
+> The text below is kept as history and is no longer maintained.
+
 Status: **Spec (draft)** · Version: **0.1**
 Owners: ShopArena
 

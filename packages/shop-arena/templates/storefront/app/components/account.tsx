@@ -53,32 +53,34 @@ export function OrderTable({
     return <p>No orders yet.</p>;
   }
   return (
-    <table className="data-table">
-      <thead>
-        <tr>
-          <th>Order</th>
-          <th>Date</th>
-          <th>Payment</th>
-          <th>Fulfillment</th>
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        {orders.map((order) => (
-          <tr key={order.id}>
-            <td>
-              <Link to={orderPath(order)}>{order.name}</Link>
-            </td>
-            <td>{formatDate(order.processedAt)}</td>
-            <td>{order.financialStatus ?? '-'}</td>
-            <td>{order.fulfillmentStatus}</td>
-            <td>
-              <Price money={order.totalPrice} />
-            </td>
+    <div className="table-scroll">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Date</th>
+            <th>Payment</th>
+            <th>Fulfillment</th>
+            <th>Total</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {orders.map((order) => (
+            <tr key={order.id}>
+              <td>
+                <Link to={orderPath(order)}>{order.name}</Link>
+              </td>
+              <td>{formatDate(order.processedAt)}</td>
+              <td>{order.financialStatus ?? '-'}</td>
+              <td>{order.fulfillmentStatus}</td>
+              <td>
+                <Price money={order.totalPrice} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -90,32 +92,34 @@ export function OrderDetails({ order }: { readonly order: OrderDetail }) {
           Placed {formatDate(order.processedAt)}
           {order.email ? ` for ${order.email}` : ''}
         </p>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Quantity</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {order.lineItems.nodes.map((line) => (
-              <tr key={`${line.title}-${line.variant?.id ?? ''}`}>
-                <td>
-                  {line.variant ? (
-                    <Link to={`/products/${line.variant.product.handle}`}>{line.title}</Link>
-                  ) : (
-                    line.title
-                  )}
-                </td>
-                <td>{line.quantity}</td>
-                <td>
-                  <Price money={line.originalTotalPrice} />
-                </td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Quantity</th>
+                <th>Total</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {order.lineItems.nodes.map((line) => (
+                <tr key={`${line.title}-${line.variant?.id ?? ''}`}>
+                  <td>
+                    {line.variant ? (
+                      <Link to={`/products/${line.variant.product.handle}`}>{line.title}</Link>
+                    ) : (
+                      line.title
+                    )}
+                  </td>
+                  <td>{line.quantity}</td>
+                  <td>
+                    <Price money={line.originalTotalPrice} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         <dl className="order-meta">
           <dt>Payment</dt>
           <dd>

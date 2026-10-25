@@ -24,7 +24,11 @@ export const RUBRIC_PATH = path.join(
 );
 /** Pages scoring below this fail even when the model says `pass`. */
 export const PASS_SCORE = 7;
-/** Captures are capped at this many viewport heights to keep images bounded. */
+/**
+ * Captures are capped at this many viewport heights to keep images bounded.
+ * The rubric's capture policy states this cap, so the judge does not report
+ * content below the cut (typically the footer) as missing.
+ */
 const MAX_CAPTURE_SCREENS = 3;
 const SETTLE_MS = 300;
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 30_000;
@@ -232,17 +236,9 @@ const BUCKET_CAPABILITY_GLOBS: Readonly<Record<PageBucket, readonly string[]>> =
   navigation: ['site_shell', 'navigation', 'navigation.*', 'footer', 'intl'],
   collections: ['collection', 'collection.*'],
   product: ['product', 'product.*'],
-  cart_search: [
-    'cart',
-    'cart.*',
-    'search',
-    'search.*',
-    'checkout',
-    'checkout.*',
-    'account',
-    'account.*',
-  ],
+  cart_search: ['cart', 'cart.*', 'search', 'search.*', 'checkout', 'checkout.*'],
   info_pages: ['info_pages_present', 'page', 'page.*', 'policies', 'policies.*'],
+  account: ['account', 'account.*'],
 };
 
 /** Manual part file names containing one of these words are shown to the judge. */
@@ -251,8 +247,9 @@ const BUCKET_MANUAL_WORDS: Readonly<Record<PageBucket, readonly string[]>> = {
   navigation: ['nav', 'header', 'footer', 'menu', 'theme'],
   collections: ['collection', 'catalog', 'category'],
   product: ['product', 'variant'],
-  cart_search: ['cart', 'search', 'checkout', 'account', 'order'],
+  cart_search: ['cart', 'search', 'checkout'],
   info_pages: ['page', 'policy', 'policies', 'faq', 'contact', 'about'],
+  account: ['account', 'order', 'login'],
 };
 
 /**
