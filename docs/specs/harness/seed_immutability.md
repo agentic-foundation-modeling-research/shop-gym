@@ -67,6 +67,10 @@ run with the existing `PROTOCOL_VIOLATION` final status.
   + saving Playwright snapshots there, and left `plan.md` empty. The
   harness reported no error; the corruption was discovered only by
   manual inspection.
+- **v1.1 TypeScript port (2026-09-30).** `packages/harness/src/seed.ts`
+  ports `snapshotSeed` / `checkSeed` and the persisted manifest
+  (`.harness/seed_manifest.json`, keys `seededRoots` / `files`) with the
+  same violation strings.
 
 ---
 

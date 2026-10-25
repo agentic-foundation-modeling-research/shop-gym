@@ -92,6 +92,11 @@ Two design choices keep the surface narrow:
   planner-skip behavior, partial-dir quarantine, bad-state refusal,
   `force=True`, budget-exhausted continuation, and `shop-explore`
   resume argument handling.
+- **v1.1 TypeScript port (2026-09-30).** `packages/harness/src/loop.ts`
+  and `workspace.ts` port resume with the same identity tuple, refusal
+  policy, quarantine sentinels, and `configSnapshot.resumeHistory` (one
+  entry per attempt). `shop-explore --force-resume` moves to the
+  `shopgym explore` CLI in a later milestone.
 
 ---
 
