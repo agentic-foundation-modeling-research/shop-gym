@@ -75,6 +75,40 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.19.17)
 
+  packages/cli:
+    dependencies:
+      '@shop-gym/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@shop-gym/core':
+        specifier: workspace:*
+        version: link:../core
+      '@shop-gym/harness':
+        specifier: workspace:*
+        version: link:../harness
+      '@shop-gym/shop-arena':
+        specifier: workspace:*
+        version: link:../shop-arena
+      '@shop-gym/shop-guru':
+        specifier: workspace:*
+        version: link:../shop-guru
+      playwright:
+        specifier: ^1.63.0
+        version: 1.63.0
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.6.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.19.17)
+
   packages/core:
     dependencies:
       zod:
@@ -124,9 +158,15 @@ importers:
       '@shop-gym/harness':
         specifier: workspace:*
         version: link:../harness
+      '@shop-gym/shop-backend':
+        specifier: workspace:*
+        version: link:../shop_backend
       '@sinclair/typebox':
         specifier: ^0.34.0
         version: 0.34.52
+      graphql:
+        specifier: ^16.9.0
+        version: 16.13.2
       zod:
         specifier: ^4.6.5
         version: 4.6.5

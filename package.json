@@ -12,9 +12,9 @@
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "lint": "biome check packages/core packages/agent packages/harness packages/browser packages/shop_backend packages/shop-arena packages/shop-guru",
+    "lint": "biome check packages/core packages/agent packages/harness packages/browser packages/shop_backend packages/shop-arena packages/shop-guru packages/cli",
     "format": "biome format --write .",
-    "shop:host": "./scripts/run-shop.sh"
+    "shop:host": "node packages/cli/dist/main.js host"
   },
   "dependencies": {
     "pi-playwright": "^0.1.1"

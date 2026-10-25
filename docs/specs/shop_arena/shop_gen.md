@@ -145,6 +145,95 @@ applied uniformly across the data DAG and the harness loop. See
 [`harness/verifiers.md`](../harness/verifiers.md) for the underlying
 contracts.
 
+### 3.1 v1.1 TypeScript port (2026-09-30)
+
+The first half of the pipeline now ships in TypeScript under
+`packages/shop-arena/src/gen/` (milestone M7a of
+[`v1_1_typescript_redesign.md`](../v1_1_typescript_redesign.md)),
+driven by the `@shop-gym/core` pipeline runner instead of the legacy
+`Step` / `state.json` machinery:
+
+- `generateShop(config, deps)` runs four coarse steps, `manual_merge ->
+  data_synth -> data_validation -> build`, with filesystem-derived
+  completion (`<shopDir>/.pipeline/<step>.json` fingerprints) and
+  `from` forcing a step plus its dependents. `final_eval` and
+  `publish` (M7b) append to `genSteps()` and `GEN_STEPS`.
+- `manual_merge/` ports `copy_seed`, the deterministic capability merge
+  table (§9.2; LLM tiebreak only for `shop.descriptor` and tied
+  layout enums), H2-section prose merge, the six-part split, stats
+  merge, and `manifest.json`; output under `<shopDir>/manual/` is
+  byte-compatible with v1 (`manual.md`, `capabilities.json`,
+  `stats.json`, `parts/*.md`, `manifest.json`).
+- `data_synth/` ports every v1 sub-step in registration order and adds
+  `synth_commerce`, `synth_customers`, and deterministic
+  `synth_orders` / inventory so the dataset exercises the stateful
+  backend (`commerce.json`, `customers.json`, `orders.json`). Every
+  LLM step goes through `completeJson` with a zod-derived JSON Schema
+  and one validation-feedback retry; drafts cache under
+  `<shopDir>/.shop_gen/stage_cache/` (v1 file names kept; details per
+  collection), `identity.json` at the shop root. Images come from one
+  `ImageBackend` interface: `placeholder` (deterministic PNG, offline)
+  or `openai` (content-hash cache in `.shop_gen/image_cache/`).
+- `data_validation/` validates `data/` with the backend zod schema,
+  checks referential integrity (variant ids in inventory and orders,
+  collection membership, navigation targets, image files), then boots
+  the pristine `packages/shop_backend` template on the dataset and
+  runs a fixed Storefront query set ending in `checkoutComplete` as
+  the first seeded customer; the report is `data_validation.json`.
+- `build` stages `data/` + `manual/` as the seed and calls
+  `runBuildLoop` (§5.5); a non-`completed` final status fails the step
+  so a rerun resumes the same run directory.
+
+Deviations from v1 and §5.7.1: coarse pipeline steps instead of a
+per-item node DAG (per-item resume lives inside `data_synth`'s stage
+cache); skeletons whose details were dropped are removed from the
+catalog instead of failing assembly; the brand-leak scan logs at
+assembly rather than failing (as in v1); `manifest.json` is written for
+single-manual runs too. The CLI (`shopgym gen`) arrives in M10.
+
+### 3.2 v1.1 publish step and final eval (M7b, 2026-09-30)
+
+The TypeScript port adds the two post-build steps of §5.7.1 as
+`Step<GenContext>`s appended to `genSteps` (`GEN_STEPS` is now the full
+six-step list). Both read `runs/build/run.json` and `runs/build/build.json`
+so a resumed or rebuilt loop reruns them; `final_eval` writes
+`final_eval/`, `publish` writes `storefront/`, `backend/` and
+`shop.json` in the shop directory. The build loop itself now owns a
+`StorefrontSidecar` next to the backend one and passes
+`storefront: { sidecar, dataDir, manualDir, judge }` to
+`buildVerifiers`, so the storefront verifiers of §5.7.1 (`typecheck`,
+`build`, `routes_200`, `nav_coverage`, `cart_conformance`,
+`visual_judge`) run in every build; the sidecar is built on the first
+verifier that needs it and rebuilt only when the copy changes. The
+underlying functions stay plain and testable on their own:
+
+- `final_eval/runFinalEval({ dataDir, manualDir?, backendUrl,
+  storefrontUrl, llm, model, outDir, log?, signal? })` runs against an
+  already-running shop. The visual sweep captures ten canonical pages
+  (home, a collection, a product, search, cart, checkout, account
+  login, the account profile after login, an order detail, a policy
+  page) at both viewports and judges each with the single
+  `visual_judge.md` rubric; the functional sweep is a fixed browser
+  script (sign up, log out, log in, add to cart, checkout, view order;
+  `requestReturn` is recorded as `skipped: not supported by backend`).
+  It writes `<outDir>/{report.json, summary.md, pages/<name>.json,
+  screenshots/}` in camelCase and returns pass/fail/skipped counts.
+  Pages whose setup the dataset cannot provide are `skipped` with a
+  reason; the eval never blocks the pipeline.
+- `publish/publishShop({ runDir, shopDir })` copies
+  `<runDir>/artifact/{storefront,backend}` into
+  `<shopDir>/{storefront,backend}` (excluding `node_modules`, `dist`,
+  `build`, `.react-router`, `.vite`, `.cache`, `*.log` and the
+  storefront's sidecar-specific `.env`), copies nothing from
+  `artifact/data`, and writes `<shopDir>/shop.json` with `name`,
+  `templates.{storefront,backend}` (each copy's `template.json`
+  fingerprint), `genBackend` (from `build.json`), `publishedAt` and
+  `finalStatus` (from the run's `run.json`, else `unknown`). It is
+  idempotent: the component directories are replaced on every call.
+  `readShopManifest(shopDir)` validates and returns the manifest. The
+  `host` step passes `PUBLIC_STORE_DOMAIN`, `PORT` and `SESSION_SECRET`
+  through the environment instead of a committed `.env`.
+
 ---
 
 ## 4. Desired Status
