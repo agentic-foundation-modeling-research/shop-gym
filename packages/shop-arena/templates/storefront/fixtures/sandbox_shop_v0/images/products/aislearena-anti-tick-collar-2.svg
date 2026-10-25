@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <rect width="1200" height="900" fill="#f7fafc"/>
+  <rect x="162" y="120" width="366" height="640" rx="30" fill="#fef3c7" stroke="#1f2933" stroke-width="10"/>
+  <text x="345" y="236" text-anchor="middle" font-family="Arial, sans-serif" font-size="44" font-weight="700" fill="#1f2933">AisleArena</text>
+  <text x="345" y="296" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#5f6c7b">tick collar</text>
+  <ellipse cx="756" cy="498" rx="236" ry="172" fill="none" stroke="#facc15" stroke-width="68"/>
+  <ellipse cx="756" cy="498" rx="146" ry="94" fill="#ffffff" stroke="#d9e2ec" stroke-width="10"/>
+  <rect x="698" y="316" width="116" height="74" rx="18" fill="#1f2933"/>
+  <circle cx="756" cy="354" r="18" fill="#67e8f9"/>
+  <path d="M250 402h190M250 468h158M250 534h210" stroke="#5f6c7b" stroke-width="20" stroke-linecap="round"/>
+  <text x="600" y="820" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="700" fill="#1f2933">Chemical-free wearable repellent</text>
+</svg>

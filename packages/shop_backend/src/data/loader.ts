@@ -11,7 +11,8 @@
  *
  * Optional files: `blogs.json` (defaults to `[]`), `metafields.json` (defaults
  * to `{ shop: [], products: {}, collections: {} }`), `inventory.json`
- * (defaults to `{}`).
+ * (defaults to `{}`), `customers.json` (defaults to `[]`), `orders.json`
+ * (defaults to `[]`), `commerce.json` (defaults to `DEFAULT_COMMERCE`).
  */
 
 import * as fs from 'node:fs';
@@ -22,21 +23,36 @@ import type { z } from 'zod';
 import {
   blogsFileSchema,
   collectionsFileSchema,
+  commerceSchema,
+  customersFileSchema,
   inventoryFileSchema,
   metafieldsFileSchema,
   navigationSchema,
+  ordersFileSchema,
   pagesFileSchema,
   policiesFileSchema,
   productsFileSchema,
   storeSchema,
 } from './schema.js';
 import type {
+  Commerce,
   InventoryEntry,
   InventoryFile,
   Product,
   SandboxShopData,
   VariantLookup,
 } from './types.js';
+
+/**
+ * Checkout rules used when `commerce.json` is absent: no tax, one free
+ * shipping method, one payment method. Keeps v1.0 datasets checkout-capable.
+ */
+export const DEFAULT_COMMERCE: Commerce = Object.freeze({
+  tax_rate: 0,
+  free_shipping_threshold: null,
+  shipping_methods: [{ handle: 'standard', title: 'Standard Shipping', price: '0.00' }],
+  payment_methods: [{ handle: 'card', title: 'Credit card' }],
+});
 
 /** Thrown when a required dataset file is not present in the directory. */
 export class MissingDatasetFileError extends Error {
@@ -90,6 +106,9 @@ export function loadShopData(dir: string): SandboxShopData {
     collections: {},
   };
   const inventory = readOptional(dir, 'inventory.json', inventoryFileSchema) ?? {};
+  const customers = readOptional(dir, 'customers.json', customersFileSchema) ?? [];
+  const orders = readOptional(dir, 'orders.json', ordersFileSchema) ?? [];
+  const commerce = readOptional(dir, 'commerce.json', commerceSchema) ?? DEFAULT_COMMERCE;
 
   const data: SandboxShopData = {
     store,
@@ -101,6 +120,9 @@ export function loadShopData(dir: string): SandboxShopData {
     blogs,
     metafields,
     inventory,
+    customers,
+    orders,
+    commerce,
     productsByHandle: buildProductsByHandle(products),
     variantsByGid: buildVariantsByGid(products),
     inventoryByVariantId: buildInventoryByVariantId(inventory),

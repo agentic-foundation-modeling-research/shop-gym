@@ -334,6 +334,29 @@ export type CartWarning = {
   readonly target: Maybe<Scalars['String']['output']>;
 };
 
+export type CheckoutCompleteInput = {
+  /** Contact email; defaults to the cart's buyer identity email. */
+  readonly email?: InputMaybe<Scalars['String']['input']>;
+  /** Handle of a commerce.json payment method; defaults to the first one. */
+  readonly paymentMethodHandle?: InputMaybe<Scalars['String']['input']>;
+  readonly shippingAddress: MailingAddressInput;
+  /** Handle of a commerce.json shipping method; defaults to the first one. */
+  readonly shippingMethodHandle?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type CheckoutCompletePayload = {
+  readonly __typename?: 'CheckoutCompletePayload';
+  readonly order: Maybe<Order>;
+  readonly userErrors: ReadonlyArray<CheckoutUserError>;
+};
+
+export type CheckoutUserError = {
+  readonly __typename?: 'CheckoutUserError';
+  readonly code: Maybe<Scalars['String']['output']>;
+  readonly field: Maybe<ReadonlyArray<Scalars['String']['output']>>;
+  readonly message: Scalars['String']['output'];
+};
+
 export type Collection = {
   readonly __typename?: 'Collection';
   readonly description: Scalars['String']['output'];
@@ -388,6 +411,16 @@ export type CollectionSortKeys =
   | 'TITLE'
   | 'UPDATED_AT';
 
+export type CommerceSettings = {
+  readonly __typename?: 'CommerceSettings';
+  readonly currencyCode: Scalars['String']['output'];
+  readonly freeShippingThreshold: Maybe<MoneyV2>;
+  readonly paymentMethods: ReadonlyArray<PaymentMethod>;
+  readonly shippingMethods: ReadonlyArray<ShippingMethod>;
+  /** Fraction of the merchandise subtotal charged as tax, e.g. 0.13. */
+  readonly taxRate: Scalars['Float']['output'];
+};
+
 export type ComponentizableCartLine = {
   readonly __typename?: 'ComponentizableCartLine';
   readonly attributes: ReadonlyArray<Attribute>;
@@ -436,11 +469,84 @@ export type CurrencyCode =
 
 export type Customer = {
   readonly __typename?: 'Customer';
-  readonly displayName: Maybe<Scalars['String']['output']>;
+  readonly acceptsMarketing: Scalars['Boolean']['output'];
+  readonly addresses: MailingAddressConnection;
+  readonly createdAt: Scalars['String']['output'];
+  readonly defaultAddress: Maybe<MailingAddress>;
+  readonly displayName: Scalars['String']['output'];
   readonly email: Maybe<Scalars['String']['output']>;
   readonly firstName: Maybe<Scalars['String']['output']>;
   readonly id: Scalars['ID']['output'];
   readonly lastName: Maybe<Scalars['String']['output']>;
+  readonly numberOfOrders: Scalars['Int']['output'];
+  readonly orders: OrderConnection;
+  readonly phone: Maybe<Scalars['String']['output']>;
+  readonly updatedAt: Scalars['String']['output'];
+};
+
+
+export type CustomerAddressesArgs = {
+  first: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type CustomerOrdersArgs = {
+  first: InputMaybe<Scalars['Int']['input']>;
+  reverse: InputMaybe<Scalars['Boolean']['input']>;
+  sortKey: InputMaybe<OrderSortKeys>;
+};
+
+export type CustomerAccessToken = {
+  readonly __typename?: 'CustomerAccessToken';
+  readonly accessToken: Scalars['String']['output'];
+  readonly expiresAt: Scalars['String']['output'];
+};
+
+export type CustomerAccessTokenCreateInput = {
+  readonly email: Scalars['String']['input'];
+  readonly password: Scalars['String']['input'];
+};
+
+export type CustomerAccessTokenCreatePayload = {
+  readonly __typename?: 'CustomerAccessTokenCreatePayload';
+  readonly customerAccessToken: Maybe<CustomerAccessToken>;
+  readonly customerUserErrors: ReadonlyArray<CustomerUserError>;
+};
+
+export type CustomerAccessTokenDeletePayload = {
+  readonly __typename?: 'CustomerAccessTokenDeletePayload';
+  readonly deletedAccessToken: Maybe<Scalars['String']['output']>;
+  readonly deletedCustomerAccessTokenId: Maybe<Scalars['String']['output']>;
+  readonly userErrors: ReadonlyArray<UserError>;
+};
+
+export type CustomerCreateInput = {
+  readonly acceptsMarketing?: InputMaybe<Scalars['Boolean']['input']>;
+  readonly email: Scalars['String']['input'];
+  readonly firstName?: InputMaybe<Scalars['String']['input']>;
+  readonly lastName?: InputMaybe<Scalars['String']['input']>;
+  readonly password: Scalars['String']['input'];
+  readonly phone?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type CustomerCreatePayload = {
+  readonly __typename?: 'CustomerCreatePayload';
+  readonly customer: Maybe<Customer>;
+  readonly customerUserErrors: ReadonlyArray<CustomerUserError>;
+};
+
+export type CustomerErrorCode =
+  | 'BLANK'
+  | 'INVALID'
+  | 'TAKEN'
+  | 'TOO_SHORT'
+  | 'UNIDENTIFIED_CUSTOMER';
+
+export type CustomerUserError = {
+  readonly __typename?: 'CustomerUserError';
+  readonly code: Maybe<CustomerErrorCode>;
+  readonly field: Maybe<ReadonlyArray<Scalars['String']['output']>>;
+  readonly message: Scalars['String']['output'];
 };
 
 export type HasMetafieldsIdentifier = {
@@ -493,6 +599,49 @@ export type LocalizationCountry = {
   readonly currency: Currency;
   readonly isoCode: Scalars['String']['output'];
   readonly name: Scalars['String']['output'];
+};
+
+export type MailingAddress = {
+  readonly __typename?: 'MailingAddress';
+  readonly address1: Maybe<Scalars['String']['output']>;
+  readonly address2: Maybe<Scalars['String']['output']>;
+  readonly city: Maybe<Scalars['String']['output']>;
+  readonly company: Maybe<Scalars['String']['output']>;
+  readonly country: Maybe<Scalars['String']['output']>;
+  readonly countryCodeV2: Maybe<Scalars['String']['output']>;
+  readonly firstName: Maybe<Scalars['String']['output']>;
+  readonly formatted: ReadonlyArray<Scalars['String']['output']>;
+  readonly id: Scalars['ID']['output'];
+  readonly lastName: Maybe<Scalars['String']['output']>;
+  readonly name: Maybe<Scalars['String']['output']>;
+  readonly phone: Maybe<Scalars['String']['output']>;
+  readonly province: Maybe<Scalars['String']['output']>;
+  readonly provinceCode: Maybe<Scalars['String']['output']>;
+  readonly zip: Maybe<Scalars['String']['output']>;
+};
+
+export type MailingAddressConnection = {
+  readonly __typename?: 'MailingAddressConnection';
+  readonly edges: ReadonlyArray<MailingAddressEdge>;
+  readonly nodes: ReadonlyArray<MailingAddress>;
+};
+
+export type MailingAddressEdge = {
+  readonly __typename?: 'MailingAddressEdge';
+  readonly node: MailingAddress;
+};
+
+export type MailingAddressInput = {
+  readonly address1?: InputMaybe<Scalars['String']['input']>;
+  readonly address2?: InputMaybe<Scalars['String']['input']>;
+  readonly city?: InputMaybe<Scalars['String']['input']>;
+  readonly company?: InputMaybe<Scalars['String']['input']>;
+  readonly country?: InputMaybe<Scalars['String']['input']>;
+  readonly firstName?: InputMaybe<Scalars['String']['input']>;
+  readonly lastName?: InputMaybe<Scalars['String']['input']>;
+  readonly phone?: InputMaybe<Scalars['String']['input']>;
+  readonly province?: InputMaybe<Scalars['String']['input']>;
+  readonly zip?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type MediaImage = {
@@ -556,6 +705,11 @@ export type Mutation = {
   readonly cartLinesRemove: CartLinesRemovePayload;
   readonly cartLinesUpdate: CartLinesUpdatePayload;
   readonly cartNoteUpdate: CartNoteUpdatePayload;
+  /** Convert a cart into a paid, unfulfilled order. */
+  readonly checkoutComplete: CheckoutCompletePayload;
+  readonly customerAccessTokenCreate: CustomerAccessTokenCreatePayload;
+  readonly customerAccessTokenDelete: CustomerAccessTokenDeletePayload;
+  readonly customerCreate: CustomerCreatePayload;
 };
 
 
@@ -623,6 +777,111 @@ export type MutationCartNoteUpdateArgs = {
   note: Scalars['String']['input'];
 };
 
+
+export type MutationCheckoutCompleteArgs = {
+  cartId: Scalars['ID']['input'];
+  input: CheckoutCompleteInput;
+};
+
+
+export type MutationCustomerAccessTokenCreateArgs = {
+  input: CustomerAccessTokenCreateInput;
+};
+
+
+export type MutationCustomerAccessTokenDeleteArgs = {
+  customerAccessToken: Scalars['String']['input'];
+};
+
+
+export type MutationCustomerCreateArgs = {
+  input: CustomerCreateInput;
+};
+
+export type Order = {
+  readonly __typename?: 'Order';
+  readonly currencyCode: Scalars['String']['output'];
+  readonly email: Maybe<Scalars['String']['output']>;
+  readonly financialStatus: Maybe<OrderFinancialStatus>;
+  readonly fulfillmentStatus: OrderFulfillmentStatus;
+  readonly id: Scalars['ID']['output'];
+  readonly lineItems: OrderLineItemConnection;
+  /** Human-readable order name, e.g. "#1001". */
+  readonly name: Scalars['String']['output'];
+  readonly orderNumber: Scalars['Int']['output'];
+  /** Handle of the commerce.json payment method chosen at checkout. */
+  readonly paymentMethod: Maybe<Scalars['String']['output']>;
+  readonly processedAt: Scalars['String']['output'];
+  readonly shippingAddress: Maybe<MailingAddress>;
+  /** Handle of the commerce.json shipping method chosen at checkout. */
+  readonly shippingMethod: Maybe<Scalars['String']['output']>;
+  readonly subtotalPrice: Maybe<MoneyV2>;
+  readonly totalPrice: MoneyV2;
+  readonly totalShippingPrice: MoneyV2;
+  readonly totalTax: Maybe<MoneyV2>;
+};
+
+
+export type OrderLineItemsArgs = {
+  first: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type OrderConnection = {
+  readonly __typename?: 'OrderConnection';
+  readonly edges: ReadonlyArray<OrderEdge>;
+  readonly nodes: ReadonlyArray<Order>;
+  readonly totalCount: Scalars['Int']['output'];
+};
+
+export type OrderEdge = {
+  readonly __typename?: 'OrderEdge';
+  readonly node: Order;
+};
+
+export type OrderFinancialStatus =
+  | 'AUTHORIZED'
+  | 'PAID'
+  | 'PARTIALLY_PAID'
+  | 'PARTIALLY_REFUNDED'
+  | 'PENDING'
+  | 'REFUNDED'
+  | 'VOIDED';
+
+export type OrderFulfillmentStatus =
+  | 'FULFILLED'
+  | 'IN_PROGRESS'
+  | 'ON_HOLD'
+  | 'OPEN'
+  | 'PARTIALLY_FULFILLED'
+  | 'PENDING_FULFILLMENT'
+  | 'RESTOCKED'
+  | 'SCHEDULED'
+  | 'UNFULFILLED';
+
+export type OrderLineItem = {
+  readonly __typename?: 'OrderLineItem';
+  readonly originalTotalPrice: MoneyV2;
+  readonly quantity: Scalars['Int']['output'];
+  readonly title: Scalars['String']['output'];
+  readonly variant: Maybe<ProductVariant>;
+};
+
+export type OrderLineItemConnection = {
+  readonly __typename?: 'OrderLineItemConnection';
+  readonly edges: ReadonlyArray<OrderLineItemEdge>;
+  readonly nodes: ReadonlyArray<OrderLineItem>;
+};
+
+export type OrderLineItemEdge = {
+  readonly __typename?: 'OrderLineItemEdge';
+  readonly node: OrderLineItem;
+};
+
+export type OrderSortKeys =
+  | 'ID'
+  | 'PROCESSED_AT'
+  | 'TOTAL_PRICE';
+
 export type Page = {
   readonly __typename?: 'Page';
   readonly body: Scalars['String']['output'];
@@ -639,6 +898,12 @@ export type PageInfo = {
   readonly hasNextPage: Scalars['Boolean']['output'];
   readonly hasPreviousPage: Scalars['Boolean']['output'];
   readonly startCursor: Maybe<Scalars['String']['output']>;
+};
+
+export type PaymentMethod = {
+  readonly __typename?: 'PaymentMethod';
+  readonly handle: Scalars['String']['output'];
+  readonly title: Scalars['String']['output'];
 };
 
 export type PaymentSettings = {
@@ -835,8 +1100,13 @@ export type Query = {
   readonly cart: Maybe<Cart>;
   readonly collection: Maybe<Collection>;
   readonly collections: CollectionConnection;
+  /** Shipping and payment options plus tax rules from commerce.json. */
+  readonly commerceSettings: CommerceSettings;
+  readonly customer: Maybe<Customer>;
   readonly localization: Localization;
   readonly menu: Maybe<Menu>;
+  /** Look up any order by id, regardless of customer. */
+  readonly order: Maybe<Order>;
   readonly page: Maybe<Page>;
   readonly predictiveSearch: Maybe<PredictiveSearchResult>;
   readonly product: Maybe<Product>;
@@ -880,8 +1150,18 @@ export type QueryCollectionsArgs = {
 };
 
 
+export type QueryCustomerArgs = {
+  customerAccessToken: Scalars['String']['input'];
+};
+
+
 export type QueryMenuArgs = {
   handle: Scalars['String']['input'];
+};
+
+
+export type QueryOrderArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -990,6 +1270,13 @@ export type SelectedOptionInput = {
   readonly value: Scalars['String']['input'];
 };
 
+export type ShippingMethod = {
+  readonly __typename?: 'ShippingMethod';
+  readonly handle: Scalars['String']['output'];
+  readonly price: MoneyV2;
+  readonly title: Scalars['String']['output'];
+};
+
 export type Shop = {
   readonly __typename?: 'Shop';
   readonly brand: Maybe<Brand>;
@@ -1042,6 +1329,12 @@ export type Swatch = {
 export type SwatchMedia = {
   readonly __typename?: 'SwatchMedia';
   readonly previewImage: Maybe<Image>;
+};
+
+export type UserError = {
+  readonly __typename?: 'UserError';
+  readonly field: Maybe<ReadonlyArray<Scalars['String']['output']>>;
+  readonly message: Scalars['String']['output'];
 };
 
 export type VisitorConsent = {
@@ -1146,9 +1439,9 @@ export type ResolversTypes = {
   Brand: ResolverTypeWrapper<Brand>;
   BrandColorGroup: ResolverTypeWrapper<BrandColorGroup>;
   BrandColors: ResolverTypeWrapper<BrandColors>;
-  Cart: ResolverTypeWrapper<Omit<Cart, 'lines'> & { lines: ResolversTypes['CartLineConnection'] }>;
+  Cart: ResolverTypeWrapper<Omit<Cart, 'buyerIdentity' | 'lines'> & { buyerIdentity: ResolversTypes['CartBuyerIdentity'], lines: ResolversTypes['CartLineConnection'] }>;
   CartAttributesUpdatePayload: ResolverTypeWrapper<Omit<CartAttributesUpdatePayload, 'cart'> & { cart?: Maybe<ResolversTypes['Cart']> }>;
-  CartBuyerIdentity: ResolverTypeWrapper<CartBuyerIdentity>;
+  CartBuyerIdentity: ResolverTypeWrapper<Omit<CartBuyerIdentity, 'customer'> & { customer?: Maybe<ResolversTypes['Customer']> }>;
   CartBuyerIdentityInput: CartBuyerIdentityInput;
   CartBuyerIdentityUpdatePayload: ResolverTypeWrapper<Omit<CartBuyerIdentityUpdatePayload, 'cart'> & { cart?: Maybe<ResolversTypes['Cart']> }>;
   CartCost: ResolverTypeWrapper<CartCost>;
@@ -1173,17 +1466,30 @@ export type ResolversTypes = {
   CartNoteUpdatePayload: ResolverTypeWrapper<Omit<CartNoteUpdatePayload, 'cart'> & { cart?: Maybe<ResolversTypes['Cart']> }>;
   CartUserError: ResolverTypeWrapper<CartUserError>;
   CartWarning: ResolverTypeWrapper<CartWarning>;
+  CheckoutCompleteInput: CheckoutCompleteInput;
+  CheckoutCompletePayload: ResolverTypeWrapper<Omit<CheckoutCompletePayload, 'order'> & { order?: Maybe<ResolversTypes['Order']> }>;
+  CheckoutUserError: ResolverTypeWrapper<CheckoutUserError>;
   Collection: ResolverTypeWrapper<Omit<Collection, 'metafield' | 'metafields' | 'products'> & { metafield?: Maybe<ResolversTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversTypes['Metafield']>>, products: ResolversTypes['ProductConnection'] }>;
   CollectionConnection: ResolverTypeWrapper<Omit<CollectionConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['CollectionEdge']>, nodes: ReadonlyArray<ResolversTypes['Collection']> }>;
   CollectionEdge: ResolverTypeWrapper<Omit<CollectionEdge, 'node'> & { node: ResolversTypes['Collection'] }>;
   CollectionSortKeys: CollectionSortKeys;
+  CommerceSettings: ResolverTypeWrapper<CommerceSettings>;
   ComponentizableCartLine: ResolverTypeWrapper<Omit<ComponentizableCartLine, 'lineComponents' | 'merchandise'> & { lineComponents: ReadonlyArray<ResolversTypes['CartLine']>, merchandise: ResolversTypes['Merchandise'] }>;
   Country: ResolverTypeWrapper<Country>;
   CountryCode: CountryCode;
   CountryCurrency: ResolverTypeWrapper<CountryCurrency>;
   Currency: ResolverTypeWrapper<Currency>;
   CurrencyCode: CurrencyCode;
-  Customer: ResolverTypeWrapper<Customer>;
+  Customer: ResolverTypeWrapper<Omit<Customer, 'orders'> & { orders: ResolversTypes['OrderConnection'] }>;
+  CustomerAccessToken: ResolverTypeWrapper<CustomerAccessToken>;
+  CustomerAccessTokenCreateInput: CustomerAccessTokenCreateInput;
+  CustomerAccessTokenCreatePayload: ResolverTypeWrapper<CustomerAccessTokenCreatePayload>;
+  CustomerAccessTokenDeletePayload: ResolverTypeWrapper<CustomerAccessTokenDeletePayload>;
+  CustomerCreateInput: CustomerCreateInput;
+  CustomerCreatePayload: ResolverTypeWrapper<Omit<CustomerCreatePayload, 'customer'> & { customer?: Maybe<ResolversTypes['Customer']> }>;
+  CustomerErrorCode: CustomerErrorCode;
+  CustomerUserError: ResolverTypeWrapper<CustomerUserError>;
+  Float: ResolverTypeWrapper<Scalars['Float']['output']>;
   HasMetafieldsIdentifier: HasMetafieldsIdentifier;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
   Image: ResolverTypeWrapper<Image>;
@@ -1194,6 +1500,10 @@ export type ResolversTypes = {
   LanguageCode: LanguageCode;
   Localization: ResolverTypeWrapper<Localization>;
   LocalizationCountry: ResolverTypeWrapper<LocalizationCountry>;
+  MailingAddress: ResolverTypeWrapper<MailingAddress>;
+  MailingAddressConnection: ResolverTypeWrapper<MailingAddressConnection>;
+  MailingAddressEdge: ResolverTypeWrapper<MailingAddressEdge>;
+  MailingAddressInput: MailingAddressInput;
   MediaImage: ResolverTypeWrapper<MediaImage>;
   Menu: ResolverTypeWrapper<Menu>;
   MenuItem: ResolverTypeWrapper<MenuItem>;
@@ -1203,8 +1513,18 @@ export type ResolversTypes = {
   MetafieldReference: ResolverTypeWrapper<ResolversUnionTypes<ResolversTypes>['MetafieldReference']>;
   MoneyV2: ResolverTypeWrapper<MoneyV2>;
   Mutation: ResolverTypeWrapper<{}>;
+  Order: ResolverTypeWrapper<Omit<Order, 'lineItems'> & { lineItems: ResolversTypes['OrderLineItemConnection'] }>;
+  OrderConnection: ResolverTypeWrapper<Omit<OrderConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['OrderEdge']>, nodes: ReadonlyArray<ResolversTypes['Order']> }>;
+  OrderEdge: ResolverTypeWrapper<Omit<OrderEdge, 'node'> & { node: ResolversTypes['Order'] }>;
+  OrderFinancialStatus: OrderFinancialStatus;
+  OrderFulfillmentStatus: OrderFulfillmentStatus;
+  OrderLineItem: ResolverTypeWrapper<Omit<OrderLineItem, 'variant'> & { variant?: Maybe<ResolversTypes['ProductVariant']> }>;
+  OrderLineItemConnection: ResolverTypeWrapper<Omit<OrderLineItemConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['OrderLineItemEdge']>, nodes: ReadonlyArray<ResolversTypes['OrderLineItem']> }>;
+  OrderLineItemEdge: ResolverTypeWrapper<Omit<OrderLineItemEdge, 'node'> & { node: ResolversTypes['OrderLineItem'] }>;
+  OrderSortKeys: OrderSortKeys;
   Page: ResolverTypeWrapper<Page>;
   PageInfo: ResolverTypeWrapper<PageInfo>;
+  PaymentMethod: ResolverTypeWrapper<PaymentMethod>;
   PaymentSettings: ResolverTypeWrapper<PaymentSettings>;
   PredictiveSearchLimitScope: PredictiveSearchLimitScope;
   PredictiveSearchResult: ResolverTypeWrapper<Omit<PredictiveSearchResult, 'collections' | 'products'> & { collections: ReadonlyArray<ResolversTypes['Collection']>, products: ReadonlyArray<ResolversTypes['Product']> }>;
@@ -1232,12 +1552,14 @@ export type ResolversTypes = {
   SearchUnavailableProductsType: SearchUnavailableProductsType;
   SelectedOption: ResolverTypeWrapper<SelectedOption>;
   SelectedOptionInput: SelectedOptionInput;
+  ShippingMethod: ResolverTypeWrapper<ShippingMethod>;
   Shop: ResolverTypeWrapper<Omit<Shop, 'metafield' | 'metafields'> & { metafield?: Maybe<ResolversTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversTypes['Metafield']>> }>;
   ShopDomain: ResolverTypeWrapper<ShopDomain>;
   ShopPolicy: ResolverTypeWrapper<ShopPolicy>;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
   Swatch: ResolverTypeWrapper<Swatch>;
   SwatchMedia: ResolverTypeWrapper<SwatchMedia>;
+  UserError: ResolverTypeWrapper<UserError>;
   VisitorConsent: VisitorConsent;
 };
 
@@ -1259,9 +1581,9 @@ export type ResolversParentTypes = {
   Brand: Brand;
   BrandColorGroup: BrandColorGroup;
   BrandColors: BrandColors;
-  Cart: Omit<Cart, 'lines'> & { lines: ResolversParentTypes['CartLineConnection'] };
+  Cart: Omit<Cart, 'buyerIdentity' | 'lines'> & { buyerIdentity: ResolversParentTypes['CartBuyerIdentity'], lines: ResolversParentTypes['CartLineConnection'] };
   CartAttributesUpdatePayload: Omit<CartAttributesUpdatePayload, 'cart'> & { cart?: Maybe<ResolversParentTypes['Cart']> };
-  CartBuyerIdentity: CartBuyerIdentity;
+  CartBuyerIdentity: Omit<CartBuyerIdentity, 'customer'> & { customer?: Maybe<ResolversParentTypes['Customer']> };
   CartBuyerIdentityInput: CartBuyerIdentityInput;
   CartBuyerIdentityUpdatePayload: Omit<CartBuyerIdentityUpdatePayload, 'cart'> & { cart?: Maybe<ResolversParentTypes['Cart']> };
   CartCost: CartCost;
@@ -1286,14 +1608,26 @@ export type ResolversParentTypes = {
   CartNoteUpdatePayload: Omit<CartNoteUpdatePayload, 'cart'> & { cart?: Maybe<ResolversParentTypes['Cart']> };
   CartUserError: CartUserError;
   CartWarning: CartWarning;
+  CheckoutCompleteInput: CheckoutCompleteInput;
+  CheckoutCompletePayload: Omit<CheckoutCompletePayload, 'order'> & { order?: Maybe<ResolversParentTypes['Order']> };
+  CheckoutUserError: CheckoutUserError;
   Collection: Omit<Collection, 'metafield' | 'metafields' | 'products'> & { metafield?: Maybe<ResolversParentTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversParentTypes['Metafield']>>, products: ResolversParentTypes['ProductConnection'] };
   CollectionConnection: Omit<CollectionConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['CollectionEdge']>, nodes: ReadonlyArray<ResolversParentTypes['Collection']> };
   CollectionEdge: Omit<CollectionEdge, 'node'> & { node: ResolversParentTypes['Collection'] };
+  CommerceSettings: CommerceSettings;
   ComponentizableCartLine: Omit<ComponentizableCartLine, 'lineComponents' | 'merchandise'> & { lineComponents: ReadonlyArray<ResolversParentTypes['CartLine']>, merchandise: ResolversParentTypes['Merchandise'] };
   Country: Country;
   CountryCurrency: CountryCurrency;
   Currency: Currency;
-  Customer: Customer;
+  Customer: Omit<Customer, 'orders'> & { orders: ResolversParentTypes['OrderConnection'] };
+  CustomerAccessToken: CustomerAccessToken;
+  CustomerAccessTokenCreateInput: CustomerAccessTokenCreateInput;
+  CustomerAccessTokenCreatePayload: CustomerAccessTokenCreatePayload;
+  CustomerAccessTokenDeletePayload: CustomerAccessTokenDeletePayload;
+  CustomerCreateInput: CustomerCreateInput;
+  CustomerCreatePayload: Omit<CustomerCreatePayload, 'customer'> & { customer?: Maybe<ResolversParentTypes['Customer']> };
+  CustomerUserError: CustomerUserError;
+  Float: Scalars['Float']['output'];
   HasMetafieldsIdentifier: HasMetafieldsIdentifier;
   ID: Scalars['ID']['output'];
   Image: Image;
@@ -1303,6 +1637,10 @@ export type ResolversParentTypes = {
   Language: Language;
   Localization: Localization;
   LocalizationCountry: LocalizationCountry;
+  MailingAddress: MailingAddress;
+  MailingAddressConnection: MailingAddressConnection;
+  MailingAddressEdge: MailingAddressEdge;
+  MailingAddressInput: MailingAddressInput;
   MediaImage: MediaImage;
   Menu: Menu;
   MenuItem: MenuItem;
@@ -1312,8 +1650,15 @@ export type ResolversParentTypes = {
   MetafieldReference: ResolversUnionTypes<ResolversParentTypes>['MetafieldReference'];
   MoneyV2: MoneyV2;
   Mutation: {};
+  Order: Omit<Order, 'lineItems'> & { lineItems: ResolversParentTypes['OrderLineItemConnection'] };
+  OrderConnection: Omit<OrderConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['OrderEdge']>, nodes: ReadonlyArray<ResolversParentTypes['Order']> };
+  OrderEdge: Omit<OrderEdge, 'node'> & { node: ResolversParentTypes['Order'] };
+  OrderLineItem: Omit<OrderLineItem, 'variant'> & { variant?: Maybe<ResolversParentTypes['ProductVariant']> };
+  OrderLineItemConnection: Omit<OrderLineItemConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['OrderLineItemEdge']>, nodes: ReadonlyArray<ResolversParentTypes['OrderLineItem']> };
+  OrderLineItemEdge: Omit<OrderLineItemEdge, 'node'> & { node: ResolversParentTypes['OrderLineItem'] };
   Page: Page;
   PageInfo: PageInfo;
+  PaymentMethod: PaymentMethod;
   PaymentSettings: PaymentSettings;
   PredictiveSearchResult: Omit<PredictiveSearchResult, 'collections' | 'products'> & { collections: ReadonlyArray<ResolversParentTypes['Collection']>, products: ReadonlyArray<ResolversParentTypes['Product']> };
   Product: Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<ResolversParentTypes['ProductVariant']>, metafield?: Maybe<ResolversParentTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversParentTypes['Metafield']>>, options: ReadonlyArray<ResolversParentTypes['ProductOption']>, selectedOrFirstAvailableVariant?: Maybe<ResolversParentTypes['ProductVariant']>, variants: ResolversParentTypes['ProductVariantConnection'] };
@@ -1334,12 +1679,14 @@ export type ResolversParentTypes = {
   SearchResultItemEdge: Omit<SearchResultItemEdge, 'node'> & { node: ResolversParentTypes['SearchResultItem'] };
   SelectedOption: SelectedOption;
   SelectedOptionInput: SelectedOptionInput;
+  ShippingMethod: ShippingMethod;
   Shop: Omit<Shop, 'metafield' | 'metafields'> & { metafield?: Maybe<ResolversParentTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversParentTypes['Metafield']>> };
   ShopDomain: ShopDomain;
   ShopPolicy: ShopPolicy;
   String: Scalars['String']['output'];
   Swatch: Swatch;
   SwatchMedia: SwatchMedia;
+  UserError: UserError;
   VisitorConsent: VisitorConsent;
 };
 
@@ -1357,6 +1704,12 @@ export type InContextDirectiveArgs = {
 };
 
 export type InContextDirectiveResolver<Result, Parent, ContextType = ResolverContext, Args = InContextDirectiveArgs> = DirectiveResolverFn<Result, Parent, ContextType, Args>;
+
+export type SandboxDirectiveArgs = {
+  reason: Maybe<Scalars['String']['input']>;
+};
+
+export type SandboxDirectiveResolver<Result, Parent, ContextType = ResolverContext, Args = SandboxDirectiveArgs> = DirectiveResolverFn<Result, Parent, ContextType, Args>;
 
 export type AppliedGiftCardResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['AppliedGiftCard'] = ResolversParentTypes['AppliedGiftCard']> = {
   amountUsed?: Resolver<Maybe<ResolversTypes['MoneyV2']>, ParentType, ContextType>;
@@ -1622,6 +1975,19 @@ export type CartWarningResolvers<ContextType = ResolverContext, ParentType exten
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type CheckoutCompletePayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CheckoutCompletePayload'] = ResolversParentTypes['CheckoutCompletePayload']> = {
+  order?: Resolver<Maybe<ResolversTypes['Order']>, ParentType, ContextType>;
+  userErrors?: Resolver<ReadonlyArray<ResolversTypes['CheckoutUserError']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CheckoutUserErrorResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CheckoutUserError'] = ResolversParentTypes['CheckoutUserError']> = {
+  code?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  field?: Resolver<Maybe<ReadonlyArray<ResolversTypes['String']>>, ParentType, ContextType>;
+  message?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type CollectionResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Collection'] = ResolversParentTypes['Collection']> = {
   description?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   descriptionHtml?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -1648,6 +2014,15 @@ export type CollectionConnectionResolvers<ContextType = ResolverContext, ParentT
 export type CollectionEdgeResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CollectionEdge'] = ResolversParentTypes['CollectionEdge']> = {
   cursor?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   node?: Resolver<ResolversTypes['Collection'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CommerceSettingsResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CommerceSettings'] = ResolversParentTypes['CommerceSettings']> = {
+  currencyCode?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  freeShippingThreshold?: Resolver<Maybe<ResolversTypes['MoneyV2']>, ParentType, ContextType>;
+  paymentMethods?: Resolver<ReadonlyArray<ResolversTypes['PaymentMethod']>, ParentType, ContextType>;
+  shippingMethods?: Resolver<ReadonlyArray<ResolversTypes['ShippingMethod']>, ParentType, ContextType>;
+  taxRate?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -1682,11 +2057,51 @@ export type CurrencyResolvers<ContextType = ResolverContext, ParentType extends 
 };
 
 export type CustomerResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Customer'] = ResolversParentTypes['Customer']> = {
-  displayName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  acceptsMarketing?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  addresses?: Resolver<ResolversTypes['MailingAddressConnection'], ParentType, ContextType, Partial<CustomerAddressesArgs>>;
+  createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  defaultAddress?: Resolver<Maybe<ResolversTypes['MailingAddress']>, ParentType, ContextType>;
+  displayName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   email?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   firstName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   lastName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  numberOfOrders?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  orders?: Resolver<ResolversTypes['OrderConnection'], ParentType, ContextType, Partial<CustomerOrdersArgs>>;
+  phone?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  updatedAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CustomerAccessTokenResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerAccessToken'] = ResolversParentTypes['CustomerAccessToken']> = {
+  accessToken?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  expiresAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CustomerAccessTokenCreatePayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerAccessTokenCreatePayload'] = ResolversParentTypes['CustomerAccessTokenCreatePayload']> = {
+  customerAccessToken?: Resolver<Maybe<ResolversTypes['CustomerAccessToken']>, ParentType, ContextType>;
+  customerUserErrors?: Resolver<ReadonlyArray<ResolversTypes['CustomerUserError']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CustomerAccessTokenDeletePayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerAccessTokenDeletePayload'] = ResolversParentTypes['CustomerAccessTokenDeletePayload']> = {
+  deletedAccessToken?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  deletedCustomerAccessTokenId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  userErrors?: Resolver<ReadonlyArray<ResolversTypes['UserError']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CustomerCreatePayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerCreatePayload'] = ResolversParentTypes['CustomerCreatePayload']> = {
+  customer?: Resolver<Maybe<ResolversTypes['Customer']>, ParentType, ContextType>;
+  customerUserErrors?: Resolver<ReadonlyArray<ResolversTypes['CustomerUserError']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CustomerUserErrorResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerUserError'] = ResolversParentTypes['CustomerUserError']> = {
+  code?: Resolver<Maybe<ResolversTypes['CustomerErrorCode']>, ParentType, ContextType>;
+  field?: Resolver<Maybe<ReadonlyArray<ResolversTypes['String']>>, ParentType, ContextType>;
+  message?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -1728,6 +2143,36 @@ export type LocalizationCountryResolvers<ContextType = ResolverContext, ParentTy
   currency?: Resolver<ResolversTypes['Currency'], ParentType, ContextType>;
   isoCode?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type MailingAddressResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['MailingAddress'] = ResolversParentTypes['MailingAddress']> = {
+  address1?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  address2?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  city?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  company?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  country?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  countryCodeV2?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  firstName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  formatted?: Resolver<ReadonlyArray<ResolversTypes['String']>, ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  lastName?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  name?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  phone?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  province?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  provinceCode?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  zip?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type MailingAddressConnectionResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['MailingAddressConnection'] = ResolversParentTypes['MailingAddressConnection']> = {
+  edges?: Resolver<ReadonlyArray<ResolversTypes['MailingAddressEdge']>, ParentType, ContextType>;
+  nodes?: Resolver<ReadonlyArray<ResolversTypes['MailingAddress']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type MailingAddressEdgeResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['MailingAddressEdge'] = ResolversParentTypes['MailingAddressEdge']> = {
+  node?: Resolver<ResolversTypes['MailingAddress'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -1797,6 +2242,61 @@ export type MutationResolvers<ContextType = ResolverContext, ParentType extends 
   cartLinesRemove?: Resolver<ResolversTypes['CartLinesRemovePayload'], ParentType, ContextType, RequireFields<MutationCartLinesRemoveArgs, 'cartId' | 'lineIds'>>;
   cartLinesUpdate?: Resolver<ResolversTypes['CartLinesUpdatePayload'], ParentType, ContextType, RequireFields<MutationCartLinesUpdateArgs, 'cartId' | 'lines'>>;
   cartNoteUpdate?: Resolver<ResolversTypes['CartNoteUpdatePayload'], ParentType, ContextType, RequireFields<MutationCartNoteUpdateArgs, 'cartId' | 'note'>>;
+  checkoutComplete?: Resolver<ResolversTypes['CheckoutCompletePayload'], ParentType, ContextType, RequireFields<MutationCheckoutCompleteArgs, 'cartId' | 'input'>>;
+  customerAccessTokenCreate?: Resolver<ResolversTypes['CustomerAccessTokenCreatePayload'], ParentType, ContextType, RequireFields<MutationCustomerAccessTokenCreateArgs, 'input'>>;
+  customerAccessTokenDelete?: Resolver<ResolversTypes['CustomerAccessTokenDeletePayload'], ParentType, ContextType, RequireFields<MutationCustomerAccessTokenDeleteArgs, 'customerAccessToken'>>;
+  customerCreate?: Resolver<ResolversTypes['CustomerCreatePayload'], ParentType, ContextType, RequireFields<MutationCustomerCreateArgs, 'input'>>;
+};
+
+export type OrderResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Order'] = ResolversParentTypes['Order']> = {
+  currencyCode?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  email?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  financialStatus?: Resolver<Maybe<ResolversTypes['OrderFinancialStatus']>, ParentType, ContextType>;
+  fulfillmentStatus?: Resolver<ResolversTypes['OrderFulfillmentStatus'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  lineItems?: Resolver<ResolversTypes['OrderLineItemConnection'], ParentType, ContextType, Partial<OrderLineItemsArgs>>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  orderNumber?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  paymentMethod?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  processedAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  shippingAddress?: Resolver<Maybe<ResolversTypes['MailingAddress']>, ParentType, ContextType>;
+  shippingMethod?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  subtotalPrice?: Resolver<Maybe<ResolversTypes['MoneyV2']>, ParentType, ContextType>;
+  totalPrice?: Resolver<ResolversTypes['MoneyV2'], ParentType, ContextType>;
+  totalShippingPrice?: Resolver<ResolversTypes['MoneyV2'], ParentType, ContextType>;
+  totalTax?: Resolver<Maybe<ResolversTypes['MoneyV2']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type OrderConnectionResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['OrderConnection'] = ResolversParentTypes['OrderConnection']> = {
+  edges?: Resolver<ReadonlyArray<ResolversTypes['OrderEdge']>, ParentType, ContextType>;
+  nodes?: Resolver<ReadonlyArray<ResolversTypes['Order']>, ParentType, ContextType>;
+  totalCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type OrderEdgeResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['OrderEdge'] = ResolversParentTypes['OrderEdge']> = {
+  node?: Resolver<ResolversTypes['Order'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type OrderLineItemResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['OrderLineItem'] = ResolversParentTypes['OrderLineItem']> = {
+  originalTotalPrice?: Resolver<ResolversTypes['MoneyV2'], ParentType, ContextType>;
+  quantity?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  variant?: Resolver<Maybe<ResolversTypes['ProductVariant']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type OrderLineItemConnectionResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['OrderLineItemConnection'] = ResolversParentTypes['OrderLineItemConnection']> = {
+  edges?: Resolver<ReadonlyArray<ResolversTypes['OrderLineItemEdge']>, ParentType, ContextType>;
+  nodes?: Resolver<ReadonlyArray<ResolversTypes['OrderLineItem']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type OrderLineItemEdgeResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['OrderLineItemEdge'] = ResolversParentTypes['OrderLineItemEdge']> = {
+  node?: Resolver<ResolversTypes['OrderLineItem'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export type PageResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Page'] = ResolversParentTypes['Page']> = {
@@ -1814,6 +2314,12 @@ export type PageInfoResolvers<ContextType = ResolverContext, ParentType extends 
   hasNextPage?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   hasPreviousPage?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   startCursor?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type PaymentMethodResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['PaymentMethod'] = ResolversParentTypes['PaymentMethod']> = {
+  handle?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -1941,8 +2447,11 @@ export type QueryResolvers<ContextType = ResolverContext, ParentType extends Res
   cart?: Resolver<Maybe<ResolversTypes['Cart']>, ParentType, ContextType, RequireFields<QueryCartArgs, 'id'>>;
   collection?: Resolver<Maybe<ResolversTypes['Collection']>, ParentType, ContextType, RequireFields<QueryCollectionArgs, 'handle'>>;
   collections?: Resolver<ResolversTypes['CollectionConnection'], ParentType, ContextType, Partial<QueryCollectionsArgs>>;
+  commerceSettings?: Resolver<ResolversTypes['CommerceSettings'], ParentType, ContextType>;
+  customer?: Resolver<Maybe<ResolversTypes['Customer']>, ParentType, ContextType, RequireFields<QueryCustomerArgs, 'customerAccessToken'>>;
   localization?: Resolver<ResolversTypes['Localization'], ParentType, ContextType>;
   menu?: Resolver<Maybe<ResolversTypes['Menu']>, ParentType, ContextType, RequireFields<QueryMenuArgs, 'handle'>>;
+  order?: Resolver<Maybe<ResolversTypes['Order']>, ParentType, ContextType, RequireFields<QueryOrderArgs, 'id'>>;
   page?: Resolver<Maybe<ResolversTypes['Page']>, ParentType, ContextType, RequireFields<QueryPageArgs, 'handle'>>;
   predictiveSearch?: Resolver<Maybe<ResolversTypes['PredictiveSearchResult']>, ParentType, ContextType, RequireFields<QueryPredictiveSearchArgs, 'query'>>;
   product?: Resolver<Maybe<ResolversTypes['Product']>, ParentType, ContextType, RequireFields<QueryProductArgs, 'handle'>>;
@@ -1989,6 +2498,13 @@ export type SelectedOptionResolvers<ContextType = ResolverContext, ParentType ex
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type ShippingMethodResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['ShippingMethod'] = ResolversParentTypes['ShippingMethod']> = {
+  handle?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  price?: Resolver<ResolversTypes['MoneyV2'], ParentType, ContextType>;
+  title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type ShopResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Shop'] = ResolversParentTypes['Shop']> = {
   brand?: Resolver<Maybe<ResolversTypes['Brand']>, ParentType, ContextType>;
   description?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -2032,6 +2548,12 @@ export type SwatchMediaResolvers<ContextType = ResolverContext, ParentType exten
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type UserErrorResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['UserError'] = ResolversParentTypes['UserError']> = {
+  field?: Resolver<Maybe<ReadonlyArray<ResolversTypes['String']>>, ParentType, ContextType>;
+  message?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type Resolvers<ContextType = ResolverContext> = {
   AppliedGiftCard?: AppliedGiftCardResolvers<ContextType>;
   Article?: ArticleResolvers<ContextType>;
@@ -2070,20 +2592,31 @@ export type Resolvers<ContextType = ResolverContext> = {
   CartNoteUpdatePayload?: CartNoteUpdatePayloadResolvers<ContextType>;
   CartUserError?: CartUserErrorResolvers<ContextType>;
   CartWarning?: CartWarningResolvers<ContextType>;
+  CheckoutCompletePayload?: CheckoutCompletePayloadResolvers<ContextType>;
+  CheckoutUserError?: CheckoutUserErrorResolvers<ContextType>;
   Collection?: CollectionResolvers<ContextType>;
   CollectionConnection?: CollectionConnectionResolvers<ContextType>;
   CollectionEdge?: CollectionEdgeResolvers<ContextType>;
+  CommerceSettings?: CommerceSettingsResolvers<ContextType>;
   ComponentizableCartLine?: ComponentizableCartLineResolvers<ContextType>;
   Country?: CountryResolvers<ContextType>;
   CountryCurrency?: CountryCurrencyResolvers<ContextType>;
   Currency?: CurrencyResolvers<ContextType>;
   Customer?: CustomerResolvers<ContextType>;
+  CustomerAccessToken?: CustomerAccessTokenResolvers<ContextType>;
+  CustomerAccessTokenCreatePayload?: CustomerAccessTokenCreatePayloadResolvers<ContextType>;
+  CustomerAccessTokenDeletePayload?: CustomerAccessTokenDeletePayloadResolvers<ContextType>;
+  CustomerCreatePayload?: CustomerCreatePayloadResolvers<ContextType>;
+  CustomerUserError?: CustomerUserErrorResolvers<ContextType>;
   Image?: ImageResolvers<ContextType>;
   ImageConnection?: ImageConnectionResolvers<ContextType>;
   ImageEdge?: ImageEdgeResolvers<ContextType>;
   Language?: LanguageResolvers<ContextType>;
   Localization?: LocalizationResolvers<ContextType>;
   LocalizationCountry?: LocalizationCountryResolvers<ContextType>;
+  MailingAddress?: MailingAddressResolvers<ContextType>;
+  MailingAddressConnection?: MailingAddressConnectionResolvers<ContextType>;
+  MailingAddressEdge?: MailingAddressEdgeResolvers<ContextType>;
   MediaImage?: MediaImageResolvers<ContextType>;
   Menu?: MenuResolvers<ContextType>;
   MenuItem?: MenuItemResolvers<ContextType>;
@@ -2093,8 +2626,15 @@ export type Resolvers<ContextType = ResolverContext> = {
   MetafieldReference?: MetafieldReferenceResolvers<ContextType>;
   MoneyV2?: MoneyV2Resolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
+  Order?: OrderResolvers<ContextType>;
+  OrderConnection?: OrderConnectionResolvers<ContextType>;
+  OrderEdge?: OrderEdgeResolvers<ContextType>;
+  OrderLineItem?: OrderLineItemResolvers<ContextType>;
+  OrderLineItemConnection?: OrderLineItemConnectionResolvers<ContextType>;
+  OrderLineItemEdge?: OrderLineItemEdgeResolvers<ContextType>;
   Page?: PageResolvers<ContextType>;
   PageInfo?: PageInfoResolvers<ContextType>;
+  PaymentMethod?: PaymentMethodResolvers<ContextType>;
   PaymentSettings?: PaymentSettingsResolvers<ContextType>;
   PredictiveSearchResult?: PredictiveSearchResultResolvers<ContextType>;
   Product?: ProductResolvers<ContextType>;
@@ -2114,14 +2654,17 @@ export type Resolvers<ContextType = ResolverContext> = {
   SearchResultItemConnection?: SearchResultItemConnectionResolvers<ContextType>;
   SearchResultItemEdge?: SearchResultItemEdgeResolvers<ContextType>;
   SelectedOption?: SelectedOptionResolvers<ContextType>;
+  ShippingMethod?: ShippingMethodResolvers<ContextType>;
   Shop?: ShopResolvers<ContextType>;
   ShopDomain?: ShopDomainResolvers<ContextType>;
   ShopPolicy?: ShopPolicyResolvers<ContextType>;
   Swatch?: SwatchResolvers<ContextType>;
   SwatchMedia?: SwatchMediaResolvers<ContextType>;
+  UserError?: UserErrorResolvers<ContextType>;
 };
 
 export type DirectiveResolvers<ContextType = ResolverContext> = {
   defer?: DeferDirectiveResolver<any, any, ContextType>;
   inContext?: InContextDirectiveResolver<any, any, ContextType>;
+  sandbox?: SandboxDirectiveResolver<any, any, ContextType>;
 };

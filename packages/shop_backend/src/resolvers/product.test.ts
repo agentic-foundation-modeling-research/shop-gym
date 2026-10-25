@@ -5,7 +5,7 @@ import { createYoga } from 'graphql-yoga';
 import { describe, expect, it } from 'vitest';
 
 import { loadShopData } from '../data/loader.js';
-import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
+import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema/index.js';
 import { CartStore } from './cart.js';
 import type { ResolverContext } from './index.js';
 import { productResolvers } from './product.js';

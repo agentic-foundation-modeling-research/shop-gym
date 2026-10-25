@@ -1,0 +1,37 @@
+{
+  "name": "@shop-gym/shop-arena",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ShopArena: explore live storefronts and generate SandboxShops (data synth, build loop, final eval).",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "templates"],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@shop-gym/agent": "workspace:*",
+    "@shop-gym/browser": "workspace:*",
+    "@shop-gym/core": "workspace:*",
+    "@shop-gym/harness": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.0"
+  }
+}

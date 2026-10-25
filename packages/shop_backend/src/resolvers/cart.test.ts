@@ -7,7 +7,7 @@ import { createYoga } from 'graphql-yoga';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { loadShopData } from '../data/loader.js';
-import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema.js';
+import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema/index.js';
 import { CartStore, InvalidCartStoreFileError, cartResolvers } from './cart.js';
 import type { ResolverContext } from './index.js';
 
@@ -1262,6 +1262,7 @@ describe('CartStore — persistence (T7.4)', () => {
     expect(seen?.discountCodes).toEqual(['SAVE10']);
     expect(seen?.buyerIdentity).toEqual({
       countryCode: 'US',
+      customerId: null,
       email: 'buyer@example.com',
       phone: null,
     });
