@@ -4,7 +4,7 @@ Status: **Implemented** (v1.1 M6) · Version: **0.1**
 Owners: ShopArena
 
 > The single storefront template seeded into every generated SandboxShop:
-> the React Router 7 SSR app from `react_vite_ssr_template.md`, moved to the
+> the React Router 7 SSR app from the earlier React + Vite template, moved to the
 > TypeScript `@shop-gym/shop-arena` package and extended with customer
 > accounts, a real checkout against the stateful backend, and
 > `x-shopgym-episode` forwarding so SSR requests stay inside the caller's
