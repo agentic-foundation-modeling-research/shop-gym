@@ -103,7 +103,8 @@ src/
   resolvers/            + customer.ts, order.ts, checkout.ts; cart.ts extended
   state/money.ts        cents <-> decimal strings
   state/pricing.ts      tax, shipping, order totals from commerce.json
-  state/shop_state.ts   ShopState, EpisodeClock, records
+  state/episode_clock.ts EpisodeClock, DEFAULT_EPISODE_START
+  state/shop_state.ts   ShopState, records
   state/episodes.ts     EpisodeStore, DEFAULT_EPISODE_ID
   sandbox/episode.ts    EPISODE_HEADER, isValidEpisodeId, episodeIdFromHeaders
   sandbox/snapshot.ts   stateSnapshotSchema, exportSnapshot
@@ -133,6 +134,9 @@ Methods: `fork(id)`, `getCustomer`, `findCustomerByEmail`
 (14-day TTL on the episode clock), `resolveSession`, `deleteSession`,
 `listSessions`, `getOrder`, `ordersForCustomer`, `listOrders`,
 `placeOrder`, `inventoryDeltas`. Every mutation calls `clock.tick()`.
+The episode's `CartStore` shares the clock: each cart change stamps
+`Cart.updatedAt` with `clock.now()` and does not tick, so cart activity
+never shifts account or order timestamps.
 
 `placeOrder({ cart, email, shippingAddress, shippingMethod, paymentMethod })`
 checks stock for all lines first (tracked quantity, or `variant.available`
@@ -259,8 +263,7 @@ city, province, province_code, country, country_code, zip, phone`.
 - **Separate `checkoutCreate` + `checkoutComplete`.** Shopify retired the
   Checkout API; a single cart-to-order mutation is simpler and sufficient
   for grading.
-- **Wall-clock timestamps.** Rejected for determinism; `Cart.updatedAt` still
-  uses wall time because it predates this work and is not graded.
+- **Wall-clock timestamps.** Rejected for determinism.
 
 ---
 

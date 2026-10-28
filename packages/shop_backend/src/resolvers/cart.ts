@@ -39,6 +39,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { EpisodeClock } from '../state/episode_clock.js';
 import { fromCents, toCents } from '../state/money.js';
 import { taxCents } from '../state/pricing.js';
 
@@ -110,6 +111,8 @@ export interface CartState {
   buyerIdentity: CartBuyerIdentityState;
   note: string;
   attributes: AttributeInput[];
+  /** Episode-clock instant (ISO 8601) of the cart's last change. */
+  updatedAt: string;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────
@@ -122,10 +125,16 @@ export interface CartStoreOptions {
    * back synchronously (T7.4). Omit for the default in-memory-only store.
    */
   readonly persistencePath?: string;
+  /**
+   * Clock that stamps `CartState.updatedAt`. The store reads it but never
+   * advances it, so cart changes do not shift other episode timestamps.
+   * Defaults to a fresh `EpisodeClock`.
+   */
+  readonly clock?: EpisodeClock;
 }
 
 /** Wire format written to `persistencePath`. Bumped if the layout ever changes. */
-const PERSISTENCE_VERSION = 1;
+const PERSISTENCE_VERSION = 2;
 
 interface CartStoreSnapshot {
   readonly version: number;
@@ -167,9 +176,11 @@ export class CartStore {
   private cartCounter = 0;
   private readonly lineCounters = new Map<string, number>();
   private readonly persistencePath: string | undefined;
+  private readonly clock: EpisodeClock;
 
   constructor(options?: CartStoreOptions) {
     this.persistencePath = options?.persistencePath;
+    this.clock = options?.clock ?? new EpisodeClock();
     if (this.persistencePath !== undefined && fs.existsSync(this.persistencePath)) {
       this.loadSnapshot(this.persistencePath);
     }
@@ -194,6 +205,7 @@ export class CartStore {
       buyerIdentity: { countryCode: null, email: null, phone: null, customerId: null },
       note: '',
       attributes: [],
+      updatedAt: this.clock.now(),
     };
     this.carts.set(id, cart);
     this.lineCounters.set(id, 0);
@@ -262,7 +274,7 @@ export class CartStore {
           line.attributes === undefined || line.attributes === null ? [] : [...line.attributes],
       });
     }
-    this.persist();
+    this.touch(cart);
   }
 
   /**
@@ -290,7 +302,7 @@ export class CartStore {
         line.attributes = [...update.attributes];
       }
     }
-    this.persist();
+    this.touch(cart);
   }
 
   /** Remove every line whose id appears in `lineIds`. Unknown ids are ignored. */
@@ -298,7 +310,7 @@ export class CartStore {
     if (lineIds.length === 0) return;
     const ids = new Set(lineIds);
     cart.lines = cart.lines.filter((l) => !ids.has(l.id));
-    this.persist();
+    this.touch(cart);
   }
 
   /**
@@ -308,7 +320,7 @@ export class CartStore {
    */
   setDiscountCodes(cart: CartState, codes: readonly string[] | null): void {
     cart.discountCodes = codes === null ? [] : [...codes];
-    this.persist();
+    this.touch(cart);
   }
 
   /**
@@ -318,7 +330,7 @@ export class CartStore {
    */
   setGiftCardCodes(cart: CartState, codes: readonly string[]): void {
     cart.giftCardCodes = [...codes];
-    this.persist();
+    this.touch(cart);
   }
 
   /** Append new gift-card codes, preserving existing codes and skipping duplicates. */
@@ -328,7 +340,7 @@ export class CartStore {
         cart.giftCardCodes.push(code);
       }
     }
-    this.persist();
+    this.touch(cart);
   }
 
   /** Remove applied gift cards by their Storefront API AppliedGiftCard IDs. */
@@ -338,7 +350,7 @@ export class CartStore {
     cart.giftCardCodes = cart.giftCardCodes.filter(
       (code) => !ids.has(gid('AppliedGiftCard', code)),
     );
-    this.persist();
+    this.touch(cart);
   }
 
   /**
@@ -352,7 +364,7 @@ export class CartStore {
     if (identity.countryCode !== undefined) cart.buyerIdentity.countryCode = identity.countryCode;
     if (identity.email !== undefined) cart.buyerIdentity.email = identity.email;
     if (identity.phone !== undefined) cart.buyerIdentity.phone = identity.phone;
-    this.persist();
+    this.touch(cart);
   }
 
   /**
@@ -365,19 +377,19 @@ export class CartStore {
   ): void {
     cart.buyerIdentity.customerId = customer === null ? null : customer.id;
     if (customer !== null) cart.buyerIdentity.email = customer.email;
-    this.persist();
+    this.touch(cart);
   }
 
   /** Replace the cart's free-form note. */
   setNote(cart: CartState, note: string): void {
     cart.note = note;
-    this.persist();
+    this.touch(cart);
   }
 
   /** Replace the cart's custom attributes. */
   setAttributes(cart: CartState, attributes: readonly AttributeInput[]): void {
     cart.attributes = attributes.map((a) => ({ key: a.key, value: a.value }));
-    this.persist();
+    this.touch(cart);
   }
 
   /**
@@ -402,6 +414,12 @@ export class CartStore {
     this.lineCounters.set(cartId, next);
     const cartSuffix = cartId.slice(cartId.lastIndexOf('/') + 1);
     return `gid://shopify/CartLine/${cartSuffix}-line-${next}`;
+  }
+
+  /** Stamp `cart.updatedAt` with the current episode instant, then persist. */
+  private touch(cart: CartState): void {
+    cart.updatedAt = this.clock.now();
+    this.persist();
   }
 
   /**
@@ -504,6 +522,9 @@ function parseCartState(filePath: string, cartId: string, raw: unknown): CartSta
   if (typeof obj.note !== 'string') {
     throw new InvalidCartStoreFileError(filePath, `carts.${cartId}.note must be a string`);
   }
+  if (typeof obj.updatedAt !== 'string') {
+    throw new InvalidCartStoreFileError(filePath, `carts.${cartId}.updatedAt must be a string`);
+  }
   return {
     id: cartId,
     lines: parseLines(filePath, cartId, obj.lines),
@@ -512,6 +533,7 @@ function parseCartState(filePath: string, cartId: string, raw: unknown): CartSta
     buyerIdentity: parseBuyerIdentity(filePath, cartId, obj.buyerIdentity),
     note: obj.note,
     attributes: parseAttributes(filePath, `carts.${cartId}.attributes`, obj.attributes),
+    updatedAt: obj.updatedAt,
   };
 }
 
@@ -1012,10 +1034,6 @@ function materializeCart(state: CartState | undefined, ctx: ResolverContext): Ca
  * `ProductVariant` node. Lines whose `merchandiseId` is no longer in the
  * dataset (e.g. seeded with a fake id) are skipped — they are invisible to
  * the schema rather than 500-ing the query.
- *
- * `updatedAt` reflects materialization time. Per-cart timestamp tracking
- * lands with the mutations + extra-field milestones (T4.3 / T4.4); v0.1
- * Cart consumers that read `updatedAt` get the resolution timestamp.
  */
 function buildCartNode(
   state: CartState,
@@ -1037,7 +1055,7 @@ function buildCartNode(
     id: state.id,
     checkoutUrl: '#',
     totalQuantity,
-    updatedAt: new Date().toISOString(),
+    updatedAt: state.updatedAt,
     cost: {
       subtotalAmount: subtotal,
       totalAmount: tax === null ? subtotal : buildMoneyV2(fromCents(subtotalCents + tax), currency),

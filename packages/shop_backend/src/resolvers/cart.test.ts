@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { loadShopData } from '../data/loader.js';
 import { type SandboxSchemaResolvers, createSandboxSchema } from '../schema/index.js';
+import { EpisodeClock } from '../state/episode_clock.js';
 import { CartStore, InvalidCartStoreFileError, cartResolvers } from './cart.js';
 import type { ResolverContext } from './index.js';
 
@@ -376,6 +377,26 @@ describe('cartResolvers — Query.cart', () => {
     `);
     expect(result.errors).toBeUndefined();
     expect(result.data).toEqual({ cart: null });
+  });
+
+  it('reports updatedAt as the episode-clock instant of the last change', async () => {
+    const clock = new EpisodeClock('2026-03-01T00:00:00.000Z');
+    const carts = new CartStore({ clock });
+    const cart = carts.create();
+    clock.tick();
+    carts.setNote(cart, 'leave at the door');
+    clock.tick();
+    const run = runWith(carts);
+    const result = await run(/* GraphQL */ `
+      {
+        cart(id: "${cart.id}") {
+          updatedAt
+        }
+      }
+    `);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({ cart: { updatedAt: '2026-03-01T00:00:01.000Z' } });
+    expect(clock.now()).toBe('2026-03-01T00:00:02.000Z');
   });
 
   it('round-trips a known cart with materialized lines, totals, and merchandise', async () => {
@@ -1209,7 +1230,7 @@ describe('CartStore — persistence (T7.4)', () => {
       lineCounters: Record<string, number>;
       carts: Record<string, unknown>;
     };
-    expect(snapshot.version).toBe(1);
+    expect(snapshot.version).toBe(2);
     expect(snapshot.cartCounter).toBe(1);
     expect(snapshot.carts).toHaveProperty(cart.id);
   });
@@ -1349,7 +1370,7 @@ describe('CartStore — persistence (T7.4)', () => {
     fs.writeFileSync(
       filePath,
       JSON.stringify({
-        version: 1,
+        version: 2,
         cartCounter: 1,
         lineCounters: { 'gid://shopify/Cart/cart-1': 0 },
         carts: {
@@ -1367,6 +1388,32 @@ describe('CartStore — persistence (T7.4)', () => {
     );
     expect(() => new CartStore({ persistencePath: filePath })).toThrowError(
       /must match the map key/,
+    );
+  });
+
+  it('throws InvalidCartStoreFileError when a cart has no updatedAt', () => {
+    const filePath = path.join(tmpDir, 'carts.json');
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 2,
+        cartCounter: 1,
+        lineCounters: { 'gid://shopify/Cart/cart-1': 0 },
+        carts: {
+          'gid://shopify/Cart/cart-1': {
+            id: 'gid://shopify/Cart/cart-1',
+            lines: [],
+            discountCodes: [],
+            giftCardCodes: [],
+            buyerIdentity: { countryCode: null, email: null, phone: null, customerId: null },
+            note: '',
+            attributes: [],
+          },
+        },
+      }),
+    );
+    expect(() => new CartStore({ persistencePath: filePath })).toThrowError(
+      /updatedAt must be a string/,
     );
   });
 });

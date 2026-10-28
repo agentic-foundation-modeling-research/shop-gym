@@ -27,6 +27,7 @@ import type {
   ShippingMethod,
 } from '../data/types.js';
 import { type CartState, CartStore } from '../resolvers/cart.js';
+import { EpisodeClock } from './episode_clock.js';
 import { computeOrderTotals } from './pricing.js';
 
 // ── Records ────────────────────────────────────────────────────────────────
@@ -138,44 +139,9 @@ export type PlaceOrderResult =
   | { readonly ok: true; readonly order: OrderRecord }
   | { readonly ok: false; readonly shortfalls: readonly StockShortfall[] };
 
-// ── Clock ──────────────────────────────────────────────────────────────────
-
-/** Default instant every episode clock starts from. */
-export const DEFAULT_EPISODE_START = '2026-01-01T00:00:00.000Z';
-
-const TICK_MS = 1_000;
-const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1_000;
-
-/**
- * Deterministic clock: `now()` is pure; `tick()` advances one second. State
- * methods tick once per mutation so timestamps order events without wall time.
- */
-export class EpisodeClock {
-  private current: number;
-
-  constructor(private readonly startTime: string = DEFAULT_EPISODE_START) {
-    this.current = Date.parse(startTime);
-    if (Number.isNaN(this.current)) {
-      throw new RangeError(`Invalid episode start time: '${startTime}'`);
-    }
-  }
-
-  now(): string {
-    return new Date(this.current).toISOString();
-  }
-
-  tick(): string {
-    this.current += TICK_MS;
-    return this.now();
-  }
-
-  /** `now()` shifted by `ms` milliseconds; does not advance the clock. */
-  offset(ms: number): string {
-    return new Date(this.current + ms).toISOString();
-  }
-}
-
 // ── State ──────────────────────────────────────────────────────────────────
+
+const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1_000;
 
 export interface ShopStateOptions {
   /** Backs this episode's `CartStore` with a JSON file (see `CartStore`). */
@@ -207,8 +173,8 @@ export class ShopState {
     this.clock = new EpisodeClock(options.startTime);
     this.carts =
       options.cartStorePath === undefined
-        ? new CartStore()
-        : new CartStore({ persistencePath: options.cartStorePath });
+        ? new CartStore({ clock: this.clock })
+        : new CartStore({ clock: this.clock, persistencePath: options.cartStorePath });
     this.data = Object.freeze({ ...base, inventoryByVariantId: this.inventory });
     this.seed();
   }
