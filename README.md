@@ -4,6 +4,11 @@
 [![python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 
 
+## Resources
+
+- **Pre-built SandboxShops**: 3 ready-to-use sandbox shops are available on [Google Drive](https://drive.google.com/drive/folders/13keL_wyxdt84bVSj6DZTyUGDVZDdbFu7?usp=sharing).
+- **Dataset**: the corresponding ShopGuru evaluation dataset is on Hugging Face at [`shopgym-research/shopguru-neurips-2026`](https://huggingface.co/datasets/shopgym-research/shopguru-neurips-2026).
+
 ShopGym is an integrated framework for realistic simulation and scalable benchmarking of e-commerce web agents, functions as both as a simulation environment and as a benchmark construction pipeline.
 
 ![shop-gym-pipeline](docs/imgs/shop-gym-pipeline.png)
