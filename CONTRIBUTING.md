@@ -68,6 +68,14 @@ If you're adding a feature that doesn't fit cleanly into existing specs,
 please draft the spec and link it from your PR. Use the structure
 documented in [AGENTS.md → Use Specifications](./AGENTS.md#use-specifications).
 
+Two smaller records sit next to the specs:
+
+- **[`GLOSSARY.md`](./GLOSSARY.md)** - the project's domain terms. Use
+  them in code, issues, and PRs, and add a term when your change
+  introduces one.
+- **[`docs/adr/`](./docs/adr/)** - one short file per hard-to-reverse
+  decision (`NNNN-slug.md`). Add one when your PR makes such a decision.
+
 ## Coding standards
 
 [AGENTS.md](./AGENTS.md) is the binding reference. The short version:

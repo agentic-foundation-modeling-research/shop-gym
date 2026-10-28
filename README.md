@@ -218,7 +218,10 @@ shop-gym/
 ├── AGENTS.md                   # agent behavior + coding guidelines
 ├── CLAUDE.md -> AGENTS.md
 ├── README.md
+├── GLOSSARY.md                 # domain terms
 ├── docs/
+│   ├── adr/                    # architecture decision records
+│   ├── agents/                 # agent skill config (issue tracker, labels, domain docs)
 │   └── specs/                  # design specifications (intent, not reality)
 ├── packages/
 │   ├── core/                   # @shop-gym/core: schemas, pipeline runner, credentials

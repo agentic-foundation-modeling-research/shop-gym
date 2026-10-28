@@ -22,6 +22,7 @@ shop-gym/
 ├── AGENTS.md                   # this file — agent behavior + coding guidelines
 ├── CLAUDE.md -> AGENTS.md      # alias for Claude Code
 ├── README.md                   # project overview, setup, quickstart
+├── GLOSSARY.md                 # domain terms (single context)
 ├── packages/
 │   ├── core/                   # @shop-gym/core - schemas, pipeline runner, credentials
 │   ├── agent/                  # @shop-gym/agent - AgentRuntime seam + pi adapter
@@ -32,6 +33,8 @@ shop-gym/
 │   ├── shop-guru/              # @shop-gym/shop-guru - benchmark build / explore / solve / eval
 │   └── cli/                    # @shop-gym/cli - the `shopgym` binary
 ├── docs/
+│   ├── adr/                    # architecture decision records (`NNNN-slug.md`)
+│   ├── agents/                 # agent skill config: issue tracker, triage labels, domain docs
 │   └── specs/                  # design specifications (intent — see `docs/specs/README.md`)
 ├── scripts/                    # thin shell helpers
 ├── outputs/                    # generated artifacts (gitignored): shop_manuals, shops, shop_guru
@@ -47,16 +50,16 @@ Typical data flow: `shopgym explore` -> `shopgym gen` -> `shopgym host` -> `shop
 
 ### Use Specifications
 
-IMPORTANT: Before implementing any feature, consult the specifications in `docs/specs/README.md`.
+IMPORTANT: Before implementing any feature, consult the specifications in `docs/specs/README.md`, the decisions in `docs/adr/`, and the terms in `GLOSSARY.md`.
 
 - Assume NOT implemented. Many specs describe planned features that may not yet exist in the codebase.
 - Check the codebase first. Before concluding something is or isn't implemented, search the actual code. Specs describe intent; code describes reality.
 - Use specs as guidance. When implementing a feature, follow the design patterns, types, and architecture defined in the relevant spec.
 - Spec index: `docs/specs/README.md` lists all specifications organized by category (core, LLM, security, etc.).
-- For designing new features, create the pure specifications in `docs/specs/<feature>.md`, and track implementation plans in issues or pull requests.
+- For designing new features, publish the spec to the issue tracker with `/to-spec` and break it into tickets with `/to-tickets` (see `docs/agents/issue-tracker.md`). When the feature ships, write its lasting design to `docs/specs/<feature>.md`, record hard-to-reverse decisions in `docs/adr/`, and add new terms to `GLOSSARY.md`.
 - During implementation, make docstrings self-contained and DO NOT refer to the specs.
 
-Each specification / design doc need to follow the structure:
+Each specification in `docs/specs/` need to follow the structure:
 
 ```
  Overview
@@ -141,3 +144,17 @@ When using the `playwright-browser` skill, always follow these rules to avoid wr
 
 1. **Always save files locally**: Do not use the temporary `ARTIFACT_DIR` or `/var/folders/` paths for screenshots, PDFs, or snapshots, as the wrapper's security policy will throw a `File access denied` error. Always write output to the current working directory using relative paths (e.g., `--filename "./screenshot.png"` or `--filename "./snapshot.md"`).
 2. **Use built-in commands**: Do not attempt to use `run-code` to access internal Playwright objects like `page.accessibility.snapshot()`. The wrapper does not expose the full Playwright API in this way and will throw a `TypeError`. Use the native built-in commands provided by the wrapper instead (e.g., `node "$SKILL_DIR/scripts/pw.js" snapshot --filename "./snapshot.md"`).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as tasks in the project-manager vault, project `shop-gym`, driven through the `project-manager` skill's helper. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` plus `docs/adr/` at the repo root, with shipped design in `docs/specs/`. See `docs/agents/domain.md`.
