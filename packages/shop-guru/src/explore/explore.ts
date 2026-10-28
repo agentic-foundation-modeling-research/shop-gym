@@ -1,5 +1,5 @@
 /**
- * LLM-driven task discovery: one agent run over the live storefront that
+ * LLM-driven task discovery: one agent run over a hosted SandboxShop that
  * proposes tasks through `propose_task`, followed by independent
  * verification of every proposal.
  */
