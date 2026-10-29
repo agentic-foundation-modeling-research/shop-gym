@@ -86,13 +86,12 @@ export type AddressFields = Readonly<Record<string, string>>;
  * Open the "Add a new address" form on `/account/addresses`, fill `address`
  * (the country stays at its first option) and press "Add address"; ok when
  * the list has one more address and one of them shows the postal lines of
- * `address`. With `setDefault`, "Set as default address" is checked.
+ * `address`.
  */
 export async function addAddress(
   page: Page,
   baseUrl: string,
   address: AddressFields,
-  options: { readonly setDefault?: boolean } = {},
 ): Promise<StepOutcome> {
   return attempt(async () => {
     await open(page, `${baseUrl}${ADDRESSES_PATH}`);
@@ -103,7 +102,7 @@ export async function addAddress(
     const before = await addressEntries(page).count();
     const form = formWithButton(page.locator('form'), page, 'Add address');
     await openAddressForm(toggle, form);
-    await fillAddressForm(form, address, options.setDefault === true);
+    await fillFields(form, address);
     await submitInPlace(page, form);
     const { settled, error } = await waitForAddressBook(page, async () => {
       const lines = await addressEntries(page).locator('address').allInnerTexts();
@@ -140,7 +139,12 @@ export async function editAddress(
     const entry = page.locator('li').filter({ has: toggle });
     const form = formWithButton(entry.locator('form'), page, 'Update address');
     await openAddressForm(toggle, form);
-    await fillAddressForm(form, changes, options.setDefault === true);
+    await fillFields(form, changes);
+    if (options.setDefault === true) {
+      await form.getByLabel('Set as default address', { exact: true }).evaluate((element) => {
+        (element as unknown as { checked: boolean }).checked = true;
+      });
+    }
     await submitInPlace(page, form);
     const isDefault = async () =>
       (await entry.getByRole('heading', { name: 'Default', exact: true }).count()) > 0;
@@ -217,19 +221,6 @@ async function openAddressForm(toggle: Locator, form: Locator): Promise<void> {
   if (await form.isVisible()) return;
   await toggle.evaluate((element) => (element as unknown as { click(): void }).click());
   await form.waitFor({ state: 'visible', timeout: SUBMIT_TIMEOUT_MS });
-}
-
-async function fillAddressForm(
-  form: Locator,
-  fields: AddressFields,
-  setDefault: boolean,
-): Promise<void> {
-  await fillFields(form, fields);
-  if (setDefault) {
-    await form.getByLabel('Set as default address', { exact: true }).evaluate((element) => {
-      (element as unknown as { checked: boolean }).checked = true;
-    });
-  }
 }
 
 /** Whether postal lines `text` show every postal line value of `fields`. */

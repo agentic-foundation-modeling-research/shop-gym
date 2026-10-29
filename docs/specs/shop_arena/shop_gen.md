@@ -231,7 +231,7 @@ underlying functions stay plain and testable on their own:
   page) at both viewports and judges
   each with the single `visual_judge.md` rubric; the functional sweep is
   a fixed browser script (sign up, log out, log in, add an address,
-  edit it and make it the default, add to cart, apply a Discount code
+  edit it, add to cart, apply a Discount code
   with no minimum subtotal, checkout, view order;
   `requestReturn` is recorded as `skipped: not supported by backend`).
   It writes `<outDir>/{report.json, summary.md, pages/<name>.json,

@@ -80,10 +80,7 @@ export async function runFunctionalSweep(
     addAddress: async () =>
       step('addAddress', await addAddress(page, storefrontUrl, CHECKOUT_ADDRESS)),
     editAddress: async () =>
-      step(
-        'editAddress',
-        await editAddress(page, storefrontUrl, 1, { address2: 'Unit 2' }, { setDefault: true }),
-      ),
+      step('editAddress', await editAddress(page, storefrontUrl, 1, { address2: 'Unit 2' })),
     addToCart: async () =>
       productHandle === undefined
         ? { name: 'addToCart', status: 'skipped', detail: 'the dataset has no product' }

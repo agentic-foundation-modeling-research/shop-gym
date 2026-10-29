@@ -250,8 +250,8 @@ a product, search, cart, checkout, the thank-you page of a guest order,
 account login, account profile, the order list, an order detail, the
 address book, a policy page) at both viewports and judges each with the
 same rubric as `visual_judge`; the functional sweep is a fixed browser
-script: sign up, log out, log in, add an address, edit it and make it the
-default, add to cart, apply a Discount code, checkout, view order, and
+script: sign up, log out, log in, add an address, edit it, add to cart,
+apply a Discount code, checkout, view order, and
 `requestReturn`
 recorded as `skipped: not supported by backend`. The sweep's code is a
 Dataset code with no minimum subtotal: a percent or fixed-amount code
