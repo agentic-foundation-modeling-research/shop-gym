@@ -186,10 +186,14 @@ export interface OrderSummary {
   readonly totalPrice: Money;
 }
 
-export interface OrderDiscountCode {
+/** A Discount code that applies to a cart or an order. */
+export interface AppliedDiscount {
   readonly code: string;
   readonly targetType: DiscountTargetType;
-  /** Merchandise discount, or the shipping charge waived by a free-shipping code. */
+  /**
+   * Merchandise discount. For a free-shipping code, the waived shipping
+   * charge on an order, and 0.00 on a cart, which has no shipping charge yet.
+   */
   readonly amount: Money;
 }
 
@@ -201,7 +205,7 @@ export interface OrderDetail extends OrderSummary {
   readonly shippingAddress: MailingAddress | null;
   readonly shippingMethod: string | null;
   readonly paymentMethod: string | null;
-  readonly discountCode: OrderDiscountCode | null;
+  readonly discountCode: AppliedDiscount | null;
   readonly lineItems: {
     readonly nodes: readonly OrderLineItem[];
   };

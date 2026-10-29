@@ -172,7 +172,7 @@ export default function CheckoutRoute() {
   const defaults = defaultValues(customer, payment?.values);
   const fieldErrors = errorsByField(payment?.errors ?? []);
   const totals = computeTotals(cart, settings, shippingHandle);
-  const shippingIsFree = Number.parseFloat(totals.shipping.amount) === 0;
+  const shippingWaived = isShippingWaived(cart, settings);
 
   return (
     <div className="page-width checkout-page">
@@ -302,7 +302,7 @@ export default function CheckoutRoute() {
               />
               <span>{method.title}</span>
               <span className="variant-price">
-                {shippingIsFree ? 'Free' : <ShippingPrice money={method.price} />}
+                {shippingWaived ? 'Free' : <ShippingPrice money={method.price} />}
               </span>
             </label>
           ))}
@@ -415,28 +415,34 @@ function computeTotals(
   shippingHandle: string,
 ): SummaryTotals {
   const currencyCode = cart.cost.subtotalAmount.currencyCode;
-  const subtotal = toCents(cart.cost.subtotalAmount.amount);
-  const discount = appliedCartDiscount(cart);
   const method =
     settings.shippingMethods.find((entry) => entry.handle === shippingHandle) ??
     settings.shippingMethods[0];
-  const threshold = settings.freeShippingThreshold;
-  const shippingIsFree =
-    method === undefined ||
-    (threshold !== null && subtotal >= toCents(threshold.amount)) ||
-    discount?.amount === null;
-  const shipping = shippingIsFree ? 0 : toCents(method.price.amount);
+  const shipping =
+    method === undefined || isShippingWaived(cart, settings) ? 0 : toCents(method.price.amount);
   const money = (cents: number): Money => ({
     amount: (cents / 100).toFixed(2),
     currencyCode,
   });
   return {
     subtotal: cart.cost.subtotalAmount,
-    discount,
+    discount: appliedCartDiscount(cart),
     shipping: money(shipping),
     taxes: cart.cost.totalTaxAmount ?? money(0),
     total: money(toCents(cart.cost.totalAmount.amount) + shipping),
   };
+}
+
+/**
+ * Whether every shipping method is free: the subtotal reaches the threshold,
+ * or a free-shipping code applies.
+ */
+function isShippingWaived(cart: Cart, settings: CommerceSettings): boolean {
+  const threshold = settings.freeShippingThreshold;
+  return (
+    (threshold !== null && toCents(cart.cost.subtotalAmount.amount) >= toCents(threshold.amount)) ||
+    appliedCartDiscount(cart)?.targetType === 'SHIPPING_LINE'
+  );
 }
 
 function toCents(amount: string): number {

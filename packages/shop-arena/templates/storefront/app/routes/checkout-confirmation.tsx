@@ -1,5 +1,5 @@
 import { Link, type LoaderFunctionArgs, useLoaderData } from 'react-router';
-import { AddressBlock, orderDiscount, orderGid } from '~/components/account';
+import { AddressBlock, orderGid } from '~/components/account';
 import { CheckoutSummary, variantTitle } from '~/components/checkout';
 import { getAppContext } from '~/lib/context';
 import { COMMERCE_SETTINGS_QUERY, ORDER_QUERY } from '~/lib/queries';
@@ -57,7 +57,7 @@ export default function CheckoutConfirmationRoute() {
         }))}
         totals={{
           subtotal: order.subtotalPrice ?? { amount: '0.00', currencyCode },
-          discount: orderDiscount(order),
+          discount: order.discountCode,
           shipping: order.totalShippingPrice,
           taxes: order.totalTax ?? { amount: '0.00', currencyCode },
           total: order.totalPrice,

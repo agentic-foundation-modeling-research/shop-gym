@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Form, Link } from 'react-router';
 import type {
+  AppliedDiscount,
   Cart,
   CartLine,
   CollectionSummary,
@@ -98,7 +99,14 @@ export function MenuList({ items }: { readonly items: Menu['items'] }) {
   );
 }
 
-export function Price({ money }: { readonly money: Money }) {
+export function Price({
+  money,
+  currencyDisplay = 'symbol',
+}: {
+  readonly money: Money;
+  /** `narrowSymbol` drops the country from the symbol: "$19.99", not "CA$19.99". */
+  readonly currencyDisplay?: 'symbol' | 'narrowSymbol';
+}) {
   const amount = Number.parseFloat(money.amount);
   const displayAmount = Number.isFinite(amount) ? amount : money.amount;
   return (
@@ -107,6 +115,7 @@ export function Price({ money }: { readonly money: Money }) {
         ? new Intl.NumberFormat('en-US', {
             style: 'currency',
             currency: money.currencyCode,
+            currencyDisplay,
           }).format(displayAmount)
         : `${displayAmount} ${money.currencyCode}`}
     </span>
@@ -437,18 +446,13 @@ export function CartSummary({
   );
 }
 
-/** A Discount code that applies to a cart or an order. A null amount means free shipping. */
-export interface AppliedDiscount {
-  readonly code: string;
-  readonly amount: Money | null;
-}
-
 export function appliedCartDiscount(cart: Cart): AppliedDiscount | null {
   const allocation = cart.discountAllocations[0];
   if (allocation === undefined) return null;
   return {
     code: allocation.code,
-    amount: allocation.targetType === 'SHIPPING_LINE' ? null : allocation.discountedAmount,
+    targetType: allocation.targetType,
+    amount: allocation.discountedAmount,
   };
 }
 
@@ -459,7 +463,7 @@ export function DiscountRow({ discount }: { readonly discount: AppliedDiscount }
       <span>Discount</span>
       <span>
         <span className="discount-row-code">{discount.code}</span>{' '}
-        {discount.amount === null ? (
+        {discount.targetType === 'SHIPPING_LINE' ? (
           'Free shipping'
         ) : (
           <>

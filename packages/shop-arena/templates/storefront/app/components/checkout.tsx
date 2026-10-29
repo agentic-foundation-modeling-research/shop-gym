@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
-import { type AppliedDiscount, DiscountRow, ImageFrame, Price } from '~/components/storefront';
-import type { Image, Money } from '~/lib/types';
+import { DiscountRow, ImageFrame, Price } from '~/components/storefront';
+import type { AppliedDiscount, Image, Money } from '~/lib/types';
 
 export interface SummaryLine {
   readonly key: string;
@@ -107,17 +107,10 @@ export function variantTitle(title: string): string | null {
 
 /** Checkout's grand total: the currency code, then the amount, e.g. "CAD $45.97". */
 function TotalAmount({ money }: { readonly money: Money }) {
-  const amount = Number.parseFloat(money.amount);
-  const formatted = Number.isFinite(amount)
-    ? new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: money.currencyCode,
-        currencyDisplay: 'narrowSymbol',
-      }).format(amount)
-    : money.amount;
   return (
     <span className="checkout-total">
-      <span className="checkout-total-currency">{money.currencyCode}</span> {formatted}
+      <span className="checkout-total-currency">{money.currencyCode}</span>{' '}
+      <Price money={money} currencyDisplay="narrowSymbol" />
     </span>
   );
 }
