@@ -16,6 +16,7 @@ import {
   variantTitle,
 } from '~/components/checkout';
 import { DiscountCodeForm, appliedCartDiscount } from '~/components/storefront';
+import { ADDRESS_FIELDS } from '~/lib/addresses';
 import { clearCartId, getAppContext, getCartId, getCustomerAccessToken } from '~/lib/context';
 import { loadCustomer } from '~/lib/customer';
 import { applyDiscountCode, removeDiscountCode } from '~/lib/discount';
@@ -68,19 +69,6 @@ interface DiscountActionData {
   readonly intent: 'discount';
   readonly discountRejected: boolean;
 }
-
-const ADDRESS_FIELDS = [
-  'firstName',
-  'lastName',
-  'company',
-  'address1',
-  'address2',
-  'city',
-  'province',
-  'country',
-  'zip',
-  'phone',
-] as const;
 
 export function meta() {
   return [{ title: 'Checkout' }];

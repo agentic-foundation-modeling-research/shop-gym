@@ -1,11 +1,12 @@
 /**
  * Fixed browser scripts over the storefront template's forms and pages:
- * register, log in, log out, open a product page, sort its Reviews and show
- * more of them, add a product to the cart, apply or have a Discount code
- * turned down at checkout, place an order, and open that order's thank-you
- * page, the account order history and an account order page. Each step
- * drives one Playwright page, never throws, and reports what it observed so
- * the callers can record it.
+ * register, log in, log out, add, edit and delete an address in the address
+ * book, open a product page, sort its Reviews and show more of them, add a
+ * product to the cart, apply or have a Discount code turned down at
+ * checkout, place an order, and open that order's thank-you page, the
+ * account order history and an account order page. Each step drives one
+ * Playwright page, never throws, and reports what it observed so the
+ * callers can record it.
  *
  * Forms are submitted with `requestSubmit()` rather than a pointer click so
  * consent or newsletter popups layered over the page cannot intercept them.
@@ -36,6 +37,18 @@ const SUBMIT_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 200;
 /** Checkout's error under the "Discount code" field for a code that does not apply. */
 const INVALID_DISCOUNT_CODE = 'Enter a valid discount code';
+const ADDRESSES_PATH = '/account/addresses';
+/** Address form fields whose values show in the postal lines of a saved address. */
+const POSTAL_LINE_FIELDS = [
+  'firstName',
+  'lastName',
+  'company',
+  'address1',
+  'address2',
+  'city',
+  'province',
+  'zip',
+] as const;
 
 export async function register(
   page: Page,
@@ -64,6 +77,205 @@ export async function logOut(page: Page, baseUrl: string): Promise<StepOutcome> 
     const path = await submit(page, form);
     return { ok: path === '/', detail: `logout landed on ${path}`, url: path };
   });
+}
+
+/** Text fields of an address book form by input name, e.g. `{ address1: '77 Rue Sherbrooke Est' }`. */
+export type AddressFields = Readonly<Record<string, string>>;
+
+/**
+ * Open the "Add a new address" form on `/account/addresses`, fill `address`
+ * (the country stays at its first option) and press "Add address"; ok when
+ * the list has one more address and one of them shows the postal lines of
+ * `address`. With `setDefault`, "Set as default address" is checked.
+ */
+export async function addAddress(
+  page: Page,
+  baseUrl: string,
+  address: AddressFields,
+  options: { readonly setDefault?: boolean } = {},
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${ADDRESSES_PATH}`);
+    const toggle = page.getByRole('button', { name: 'Add a new address', exact: true });
+    if ((await toggle.count()) === 0) {
+      return { ok: false, detail: `no "Add a new address" button on ${pathOf(page.url())}` };
+    }
+    const before = await addressEntries(page).count();
+    const form = formWithButton(page.locator('form'), page, 'Add address');
+    await openAddressForm(toggle, form);
+    await fillAddressForm(form, address, options.setDefault === true);
+    await submitInPlace(page, form);
+    const { settled, error } = await waitForAddressBook(page, async () => {
+      const lines = await addressEntries(page).locator('address').allInnerTexts();
+      return lines.length === before + 1 && lines.some((text) => showsPostalLines(text, address));
+    });
+    const after = await addressEntries(page).count();
+    return {
+      ok: settled,
+      detail: `adding an address went from ${before} to ${after} addresses${error ? `, with "${error}"` : ''}`,
+      url: ADDRESSES_PATH,
+    };
+  });
+}
+
+/**
+ * Open the edit form of the address in place `position` (from 1) on
+ * `/account/addresses`, fill `changes` and press "Update address"; ok when
+ * that address shows the changed postal lines and, with `setDefault`, the
+ * "Default" heading.
+ */
+export async function editAddress(
+  page: Page,
+  baseUrl: string,
+  position: number,
+  changes: AddressFields,
+  options: { readonly setDefault?: boolean } = {},
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${ADDRESSES_PATH}`);
+    const toggle = page.getByRole('button', { name: `Edit address ${position}`, exact: true });
+    if ((await toggle.count()) === 0) {
+      return { ok: false, detail: `no "Edit address ${position}" button on ${pathOf(page.url())}` };
+    }
+    const entry = page.locator('li').filter({ has: toggle });
+    const form = formWithButton(entry.locator('form'), page, 'Update address');
+    await openAddressForm(toggle, form);
+    await fillAddressForm(form, changes, options.setDefault === true);
+    await submitInPlace(page, form);
+    const isDefault = async () =>
+      (await entry.getByRole('heading', { name: 'Default', exact: true }).count()) > 0;
+    const { settled, error } = await waitForAddressBook(page, async () => {
+      const shown = showsPostalLines(await entry.locator('address').innerText(), changes);
+      return shown && (options.setDefault !== true || (await isDefault()));
+    });
+    const lines = normalizedText(await entry.locator('address').innerText());
+    return {
+      ok: settled,
+      detail: `address ${position} shows "${lines}"${(await isDefault()) ? ' as the default' : ''}${error ? `, with "${error}"` : ''}`,
+      url: ADDRESSES_PATH,
+    };
+  });
+}
+
+/**
+ * Press "Delete" on the address in place `position` (from 1) on
+ * `/account/addresses` and accept the browser's confirm dialog; ok when the
+ * list has one address less.
+ */
+export async function deleteAddress(
+  page: Page,
+  baseUrl: string,
+  position: number,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${ADDRESSES_PATH}`);
+    const button = page.getByRole('button', { name: `Delete ${position}`, exact: true });
+    if ((await button.count()) === 0) {
+      return { ok: false, detail: `no "Delete ${position}" button on ${pathOf(page.url())}` };
+    }
+    const before = await addressEntries(page).count();
+    let confirmText = '';
+    const accept = (dialog: { message(): string; accept(): Promise<void> }) => {
+      confirmText = dialog.message();
+      dialog.accept().catch(() => undefined);
+    };
+    page.on('dialog', accept);
+    try {
+      await submitInPlace(page, button.locator('xpath=ancestor::form'));
+    } finally {
+      page.off('dialog', accept);
+    }
+    const { settled, error } = await waitForAddressBook(
+      page,
+      async () => (await addressEntries(page).count()) === before - 1,
+    );
+    const after = await addressEntries(page).count();
+    return {
+      ok: settled,
+      detail: `confirming "${confirmText}" went from ${before} to ${after} addresses${error ? `, with "${error}"` : ''}`,
+      url: ADDRESSES_PATH,
+    };
+  });
+}
+
+/** The saved addresses on the address book page: each has an "Edit address <n>" button. */
+function addressEntries(page: Page): Locator {
+  return page
+    .locator('li')
+    .filter({ has: page.getByRole('button', { name: /^Edit address \d+$/ }) });
+}
+
+/** The form among `forms` with button `name`, also while the form is hidden. */
+function formWithButton(forms: Locator, page: Page, name: string): Locator {
+  return forms.filter({
+    has: page.getByRole('button', { name, exact: true, includeHidden: true }),
+  });
+}
+
+/** Press `toggle` unless `form` already shows, then wait until it shows. */
+async function openAddressForm(toggle: Locator, form: Locator): Promise<void> {
+  if (await form.isVisible()) return;
+  await toggle.evaluate((element) => (element as unknown as { click(): void }).click());
+  await form.waitFor({ state: 'visible', timeout: SUBMIT_TIMEOUT_MS });
+}
+
+async function fillAddressForm(
+  form: Locator,
+  fields: AddressFields,
+  setDefault: boolean,
+): Promise<void> {
+  await fillFields(form, fields);
+  if (setDefault) {
+    await form.getByLabel('Set as default address', { exact: true }).evaluate((element) => {
+      (element as unknown as { checked: boolean }).checked = true;
+    });
+  }
+}
+
+/** Whether postal lines `text` show every postal line value of `fields`. */
+function showsPostalLines(text: string, fields: AddressFields): boolean {
+  const shown = normalizedText(text);
+  return POSTAL_LINE_FIELDS.every((name) => {
+    const value = fields[name]?.trim() ?? '';
+    return value === '' || shown.includes(value);
+  });
+}
+
+/**
+ * Submit `form` and wait for the answer to its POST. The address book posts
+ * back to its own URL, so there is no new URL to wait for.
+ */
+async function submitInPlace(page: Page, form: Locator): Promise<void> {
+  const posted = page
+    .waitForResponse((response) => response.request().method() === 'POST', {
+      timeout: SUBMIT_TIMEOUT_MS,
+    })
+    .catch(() => undefined);
+  await form.evaluate((element) =>
+    (element as unknown as { requestSubmit(): void }).requestSubmit(),
+  );
+  await posted;
+}
+
+/**
+ * Poll the address book until `settled` holds or a form error shows. A read
+ * while the page reloads fails and is tried again.
+ */
+async function waitForAddressBook(
+  page: Page,
+  settled: () => Promise<boolean>,
+): Promise<{ readonly settled: boolean; readonly error: string }> {
+  const errors = page.getByRole('alert').filter({ visible: true });
+  const deadline = Date.now() + SUBMIT_TIMEOUT_MS;
+  for (;;) {
+    const observed = await Promise.all([settled(), errors.allInnerTexts()]).catch(() => undefined);
+    const [done, alerts] = observed ?? [false, []];
+    if (done || alerts.length > 0 || Date.now() > deadline) {
+      await page.waitForLoadState('load');
+      return { settled: done, error: normalizedText(alerts.join(' ')) };
+    }
+    await sleep(POLL_INTERVAL_MS);
+  }
 }
 
 /** Add the first available variant of `productHandle`; expects a non-empty cart. */
@@ -435,4 +647,8 @@ async function heading(page: Page): Promise<string> {
 function pathOf(url: string): string {
   const parsed = new URL(url);
   return parsed.pathname + parsed.search;
+}
+
+function normalizedText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }

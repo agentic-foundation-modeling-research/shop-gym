@@ -854,20 +854,6 @@ html:has(.cart-popup) {
   white-space: nowrap;
 }
 
-.account-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  align-items: center;
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 0.75rem;
-}
-
-.account-nav a[aria-current="page"] {
-  font-weight: 600;
-  text-decoration: underline;
-}
-
 .account-form {
   max-width: 28rem;
 }
@@ -886,9 +872,17 @@ html:has(.cart-popup) {
 }
 
 .form-errors {
-  margin: 0;
   padding: 0.75rem 1rem;
   border: 1px solid var(--color-border);
+}
+
+.form-errors p {
+  margin: 0 0 0.5rem;
+}
+
+.form-errors ul {
+  margin: 0;
+  padding: 0;
   list-style: disc inside;
 }
 
@@ -1010,4 +1004,102 @@ html:has(.cart-popup) {
   gap: 1rem;
   padding: 0;
   list-style: none;
+}
+
+/* Address book: a narrow, centered column; the form headings and fields are left-aligned. */
+.addresses-page {
+  max-width: 330px;
+}
+
+@media (min-width: 750px) {
+  .addresses-page {
+    max-width: 480px;
+  }
+}
+
+.addresses-heading,
+.address-default {
+  text-align: center;
+}
+
+.address-default {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.address-form input:not([type="checkbox"]),
+.address-form select {
+  width: 100%;
+}
+
+.address-form select {
+  height: var(--control-height);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  padding: 0 0.75rem;
+  font: inherit;
+}
+
+/* From 750 px, "First name" and "Last name" share one row. */
+.address-name-row {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 750px) {
+  .address-name-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* A floating label shows in its empty field and moves above the value. */
+.floating-field {
+  position: relative;
+}
+
+.floating-field input {
+  padding-top: 0.9rem;
+}
+
+.floating-field input::placeholder {
+  color: transparent;
+}
+
+.floating-field label {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: top 0.1s ease, font-size 0.1s ease;
+}
+
+.floating-field input:focus + label,
+.floating-field input:not(:placeholder-shown) + label {
+  top: 0.8rem;
+  font-size: 0.75rem;
+}
+
+.address-default-choice {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.address-default-choice input {
+  width: auto;
+  height: auto;
+  min-height: 0;
+}
+
+.address-book-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.address-book-actions button {
+  min-width: 120px;
 }
