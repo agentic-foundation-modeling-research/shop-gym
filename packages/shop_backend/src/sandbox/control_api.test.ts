@@ -126,7 +126,7 @@ describe('control API', () => {
     const snapshot = await snapshotOf('ctl-fresh');
     expect(snapshot.episodeId).toBe('ctl-fresh');
     expect(snapshot.carts).toEqual([]);
-    expect(snapshot.customers).toHaveLength(1);
+    expect(snapshot.customers).toHaveLength(4);
   });
 
   it('POST /reset re-seeds the episode and returns the fresh snapshot', async () => {

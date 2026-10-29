@@ -161,8 +161,13 @@ describe('loadShopData', () => {
 
   it('loads customers, orders, and commerce from the fixture', () => {
     const data = loadShopData(FIXTURE_DIR);
-    expect(data.customers.map((c) => c.email)).toEqual(['jane.doe@example.com']);
-    expect(data.orders.map((o) => o.id)).toEqual([1001]);
+    expect(data.customers.map((c) => c.email)).toEqual([
+      'jane.doe@example.com',
+      'marc.tremblay@example.com',
+      'priya.nair@example.com',
+      'sam.okafor@example.com',
+    ]);
+    expect(data.orders.map((o) => o.id)).toEqual([1001, 1002, 1003, 1004, 1005, 1006]);
     expect(data.commerce.free_shipping_threshold).toBe('75.00');
     expect(data.commerce.shipping_methods.map((m) => m.handle)).toEqual(['standard', 'express']);
   });

@@ -36,5 +36,215 @@
     "total_shipping_price": "9.99",
     "total_tax": "0.00",
     "total_price": "29.98"
+  },
+  {
+    "id": 1002,
+    "customer_id": 2,
+    "email": "marc.tremblay@example.com",
+    "processed_at": "2025-08-14T18:22:00.000Z",
+    "financial_status": "PARTIALLY_REFUNDED",
+    "fulfillment_status": "FULFILLED",
+    "currency_code": "CAD",
+    "line_items": [
+      {
+        "variant_id": 47642512195758,
+        "title": "AisleArena Anti Tick Collar - Blue",
+        "quantity": 1,
+        "price": "79.99"
+      },
+      {
+        "variant_id": 47694728298670,
+        "title": "Carthaeum Toothbrush",
+        "quantity": 2,
+        "price": "12.99"
+      }
+    ],
+    "shipping_address": {
+      "id": 9,
+      "first_name": "Marc",
+      "last_name": "Tremblay",
+      "company": "Tremblay Design",
+      "address1": "1000 Rue De La Gauchetiere Ouest",
+      "address2": "Suite 2400",
+      "city": "Montreal",
+      "province": "Quebec",
+      "province_code": "QC",
+      "country": "Canada",
+      "country_code": "CA",
+      "zip": "H3B 4W5",
+      "phone": null
+    },
+    "shipping_method": "standard",
+    "payment_method": "card",
+    "subtotal_price": "105.97",
+    "total_shipping_price": "0.00",
+    "total_tax": "0.00",
+    "total_price": "105.97"
+  },
+  {
+    "id": 1003,
+    "customer_id": 3,
+    "email": "priya.nair@example.com",
+    "processed_at": "2025-09-30T13:05:00.000Z",
+    "financial_status": "REFUNDED",
+    "fulfillment_status": "FULFILLED",
+    "currency_code": "CAD",
+    "line_items": [
+      {
+        "variant_id": 44795897643182,
+        "title": "AgoraCage Skin and coat chicken with grains 12lb dog",
+        "quantity": 1,
+        "price": "54.99"
+      }
+    ],
+    "shipping_address": {
+      "id": 10,
+      "first_name": "Priya",
+      "last_name": "Nair",
+      "company": null,
+      "address1": "2150 West 4th Avenue",
+      "address2": null,
+      "city": "Vancouver",
+      "province": "British Columbia",
+      "province_code": "BC",
+      "country": "Canada",
+      "country_code": "CA",
+      "zip": "V6K 1N6",
+      "phone": null
+    },
+    "shipping_method": "standard",
+    "payment_method": "paypal",
+    "subtotal_price": "54.99",
+    "total_shipping_price": "9.99",
+    "total_tax": "0.00",
+    "total_price": "64.98"
+  },
+  {
+    "id": 1004,
+    "customer_id": 3,
+    "email": "priya.nair@example.com",
+    "processed_at": "2025-11-08T10:30:00.000Z",
+    "financial_status": "PAID",
+    "fulfillment_status": "FULFILLED",
+    "currency_code": "CAD",
+    "line_items": [
+      {
+        "variant_id": 47694728298670,
+        "title": "Carthaeum Toothbrush",
+        "quantity": 1,
+        "price": "12.99"
+      },
+      {
+        "variant_id": 47242695737518,
+        "title": "Shopliseum Mushroom Dog Toys - Green Mushroom",
+        "quantity": 1,
+        "price": "19.99"
+      }
+    ],
+    "shipping_address": {
+      "id": 11,
+      "first_name": "Priya",
+      "last_name": "Nair",
+      "company": null,
+      "address1": "88 Harbord Street",
+      "address2": "Unit 2",
+      "city": "Toronto",
+      "province": "Ontario",
+      "province_code": "ON",
+      "country": "Canada",
+      "country_code": "CA",
+      "zip": "M5S 1G5",
+      "phone": null
+    },
+    "shipping_method": "standard",
+    "payment_method": "card",
+    "subtotal_price": "32.98",
+    "total_shipping_price": "9.99",
+    "total_tax": "0.00",
+    "total_price": "37.97",
+    "discount_code": "SAVE5",
+    "discount_amount": "5.00"
+  },
+  {
+    "id": 1005,
+    "customer_id": 2,
+    "email": "marc.tremblay@example.com",
+    "processed_at": "2025-12-20T15:40:00.000Z",
+    "financial_status": "PAID",
+    "fulfillment_status": "UNFULFILLED",
+    "currency_code": "CAD",
+    "line_items": [
+      {
+        "variant_id": 47242687709358,
+        "title": "Shopliseum Mushroom Dog Toys - Blue Mushroom",
+        "quantity": 2,
+        "price": "19.99"
+      }
+    ],
+    "shipping_address": {
+      "id": 12,
+      "first_name": "Marc",
+      "last_name": "Tremblay",
+      "company": null,
+      "address1": "4520 Rue Saint-Denis",
+      "address2": null,
+      "city": "Montreal",
+      "province": "Quebec",
+      "province_code": "QC",
+      "country": "Canada",
+      "country_code": "CA",
+      "zip": "H2J 2L3",
+      "phone": null
+    },
+    "shipping_method": "express",
+    "payment_method": "paypal",
+    "subtotal_price": "39.98",
+    "total_shipping_price": "19.99",
+    "total_tax": "0.00",
+    "total_price": "59.97"
+  },
+  {
+    "id": 1006,
+    "customer_id": 3,
+    "email": "priya.nair@example.com",
+    "processed_at": "2025-12-28T09:10:00.000Z",
+    "financial_status": "PAID",
+    "fulfillment_status": "PARTIALLY_FULFILLED",
+    "currency_code": "CAD",
+    "line_items": [
+      {
+        "variant_id": 47642514456750,
+        "title": "AisleArena Anti Tick Collar - Yellow",
+        "quantity": 1,
+        "price": "79.99"
+      },
+      {
+        "variant_id": 47242720215214,
+        "title": "Shopliseum Mushroom Dog Toys - Yellow Mushroom",
+        "quantity": 1,
+        "price": "19.99"
+      }
+    ],
+    "shipping_address": {
+      "id": 13,
+      "first_name": "Priya",
+      "last_name": "Nair",
+      "company": null,
+      "address1": "14 Lakeshore Road",
+      "address2": null,
+      "city": "Huntsville",
+      "province": "Ontario",
+      "province_code": "ON",
+      "country": "Canada",
+      "country_code": "CA",
+      "zip": "P1H 1B2",
+      "phone": null
+    },
+    "shipping_method": "standard",
+    "payment_method": "paypal",
+    "subtotal_price": "99.98",
+    "total_shipping_price": "0.00",
+    "total_tax": "0.00",
+    "total_price": "99.98"
   }
 ]
