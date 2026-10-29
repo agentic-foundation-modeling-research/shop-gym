@@ -1,9 +1,9 @@
 /**
  * Fixed browser scripts over the storefront template's forms and pages:
- * register, log in, log out, add a product to the cart, apply or have a
- * Discount code turned down at checkout, place an order, and open that
- * order's thank-you page, the account order history and an account order
- * page. Each step drives one Playwright page, never throws, and reports
+ * register, log in, log out, open a product page, sort its Reviews and show
+ * more of them, add a product to the cart, apply or have a Discount code
+ * turned down at checkout, place an order, and open that order's thank-you
+ * page, the account order history and an account order page. Each step drives one Playwright page, never throws, and reports
  * what it observed so the callers can record it.
  *
  * Forms are submitted with `requestSubmit()` rather than a pointer click so
@@ -225,6 +225,80 @@ async function checkoutTotal(page: Page): Promise<string> {
   if ((await label.count()) === 0) return '';
   const row = await label.locator('xpath=..').innerText({ timeout: 1000 });
   return row.replace(/\s+/g, ' ').trim();
+}
+
+/** Open the page of `productHandle`; expects 200 and a level-1 heading. */
+export async function viewProduct(
+  page: Page,
+  baseUrl: string,
+  productHandle: string,
+): Promise<StepOutcome> {
+  return viewPage(page, baseUrl, `/products/${productHandle}`, 'a level-1 heading', (p) =>
+    p.getByRole('heading', { level: 1 }),
+  );
+}
+
+/**
+ * Open product page `path`, choose `sortLabel` in the Reviews "Sort by"
+ * control and submit it; ok when the page reloads with that option chosen.
+ * `path` may hold a query, e.g. `/products/<handle>?reviews_sort=most_helpful`.
+ */
+export async function sortReviews(
+  page: Page,
+  baseUrl: string,
+  path: string,
+  sortLabel: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const select = reviewsSection(page).getByLabel('Sort by', { exact: true });
+    if ((await select.count()) === 0) {
+      return { ok: false, detail: `no Reviews "Sort by" control on ${path}` };
+    }
+    await select.selectOption({ label: sortLabel });
+    const landed = await submit(page, select.locator('xpath=ancestor::form'));
+    const chosen = (await select.locator('option:checked').textContent()) ?? '';
+    return {
+      ok: landed !== path && chosen === sortLabel,
+      detail: `sorting by "${sortLabel}" landed on ${landed} with "${chosen}" chosen`,
+      url: landed,
+    };
+  });
+}
+
+/**
+ * Open product page `path` and press "Show more reviews"; ok when the page
+ * reloads with more Reviews than before. `path` may hold a query.
+ */
+export async function showMoreReviews(
+  page: Page,
+  baseUrl: string,
+  path: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const reviews = reviewsSection(page).locator('article');
+    const before = await reviews.count();
+    const button = reviewsSection(page).getByRole('button', {
+      name: 'Show more reviews',
+      exact: true,
+    });
+    if ((await button.count()) === 0) {
+      return { ok: false, detail: `no "Show more reviews" button on ${path}` };
+    }
+    const landed = await submit(page, button.locator('xpath=ancestor::form'));
+    const after = await reviews.count();
+    return {
+      ok: after > before,
+      detail: `"Show more reviews" landed on ${landed} with ${after} Reviews, up from ${before}`,
+      url: landed,
+    };
+  });
+}
+
+/** The product page's "Reviews" section. */
+function reviewsSection(page: Page): Locator {
+  return page.getByRole('region', { name: 'Reviews', exact: true });
 }
 
 /** Open the account page of order `orderNumber`; expects 200 and the heading "Order #<number>". */

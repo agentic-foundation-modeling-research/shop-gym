@@ -36,8 +36,11 @@ import {
   placeOrder,
   register,
   rejectDiscountCode,
+  showMoreReviews,
+  sortReviews,
   viewOrder,
   viewOrderHistory,
+  viewProduct,
   viewThankYou,
 } from './gen/build/verifiers/browser_steps.js';
 import { CHECKOUT_ADDRESS } from './gen/build/verifiers/storefront_target.js';
@@ -46,6 +49,9 @@ import { STOREFRONT_TEMPLATE_DIR } from './templates.js';
 const FIXTURE_DIR = path.join(STOREFRONT_TEMPLATE_DIR, 'fixtures', 'sandbox_shop_v0');
 const EPISODE_ID = 'storefront-template-browser';
 const PRODUCT = { handle: 'shopliseum-mushroom-dog-toys', title: 'Shopliseum Mushroom Dog Toys' };
+const PRODUCT_PATH = `/products/${PRODUCT.handle}`;
+/** A product of the test Dataset with no Reviews. */
+const NO_REVIEWS_PRODUCT = 'cartanvil-mackerel-and-sardines-70g';
 const SHOPPER = {
   firstName: 'Suite',
   lastName: 'Shopper',
@@ -90,6 +96,24 @@ async function shopperSessionCount(): Promise<number> {
 
 async function pageText(): Promise<string> {
   return session.page.locator('body').innerText();
+}
+
+function normalized(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+/** The product page's "Reviews" section. */
+function reviewsSection() {
+  return session.page.getByRole('region', { name: 'Reviews', exact: true });
+}
+
+/** Text of each Review block in the "Reviews" section, in page order. */
+async function reviewBlocks(): Promise<string[]> {
+  return (await reviewsSection().locator('article').allInnerTexts()).map(normalized);
+}
+
+async function reviewTitles(): Promise<string[]> {
+  return reviewsSection().locator('article h3').allInnerTexts();
 }
 
 /** Text of each order history row, in page order. */
@@ -148,6 +172,81 @@ describe('storefront template in a browser', () => {
     const outcome = await logIn(session.page, sidecar.url, SHOPPER);
     expect(outcome.ok, outcome.detail).toBe(true);
     expect(await shopperSessionCount()).toBe(1);
+  }, 60_000);
+
+  it('reads the Reviews on a product page', async () => {
+    const outcome = await viewProduct(session.page, sidecar.url, PRODUCT.handle);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    // Near the title: the stars, the rating and the count. 23 stars over 6 Reviews is 3.8.
+    const details = session.page.getByRole('region', { name: PRODUCT.title, exact: true });
+    expect(await details.getByRole('img', { name: '3.8 out of 5.0 stars' }).count()).toBe(1);
+    expect(normalized(await details.innerText())).toContain('3.8 / 5.0 (6)');
+
+    const reviews = reviewsSection();
+    expect(await reviews.getByRole('img', { name: '3.8 out of 5.0 stars' }).count()).toBe(1);
+    expect(normalized(await reviews.innerText())).toContain('3.8 / 5.0 6 reviews');
+    expect(await reviews.getByLabel('Sort by').locator('option').allTextContents()).toEqual([
+      'Most recent',
+      'Highest rating',
+      'Lowest rating',
+      'Most helpful',
+    ]);
+    // The first page holds five of the six Reviews, most recent first.
+    expect(await reviewBlocks()).toEqual([
+      'Too small for a large dog Our labrador can fit the whole toy in her mouth. Buy it for a small dog only. Ana P. December 14, 2025 Red Mushroom: Green Mushroom 1 person found this helpful',
+      'Fine for gentle chewers Good for a dog that plays gently. A strong chewer gets through the fabric in a day. Sara M. Verified Buyer December 14, 2025 Red Mushroom: Red Mushroom 1 person found this helpful',
+      'Still squeaking after a month Our terrier carries this everywhere. The squeaker still works after a month of daily play. Maya R. Verified Buyer November 20, 2025 Red Mushroom: Red Mushroom 4 people found this helpful',
+      'Good, but the stem came off Soft and bright. After two weeks the stem came off, but the cap is still in one piece. Tom B. Verified Buyer October 2, 2025 Red Mushroom: Blue Mushroom 12 people found this helpful',
+      "Our puppy's favourite The yellow one is easy to find in the grass. She brings it back every time. Leo K. Verified Buyer September 5, 2025 Red Mushroom: Yellow Mushroom",
+    ]);
+    const firstReview = reviews.locator('article').first();
+    expect(await firstReview.getByRole('img', { name: '2 out of 5 stars' }).count()).toBe(1);
+    // No "Write a Review" and no helpful-vote buttons: sorting and paging only.
+    expect(await reviews.getByRole('button').allInnerTexts()).toEqual([
+      'Sort',
+      'Show more reviews',
+    ]);
+  }, 60_000);
+
+  it('shows more Reviews until there are no more', async () => {
+    const outcome = await showMoreReviews(session.page, sidecar.url, PRODUCT_PATH);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await reviewTitles()).toEqual([
+      'Too small for a large dog',
+      'Fine for gentle chewers',
+      'Still squeaking after a month',
+      'Good, but the stem came off',
+      "Our puppy's favourite",
+      'Bright colours',
+    ]);
+    expect(await reviewsSection().getByRole('button', { name: 'Show more reviews' }).count()).toBe(
+      0,
+    );
+  }, 60_000);
+
+  it('sorts the Reviews by lowest rating and keeps the order on the next page', async () => {
+    const sorted = await sortReviews(session.page, sidecar.url, PRODUCT_PATH, 'Lowest rating');
+    expect(sorted.ok, sorted.detail).toBe(true);
+    expect(await reviewTitles()).toEqual([
+      'Too small for a large dog',
+      'Fine for gentle chewers',
+      'Good, but the stem came off',
+      'Bright colours',
+      'Still squeaking after a month',
+    ]);
+    const more = await showMoreReviews(session.page, sidecar.url, sorted.url ?? PRODUCT_PATH);
+    expect(more.ok, more.detail).toBe(true);
+    expect((await reviewTitles()).slice(4)).toEqual([
+      'Still squeaking after a month',
+      "Our puppy's favourite",
+    ]);
+  }, 60_000);
+
+  it('shows no Reviews for a product with none', async () => {
+    const outcome = await viewProduct(session.page, sidecar.url, NO_REVIEWS_PRODUCT);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await reviewsSection().count()).toBe(0);
+    expect(await session.page.getByRole('img', { name: /out of 5\.0 stars/ }).count()).toBe(0);
   }, 60_000);
 
   it('adds a product to the cart', async () => {
