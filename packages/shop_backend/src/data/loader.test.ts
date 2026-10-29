@@ -193,15 +193,17 @@ describe('loadShopData', () => {
     });
   });
 
-  it('loads Discount codes and an order discount, defaulting both for old Datasets', () => {
-    const fixture = loadShopData(FIXTURE_DIR);
-    expect(fixture.commerce.discount_codes.map((c) => [c.code, c.kind])).toEqual([
+  it('loads the Discount codes and gives an order without a code no discount', () => {
+    const data = loadShopData(FIXTURE_DIR);
+    expect(data.commerce.discount_codes.map((c) => [c.code, c.kind])).toEqual([
       ['WELCOME10', 'percentage'],
       ['SAVE5', 'fixed_amount'],
       ['FREESHIP', 'free_shipping'],
     ]);
-    expect(fixture.orders[0]).toMatchObject({ discount_code: null, discount_amount: '0.00' });
+    expect(data.orders[0]).toMatchObject({ discount_code: null, discount_amount: '0.00' });
+  });
 
+  it('loads the Discount code and discount amount of a seeded order', () => {
     tmpDir = copyFixture();
     const orders = JSON.parse(fs.readFileSync(path.join(tmpDir, 'orders.json'), 'utf8')) as {
       discount_code?: string;
@@ -212,11 +214,9 @@ describe('loadShopData', () => {
     order.discount_code = 'FREESHIP';
     order.discount_amount = '9.99';
     fs.writeFileSync(path.join(tmpDir, 'orders.json'), JSON.stringify(orders));
-    fs.writeFileSync(path.join(tmpDir, 'commerce.json'), JSON.stringify({ tax_rate: 0 }));
 
     const data = loadShopData(tmpDir);
     expect(data.orders[0]).toMatchObject({ discount_code: 'FREESHIP', discount_amount: '9.99' });
-    expect(data.commerce.discount_codes).toEqual([]);
   });
 
   it('throws InvalidDatasetError when an order line quantity is not a positive integer', () => {

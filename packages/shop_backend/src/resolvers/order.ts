@@ -15,7 +15,7 @@ import type {
   QueryOrderArgs,
 } from '../__generated__/resolvers-types.js';
 import { fromCents, toCents } from '../state/money.js';
-import { findDiscountCode } from '../state/pricing.js';
+import { discountTargetType, findDiscountCode } from '../state/pricing.js';
 import type { OrderLineItemRecord, OrderRecord } from '../state/shop_state.js';
 import {
   type MoneyV2Node,
@@ -100,15 +100,24 @@ export function buildOrderNode(order: OrderRecord, ctx: ResolverContext): OrderN
         ? null
         : {
             code: order.discountCode,
-            // A seeded order may name a code that `commerce.json` no longer lists.
-            targetType:
-              findDiscountCode(order.discountCode, ctx.data.commerce)?.kind === 'free_shipping'
-                ? 'SHIPPING_LINE'
-                : 'LINE_ITEM',
+            targetType: orderDiscountTargetType(order.discountCode, ctx),
             amount: buildMoneyV2(order.discountAmount, currency),
           },
     lineItemNodes: order.lineItems.map((line) => buildOrderLineItemNode(line, currency, ctx)),
   };
+}
+
+/**
+ * The cost line an order's Discount code lowered. A seeded order may name a
+ * code that `commerce.json` does not list; with no kind to read, its
+ * discount is reported against the merchandise.
+ */
+function orderDiscountTargetType(
+  code: string,
+  ctx: ResolverContext,
+): DiscountApplicationTargetType {
+  const listed = findDiscountCode(code, ctx.data.commerce);
+  return listed === undefined ? 'LINE_ITEM' : discountTargetType(listed);
 }
 
 function buildOrderLineItemNode(

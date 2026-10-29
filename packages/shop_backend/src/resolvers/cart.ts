@@ -49,8 +49,9 @@ import { EpisodeClock } from '../state/episode_clock.js';
 import { fromCents, toCents } from '../state/money.js';
 import {
   type AppliedDiscount,
-  applyDiscountCode,
+  discountTargetType,
   findDiscountCode,
+  priceDiscountCode,
   taxCents,
 } from '../state/pricing.js';
 
@@ -1109,7 +1110,7 @@ function buildCartNode(
   // The resolvers store at most one code, so only the first one is priced.
   const [firstCode] = state.discountCodes;
   const discount =
-    firstCode === undefined ? null : applyDiscountCode(firstCode, subtotalCents, data.commerce);
+    firstCode === undefined ? null : priceDiscountCode(firstCode, subtotalCents, data.commerce);
   const discountedCents = subtotalCents - (discount?.subtotalDiscount ?? 0);
   // Tax is only "calculated" (non-null) when the dataset configures a rate.
   const tax = data.commerce.tax_rate > 0 ? taxCents(discountedCents, data.commerce) : null;
@@ -1154,7 +1155,7 @@ function buildDiscountAllocationNode(
   return {
     code: discount.discountCode.code,
     discountedAmount: buildMoneyV2(fromCents(discount.subtotalDiscount), currency),
-    targetType: discount.discountCode.kind === 'free_shipping' ? 'SHIPPING_LINE' : 'LINE_ITEM',
+    targetType: discountTargetType(discount.discountCode),
   };
 }
 

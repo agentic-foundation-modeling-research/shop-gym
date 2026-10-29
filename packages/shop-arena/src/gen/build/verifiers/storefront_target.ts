@@ -2,14 +2,13 @@
  * What the HTTP-level storefront verifiers share: the served storefront
  * (URL plus a hook that brings the server up to date with the iteration's
  * edits), the seeded customer used for logged-in checks, and the fixed
- * checkout form and Discount code used by the functional checks.
+ * checkout form used by the functional checks.
  */
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import type { VerifierResult } from '@shop-gym/harness';
-import { datasetSchema } from '@shop-gym/shop-backend';
 
 export interface StorefrontTarget {
   readonly url: string;
@@ -86,27 +85,6 @@ export async function readCheckoutMethods(dataDir: string): Promise<CheckoutMeth
     shippingMethodHandle: firstHandle(commerce.shipping_methods) ?? 'standard',
     paymentMethodHandle: firstHandle(commerce.payment_methods) ?? 'card',
   };
-}
-
-/**
- * The first percent or fixed-amount Discount code in `commerce.json` with no
- * minimum subtotal: it applies to any cart and always changes the total.
- * `undefined` when the Dataset has none or `commerce.json` does not parse.
- */
-export async function readSweepDiscountCode(dataDir: string): Promise<string | undefined> {
-  const raw = await fs
-    .readFile(path.join(dataDir, 'commerce.json'), 'utf-8')
-    .catch(() => undefined);
-  if (raw === undefined) {
-    return undefined;
-  }
-  const commerce = datasetSchema.commerceSchema.safeParse(JSON.parse(raw));
-  if (!commerce.success) {
-    return undefined;
-  }
-  return commerce.data.discount_codes.find(
-    (entry) => entry.kind !== 'free_shipping' && entry.minimum_subtotal === null,
-  )?.code;
 }
 
 function firstHandle(methods: unknown): string | undefined {

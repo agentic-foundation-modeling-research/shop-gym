@@ -54,7 +54,7 @@ export function findDiscountCode(code: string, commerce: Commerce): DiscountCode
  * What `code` does to a cart whose merchandise subtotal is `subtotal` cents,
  * or `null` when the code is unknown or the subtotal is below its minimum.
  */
-export function applyDiscountCode(
+export function priceDiscountCode(
   code: string,
   subtotal: number,
   commerce: Commerce,
@@ -64,6 +64,11 @@ export function applyDiscountCode(
   const minimum = discountCode.minimum_subtotal;
   if (minimum !== null && subtotal < toCents(minimum)) return null;
   return { discountCode, subtotalDiscount: subtotalDiscountCents(discountCode, subtotal) };
+}
+
+/** The cost line that `discountCode` lowers: the merchandise, or the shipping. */
+export function discountTargetType(discountCode: DiscountCode): 'LINE_ITEM' | 'SHIPPING_LINE' {
+  return discountCode.kind === 'free_shipping' ? 'SHIPPING_LINE' : 'LINE_ITEM';
 }
 
 function subtotalDiscountCents(discountCode: DiscountCode, subtotal: number): number {
@@ -108,7 +113,7 @@ export function computeOrderTotals(
 ): OrderTotals {
   const subtotal = subtotalCents(lines);
   const discount =
-    discountCode === null ? null : applyDiscountCode(discountCode, subtotal, commerce);
+    discountCode === null ? null : priceDiscountCode(discountCode, subtotal, commerce);
   const subtotalDiscount = discount?.subtotalDiscount ?? 0;
   const methodShipping = shippingCents(subtotal, method, commerce);
   const freeShipping = discount?.discountCode.kind === 'free_shipping';

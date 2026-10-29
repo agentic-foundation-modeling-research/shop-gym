@@ -28,7 +28,7 @@ import type {
 } from '../data/types.js';
 import { type CartState, CartStore } from '../resolvers/cart.js';
 import { EpisodeClock } from './episode_clock.js';
-import { applyDiscountCode, computeOrderTotals, subtotalCents } from './pricing.js';
+import { computeOrderTotals, priceDiscountCode, subtotalCents } from './pricing.js';
 
 // ── Records ────────────────────────────────────────────────────────────────
 
@@ -286,7 +286,7 @@ export class ShopState {
       const lookup = this.base.variantsByGid.get(line.merchandiseId);
       return lookup === undefined ? [] : [{ price: lookup.variant.price, quantity: line.quantity }];
     });
-    return applyDiscountCode(code, subtotalCents(lines), this.commerce)?.discountCode.code ?? null;
+    return priceDiscountCode(code, subtotalCents(lines), this.commerce)?.discountCode.code ?? null;
   }
 
   /**
