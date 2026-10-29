@@ -89,7 +89,9 @@ packages/shop-arena/
     app/lib/queries.ts        GraphQL documents (`*_QUERY`, `*_MUTATION`, `*_FRAGMENT`)
     app/lib/types.ts          hand-written response types
     app/lib/reviews.ts        Reviews URL parameters, sort options, page size, product rating
-    app/components/account.tsx   AccountNav, LogoutLink, FormErrors, AddressBlock, OrderHistory, OrderDetails
+    app/lib/addresses.ts      ADDRESS_FIELDS, address book mutations
+    app/components/account.tsx   LogoutLink, FormErrors, AddressBlock, OrderHistory, OrderDetails
+    app/components/addresses.tsx AddressBook, DELETE_ADDRESS_CONFIRM
     app/components/reviews.tsx   RatingBlock, ReviewsSection
     app/routes/account/*.tsx  login, register, logout, profile, addresses, orders, order
     app/routes/checkout.tsx   real checkout
