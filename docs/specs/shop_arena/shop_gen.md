@@ -205,6 +205,9 @@ so a resumed or rebuilt loop reruns them; `final_eval` writes
 `build`, `routes_200`, `nav_coverage`, `cart_conformance`,
 `visual_judge`) run in every build; the sidecar is built on the first
 verifier that needs it and rebuilt only when the copy changes. The
+`build` verifier builds through the sidecar too, so each version of the
+copy is built once per run, and a failed build is reported again without
+a new build until the copy changes (2026-10-28). The
 underlying functions stay plain and testable on their own:
 
 - `final_eval/runFinalEval({ dataDir, manualDir?, backendUrl,

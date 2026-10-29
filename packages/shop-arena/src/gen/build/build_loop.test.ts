@@ -174,7 +174,8 @@ describe('runBuildLoop', () => {
       ['routes_200', 'pass'],
       ['data_in_use', 'fail'],
     ]);
-    expect(commands).toContainEqual(['pnpm', 'build']);
+    // `build` and `routes_200` share one storefront build.
+    expect(commands.filter((argv) => argv[1] === 'build')).toEqual([['pnpm', 'build']]);
     expect(result.tasksFinal.map((task) => [task.id, task.status])).toEqual([
       ['gen_backend', 'done'],
       ['gen_homepage', 'in_progress'],

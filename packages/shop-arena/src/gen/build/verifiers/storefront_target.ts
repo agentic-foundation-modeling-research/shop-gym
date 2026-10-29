@@ -14,7 +14,7 @@ export interface StorefrontTarget {
   readonly url: string;
   /**
    * Runs before the first request of a verifier so the served tree reflects
-   * the iteration's edits (the sidecar's `restartIfChanged`). Omit when the
+   * the iteration's edits (the sidecar's `ensureCurrent`). Omit when the
    * server is managed elsewhere, e.g. in `final_eval`.
    */
   readonly prepare?: () => Promise<unknown>;

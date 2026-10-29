@@ -1,19 +1,27 @@
 /**
  * Command-backed storefront verifiers: `typecheck` runs `pnpm typecheck`
- * and `build` runs `pnpm build` inside `artifact/storefront`. Both apply
- * to storefront tasks and fail with the captured output.
+ * inside `artifact/storefront`, and `build` asks the storefront sidecar to
+ * build the copy, so the HTTP verifiers that follow serve that build
+ * instead of building again. Both apply to storefront tasks and fail with
+ * the captured output.
  */
 
 import * as path from 'node:path';
 
 import type { Verifier, VerifierContext, VerifierResult } from '@shop-gym/harness';
 
-import { type CommandRunner, argvLabel, renderCommandFailure, runCommand } from './subprocess.js';
+import { STOREFRONT_BUILD_ARGV, STOREFRONT_BUILD_TIMEOUT_MS } from '../storefront_sidecar.js';
+import {
+  type CommandResult,
+  type CommandRunner,
+  argvLabel,
+  renderCommandFailure,
+  runCommand,
+} from './subprocess.js';
 import { isStorefrontTask } from './task_routes.js';
 
 export const STOREFRONT_DIRNAME = 'storefront';
 const TYPECHECK_TIMEOUT_MS = 180_000;
-const BUILD_TIMEOUT_MS = 300_000;
 
 export interface StorefrontCommandVerifierOptions {
   readonly name: string;
@@ -29,28 +37,19 @@ export function storefrontCommandVerifier(options: StorefrontCommandVerifierOpti
     name: options.name,
     appliesTo: isStorefrontTask,
     async run(ctx: VerifierContext): Promise<VerifierResult> {
-      const label = argvLabel(options.argv);
       const result = await runner(options.argv, {
         cwd: path.join(ctx.artifactDir, STOREFRONT_DIRNAME),
         timeoutMs: options.timeoutMs,
       });
-      if (result.timedOut) {
-        return {
-          verdict: 'fail',
-          feedback: `\`${label}\` exceeded the verifier timeout of ${options.timeoutMs}ms.`,
-          details: { argv: options.argv, timeoutMs: options.timeoutMs },
-        };
-      }
-      if (result.exitCode === 0) {
-        return { verdict: 'pass', details: { argv: options.argv, exitCode: 0 } };
-      }
-      return {
-        verdict: 'fail',
-        feedback: renderCommandFailure(label, result),
-        details: { argv: options.argv, exitCode: result.exitCode },
-      };
+      return commandVerdict(options.argv, options.timeoutMs, result);
     },
   };
+}
+
+/** Builds the storefront copy, e.g. `StorefrontSidecar`. */
+export interface StorefrontBuilder {
+  /** Resolves to the result of building the copy as it is now. */
+  build(): Promise<CommandResult>;
 }
 
 export function storefrontTypecheckVerifier(runner?: CommandRunner): Verifier {
@@ -62,11 +61,36 @@ export function storefrontTypecheckVerifier(runner?: CommandRunner): Verifier {
   });
 }
 
-export function storefrontBuildVerifier(runner?: CommandRunner): Verifier {
-  return storefrontCommandVerifier({
+export function storefrontBuildVerifier(builder: StorefrontBuilder): Verifier {
+  return {
     name: 'build',
-    argv: ['pnpm', 'build'],
-    timeoutMs: BUILD_TIMEOUT_MS,
-    ...(runner !== undefined ? { runner } : {}),
-  });
+    appliesTo: isStorefrontTask,
+    async run(): Promise<VerifierResult> {
+      const result = await builder.build();
+      return commandVerdict(STOREFRONT_BUILD_ARGV, STOREFRONT_BUILD_TIMEOUT_MS, result);
+    },
+  };
+}
+
+function commandVerdict(
+  argv: readonly string[],
+  timeoutMs: number,
+  result: CommandResult,
+): VerifierResult {
+  const label = argvLabel(argv);
+  if (result.timedOut) {
+    return {
+      verdict: 'fail',
+      feedback: `\`${label}\` exceeded the verifier timeout of ${timeoutMs}ms.`,
+      details: { argv, timeoutMs },
+    };
+  }
+  if (result.exitCode === 0) {
+    return { verdict: 'pass', details: { argv, exitCode: 0 } };
+  }
+  return {
+    verdict: 'fail',
+    feedback: renderCommandFailure(label, result),
+    details: { argv, exitCode: result.exitCode },
+  };
 }

@@ -208,7 +208,7 @@ manual directory and `{ llm, model }` for the judge) the order becomes
 
 | Verifier | Applies to | Checks |
 | --- | --- | --- |
-| `typecheck`, `build` | storefront tasks | `pnpm typecheck` / `pnpm build` in `artifact/storefront` |
+| `typecheck`, `build` | storefront tasks | `pnpm typecheck` in `artifact/storefront`; `build` asks the storefront sidecar for its `pnpm build`, so the HTTP verifiers that follow serve that build |
 | `routes_200` | storefront tasks | static routes and the routes of every page bucket return 200, whatever the task; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` returns 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
 | `nav_coverage` | `gen_navigation`, `gen_theme`, `visual_fix` | every `navigation.json` target returns 200 and is linked from the rendered header or footer |
 | `cart_conformance` | `gen_cart_search`, `gen_product`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order |
@@ -216,14 +216,17 @@ manual directory and `{ llm, model }` for the judge) the order becomes
 
 `runBuildLoop` always passes `storefront` (its `judge` option supplies
 the visual judge; `generateShop` sets it to the synthesis model) and
-`storefrontLaunch` is the matching test seam. `build.StorefrontSidecar`
-mirrors the backend sidecar for `artifact/storefront`: `start()` runs
-`pnpm build` and `node server.mjs` in production mode with
-`PUBLIC_STORE_DOMAIN` pointed at the backend sidecar, waits for
-`/health` and logs to `<runDir>/storefront.log`; `ensureCurrent()`, which
-every HTTP verifier calls first, starts it on first use and rebuilds only
-when the storefront's source hash changed, so a run with no storefront
-task never builds it. `SHOPGYM_SLOW_TESTS=1` also runs
+`storefrontLaunch` (the serve step) and `commandRunner` (the build) are
+the matching test seams. `build.StorefrontSidecar` mirrors the backend
+sidecar for `artifact/storefront` and builds each version of the copy
+once: `build()` (the `build` verifier) runs `pnpm build` alone, and
+`ensureCurrent()`, which every HTTP verifier calls first, builds when
+the storefront's source hash changed, then starts `node server.mjs` in
+production mode with `PUBLIC_STORE_DOMAIN` pointed at the backend
+sidecar and waits for `/health`. Both log to `<runDir>/storefront.log`.
+A failed build is kept for its source hash and reported again, without
+a new build, until the copy changes. A run with no storefront task never
+builds it. `SHOPGYM_SLOW_TESTS=1` also runs
 `src/gen/build/verifiers/storefront_slow.test.ts` (real template, real
 build); `SHOPGYM_LIVE=1` sends one real judge call from
 `visual_judge.test.ts`.

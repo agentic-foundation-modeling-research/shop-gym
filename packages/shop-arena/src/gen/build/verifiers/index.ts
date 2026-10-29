@@ -58,7 +58,7 @@ export function buildVerifiers(options: BuildVerifierOptions): Verifier[] {
   if (storefront !== undefined) {
     verifiers.push(
       storefrontTypecheckVerifier(options.runner),
-      storefrontBuildVerifier(options.runner),
+      storefrontBuildVerifier(storefront.sidecar),
       routes200Verifier({
         target: storefrontTarget(storefront, options.sidecar),
         dataDir: storefront.dataDir,
@@ -192,6 +192,7 @@ export {
 } from './sandbox_contract.js';
 export {
   STOREFRONT_DIRNAME,
+  type StorefrontBuilder,
   type StorefrontCommandVerifierOptions,
   storefrontBuildVerifier,
   storefrontCommandVerifier,

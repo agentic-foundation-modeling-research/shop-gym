@@ -2,9 +2,9 @@
  * The build loop: seeds the storefront and backend templates into a run,
  * starts the backend sidecar over the run's dataset, and drives the harness
  * plan-exec loop with the build prompts, the agent tools and the verifier
- * set. The storefront sidecar is built and started by the first storefront
- * verifier (or `screenshot_page` call) that needs it and restarted when the
- * copy changes. The backend sidecar is brought up to date with the agent's
+ * set. The storefront sidecar builds each version of the copy once, for the
+ * first verifier (or `screenshot_page` call) that needs it, and serves that
+ * build until the copy changes. The backend sidecar is brought up to date with the agent's
  * edits before each `run_command`, `screenshot_page` and verifier that talks
  * to it.
  *
@@ -127,6 +127,7 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     backendUrl,
     port: await freePort(),
     logPath: path.join(options.runDir, STOREFRONT_LOG),
+    ...(options.commandRunner !== undefined ? { runner: options.commandRunner } : {}),
     ...(options.storefrontLaunch !== undefined ? { launch: options.storefrontLaunch } : {}),
   });
   const agentTools = buildAgentTools({
