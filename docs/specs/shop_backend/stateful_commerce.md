@@ -102,7 +102,7 @@ src/
                         customer, order, checkout, index (merge order)
   resolvers/            + customer.ts, order.ts, checkout.ts; cart.ts extended
   state/money.ts        cents <-> decimal strings
-  state/pricing.ts      tax, shipping, order totals from commerce.json
+  state/pricing.ts      Discount codes, tax, shipping, order totals from commerce.json
   state/episode_clock.ts EpisodeClock, DEFAULT_EPISODE_START
   state/shop_state.ts   ShopState, records
   state/episodes.ts     EpisodeStore, DEFAULT_EPISODE_ID
@@ -179,10 +179,10 @@ Control API (`sandbox/control_api.ts`):
 { episodeId, now,
   customers[]: { id, email, firstName, lastName, phone, acceptsMarketing, createdAt, defaultAddressId, addresses[] },
   sessions[]:  { accessToken, customerId, expiresAt },
-  carts[]:     { id, customerId, email, lines[]: { id, merchandiseId, quantity }, discountCodes[], note },
+  carts[]:     { id, customerId, email, lines[]: { id, merchandiseId, quantity }, discountCodes[], appliedDiscountCode, note },
   orders[]:    { id, name, customerId, email, processedAt, financialStatus, fulfillmentStatus, currencyCode,
                  lineItems[]: { variantId, title, quantity, price }, shippingAddress, shippingMethod, paymentMethod,
-                 subtotalPrice, totalShippingPrice, totalTax, totalPrice },
+                 subtotalPrice, totalShippingPrice, totalTax, totalPrice, discountCode, discountAmount },
   inventory[]: { variantId, baseQuantityAvailable, quantityAvailable } }
 ```
 
@@ -202,8 +202,9 @@ New SDL modules and operations (names follow the Storefront API):
 | customer | `Customer { id email firstName lastName displayName phone acceptsMarketing createdAt updatedAt defaultAddress addresses(first) numberOfOrders orders(first, reverse, sortKey) }` | no |
 | customer | `MailingAddress`, `MailingAddressInput`, `CustomerAccessToken`, `CustomerUserError`, `CustomerErrorCode` | no |
 | cart | `CartBuyerIdentityInput.customerAccessToken`, `CartBuyerIdentity.customer` | no |
+| cart | `Cart.discountAllocations`, `CartDiscountAllocation`, `CartCodeDiscountAllocation { code discountedAmount targetType }` | no |
 | order | `Query.order(id: ID!): Order` | yes |
-| order | `Order { id name orderNumber email processedAt financialStatus fulfillmentStatus currencyCode subtotalPrice totalShippingPrice totalTax totalPrice shippingAddress lineItems(first) shippingMethod paymentMethod }` | `shippingMethod`, `paymentMethod` |
+| order | `Order { id name orderNumber email processedAt financialStatus fulfillmentStatus currencyCode subtotalPrice totalShippingPrice totalTax totalPrice shippingAddress lineItems(first) shippingMethod paymentMethod discountCode }`, `OrderDiscountCode { code targetType amount }` | `shippingMethod`, `paymentMethod`, `discountCode` |
 | order | `OrderLineItem { title quantity variant originalTotalPrice }`, `OrderSortKeys`, status enums | no |
 | checkout | `Query.commerceSettings: CommerceSettings!` | yes |
 | checkout | `Mutation.checkoutComplete(cartId: ID!, input: CheckoutCompleteInput!): CheckoutCompletePayload!` | yes |
@@ -229,13 +230,23 @@ Cart cost: `totalTaxAmount` is non-null only when `commerce.tax_rate > 0`,
 mirroring Shopify's null-until-calculated behaviour, so datasets without
 `commerce.json` keep their previous cart responses.
 
+Discount codes: a cart holds one code (`cartDiscountCodesUpdate` with two
+or more returns an `INVALID` user error), matched in any case and stored in
+its `commerce.json` spelling. It applies while the merchandise subtotal
+reaches its minimum: a percent or fixed code lowers the subtotal before tax,
+never below zero, and a free-shipping code waives the shipping. Cart cost,
+`discountCodes.applicable` and `discountAllocations` show it on every read.
+`checkoutComplete` records the applied code and the discount amount (the
+waived shipping for a free-shipping code) on the order, exposed as the
+sandbox field `Order.discountCode`.
+
 ### 5.6 Dataset additions
 
 | File | Default | Shape (zod in `src/data/schema.ts`) |
 | --- | --- | --- |
 | `customers.json` | `[]` | `customerSchema[]`: `id, email, password, first_name, last_name, phone, accepts_marketing, created_at, addresses: addressSchema[], default_address_id` |
-| `orders.json` | `[]` | `orderSchema[]`: `id, customer_id, email, processed_at, financial_status, fulfillment_status, currency_code, line_items: { variant_id, title, quantity, price }[], shipping_address, shipping_method, payment_method, subtotal_price, total_shipping_price, total_tax, total_price` |
-| `commerce.json` | `DEFAULT_COMMERCE` | `commerceSchema`: `tax_rate (0)`, `free_shipping_threshold (null)`, `shipping_methods: { handle, title, price }[] ([])`, `payment_methods: { handle, title }[] ([])` |
+| `orders.json` | `[]` | `orderSchema[]`: `id, customer_id, email, processed_at, financial_status, fulfillment_status, currency_code, line_items: { variant_id, title, quantity, price }[], shipping_address, shipping_method, payment_method, subtotal_price, total_shipping_price, total_tax, total_price, discount_code (null), discount_amount ('0.00')` |
+| `commerce.json` | `DEFAULT_COMMERCE` | `commerceSchema`: `tax_rate (0)`, `free_shipping_threshold (null)`, `shipping_methods: { handle, title, price }[] ([])`, `payment_methods: { handle, title }[] ([])`, `discount_codes: { code, kind: percentage / fixed_amount / free_shipping, amount, minimum_subtotal, hint }[] ([])` |
 
 `addressSchema`: `id, first_name, last_name, company, address1, address2,
 city, province, province_code, country, country_code, zip, phone`.
@@ -277,8 +288,9 @@ city, province, province_code, country, country_code, zip, phone`.
 | 4 | Customer / order / checkout resolvers; cart customer association | done |
 | 5 | Episode header, `StateSnapshot`, control API, server wiring | done |
 | 6 | Contract suite, template `AGENTS.md`, README, standalone install check | done |
-| 7 | `customerUpdate`, `customerAddress*`, `cartDeliveryAddressesAdd`, delivery options, discount application, `orderCancel`/return/reorder | not started (follow-up) |
+| 7 | `customerUpdate`, `customerAddress*`, `cartDeliveryAddressesAdd`, delivery options, `orderCancel`/return/reorder | not started (follow-up) |
 | 8 | Cross-episode cart id namespacing (ids are per-episode deterministic and may coincide) | not started (decide when graders need global ids) |
+| 9 | Discount codes: `commerce.json` codes, cart pricing and allocations, codes on orders and in the StateSnapshot | done |
 
 ---
 
@@ -297,6 +309,6 @@ Fresh episode, fixture dataset: `customerAccessTokenCreate` ->
   credential store.
 - Session expiry only advances with mutations (the clock is not wall time),
   so tokens effectively never expire during an episode.
-- `Customer.orders(query:)` filtering, `cart.deliveryGroups`, and real
-  discount math are not implemented; `checkoutUrl` remains `'#'`.
+- `Customer.orders(query:)` filtering and `cart.deliveryGroups` are not
+  implemented; `checkoutUrl` remains `'#'`.
 - Cart ids restart at `cart-1` in every episode.

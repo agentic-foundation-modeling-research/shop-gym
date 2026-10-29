@@ -111,21 +111,25 @@ Nothing in v1.1 reads the Python copy.
 | `/account/addresses` | all `Customer.addresses`, default marked (read-only: the backend has no address mutations) | - | `Customer`, `CustomerAddresses` |
 | `/account/orders` | up to 100 orders, newest first, with `totalCount` | - | `Customer`, `CustomerOrders(first: 100)` |
 | `/account/orders/:orderNumber` | order detail; 404 unless `order.email` matches the customer | - | `Customer`, `Order` |
-| `/checkout` | cart, `commerceSettings`, customer (prefill) | `cartBuyerIdentityUpdate` when logged in, then `checkoutComplete`; clears `cartId`; redirects | `Cart`, `CommerceSettings`, `Customer`, `CartBuyerIdentityUpdate`, `CheckoutComplete` |
-| `/checkout/confirmation/:orderNumber` | order detail for guests | - | `Order` |
+| `/checkout` | cart, `commerceSettings`, customer (prefill) | intent `discount` / `discount-remove`: `cartDiscountCodesUpdate`; else `cartBuyerIdentityUpdate` when logged in, then `checkoutComplete`; clears `cartId`; redirects | `Cart`, `CommerceSettings`, `Customer`, `CartDiscountCodesUpdate`, `CartBuyerIdentityUpdate`, `CheckoutComplete` |
+| `/checkout/confirmation/:orderNumber` | the thank-you page: order detail, `commerceSettings` for method titles | - | `Order`, `CommerceSettings` |
 
 Protected loaders go through `requireCustomer`, which redirects to
 `/account/login?redirectTo=<path>` and clears a stale token cookie when the
 backend no longer recognises it. The root loader adds `customer` so the
 header can render Login / Account.
 
-Checkout redirects guests to `/checkout/confirmation/<n>` and logged-in
-customers to `/account/orders/<n>`. Guest checkout needs no login: the
-contact email is sent as `CheckoutCompleteInput.email`. The order summary
-recomputes subtotal, shipping, tax, and total from `commerceSettings` with
-the backend's rules (integer cents, flat `taxRate` on the subtotal, shipping
-waived at `freeShippingThreshold`), reacting to the selected shipping method
-client-side.
+Checkout and the thank-you page follow the Standard sub-manual. Checkout
+redirects every shopper to the thank-you page `/checkout/confirmation/<n>`.
+Guest checkout needs no login: the contact email is sent as
+`CheckoutCompleteInput.email`. The order summary takes the subtotal, the
+Discount code and the tax from the cart cost and adds the shipping with the
+backend's rules (integer cents, waived at `freeShippingThreshold` on the
+subtotal before the discount, or by a free-shipping code), reacting to the
+selected shipping method client-side. The "Discount code" field on checkout,
+the cart page and the cart drawer replaces the cart's code; a code that does
+not apply is not kept (the earlier code comes back) and the field shows
+"Enter a valid discount code".
 
 ### 5.3 Cookies and headers
 
@@ -147,8 +151,9 @@ client-side.
 `fixtures/sandbox_shop_v0/` gains `customers.json`, `orders.json`, and
 `commerce.json` copied from `packages/shop_backend/tests/fixtures/`, so the
 seeded customer (`jane.doe@example.com` / `password123`, one address, order
-`#1001`), two shipping methods, two payment methods, and the free-shipping
-threshold are identical on both sides.
+`#1001`), two shipping methods, two payment methods, the free-shipping
+threshold, and the Discount codes `WELCOME10`, `SAVE5` and `FREESHIP` are
+identical on both sides.
 
 ### 5.5 Verification
 
@@ -158,15 +163,16 @@ template files to a temp dir, runs `pnpm install --ignore-workspace
 template fixture and `server.mjs` in production mode on free ports, and
 drives: home and product 200, add to cart, guest checkout to confirmation,
 inline `CheckoutUserError`, register, profile, logout, login with cart
-attach, prefilled checkout to `/account/orders/<n>`, 404 on another
+attach, Discount codes on the cart page, prefilled checkout to the
+thank-you page and `/account/orders/<n>`, 404 on another
 customer's order, and episode isolation under `x-shopgym-episode: ep1`.
 
 `src/templates.browser.test.ts` is not gated, so it runs in every `pnpm test`
 and in CI. It seeds and builds the template, serves it through
 `StorefrontSidecar` over the in-process backend on the template fixture, and
 walks one shopper in Chromium with the shared browser steps of the final eval:
-sign up, log out, log in, add to cart, check out, the thank-you page and the
-account order page. Each test is one step; it asserts on the page and, where
+sign up, log out, log in, add to cart, an unknown and a valid Discount code,
+check out, the thank-you page and the account order page. Each test is one step; it asserts on the page and, where
 the step changes state, on the episode's StateSnapshot from the Control API.
 New template features add a test that calls one more shared step.
 
@@ -200,6 +206,7 @@ is read-only until the backend grows `customerAddress*` mutations.
 | 8 | Delete the Python template trees (Hydrogen and `react-vite`) | deferred to M11 |
 | 9 | Address and payment-method management, returns, cancellation | blocked on backend operations (spec 5.6.2 later rows) |
 | 10 | Ungated browser suite in every `pnpm test` and CI (`src/templates.browser.test.ts`) | done |
+| 11 | Checkout and thank-you page per the Standard sub-manual, with the "Discount code" field; discount shown on the cart and the order detail | done |
 
 ## 8. Appendix
 
