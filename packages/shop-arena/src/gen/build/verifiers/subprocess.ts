@@ -16,6 +16,8 @@ export interface CommandResult {
 export interface CommandOptions {
   readonly cwd: string;
   readonly timeoutMs: number;
+  /** Variables set on top of the inherited environment. */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export type CommandRunner = (
@@ -40,7 +42,7 @@ export const runCommand: CommandRunner = (argv, options) => {
         timeout: options.timeoutMs,
         killSignal: 'SIGKILL',
         maxBuffer: MAX_BUFFER_BYTES,
-        env: { ...process.env, CI: '1', FORCE_COLOR: '0' },
+        env: { ...process.env, CI: '1', FORCE_COLOR: '0', ...options.env },
       },
       (error, stdout, stderr) => {
         if (error === null) {

@@ -60,6 +60,19 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
   storefront task editing `backend/`) are `advisory`: the agent cannot undo
   them cleanly and a hard fail would loop forever. Python only enforced the
   table through the prompt.
+- **`artifact/` is checkpointed in git.** `ArtifactCheckpoints` keeps a
+  bare repository at `<runDir>/checkpoints.git` with `artifact/` as its
+  work tree, so the agent's tools and the published shop never see it.
+  The build loop commits after seeding and after each iteration the
+  harness keeps, and rolls back to the last commit when the harness
+  abandons one (timeout, unparseable plan, protocol violation, runtime
+  error), through the harness `onIterationEnd` hook. `owned_files` checks
+  the paths changed since the last commit, so a resumed run and the task
+  after an abandoned one are not blamed for edits they did not make. The
+  seed roots (`data/`, `manual/`, guarded by the harness seed check),
+  `node_modules` and build outputs are not tracked; a rollback leaves
+  them in place. On resume, what an interrupted iteration left is
+  committed as is, matching the harness, which keeps it too.
 - **`data_in_use` runs after every task**, not only backend tasks, because a
   schema change in `gen_backend` can break queries the storefront already
   ships. It is skipped (pass) only when no GraphQL document exists.
@@ -108,6 +121,7 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
 ```
 packages/shop-arena/src/gen/build/
   build_loop.ts        runBuildLoop(options): seed, sidecar, verifiers, runPlanExecLoop
+  checkpoints.ts       ArtifactCheckpoints (open, commit, rollback, changedPaths)
   seed.ts              seedTemplate / seedBackend / templateFingerprint / template.json
   sidecar.ts           BackendSidecar (start, stop, ensureCurrent), freePort
   owned_files.ts       glob table + ownedFileViolations(taskId, changedPaths)
@@ -116,7 +130,7 @@ packages/shop-arena/src/gen/build/
   tree.ts              snapshotTree / diffTrees / hashSnapshot (sha256 per file)
   verifiers/
     index.ts           buildVerifiers({ genBackend, sidecar, ownedFiles })
-    owned_files.ts     OwnedFilesVerifier (diff vs previous iteration)
+    owned_files.ts     OwnedFilesVerifier (paths changed since the last checkpoint)
     backend_commands.ts backend_typecheck (pnpm typecheck), backend_test (pnpm test)
     sandbox_contract.ts read-only drift vs template.json + tests/contract suite
     data_in_use.ts     GraphQL documents validated against the live schema
@@ -131,6 +145,7 @@ packages/shop-arena/src/gen/build/
   AGENTS.md, plan.md, run.json, iters/        harness-owned
   build.json                                  genBackend, port, template fingerprints
   sidecar.log                                 backend stdout/stderr
+  checkpoints.git/                            bare repo; work tree artifact/
   artifact/
     data/, manual/                            seed roots (immutable, from artifactSeedDir)
     storefront/                               seeded template + .env + template.json
@@ -175,8 +190,9 @@ With `genBackend`, the planner emits `gen_backend` at priority 10 ahead of
 | `visual_fix` | `storefront/**` |
 | nobody | `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**`, both `template.json`, `storefront/.env` |
 
-`ownedFileViolations` is pure; `OwnedFilesVerifier` feeds it the diff of two
-`snapshotTree` calls (previous iteration vs now).
+`ownedFileViolations` is pure; `OwnedFilesVerifier` feeds it
+`ArtifactCheckpoints.changedPaths()`, the paths changed since the last
+kept iteration.
 
 ### 5.6 Verifiers
 
@@ -197,8 +213,10 @@ feedback is truncated to 1500 characters per stream.
 
 `runBuildLoop` is thin: load prompts, create the workspace (fresh) or read
 `build.json` (resume), seed both templates, write `.env` and `build.json`,
-start the sidecar, prime `owned_files`, run `runPlanExecLoop` with the
-verifier list, and stop the sidecar in `finally`. The agent tools and the
+open the `artifact/` checkpoints, start the sidecar, run
+`runPlanExecLoop` with the verifier list and an `onIterationEnd` hook that
+commits a kept iteration and rolls back an abandoned one, and stop the
+sidecar in `finally`. The agent tools and the
 storefront verifier targets await `ensureCurrent()` themselves.
 
 ## 6. Alternatives
@@ -226,6 +244,7 @@ storefront verifier targets await `ensureCurrent()` themselves.
 | 8 | Storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) | M7 |
 | 9 | CLI `--gen-backend`, `publish` recording `template.json` | M7 |
 | 10 | Contract suite against the shop's own dataset | M4 / M7 follow-up |
+| 11 | `artifact/` git checkpoints; rollback of abandoned iterations | Done |
 
 ## 8. Appendix
 

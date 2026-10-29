@@ -80,7 +80,9 @@ Final action of any executor iteration: edit `plan.md` to mark **only your
 selected task** as `[x]` (success) or `[!]` (blocked). The task line keeps
 its exact shape `- [<marker>] <task_id> — <brief> [priority: N]`; a
 blocked reason goes into the brief after the separator, never after the
-priority. Do not touch any other task's line.
+priority. Do not touch any other task's line. An iteration that times out,
+leaves `plan.md` unparseable or breaks this protocol is discarded: the
+harness restores `artifact/` to its state before the iteration.
 
 ---
 

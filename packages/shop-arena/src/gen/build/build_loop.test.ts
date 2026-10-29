@@ -8,7 +8,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { STOREFRONT_TEMPLATE_DIR } from '../../templates.js';
 import { stubStorefrontLaunch } from '../testing.js';
-import { BUILD_JSON, type BuildRunInfo, runBuildLoop } from './build_loop.js';
+import { BUILD_JSON, type BuildRunInfo, CHECKPOINTS_DIRNAME, runBuildLoop } from './build_loop.js';
+import { ArtifactCheckpoints } from './checkpoints.js';
 import { defaultBackendTemplateDir } from './seed.js';
 import type { SidecarLaunch, SidecarLaunchOptions } from './sidecar.js';
 import type { CommandRunner } from './verifiers/subprocess.js';
@@ -187,6 +188,67 @@ describe('runBuildLoop', () => {
     expect(launches).toHaveLength(2);
     expect(launches.every((l) => l.dataDir === path.join(runDir, 'artifact', 'data'))).toBe(true);
     expect(events).toContain('plan:message');
+  });
+
+  it('rolls an abandoned iteration back so the next task is not blamed for it', async () => {
+    const runDir = path.join(root, 'run');
+    const schema = path.join(runDir, 'artifact', 'backend', 'src', 'schema');
+    const runtime = new FakeRuntime([
+      plannerScript(),
+      {
+        writeFiles: {
+          'artifact/backend/src/schema/shop.ts': 'half done',
+          'artifact/backend/src/schema/loyalty.ts': 'half done',
+        },
+        status: 'aborted',
+      },
+      {
+        writeFiles: {
+          'artifact/storefront/app/routes/home.tsx': 'export default function Home() {}\n',
+          'plan.md': PLAN.replace('- [ ] gen_homepage', '- [x] gen_homepage'),
+        },
+      },
+    ]);
+    const result = await runBuildLoop({
+      runDir,
+      seedDir,
+      storefrontTemplateDir: STOREFRONT_TEMPLATE_DIR,
+      backendTemplateDir: defaultBackendTemplateDir(),
+      genBackend: true,
+      runtime,
+      model: MODEL,
+      tools: [],
+      maxIters: 2,
+      timeoutMs: 60_000,
+      commandRunner: fakeRunner,
+      sidecarLaunch: inProcessLaunch,
+      storefrontLaunch: stubStorefrontLaunch,
+    });
+
+    expect(result.finalStatus).toBe('timeout');
+    expect(await fs.readFile(path.join(schema, 'shop.ts'), 'utf-8')).toBe(
+      await fs.readFile(
+        path.join(defaultBackendTemplateDir(), 'src', 'schema', 'shop.ts'),
+        'utf-8',
+      ),
+    );
+    await expect(fs.stat(path.join(schema, 'loyalty.ts'))).rejects.toThrow();
+    const ownedFiles = JSON.parse(
+      await fs.readFile(
+        path.join(runDir, 'iters', 'exec-0001', 'checks', 'verifiers', 'owned_files.json'),
+        'utf-8',
+      ),
+    ) as { taskId: string; verdict: string; details: { changedPaths: string[] } };
+    expect(ownedFiles).toMatchObject({
+      taskId: 'gen_homepage',
+      verdict: 'pass',
+      details: { changedPaths: ['storefront/app/routes/home.tsx'] },
+    });
+    const checkpoints = new ArtifactCheckpoints({
+      gitDir: path.join(runDir, CHECKPOINTS_DIRNAME),
+      workTree: path.join(runDir, 'artifact'),
+    });
+    expect(await checkpoints.changedPaths()).toEqual([]);
   });
 
   it('resumes a run with the recorded port and flags', async () => {

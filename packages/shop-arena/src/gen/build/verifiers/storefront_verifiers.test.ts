@@ -288,7 +288,7 @@ describe('buildVerifiers with a storefront', () => {
       logPath: '/tmp/y.log',
       launch: async () => ({ stop: async () => {} }),
     });
-    const ownedFiles = new OwnedFilesVerifier();
+    const ownedFiles = new OwnedFilesVerifier({ changedPaths: async () => [] });
     const judge = {
       llm: {
         complete: async () => ({

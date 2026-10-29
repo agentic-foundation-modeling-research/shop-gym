@@ -1,10 +1,11 @@
-/** Build loop public API: seeding, sidecar, prompts, owned files, verifiers, loop. */
+/** Build loop public API: seeding, sidecar, prompts, owned files, checkpoints, verifiers, loop. */
 
 export {
   BUILD_JSON,
   type BuildLoopOptions,
   type BuildLoopResult,
   type BuildRunInfo,
+  CHECKPOINTS_DIRNAME,
   DATA_DIRNAME,
   MANUAL_DIRNAME,
   SIDECAR_LOG,
@@ -12,6 +13,11 @@ export {
   readBuildInfo,
   runBuildLoop,
 } from './build_loop.js';
+export {
+  ArtifactCheckpoints,
+  type ArtifactCheckpointsOptions,
+  CheckpointError,
+} from './checkpoints.js';
 export {
   BACKEND_TASK_GLOBS,
   type OwnedFileViolation,

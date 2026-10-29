@@ -1,35 +1,33 @@
 /**
- * `owned_files` verifier: diffs `artifact/` against the snapshot taken
- * after the previous iteration and classifies every changed path with the
- * owned-file table. Protected paths fail the iteration; edits in another
- * task's slice are advisory, since the agent can only move forward.
+ * `owned_files` verifier: classifies every `artifact/` path the iteration
+ * changed with the owned-file table. Protected paths fail the iteration;
+ * edits in another task's slice are advisory, since the agent can only
+ * move forward.
  */
 
 import type { Verifier, VerifierContext, VerifierResult } from '@shop-gym/harness';
 
 import { type OwnedFileViolation, ownedFileViolations } from '../owned_files.js';
-import { type TreeSnapshot, diffTrees, snapshotTree } from '../tree.js';
 
 export const OWNED_FILES_NAME = 'owned_files';
 
+/** What the current iteration changed, e.g. `ArtifactCheckpoints`. */
+export interface ChangedPaths {
+  /** Sorted POSIX paths relative to `artifact/`, changed since the last kept iteration. */
+  changedPaths(): Promise<readonly string[]>;
+}
+
 export class OwnedFilesVerifier implements Verifier {
   readonly name = OWNED_FILES_NAME;
-  private baseline: TreeSnapshot | undefined;
+
+  constructor(private readonly changes: ChangedPaths) {}
 
   appliesTo(_taskId: string): boolean {
     return true;
   }
 
-  /** Record the current `artifact/` content as the baseline for the next run. */
-  async prime(artifactDir: string): Promise<void> {
-    this.baseline = await snapshotTree(artifactDir);
-  }
-
   async run(ctx: VerifierContext): Promise<VerifierResult> {
-    const before = this.baseline ?? {};
-    const after = await snapshotTree(ctx.artifactDir);
-    this.baseline = after;
-    const changed = diffTrees(before, after);
+    const changed = await this.changes.changedPaths();
     const violations = ownedFileViolations(ctx.selectedTaskId, changed);
     const details = { changedPaths: changed, violations };
     if (violations.length === 0) {

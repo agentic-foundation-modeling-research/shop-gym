@@ -8,11 +8,17 @@
  * edits before each `run_command`, `screenshot_page` and verifier that talks
  * to it.
  *
+ * `artifact/` is checkpointed in git after seeding and after each iteration
+ * the harness keeps. An iteration the harness abandons (timeout, unparseable
+ * plan, protocol violation, runtime error) is rolled back to the last
+ * checkpoint, and `owned_files` checks what changed since it.
+ *
  * ```
  * <runDir>/
  *   AGENTS.md  prompts/  plan.md  iters/  run.json      (harness)
  *   build.json                                          (port, flags, template fingerprints)
  *   sidecar.log  storefront.log                         (sidecar stdout/stderr)
+ *   checkpoints.git/                                    (bare repo, work tree `artifact/`)
  *   artifact/
  *     data/ manual/            immutable seed (`artifactSeedDir`)
  *     storefront/ backend/     template copies the agent edits
@@ -34,6 +40,7 @@ import {
 } from '@shop-gym/harness';
 
 import { buildAgentTools } from './agent_tools.js';
+import { ArtifactCheckpoints } from './checkpoints.js';
 import { loadBuildPrompts } from './prompts.js';
 import { type TemplateFingerprint, seedTemplate } from './seed.js';
 import { BackendSidecar, type SidecarLaunch, freePort } from './sidecar.js';
@@ -49,6 +56,7 @@ import type { CommandRunner } from './verifiers/subprocess.js';
 export const BUILD_JSON = 'build.json';
 export const SIDECAR_LOG = 'sidecar.log';
 export const STOREFRONT_LOG = 'storefront.log';
+export const CHECKPOINTS_DIRNAME = 'checkpoints.git';
 export const STOREFRONT_DIRNAME = 'storefront';
 export const BACKEND_DIRNAME = 'backend';
 export const DATA_DIRNAME = 'data';
@@ -76,7 +84,7 @@ export interface BuildLoopOptions {
   /** Visual judge for the storefront verifiers; `visual_judge` is skipped when omitted. */
   readonly judge?: StorefrontJudge;
   readonly onEvent?: (iterId: string, event: AgentEvent) => void;
-  /** Test seams. */
+  /** Test seams. `commandRunner` does not reach the checkpoint `git`, which always runs. */
   readonly commandRunner?: CommandRunner;
   readonly sidecarLaunch?: SidecarLaunch;
   readonly storefrontLaunch?: StorefrontLaunch;
@@ -164,7 +172,13 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     );
   }
 
-  const ownedFiles = new OwnedFilesVerifier();
+  const checkpoints = new ArtifactCheckpoints({
+    gitDir: path.join(options.runDir, CHECKPOINTS_DIRNAME),
+    workTree: artifactDir,
+    untrackedDirs: [DATA_DIRNAME, MANUAL_DIRNAME],
+  });
+  await checkpoints.open(existing === undefined ? 'seed' : 'resume');
+  const ownedFiles = new OwnedFilesVerifier(checkpoints);
   const verifiers = buildVerifiers({
     genBackend,
     sidecar,
@@ -181,11 +195,14 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
 
   await sidecar.start();
   try {
-    await ownedFiles.prime(artifactDir);
     const result = await runPlanExecLoop(
       {
         ...config,
         verifiers,
+        onIterationEnd: (end) =>
+          end.outcome === 'kept'
+            ? checkpoints.commit(`${end.iterId} ${end.taskId ?? ''}`.trimEnd())
+            : checkpoints.rollback(),
         ...(options.onEvent !== undefined ? { onEvent: options.onEvent } : {}),
       },
       options.runtime,
