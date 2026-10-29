@@ -21,20 +21,14 @@ import type {
   MutationCustomerDefaultAddressUpdateArgs,
   QueryCustomerArgs,
 } from '../__generated__/resolvers-types.js';
-import type {
-  AddressChanges,
-  AddressRecord,
-  CustomerRecord,
-  NewAddress,
-} from '../state/shop_state.js';
+import type { AddressChanges, AddressRecord, CustomerRecord } from '../state/shop_state.js';
+import { REQUIRED_ADDRESS_FIELDS, optionalLine, toNewAddress } from './address.js';
 import { gid } from './builders.js';
 import type { ResolverContext } from './index.js';
 import { type OrderConnectionNode, buildOrderConnection } from './order.js';
 
 const MIN_PASSWORD_LENGTH = 5;
 
-/** Address lines that a saved address and a checkout shipping address must have. */
-export const REQUIRED_ADDRESS_FIELDS = ['address1', 'city', 'country', 'zip'] as const;
 const OPTIONAL_ADDRESS_FIELDS = [
   'firstName',
   'lastName',
@@ -395,24 +389,6 @@ function blankAddressErrors(input: MailingAddressInput, isNew: boolean): Custome
   }));
 }
 
-/** A new address book entry from `input`, whose required lines are not blank. */
-function toNewAddress(input: MailingAddressInput, countryCode: string): NewAddress {
-  return {
-    firstName: optionalLine(input.firstName),
-    lastName: optionalLine(input.lastName),
-    company: optionalLine(input.company),
-    address1: (input.address1 ?? '').trim(),
-    address2: optionalLine(input.address2),
-    city: (input.city ?? '').trim(),
-    province: optionalLine(input.province),
-    provinceCode: null,
-    country: (input.country ?? '').trim(),
-    countryCode,
-    zip: (input.zip ?? '').trim(),
-    phone: optionalLine(input.phone),
-  };
-}
-
 /** The lines that `input` sets, for an address book edit; their required lines are not blank. */
 function toAddressChanges(input: MailingAddressInput): AddressChanges {
   const changes: { -readonly [K in keyof AddressChanges]: AddressChanges[K] } = {};
@@ -435,10 +411,4 @@ function parseAddressGid(id: string): number | null {
 
 function addressNotFoundError(field: string): CustomerUserErrorNode {
   return { code: 'NOT_FOUND', field: [field], message: 'Address does not exist' };
-}
-
-/** A trimmed optional line; blank is `null`. */
-function optionalLine(value: string | null | undefined): string | null {
-  const trimmed = (value ?? '').trim();
-  return trimmed === '' ? null : trimmed;
 }

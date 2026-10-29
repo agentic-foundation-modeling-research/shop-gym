@@ -100,7 +100,7 @@ src/
   data/loader.ts        + customers.json / orders.json / commerce.json / reviews.json, DEFAULT_COMMERCE
   schema/               directives, common, shop, catalog, content, search, cart,
                         customer, order, checkout, index (merge order)
-  resolvers/            + customer.ts, order.ts, checkout.ts, review.ts; cart.ts and metafields.ts extended
+  resolvers/            + address.ts, customer.ts, order.ts, checkout.ts, review.ts; cart.ts and metafields.ts extended
   state/money.ts        cents <-> decimal strings
   state/pricing.ts      Discount codes, tax, shipping, order totals from commerce.json
   state/episode_clock.ts EpisodeClock, DEFAULT_EPISODE_START
@@ -256,7 +256,9 @@ customer with addresses always has one. New addresses take the next address
 id, after the seeded customer and order addresses. `countryCode` is the
 store's (the sandbox ships to one country), and a changed province clears
 `provinceCode`. Each success ticks the clock once and sets the customer's
-`updatedAt`; a user error changes nothing.
+`updatedAt`; a user error changes nothing. The address book and
+`checkoutComplete` save a `MailingAddressInput` the same way: each line is
+trimmed and a blank optional line is `null`.
 
 Reviews: read-only and the same in every Episode. `Product.reviews` sorts
 by the sort key, then puts the more recent Review first, then keeps the
