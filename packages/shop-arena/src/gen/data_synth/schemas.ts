@@ -168,14 +168,20 @@ export const personaSchema = z.object({
   last_name: z.string().min(1),
   phone: z.string().nullable(),
   accepts_marketing: z.boolean(),
-  address: z.object({
-    address1: z.string().min(1),
-    address2: z.string().nullable(),
-    city: z.string().min(1),
-    province: z.string().nullable(),
-    province_code: z.string().nullable(),
-    zip: z.string().min(1),
-  }),
+  /** Saved addresses; the first one is the default. */
+  addresses: z
+    .array(
+      z.object({
+        address1: z.string().min(1),
+        address2: z.string().nullable(),
+        city: z.string().min(1),
+        province: z.string().nullable(),
+        province_code: z.string().nullable(),
+        zip: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .max(3),
 });
 export type Persona = z.infer<typeof personaSchema>;
 export const personasSchema = z.array(personaSchema);

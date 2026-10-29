@@ -74,11 +74,18 @@ describe('runDataSynth', () => {
     const customers = datasetSchema.customersFileSchema.parse(
       await readJson(path.join(dataDir, 'customers.json')),
     );
+    // Five Personas; the LLM writes names and addresses, code assigns emails, passwords and ids.
     expect(customers.map((c) => c.email)).toEqual([
       'jane.doe@example.com',
       'omar.haddad@example.com',
       'lena.berg@example.com',
+      'kenji.sato@example.com',
+      'ana.silva@example.com',
     ]);
+    expect(customers.map((c) => c.addresses.length)).toEqual([1, 2, 3, 1, 2]);
+    expect(customers.every((c) => c.default_address_id === c.addresses[0]?.id)).toBe(true);
+    expect(new Set(customers.flatMap((c) => c.addresses.map((a) => a.id))).size).toBe(9);
+    expect(new Set(customers.map((c) => c.password)).size).toBe(5);
     const orders = datasetSchema.ordersFileSchema.parse(
       await readJson(path.join(dataDir, 'orders.json')),
     );
@@ -144,6 +151,16 @@ describe('runDataSynth', () => {
       await readJson(path.join(shopDir, 'data', 'products.json')),
     );
     expect(products.every((p) => p.vendor === 'AisleArena')).toBe(true);
+  });
+
+  it('retries Personas when fewer than two have more than one address', async () => {
+    const llm = new ScriptedSynthLlm({ singleAddressFirst: true });
+    await runDataSynth(stepContext(llm));
+    const personaPrompts = llm.requests.filter((r) => String(r.prompt).includes('customer personas'));
+    expect(personaPrompts).toHaveLength(2);
+    expect(String(personaPrompts[1]?.prompt)).toContain(
+      'need at least 2 personas with 2 or more addresses, got 0',
+    );
   });
 });
 

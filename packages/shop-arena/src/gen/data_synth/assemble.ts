@@ -111,16 +111,16 @@ function regionName(code: string): string {
 function buildCustomer(persona: Persona, country: string): Customer {
   const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
   const email = `${slug(persona.first_name)}.${slug(persona.last_name)}@example.com`;
-  const address = {
-    id: stableId('address', email),
+  const addresses = persona.addresses.map((address, i) => ({
+    id: stableId('address', `${email}/${i + 1}`),
     first_name: persona.first_name,
     last_name: persona.last_name,
     company: null,
-    ...persona.address,
+    ...address,
     country: regionName(country),
     country_code: country,
     phone: persona.phone,
-  };
+  }));
   return {
     id: stableId('customer', email),
     email,
@@ -130,8 +130,8 @@ function buildCustomer(persona: Persona, country: string): Customer {
     phone: persona.phone,
     accepts_marketing: persona.accepts_marketing,
     created_at: TIMESTAMP,
-    addresses: [address],
-    default_address_id: address.id,
+    addresses,
+    default_address_id: addresses[0]?.id ?? null,
   };
 }
 
