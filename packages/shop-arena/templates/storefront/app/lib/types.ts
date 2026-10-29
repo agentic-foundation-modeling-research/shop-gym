@@ -129,6 +129,15 @@ export interface CartDiscountCode {
   readonly applicable: boolean;
 }
 
+/** LINE_ITEM for a percent or fixed code, SHIPPING_LINE for a free-shipping code. */
+export type DiscountTargetType = 'LINE_ITEM' | 'SHIPPING_LINE';
+
+export interface CartDiscountAllocation {
+  readonly code: string;
+  readonly discountedAmount: Money;
+  readonly targetType: DiscountTargetType;
+}
+
 export interface Cart {
   readonly id: string;
   readonly checkoutUrl: string;
@@ -136,11 +145,13 @@ export interface Cart {
   readonly cost: {
     readonly subtotalAmount: Money;
     readonly totalAmount: Money;
+    readonly totalTaxAmount: Money | null;
   };
   readonly lines: {
     readonly nodes: readonly CartLine[];
   };
   readonly discountCodes: readonly CartDiscountCode[];
+  readonly discountAllocations: readonly CartDiscountAllocation[];
 }
 
 export interface MailingAddress {
@@ -175,6 +186,13 @@ export interface OrderSummary {
   readonly totalPrice: Money;
 }
 
+export interface OrderDiscountCode {
+  readonly code: string;
+  readonly targetType: DiscountTargetType;
+  /** Merchandise discount, or the shipping charge waived by a free-shipping code. */
+  readonly amount: Money;
+}
+
 export interface OrderDetail extends OrderSummary {
   readonly email: string | null;
   readonly subtotalPrice: Money | null;
@@ -183,6 +201,7 @@ export interface OrderDetail extends OrderSummary {
   readonly shippingAddress: MailingAddress | null;
   readonly shippingMethod: string | null;
   readonly paymentMethod: string | null;
+  readonly discountCode: OrderDiscountCode | null;
   readonly lineItems: {
     readonly nodes: readonly OrderLineItem[];
   };

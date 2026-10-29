@@ -1,13 +1,16 @@
 /**
  * Fixed browser scripts over the storefront template's forms and pages:
- * register, log in, log out, add a product to the cart, place an order, and
- * open that order's thank-you page and account order page. Each step drives
- * one Playwright page, never throws, and reports what it observed so the
+ * register, log in, log out, add a product to the cart, apply or have a
+ * Discount code turned down at checkout, place an order, and open that
+ * order's thank-you page and account order page. Each step drives one
+ * Playwright page, never throws, and reports what it observed so the
  * callers can record it.
  *
  * Forms are submitted with `requestSubmit()` rather than a pointer click so
  * consent or newsletter popups layered over the page cannot intercept them.
  */
+
+import { setTimeout as sleep } from 'node:timers/promises';
 
 import type { BrowserSession } from '@shop-gym/browser';
 
@@ -29,6 +32,9 @@ type Page = BrowserSession['page'];
 type Locator = ReturnType<Page['locator']>;
 const NAVIGATION_TIMEOUT_MS = 30_000;
 const SUBMIT_TIMEOUT_MS = 15_000;
+const POLL_INTERVAL_MS = 200;
+/** Checkout's error under the "Discount code" field for a code that does not apply. */
+const INVALID_DISCOUNT_CODE = 'Enter a valid discount code';
 
 export async function register(
   page: Page,
@@ -125,6 +131,100 @@ export async function placeOrder(
     }
     return { ok: true, detail, url: path, orderNumber: Number(match[1]) };
   });
+}
+
+/**
+ * Apply Discount code `code` in the checkout order summary; ok when the
+ * "Total" changes and the "Enter a valid discount code" error does not show.
+ */
+export async function applyDiscountCode(
+  page: Page,
+  baseUrl: string,
+  code: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    const entered = await enterDiscountCode(page, baseUrl, code);
+    if ('ok' in entered) return entered;
+    const { before, after, error } = entered;
+    return {
+      ok: after !== before && !error,
+      detail: `${code}: "${before}" became "${after}"${error ? `, with "${INVALID_DISCOUNT_CODE}"` : ''}`,
+      url: '/checkout',
+    };
+  });
+}
+
+/**
+ * Enter Discount code `code` that must not apply; ok when the
+ * "Enter a valid discount code" error shows and the "Total" does not change.
+ */
+export async function rejectDiscountCode(
+  page: Page,
+  baseUrl: string,
+  code: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    const entered = await enterDiscountCode(page, baseUrl, code);
+    if ('ok' in entered) return entered;
+    const { before, after, error } = entered;
+    return {
+      ok: error && after === before,
+      detail: `${code}: ${error ? `"${INVALID_DISCOUNT_CODE}" shows` : 'no error shows'}, "${before}" became "${after}"`,
+      url: '/checkout',
+    };
+  });
+}
+
+interface DiscountObservation {
+  /** The checkout "Total" row before and after the code was entered. */
+  readonly before: string;
+  readonly after: string;
+  /** Whether "Enter a valid discount code" shows after the code was entered. */
+  readonly error: boolean;
+}
+
+/**
+ * Open `/checkout`, submit `code` in the "Discount code" field, and wait
+ * until the "Total" changes or the error shows. The field posts in place
+ * (a fetch or a document reload of `/checkout`), so the step polls the page
+ * rather than wait for a new URL.
+ */
+async function enterDiscountCode(
+  page: Page,
+  baseUrl: string,
+  code: string,
+): Promise<DiscountObservation | StepOutcome> {
+  await open(page, `${baseUrl}/checkout`);
+  const form = page.locator('form:has(input[name="discountCode"])').first();
+  if ((await form.count()) === 0) {
+    return { ok: false, detail: `no "Discount code" field on ${pathOf(page.url())}` };
+  }
+  const before = await checkoutTotal(page);
+  await form.locator('input[name="discountCode"]').fill(code);
+  await form.evaluate((element) =>
+    (element as unknown as { requestSubmit(): void }).requestSubmit(),
+  );
+  const error = page.getByText(INVALID_DISCOUNT_CODE, { exact: true }).filter({ visible: true });
+  const deadline = Date.now() + SUBMIT_TIMEOUT_MS;
+  for (;;) {
+    // A document reload drops the total row, or the page, for a moment; such a read is not settled.
+    const observed = await Promise.all([checkoutTotal(page), error.count()]).catch(() => undefined);
+    const [after, errors] = observed ?? ['', 0];
+    const settled = after !== '' && (after !== before || errors > 0);
+    if (settled || Date.now() > deadline) {
+      await page.waitForLoadState('load');
+      return { before, after, error: errors > 0 };
+    }
+    await sleep(POLL_INTERVAL_MS);
+  }
+}
+
+/** Text of the visible checkout "Total" row, e.g. "Total CAD $17.99"; empty when there is none. */
+async function checkoutTotal(page: Page): Promise<string> {
+  const label = page.getByText('Total', { exact: true }).filter({ visible: true }).first();
+  if ((await label.count()) === 0) return '';
+  const row = await label.locator('xpath=..').innerText({ timeout: 1000 });
+  return row.replace(/\s+/g, ' ').trim();
 }
 
 /** Open the account page of order `orderNumber`; expects 200 and a heading that names an order. */

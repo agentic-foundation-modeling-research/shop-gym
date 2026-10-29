@@ -90,6 +90,13 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     await guest.post('/cart', { intent: 'add', merchandiseId, quantity: '1' });
     expect((await guest.get('/cart')).body).toContain('Shopliseum Mushroom Dog Toys');
 
+    // The cart page turns down an unknown Discount code and keeps a valid one.
+    const rejected = await guest.post('/cart', { intent: 'discount', discountCode: 'nope' });
+    expect(rejected.status).toBe(200);
+    expect(rejected.body).toContain('Enter a valid discount code');
+    await guest.post('/cart', { intent: 'discount', discountCode: 'freeship' });
+    expect((await guest.get('/cart')).body).toContain('Remove discount code FREESHIP');
+
     // Guest checkout.
     const guestCheckout = await guest.post('/checkout', {
       email: 'guest@example.com',
@@ -100,8 +107,9 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     expect(guestCheckout.location).toMatch(/^\/checkout\/confirmation\/\d+$/);
     const confirmation = await guest.get(guestCheckout.location);
     expect(confirmation.status).toBe(200);
-    expect(confirmation.body).toContain('Order confirmed');
+    expect(confirmation.body).toContain('Thank you, Guest!');
     expect(confirmation.body).toContain('guest@example.com');
+    expect(confirmation.body).toContain('FREESHIP');
     expect((await guest.get('/cart')).body).toContain('Your cart is empty');
 
     // Inline checkout errors on a blank required field.
@@ -142,7 +150,7 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     expect(memberProfile.body).toContain('#1001');
     expect((await member.get('/account/addresses')).body).toContain('123 Bank Street');
 
-    // Logged-in checkout is prefilled and lands on the account order page.
+    // Logged-in checkout is prefilled, lands on the thank-you page, and joins the order history.
     const checkoutPage = await member.get('/checkout');
     expect(checkoutPage.body).toContain('value="jane.doe@example.com"');
     expect(checkoutPage.body).toContain('value="123 Bank Street"');
@@ -154,11 +162,13 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
       shippingMethodHandle: 'standard',
       paymentMethodHandle: 'card',
     });
-    expect(memberCheckout.location).toMatch(/^\/account\/orders\/\d+$/);
-    const orderPage = await member.get(memberCheckout.location);
+    const placed = /^\/checkout\/confirmation\/(\d+)$/.exec(memberCheckout.location);
+    expect(placed?.[1]).toBeDefined();
+    const orderPath = `/account/orders/${placed?.[1]}`;
+    const orderPage = await member.get(orderPath);
     expect(orderPage.status).toBe(200);
     expect(orderPage.body).toContain('Shopliseum Mushroom Dog Toys');
-    expect((await member.get('/account/orders')).body).toContain(memberCheckout.location);
+    expect((await member.get('/account/orders')).body).toContain(orderPath);
     expect((await member.get('/account/orders/999999')).status).toBe(404);
   });
 

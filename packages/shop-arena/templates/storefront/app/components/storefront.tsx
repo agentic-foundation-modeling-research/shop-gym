@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Form, Link } from 'react-router';
 import type {
   Cart,
-  CartDiscountCode,
   CartLine,
   CollectionSummary,
   Customer,
@@ -14,6 +13,9 @@ import type {
   ProductVariant,
   Shop,
 } from '~/lib/types';
+
+/** Shown under the "Discount code" field when a code does not apply. */
+const INVALID_DISCOUNT_CODE_MESSAGE = 'Enter a valid discount code';
 
 export function Header({
   shop,
@@ -401,23 +403,33 @@ export function CartSummary({
   cart,
   layout,
   redirectTo,
+  discountRejected = false,
 }: {
   readonly cart: Cart;
   readonly layout: 'page' | 'drawer';
   readonly redirectTo?: string | undefined;
+  /** True right after the cart action turned down a code. */
+  readonly discountRejected?: boolean;
 }) {
-  const appliedCodes = cart.discountCodes.filter((code) => code.applicable);
+  const discount = appliedCartDiscount(cart);
   return (
     <section className={`cart-summary cart-summary-${layout}`} aria-label="Cart summary">
       <div className="cart-total-row">
         <span>Subtotal</span>
         <Price money={cart.cost.subtotalAmount} />
       </div>
+      {discount ? <DiscountRow discount={discount} /> : null}
       <div className="cart-total-row cart-total-row-grand">
         <span>Total</span>
         <Price money={cart.cost.totalAmount} />
       </div>
-      <CartDiscounts appliedCodes={appliedCodes} redirectTo={redirectTo} />
+      <DiscountCodeForm
+        action="/cart"
+        cart={cart}
+        rejected={discountRejected}
+        reloadDocument
+        redirectTo={redirectTo}
+      />
       <Link className="button-link" to="/checkout">
         Continue to checkout
       </Link>
@@ -425,59 +437,109 @@ export function CartSummary({
   );
 }
 
-function CartDiscounts({
-  appliedCodes,
+/** A Discount code that applies to a cart or an order. A null amount means free shipping. */
+export interface AppliedDiscount {
+  readonly code: string;
+  readonly amount: Money | null;
+}
+
+export function appliedCartDiscount(cart: Cart): AppliedDiscount | null {
+  const allocation = cart.discountAllocations[0];
+  if (allocation === undefined) return null;
+  return {
+    code: allocation.code,
+    amount: allocation.targetType === 'SHIPPING_LINE' ? null : allocation.discountedAmount,
+  };
+}
+
+/** The "Discount" totals row: the code, then the amount as a negative or "Free shipping". */
+export function DiscountRow({ discount }: { readonly discount: AppliedDiscount }) {
+  return (
+    <div className="cart-total-row">
+      <span>Discount</span>
+      <span>
+        <span className="discount-row-code">{discount.code}</span>{' '}
+        {discount.amount === null ? (
+          'Free shipping'
+        ) : (
+          <>
+            -<Price money={discount.amount} />
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The "Discount code" field with "Apply", then the error, then a tag for the
+ * code the cart holds. The tag stays when the code stops applying, and the
+ * error then shows too.
+ */
+export function DiscountCodeForm({
+  action,
+  cart,
+  rejected,
+  reloadDocument = false,
   redirectTo,
 }: {
-  readonly appliedCodes: readonly CartDiscountCode[];
+  readonly action: '/cart' | '/checkout';
+  readonly cart: Cart;
+  /** True right after the action turned down a code. */
+  readonly rejected: boolean;
+  readonly reloadDocument?: boolean;
   readonly redirectTo?: string | undefined;
 }) {
-  const existingCodes = appliedCodes.map((discount) => discount.code);
+  const heldCode = cart.discountCodes[0];
+  const showError = rejected || (heldCode !== undefined && !heldCode.applicable);
   return (
-    <section className="cart-discounts" aria-label="Discounts">
-      {existingCodes.length > 0 ? (
-        <ul className="discount-list">
-          {existingCodes.map((code) => (
-            <li key={code}>
-              <span>{code}</span>
-              <Form method="post" action="/cart" reloadDocument>
-                <CartRedirectInput redirectTo={redirectTo} />
-                <input type="hidden" name="intent" value="discount" />
-                {existingCodes
-                  .filter((existingCode) => existingCode !== code)
-                  .map((existingCode) => (
-                    <input
-                      key={existingCode}
-                      type="hidden"
-                      name="discountCodes"
-                      value={existingCode}
-                    />
-                  ))}
-                <button
-                  type="submit"
-                  className="text-button"
-                  aria-label={`Remove promo code ${code}`}
-                >
-                  Remove
-                </button>
-              </Form>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <Form method="post" action="/cart" className="promo-form" reloadDocument>
+    <div className="discount-code">
+      <Form
+        method="post"
+        action={action}
+        className="discount-code-form"
+        reloadDocument={reloadDocument}
+      >
         <CartRedirectInput redirectTo={redirectTo} />
         <input type="hidden" name="intent" value="discount" />
-        {existingCodes.map((code) => (
-          <input key={code} type="hidden" name="discountCodes" value={code} />
-        ))}
         <label>
-          Promo code
-          <input name="discountCode" placeholder="Enter code" />
+          Discount code
+          <input
+            // A new held code clears the field; a rejected code stays for the customer to fix.
+            key={heldCode?.code ?? ''}
+            name="discountCode"
+            autoComplete="off"
+            required
+            aria-invalid={showError ? true : undefined}
+          />
         </label>
         <button type="submit">Apply</button>
       </Form>
-    </section>
+      {showError ? (
+        <p className="field-error" role="alert">
+          {INVALID_DISCOUNT_CODE_MESSAGE}
+        </p>
+      ) : null}
+      {heldCode ? (
+        <Form
+          method="post"
+          action={action}
+          className="discount-tag"
+          reloadDocument={reloadDocument}
+        >
+          <CartRedirectInput redirectTo={redirectTo} />
+          <input type="hidden" name="intent" value="discount-remove" />
+          <span>{heldCode.code}</span>
+          <button
+            type="submit"
+            className="text-button"
+            aria-label={`Remove discount code ${heldCode.code}`}
+          >
+            ×
+          </button>
+        </Form>
+      ) : null}
+    </div>
   );
 }
 

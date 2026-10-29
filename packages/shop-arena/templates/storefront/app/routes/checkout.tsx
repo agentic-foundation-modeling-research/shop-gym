@@ -8,10 +8,17 @@ import {
   useActionData,
   useLoaderData,
 } from 'react-router';
-import { FormErrors, orderPath } from '~/components/account';
-import { ImageFrame, Price } from '~/components/storefront';
+import { FormErrors } from '~/components/account';
+import {
+  CheckoutSummary,
+  ShippingPrice,
+  type SummaryTotals,
+  variantTitle,
+} from '~/components/checkout';
+import { DiscountCodeForm, appliedCartDiscount } from '~/components/storefront';
 import { clearCartId, getAppContext, getCartId, getCustomerAccessToken } from '~/lib/context';
 import { loadCustomer } from '~/lib/customer';
+import { applyDiscountCode, removeDiscountCode } from '~/lib/discount';
 import {
   CART_BUYER_IDENTITY_UPDATE_MUTATION,
   CART_QUERY,
@@ -21,7 +28,6 @@ import {
 import { storefrontQuery } from '~/lib/storefront';
 import type {
   Cart,
-  CartLine,
   CheckoutUserError,
   CommerceSettings,
   Customer,
@@ -50,9 +56,17 @@ interface CheckoutLoaderData {
   readonly customer: Customer | null;
 }
 
-interface CheckoutActionData {
+/** A "Pay now" that did not place the order: the errors and the submitted values. */
+interface PaymentRejectedData {
+  readonly intent: 'pay';
   readonly errors: readonly CheckoutUserError[];
   readonly values: Record<string, string>;
+}
+
+/** A "Discount code" submission: whether the code was turned down. */
+interface DiscountActionData {
+  readonly intent: 'discount';
+  readonly discountRejected: boolean;
 }
 
 const ADDRESS_FIELDS = [
@@ -91,6 +105,21 @@ export async function action({ context, request }: ActionFunctionArgs) {
   if (cartId === null) return redirect('/cart');
 
   const formData = await request.formData();
+  const intent = formData.get('intent');
+  if (intent === 'discount') {
+    const code = formData.get('discountCode');
+    const applied = await applyDiscountCode(
+      appContext,
+      cartId,
+      typeof code === 'string' ? code : '',
+    );
+    return { intent: 'discount', discountRejected: !applied } satisfies DiscountActionData;
+  }
+  if (intent === 'discount-remove') {
+    await removeDiscountCode(appContext, cartId);
+    return { intent: 'discount', discountRejected: false } satisfies DiscountActionData;
+  }
+
   const values = formValues(formData);
   const customerAccessToken = getCustomerAccessToken(appContext);
   if (customerAccessToken !== null) {
@@ -114,18 +143,20 @@ export async function action({ context, request }: ActionFunctionArgs) {
   });
   const { order, userErrors } = data.checkoutComplete;
   if (!order) {
-    return { errors: userErrors, values } satisfies CheckoutActionData;
+    return { intent: 'pay', errors: userErrors, values } satisfies PaymentRejectedData;
   }
-  const destination =
-    customerAccessToken === null ? `/checkout/confirmation/${order.orderNumber}` : orderPath(order);
-  return redirect(destination, { headers: await clearCartId(appContext) });
+  return redirect(`/checkout/confirmation/${order.orderNumber}`, {
+    headers: await clearCartId(appContext),
+  });
 }
 
 export default function CheckoutRoute() {
   const { cart, settings, customer } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  const payment = actionData?.intent === 'pay' ? actionData : undefined;
+  const discountRejected = actionData?.intent === 'discount' && actionData.discountRejected;
   const [shippingHandle, setShippingHandle] = useState(
-    actionData?.values.shippingMethodHandle ?? settings.shippingMethods[0]?.handle ?? '',
+    payment?.values.shippingMethodHandle ?? settings.shippingMethods[0]?.handle ?? '',
   );
 
   if (!cart || cart.lines.nodes.length === 0) {
@@ -138,25 +169,36 @@ export default function CheckoutRoute() {
     );
   }
 
-  const defaults = defaultValues(customer, actionData?.values);
-  const fieldErrors = errorsByField(actionData?.errors ?? []);
+  const defaults = defaultValues(customer, payment?.values);
+  const fieldErrors = errorsByField(payment?.errors ?? []);
   const totals = computeTotals(cart, settings, shippingHandle);
+  const shippingIsFree = Number.parseFloat(totals.shipping.amount) === 0;
 
   return (
     <div className="page-width checkout-page">
-      <Form method="post" className="stack" aria-labelledby="checkout-heading">
+      <CheckoutSummary
+        lines={cart.lines.nodes.map((line) => ({
+          key: line.id,
+          image: line.merchandise.image,
+          quantity: line.quantity,
+          title: line.merchandise.product.title,
+          variantTitle: variantTitle(line.merchandise.title),
+          price: line.cost.totalAmount,
+        }))}
+        totals={totals}
+      >
+        <DiscountCodeForm action="/checkout" cart={cart} rejected={discountRejected} />
+      </CheckoutSummary>
+      <Form method="post" className="stack checkout-form" aria-labelledby="checkout-heading">
         <h1 id="checkout-heading">Checkout</h1>
-        {customer ? (
-          <p className="muted">Checking out as {customer.displayName}.</p>
-        ) : (
-          <p className="muted">
-            Checking out as a guest. <Link to="/account/login?redirectTo=%2Fcheckout">Log in</Link>{' '}
-            to use a saved address.
-          </p>
-        )}
-        <FormErrors errors={actionData?.errors} />
+        <FormErrors errors={payment?.errors} />
         <fieldset className="form-grid">
           <legend>Contact</legend>
+          {customer ? null : (
+            <Link className="checkout-login" to="/account/login?redirectTo=%2Fcheckout">
+              Log in
+            </Link>
+          )}
           <Field
             label="Email"
             name="email"
@@ -168,7 +210,15 @@ export default function CheckoutRoute() {
           />
         </fieldset>
         <fieldset className="form-grid">
-          <legend>Shipping address</legend>
+          <legend>Delivery</legend>
+          <Field
+            label="Country"
+            name="country"
+            autoComplete="country-name"
+            required
+            defaultValue={defaults.country}
+            error={fieldErrors.country}
+          />
           <Field
             label="First name"
             name="firstName"
@@ -223,14 +273,6 @@ export default function CheckoutRoute() {
             error={fieldErrors.province}
           />
           <Field
-            label="Country"
-            name="country"
-            autoComplete="country-name"
-            required
-            defaultValue={defaults.country}
-            error={fieldErrors.country}
-          />
-          <Field
             label="Postal code"
             name="zip"
             autoComplete="postal-code"
@@ -260,14 +302,14 @@ export default function CheckoutRoute() {
               />
               <span>{method.title}</span>
               <span className="variant-price">
-                <Price money={method.price} />
+                {shippingIsFree ? 'Free' : <ShippingPrice money={method.price} />}
               </span>
             </label>
           ))}
           <FieldError message={fieldErrors.shippingMethodHandle} />
         </fieldset>
         <fieldset className="choice-list">
-          <legend>Payment method</legend>
+          <legend>Payment</legend>
           {settings.paymentMethods.map((method, index) => (
             <label className="choice" key={method.handle}>
               <input
@@ -286,33 +328,9 @@ export default function CheckoutRoute() {
           <FieldError message={fieldErrors.paymentMethodHandle} />
         </fieldset>
         <div className="checkout-actions">
-          <button type="submit">Place order</button>
-          <Link to="/cart">Return to cart</Link>
+          <button type="submit">Pay now</button>
         </div>
       </Form>
-      <aside className="checkout-summary" aria-label="Order summary">
-        <ul className="checkout-lines">
-          {cart.lines.nodes.map((line) => (
-            <CheckoutLineItem key={line.id} line={line} />
-          ))}
-        </ul>
-        <div className="cart-total-row">
-          <span>Subtotal</span>
-          <Price money={totals.subtotal} />
-        </div>
-        <div className="cart-total-row">
-          <span>Shipping</span>
-          <Price money={totals.shipping} />
-        </div>
-        <div className="cart-total-row">
-          <span>Tax</span>
-          <Price money={totals.tax} />
-        </div>
-        <div className="cart-total-row cart-total-row-grand">
-          <span>Total</span>
-          <Price money={totals.total} />
-        </div>
-      </aside>
     </div>
   );
 }
@@ -343,23 +361,6 @@ function Field({
 function FieldError({ message }: { readonly message: string | undefined }) {
   if (!message) return null;
   return <span className="field-error">{message}</span>;
-}
-
-function CheckoutLineItem({ line }: { readonly line: CartLine }) {
-  return (
-    <li className="checkout-line">
-      <div className="checkout-line-image">
-        <ImageFrame image={line.merchandise.image} altFallback={line.merchandise.product.title} />
-      </div>
-      <div>
-        <p>{line.merchandise.product.title}</p>
-        <p className="muted">
-          {line.quantity} x {line.merchandise.title}
-        </p>
-      </div>
-      <Price money={line.cost.totalAmount} />
-    </li>
-  );
 }
 
 function formValues(formData: FormData): Record<string, string> {
@@ -403,39 +404,38 @@ function errorsByField(errors: readonly CheckoutUserError[]): Record<string, str
 }
 
 /**
- * Mirrors the backend's pricing: flat `taxRate` on the merchandise subtotal,
- * the chosen method's flat shipping price, waived at `freeShippingThreshold`.
+ * Checkout totals. The cart cost already has the Discount code and the tax;
+ * shipping mirrors the backend: the chosen method's flat price, waived at
+ * `freeShippingThreshold` (on the subtotal before the discount) or by a
+ * free-shipping code.
  */
 function computeTotals(
   cart: Cart,
   settings: CommerceSettings,
   shippingHandle: string,
-): {
-  readonly subtotal: Money;
-  readonly shipping: Money;
-  readonly tax: Money;
-  readonly total: Money;
-} {
+): SummaryTotals {
   const currencyCode = cart.cost.subtotalAmount.currencyCode;
   const subtotal = toCents(cart.cost.subtotalAmount.amount);
+  const discount = appliedCartDiscount(cart);
   const method =
     settings.shippingMethods.find((entry) => entry.handle === shippingHandle) ??
     settings.shippingMethods[0];
   const threshold = settings.freeShippingThreshold;
-  const shipping =
-    method === undefined || (threshold !== null && subtotal >= toCents(threshold.amount))
-      ? 0
-      : toCents(method.price.amount);
-  const tax = Math.round(subtotal * settings.taxRate);
+  const shippingIsFree =
+    method === undefined ||
+    (threshold !== null && subtotal >= toCents(threshold.amount)) ||
+    discount?.amount === null;
+  const shipping = shippingIsFree ? 0 : toCents(method.price.amount);
   const money = (cents: number): Money => ({
     amount: (cents / 100).toFixed(2),
     currencyCode,
   });
   return {
-    subtotal: money(subtotal),
+    subtotal: cart.cost.subtotalAmount,
+    discount,
     shipping: money(shipping),
-    tax: money(tax),
-    total: money(subtotal + shipping + tax),
+    taxes: cart.cost.totalTaxAmount ?? money(0),
+    total: money(toCents(cart.cost.totalAmount.amount) + shipping),
   };
 }
 

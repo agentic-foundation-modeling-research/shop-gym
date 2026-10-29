@@ -1,5 +1,5 @@
 import { Form, Link, NavLink } from 'react-router';
-import { Price } from '~/components/storefront';
+import { type AppliedDiscount, DiscountRow, Price } from '~/components/storefront';
 import type { MailingAddress, OrderDetail, OrderSummary } from '~/lib/types';
 
 export function AccountNav() {
@@ -85,6 +85,7 @@ export function OrderTable({
 }
 
 export function OrderDetails({ order }: { readonly order: OrderDetail }) {
+  const discount = orderDiscount(order);
   return (
     <div className="order-detail">
       <section className="stack" aria-label="Order items">
@@ -146,6 +147,7 @@ export function OrderDetails({ order }: { readonly order: OrderDetail }) {
             <Price money={order.subtotalPrice} />
           </div>
         ) : null}
+        {discount ? <DiscountRow discount={discount} /> : null}
         <div className="cart-total-row">
           <span>Shipping</span>
           <Price money={order.totalShippingPrice} />
@@ -163,6 +165,14 @@ export function OrderDetails({ order }: { readonly order: OrderDetail }) {
       </aside>
     </div>
   );
+}
+
+export function orderDiscount(order: OrderDetail): AppliedDiscount | null {
+  if (!order.discountCode) return null;
+  return {
+    code: order.discountCode.code,
+    amount: order.discountCode.targetType === 'SHIPPING_LINE' ? null : order.discountCode.amount,
+  };
 }
 
 export function orderPath(order: { readonly orderNumber: number }): string {
