@@ -139,14 +139,20 @@ describe('judgeContext', () => {
 
   it('keeps the whole Account section when the cut Sub-manuals fill their budget', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'manual-'));
-    await fs.mkdir(path.join(dir, 'parts'));
-    await fs.writeFile(path.join(dir, 'parts', 'cart_and_search.md'), 'x'.repeat(20_000));
-    await fs.copyFile(STANDARD_SUB_MANUAL_PATH, path.join(dir, 'parts', STANDARD_SUB_MANUAL_FILE));
-    const { manual } = await judgeContext(dir, ALL_BUCKETS);
-    expect(manual).toContain('"Forgot your password?"');
-    expect(manual).toContain('"Are you sure you wish to delete this address?"');
-    expect(manual.match(/\[\.\.\.truncated\]/g)).toHaveLength(1);
-    await fs.rm(dir, { recursive: true, force: true });
+    try {
+      await fs.mkdir(path.join(dir, 'parts'));
+      await fs.writeFile(path.join(dir, 'parts', 'cart_and_search.md'), 'x'.repeat(20_000));
+      await fs.copyFile(
+        STANDARD_SUB_MANUAL_PATH,
+        path.join(dir, 'parts', STANDARD_SUB_MANUAL_FILE),
+      );
+      const { manual } = await judgeContext(dir, ALL_BUCKETS);
+      expect(manual).toContain('"Forgot your password?"');
+      expect(manual).toContain('"Are you sure you wish to delete this address?"');
+      expect(manual.match(/\[\.\.\.truncated\]/g)).toHaveLength(1);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('names screenshots after the route', () => {

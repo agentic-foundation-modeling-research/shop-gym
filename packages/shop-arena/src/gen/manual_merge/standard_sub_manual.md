@@ -137,9 +137,10 @@ on the same page:
 - Under the rows, the totals in this order:
   - "Subtotal".
   - "Discount", with the Discount code and the amount as a negative, for
-    example `WELCOME10 -$5.80`. Only when the order has a percent or fixed
-    amount discount. A free-shipping code shows no "Discount" row: the
-    shipping row shows the zero price.
+    example `WELCOME10 -$5.80`. Only when the order has a Discount code. For
+    a free-shipping code, the row shows the code and the text
+    "Free shipping" in place of an amount, for example
+    `FREESHIP Free shipping`, and the shipping row shows `$0.00`.
   - "Shipping (<shipping method title>)".
   - "Tax". Dawn adds the tax title and rate, as in "Tax (VAT 13.0%)". The
     sandbox has one tax rate with no title, so the row shows only "Tax".
@@ -225,9 +226,10 @@ check out. A logged-in customer can check out too.
   badge, the product title, the variant title, and the line price.
 - The field "Discount code" and the button "Apply".
   - A valid code shows as a tag with the code name and a remove button
-    under the field. A percent or fixed amount code adds the "Discount"
-    line to the totals. A free-shipping code adds no "Discount" line: the
-    shipping price shows "Free".
+    under the field, and adds the "Discount" line to the totals. For a
+    free-shipping code, the "Discount" line shows the code and the text
+    "Free shipping" in place of an amount, and the shipping price shows
+    "Free".
   - A cart has one code at a time. A valid code replaces the code that was
     applied before.
   - Codes match with any upper and lower case.
@@ -239,7 +241,8 @@ check out. A logged-in customer can check out too.
     before, the tag stays, the code stops applying, and
     "Enter a valid discount code" shows under the field.
 - Totals in this order: "Subtotal", "Discount" (the code name and the
-  amount as a negative, only when a code applies), "Shipping", "Taxes",
+  amount as a negative, or "Free shipping", only when a code applies),
+  "Shipping", "Taxes",
   and "Total" in larger text with the currency code before the amount.
   Checkout follows Shopify checkout and says "Taxes". The order page
   follows Dawn and says "Tax".
@@ -274,9 +277,9 @@ order summary on the right.
 The Dawn announcement bar, a full-width strip above the header, shows the
 Discount codes.
 
-- One slide for each Discount code, in Dataset order. The slide text is
-  the code's hint text from the backend, for example
-  `Use code WELCOME10 for 10% off orders over $50`. The text is not a link.
+- One slide for each Discount code, in Dataset order. The slide shows the
+  code, then the code's hint text from the backend, for example
+  `WELCOME10 - 10% off orders over $50`. The text is not a link.
 - With two or more slides, a Previous arrow button on the left and a Next
   arrow button on the right of the text. They show only an arrow icon, no
   text. Their accessible names are "Previous announcement" and
@@ -362,8 +365,8 @@ keep the standard text above.
 - One shipping method and one payment method for each order, from the
   checkout rules. No payment details.
 - One tax rate from the checkout rules on the subtotal after discount, and
-  an optional free-shipping threshold, which is checked against the
-  merchandise subtotal before the discount.
+  an optional free-shipping threshold. The sandbox checks the threshold
+  against the merchandise subtotal before the discount.
 - One Discount code for each cart, with one of three kinds: a percent off
   the merchandise subtotal, a fixed amount off the merchandise subtotal,
   or free shipping. Codes match with any upper and lower case. A code can
@@ -373,7 +376,8 @@ keep the standard text above.
   stops applying.
 - The order records the Discount code and the discount amount. For a
   free-shipping code, the amount is the shipping charge that the code
-  removed.
+  removed. When shipping is already free, a free-shipping code still
+  applies, and its amount is 0.
 - An order placed while logged in goes into the customer's order history.
 - Seeded orders can have the payment statuses paid, partially refunded and
   refunded, and the fulfillment statuses unfulfilled, partially fulfilled
