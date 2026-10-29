@@ -20,9 +20,7 @@ export function generate(ctx: SeedContext, count: number): Task[] {
       id: makeTaskId(ctx.shop, SKILL, i + 1),
       shop: ctx.shop,
       skill: SKILL,
-      goal:
-        `You are already signed in as ${personaName(customer)}. Open your account page and ` +
-        'report the email address on the account and the city of your default shipping address.',
+      goal: `You are already signed in as ${personaName(customer)}. Open your account page and report the email address on the account and the city of your default shipping address.`,
       setup: { login: String(customer.id) },
       eval: [{ type: 'string_match', mustInclude: [customer.email, city] }],
       source: 'seed',
