@@ -276,8 +276,8 @@ storefront verifier targets await `ensureCurrent()` themselves.
 | 5 | `backend_typecheck`, `backend_test`, `sandbox_contract`, `data_in_use` | Done |
 | 6 | `runBuildLoop` + `buildVerifiers` | Done |
 | 7 | Unit tests (fast) and `SHOPGYM_SLOW_TESTS` end-to-end test | Done |
-| 8 | Storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) | M7 |
-| 9 | CLI `--gen-backend`, `publish` recording `template.json` | M7 |
+| 8 | Storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) | Done |
+| 9 | CLI `--gen-backend`, `publish` recording `template.json` | Done |
 | 10 | Contract suite against the shop's own dataset | M4 / M7 follow-up |
 | 11 | `artifact/` git checkpoints; rollback of abandoned iterations | Done |
 | 12 | Two-copy ownership (no storefront slices); `routes_200` on every page | Done |

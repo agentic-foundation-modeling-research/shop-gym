@@ -6,7 +6,10 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 
 export interface CommandResult {
-  /** `null` when the process was killed (timeout). */
+  /**
+   * `null` when the command did not exit on its own: timeout, output past the
+   * buffer limit, a kill signal, or a program that could not start.
+   */
   readonly exitCode: number | null;
   readonly stdout: string;
   readonly stderr: string;
