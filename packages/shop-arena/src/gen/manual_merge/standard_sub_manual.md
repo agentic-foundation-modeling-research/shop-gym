@@ -232,7 +232,8 @@ check out. A logged-in customer can check out too.
     "Free shipping" in place of an amount, and the shipping price shows
     "Free".
   - A cart has one code at a time. A valid code replaces the code that was
-    applied before.
+    applied before. A code field on the cart page or in the cart drawer
+    follows the same rules.
   - Codes match with any upper and lower case.
   - An unknown code, or a code whose minimum subtotal is not met, shows
     "Enter a valid discount code" under the field and does not change the
