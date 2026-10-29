@@ -127,6 +127,13 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
   command itself, so a server it put in the background kept its port, and
   a command that exited with a background child still running waited for
   the full timeout because the child held its output open.
+- **Agent-run code gets an allowlisted environment (2026-10-28).**
+  `runCommand` and both sidecar launches pass `commandEnv()`: the
+  variables node, pnpm and git need (`PATH`, `HOME`, `TMPDIR`, locale,
+  the pnpm and XDG homes, proxy and CA variables) plus the caller's own.
+  API keys and tokens in the developer's shell no longer reach the agent's
+  shell or the code it writes. Files the developer can read, the
+  repository `.env` too, stay readable (ADR 0015).
 - Dropped Python behaviour, on purpose: `quality_judge`, `_redo_N` task
   ids, retry-budget annotations, `prompts/fixes/`, the template override
   shim, and the Hydrogen template.
@@ -284,6 +291,7 @@ storefront verifier targets await `ensureCurrent()` themselves.
 | 13 | Seed again after a seed that failed before `build.json` | Done |
 | 14 | `dirty` flag in `template.json` and `shop.json` | Done |
 | 15 | `runCommand` kills the command's process group on exit and timeout | Done |
+| 16 | `commandEnv()` allowlist for commands and both sidecars | Done |
 
 ## 8. Appendix
 

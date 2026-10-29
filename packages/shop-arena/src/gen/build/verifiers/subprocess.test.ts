@@ -1,7 +1,7 @@
 import * as os from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runCommand } from './subprocess.js';
 
@@ -21,6 +21,21 @@ async function alive(pid: number): Promise<boolean> {
 }
 
 describe('runCommand', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('passes only the allowlisted variables of this process, then the overrides', async () => {
+    vi.stubEnv('SHOPGYM_TEST_API_KEY', 'secret');
+    vi.stubEnv('LC_SHOPGYM_TEST', 'kept');
+    const result = await runCommand(
+      ['/bin/sh', '-c', 'echo "${SHOPGYM_TEST_API_KEY-unset} $LC_SHOPGYM_TEST $EXTRA $CI"'],
+      { ...OPTIONS, env: { EXTRA: 'set' } },
+    );
+
+    expect(result).toMatchObject({ exitCode: 0, stdout: 'unset kept set 1\n' });
+  });
+
   it('returns the exit code and both streams', async () => {
     const result = await runCommand(['/bin/sh', '-c', 'echo out; echo err >&2; exit 3'], OPTIONS);
 

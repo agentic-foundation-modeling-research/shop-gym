@@ -19,6 +19,7 @@ import * as path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { hashSnapshot, snapshotTree } from './tree.js';
+import { commandEnv } from './verifiers/subprocess.js';
 
 export class SidecarError extends Error {
   constructor(message: string) {
@@ -187,7 +188,7 @@ export const spawnSidecar: SidecarLaunch = async (options) => {
   const child = spawn(
     process.execPath,
     ['--import', 'tsx', 'src/cli.ts', options.dataDir, String(options.port)],
-    { cwd: options.backendDir, stdio: ['ignore', log.fd, log.fd], env: { ...process.env } },
+    { cwd: options.backendDir, stdio: ['ignore', log.fd, log.fd], env: commandEnv() },
   );
   const exited = new Promise<number | null>((resolve) => {
     child.once('exit', (code) => resolve(code));

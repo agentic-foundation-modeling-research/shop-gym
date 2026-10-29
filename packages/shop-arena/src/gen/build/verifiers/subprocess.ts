@@ -19,8 +19,50 @@ export interface CommandResult {
 export interface CommandOptions {
   readonly cwd: string;
   readonly timeoutMs: number;
-  /** Variables set on top of the inherited environment. */
+  /** Variables set on top of `commandEnv()`. */
   readonly env?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Variables that commands inherit from this process: what node, pnpm and git
+ * need to find their tools, home, store, temp dir and locale, and to reach a
+ * registry through a proxy or a custom CA. All others, API keys and tokens
+ * above all, stay out of the agent's shell and of the code it writes.
+ */
+const INHERITED_ENV: ReadonlySet<string> = new Set([
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'TMPDIR',
+  'TZ',
+  'LANG',
+  'PNPM_HOME',
+  'XDG_CACHE_HOME',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'no_proxy',
+  'NODE_EXTRA_CA_CERTS',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+]);
+const INHERITED_ENV_PREFIX = 'LC_';
+
+/** The environment for agent-run code: the allowlisted variables of this process, then `overrides`. */
+export function commandEnv(overrides: Readonly<Record<string, string>> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (INHERITED_ENV.has(name) || name.startsWith(INHERITED_ENV_PREFIX)) {
+      env[name] = value;
+    }
+  }
+  return { ...env, ...overrides };
 }
 
 export type CommandRunner = (
@@ -46,7 +88,7 @@ export const runCommand: CommandRunner = (argv, options) => {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
-      env: { ...process.env, CI: '1', FORCE_COLOR: '0', ...options.env },
+      env: commandEnv({ CI: '1', FORCE_COLOR: '0', ...options.env }),
       detached: true,
     });
     const output = { stdout: '', stderr: '' };

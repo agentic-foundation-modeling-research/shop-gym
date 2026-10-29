@@ -25,7 +25,12 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 import { SidecarError, type SidecarProcess } from './sidecar.js';
 import { hashSnapshot, snapshotTree } from './tree.js';
-import { type CommandResult, type CommandRunner, runCommand } from './verifiers/subprocess.js';
+import {
+  type CommandResult,
+  type CommandRunner,
+  commandEnv,
+  runCommand,
+} from './verifiers/subprocess.js';
 
 export interface StorefrontLaunchOptions {
   readonly storefrontDir: string;
@@ -209,13 +214,12 @@ export const spawnStorefront: StorefrontLaunch = async (options) => {
   const child = spawn(process.execPath, ['server.mjs'], {
     cwd: options.storefrontDir,
     stdio: ['ignore', log.fd, log.fd],
-    env: {
-      ...process.env,
+    env: commandEnv({
       NODE_ENV: 'production',
       PORT: String(options.port),
       PUBLIC_STORE_DOMAIN: options.backendUrl,
       SHOP_BACKEND_URL: options.backendUrl,
-    },
+    }),
   });
   const exited = new Promise<number | null>((resolve) => {
     child.once('exit', (code) => resolve(code));
