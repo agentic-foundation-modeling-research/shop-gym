@@ -16,6 +16,8 @@ import type {
   collectionSchema,
   commerceSchema,
   customerSchema,
+  discountCodeKindSchema,
+  discountCodeSchema,
   inventoryEntrySchema,
   inventoryFileSchema,
   metafieldSchema,
@@ -79,6 +81,8 @@ export type OrderFulfillmentStatus = z.infer<typeof orderFulfillmentStatusSchema
 
 export type Commerce = z.infer<typeof commerceSchema>;
 export type ShippingMethod = z.infer<typeof shippingMethodSchema>;
+export type DiscountCode = z.infer<typeof discountCodeSchema>;
+export type DiscountCodeKind = z.infer<typeof discountCodeKindSchema>;
 export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
 
 /**

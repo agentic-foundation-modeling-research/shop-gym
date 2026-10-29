@@ -34,6 +34,12 @@
  * `cartBuyerIdentityUpdate` resolves `customerAccessToken` against that
  * state so a cart can be associated with a logged-in customer, and
  * `Cart.cost` applies the `commerce.json` tax rate when one is configured.
+ *
+ * A cart holds at most one Discount code. `cartCreate` and
+ * `cartDiscountCodesUpdate` store a known code in its `commerce.json`
+ * spelling and an unknown code as typed; `applicable`, `Cart.cost` and
+ * `Cart.discountAllocations` are computed on each read, so a code stops
+ * applying when the cart drops below its minimum and applies again above it.
  */
 
 import * as fs from 'node:fs';
@@ -41,7 +47,12 @@ import * as path from 'node:path';
 
 import { EpisodeClock } from '../state/episode_clock.js';
 import { fromCents, toCents } from '../state/money.js';
-import { taxCents } from '../state/pricing.js';
+import {
+  type AppliedDiscount,
+  applyDiscountCode,
+  findDiscountCode,
+  taxCents,
+} from '../state/pricing.js';
 
 import type {
   AttributeInput,
@@ -49,6 +60,7 @@ import type {
   CartInput,
   CartLineInput,
   CartLineUpdateInput,
+  DiscountApplicationTargetType,
   MutationCartAttributesUpdateArgs,
   MutationCartBuyerIdentityUpdateArgs,
   MutationCartCreateArgs,
@@ -62,7 +74,7 @@ import type {
   MutationCartNoteUpdateArgs,
   QueryCartArgs,
 } from '../__generated__/resolvers-types.js';
-import type { ProductVariant, SandboxShopData, VariantLookup } from '../data/types.js';
+import type { Commerce, ProductVariant, SandboxShopData, VariantLookup } from '../data/types.js';
 import {
   type ImageUrlMode,
   type MoneyV2Node,
@@ -314,9 +326,8 @@ export class CartStore {
   }
 
   /**
-   * Replace the cart's discount codes. v0.1 performs no validation — every
-   * code is stored as-is and reported `applicable: true` by the resolver.
-   * Passing `null` clears the list.
+   * Replace the cart's discount codes with `codes` as given. The resolvers
+   * pass at most one code. Passing `null` clears the list.
    */
   setDiscountCodes(cart: CartState, codes: readonly string[] | null): void {
     cart.discountCodes = codes === null ? [] : [...codes];
@@ -690,6 +701,13 @@ export interface CartDiscountCodeNode {
   readonly applicable: boolean;
 }
 
+/** Resolved as `CartCodeDiscountAllocation`, the only allocation kind. */
+export interface CartDiscountAllocationNode {
+  readonly code: string;
+  readonly discountedAmount: MoneyV2Node;
+  readonly targetType: DiscountApplicationTargetType;
+}
+
 export interface AppliedGiftCardNode {
   readonly id: string;
   readonly lastCharacters: string | null;
@@ -704,6 +722,7 @@ export interface CartNode {
   readonly cost: CartCostNode;
   readonly attributes: readonly AttributeNode[];
   readonly discountCodes: readonly CartDiscountCodeNode[];
+  readonly discountAllocations: readonly CartDiscountAllocationNode[];
   readonly appliedGiftCards: readonly AppliedGiftCardNode[];
   readonly buyerIdentity: CartBuyerIdentityNode;
   readonly note: string;
@@ -768,7 +787,9 @@ export const cartResolvers = {
     ): CartMutationPayloadNode => {
       const unknown = unknownMerchandiseIds(merchandiseIdsOf(args.input?.lines), ctx);
       if (unknown.length > 0) return merchandiseNotFoundPayload(unknown, null);
-      const state = ctx.carts.create(args.input);
+      const discountCodes = storedDiscountCodes(args.input.discountCodes, ctx.data.commerce);
+      if (discountCodes.length > 1) return tooManyDiscountCodesPayload(null);
+      const state = ctx.carts.create({ ...args.input, discountCodes });
       return successPayload(state, ctx);
     },
 
@@ -825,7 +846,11 @@ export const cartResolvers = {
     ): CartMutationPayloadNode => {
       const state = ctx.carts.get(args.cartId);
       if (state === undefined) return cartNotFoundPayload();
-      ctx.carts.setDiscountCodes(state, args.discountCodes ?? null);
+      const discountCodes = storedDiscountCodes(args.discountCodes, ctx.data.commerce);
+      if (discountCodes.length > 1) {
+        return tooManyDiscountCodesPayload(materializeCart(state, ctx));
+      }
+      ctx.carts.setDiscountCodes(state, discountCodes);
       return successPayload(state, ctx);
     },
 
@@ -942,6 +967,10 @@ export const cartResolvers = {
     __resolveType: (): 'CartLine' => 'CartLine',
   },
 
+  CartDiscountAllocation: {
+    __resolveType: (): 'CartCodeDiscountAllocation' => 'CartCodeDiscountAllocation',
+  },
+
   Merchandise: {
     __resolveType: (): 'ProductVariant' => 'ProductVariant',
   },
@@ -965,6 +994,35 @@ function cartNotFoundPayload(): CartMutationPayloadNode {
   return {
     cart: null,
     userErrors: [{ code: 'INVALID', field: ['cartId'], message: 'Cart not found' }],
+    warnings: [],
+  };
+}
+
+/**
+ * The codes to store for a `discountCodes` input: trimmed, blanks dropped,
+ * a known code in its `commerce.json` spelling and an unknown code as typed.
+ */
+function storedDiscountCodes(
+  codes: readonly string[] | null | undefined,
+  commerce: Commerce,
+): string[] {
+  return (codes ?? [])
+    .map((code) => code.trim())
+    .filter((code) => code.length > 0)
+    .map((code) => findDiscountCode(code, commerce)?.code ?? code);
+}
+
+/** Payload returned when an input names more than one Discount code; nothing is stored. */
+function tooManyDiscountCodesPayload(cart: CartNode | null): CartMutationPayloadNode {
+  return {
+    cart,
+    userErrors: [
+      {
+        code: 'INVALID',
+        field: ['discountCodes'],
+        message: 'A cart can hold only one discount code',
+      },
+    ],
     warnings: [],
   };
 }
@@ -1048,22 +1106,30 @@ function buildCartNode(
     0,
   );
   const currency = data.store.currency_code;
-  const subtotal = buildMoneyV2(fromCents(subtotalCents), currency);
+  // The resolvers store at most one code, so only the first one is priced.
+  const [firstCode] = state.discountCodes;
+  const discount =
+    firstCode === undefined ? null : applyDiscountCode(firstCode, subtotalCents, data.commerce);
+  const discountedCents = subtotalCents - (discount?.subtotalDiscount ?? 0);
   // Tax is only "calculated" (non-null) when the dataset configures a rate.
-  const tax = data.commerce.tax_rate > 0 ? taxCents(subtotalCents, data.commerce) : null;
+  const tax = data.commerce.tax_rate > 0 ? taxCents(discountedCents, data.commerce) : null;
   return {
     id: state.id,
     checkoutUrl: '#',
     totalQuantity,
     updatedAt: state.updatedAt,
     cost: {
-      subtotalAmount: subtotal,
-      totalAmount: tax === null ? subtotal : buildMoneyV2(fromCents(subtotalCents + tax), currency),
+      subtotalAmount: buildMoneyV2(fromCents(subtotalCents), currency),
+      totalAmount: buildMoneyV2(fromCents(discountedCents + (tax ?? 0)), currency),
       totalTaxAmount: tax === null ? null : buildMoneyV2(fromCents(tax), currency),
       totalDutyAmount: null,
     },
     attributes: state.attributes.map((a) => ({ key: a.key, value: a.value })),
-    discountCodes: state.discountCodes.map((code) => ({ code, applicable: true })),
+    discountCodes: state.discountCodes.map((code, index) => ({
+      code,
+      applicable: index === 0 && discount !== null,
+    })),
+    discountAllocations: discount === null ? [] : [buildDiscountAllocationNode(discount, currency)],
     appliedGiftCards: state.giftCardCodes.map(buildAppliedGiftCardNode),
     buyerIdentity: {
       countryCode: state.buyerIdentity.countryCode,
@@ -1073,6 +1139,22 @@ function buildCartNode(
     },
     note: state.note,
     lineNodes,
+  };
+}
+
+/**
+ * The allocation for an applied Discount code. A free-shipping code targets
+ * the shipping line with 0.00, because a cart has no shipping charge until
+ * checkout picks a method.
+ */
+function buildDiscountAllocationNode(
+  discount: AppliedDiscount,
+  currency: string,
+): CartDiscountAllocationNode {
+  return {
+    code: discount.discountCode.code,
+    discountedAmount: buildMoneyV2(fromCents(discount.subtotalDiscount), currency),
+    targetType: discount.discountCode.kind === 'free_shipping' ? 'SHIPPING_LINE' : 'LINE_ITEM',
   };
 }
 

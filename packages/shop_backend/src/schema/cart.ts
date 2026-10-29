@@ -1,6 +1,8 @@
 /**
  * Cart domain: cart query and the cart mutation family. `CartBuyerIdentity.customer`
  * resolves once `cartBuyerIdentityUpdate` is called with a valid access token.
+ * `Cart.discountAllocations` holds one `CartCodeDiscountAllocation` while the
+ * cart's Discount code applies.
  */
 
 export const cartTypeDefs = /* GraphQL */ `
@@ -31,6 +33,7 @@ export const cartTypeDefs = /* GraphQL */ `
     lines(first: Int): CartLineConnection!
     attributes: [Attribute!]!
     discountCodes: [CartDiscountCode!]!
+    discountAllocations: [CartDiscountAllocation!]!
     appliedGiftCards: [AppliedGiftCard!]!
     buyerIdentity: CartBuyerIdentity!
     note: String!
@@ -92,6 +95,22 @@ export const cartTypeDefs = /* GraphQL */ `
   type CartDiscountCode {
     code: String!
     applicable: Boolean!
+  }
+
+  interface CartDiscountAllocation {
+    discountedAmount: MoneyV2!
+    targetType: DiscountApplicationTargetType!
+  }
+
+  type CartCodeDiscountAllocation implements CartDiscountAllocation {
+    code: String!
+    discountedAmount: MoneyV2!
+    targetType: DiscountApplicationTargetType!
+  }
+
+  enum DiscountApplicationTargetType {
+    LINE_ITEM
+    SHIPPING_LINE
   }
 
   type AppliedGiftCard {

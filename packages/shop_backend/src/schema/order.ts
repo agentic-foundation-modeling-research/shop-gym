@@ -30,6 +30,17 @@ export const orderTypeDefs = /* GraphQL */ `
     shippingMethod: String @sandbox
     """Handle of the commerce.json payment method chosen at checkout."""
     paymentMethod: String @sandbox
+    """Discount code applied at checkout; null when the order has none."""
+    discountCode: OrderDiscountCode @sandbox
+  }
+
+  type OrderDiscountCode @sandbox {
+    """The code in its commerce.json spelling."""
+    code: String!
+    """SHIPPING_LINE for a free-shipping code, LINE_ITEM for a percent or fixed code."""
+    targetType: DiscountApplicationTargetType!
+    """Merchandise discount, or the shipping charge waived by a free-shipping code."""
+    amount: MoneyV2!
   }
 
   type OrderLineItem {

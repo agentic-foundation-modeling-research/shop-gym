@@ -10,10 +10,12 @@
 
 import type {
   CustomerOrdersArgs,
+  DiscountApplicationTargetType,
   OrderLineItemsArgs,
   QueryOrderArgs,
 } from '../__generated__/resolvers-types.js';
 import { fromCents, toCents } from '../state/money.js';
+import { findDiscountCode } from '../state/pricing.js';
 import type { OrderLineItemRecord, OrderRecord } from '../state/shop_state.js';
 import {
   type MoneyV2Node,
@@ -39,6 +41,12 @@ export interface OrderLineItemConnectionNode {
   readonly edges: readonly { readonly node: OrderLineItemNode }[];
 }
 
+export interface OrderDiscountCodeNode {
+  readonly code: string;
+  readonly targetType: DiscountApplicationTargetType;
+  readonly amount: MoneyV2Node;
+}
+
 export interface OrderNode {
   readonly id: string;
   readonly name: string;
@@ -55,6 +63,7 @@ export interface OrderNode {
   readonly shippingAddress: MailingAddressNode | null;
   readonly shippingMethod: string | null;
   readonly paymentMethod: string | null;
+  readonly discountCode: OrderDiscountCodeNode | null;
   /** Internal: all line items, sliced by `Order.lineItems(first)`. */
   readonly lineItemNodes: readonly OrderLineItemNode[];
 }
@@ -86,6 +95,18 @@ export function buildOrderNode(order: OrderRecord, ctx: ResolverContext): OrderN
       order.shippingAddress === null ? null : buildMailingAddressNode(order.shippingAddress),
     shippingMethod: order.shippingMethod,
     paymentMethod: order.paymentMethod,
+    discountCode:
+      order.discountCode === null
+        ? null
+        : {
+            code: order.discountCode,
+            // A seeded order may name a code that `commerce.json` no longer lists.
+            targetType:
+              findDiscountCode(order.discountCode, ctx.data.commerce)?.kind === 'free_shipping'
+                ? 'SHIPPING_LINE'
+                : 'LINE_ITEM',
+            amount: buildMoneyV2(order.discountAmount, currency),
+          },
     lineItemNodes: order.lineItems.map((line) => buildOrderLineItemNode(line, currency, ctx)),
   };
 }
