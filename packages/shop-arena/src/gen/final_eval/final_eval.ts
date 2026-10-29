@@ -11,13 +11,16 @@ import * as path from 'node:path';
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
 import { BrowserSession } from '@shop-gym/browser';
 
-import { readSweepDiscountCode } from '../build/verifiers/storefront_target.js';
 import {
   SWEEP_CAPS,
   readDatasetHandles,
   sampleProductHandles,
 } from '../build/verifiers/task_routes.js';
-import { type FunctionalStep, runFunctionalSweep } from './functional_sweep.js';
+import {
+  type FunctionalStep,
+  readSweepDiscountCode,
+  runFunctionalSweep,
+} from './functional_sweep.js';
 import { type VisualPageResult, runVisualSweep } from './visual_sweep.js';
 
 export const FINAL_EVAL_REPORT = 'report.json';

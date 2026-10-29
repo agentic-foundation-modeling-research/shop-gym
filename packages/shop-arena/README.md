@@ -250,8 +250,9 @@ account login, account profile, an order detail, a policy page) at both
 viewports and judges each with the same rubric as `visual_judge`; the
 functional sweep is a fixed browser script: sign up, log out, log in, add
 to cart, apply a Discount code, checkout, view order, and `requestReturn`
-recorded as `skipped: not supported by backend`. The sweep's code is the
-Dataset's first percent or fixed-amount code with no minimum subtotal.
+recorded as `skipped: not supported by backend`. The sweep's code is a
+Dataset code with no minimum subtotal: a percent or fixed-amount code
+first, else a free-shipping code.
 Pages and steps the dataset cannot set up (no product, no seeded customer,
 no order, no such code) are recorded as `skipped` with a reason. Output under `outDir`:
 `report.json` (counts, `visual.pages[]`, `functional.steps[]`),
