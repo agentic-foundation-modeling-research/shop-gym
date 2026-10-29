@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { STOREFRONT_TEMPLATE_DIR } from '../../templates.js';
 import { SeedError, defaultBackendTemplateDir, seedTemplate, templateFingerprint } from './seed.js';
-import type { CommandRunner } from './verifiers/subprocess.js';
+import { type CommandRunner, runCommand } from './verifiers/subprocess.js';
 
 const TRACKED = ['package.json', 'tsconfig.json', 'src/data/schema.ts', 'src/sandbox/episode.ts'];
 
@@ -29,8 +29,42 @@ describe('templateFingerprint', () => {
     const fp = await templateFingerprint(defaultBackendTemplateDir(), fakeRunner([]));
     expect(fp.name).toBe('shop_backend');
     expect(fp.commit).toBe('abc123');
+    expect(fp.dirty).toBe(false);
     expect(Object.keys(fp.files).sort()).toEqual([...TRACKED].sort());
     expect(fp.contentHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('flags tracked changes since the commit, not untracked files', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'template-'));
+    const git = async (...args: string[]): Promise<void> => {
+      const result = await runCommand(['git', ...args], {
+        cwd: dir,
+        timeoutMs: 30_000,
+        env: {
+          GIT_CONFIG_GLOBAL: '/dev/null',
+          GIT_CONFIG_NOSYSTEM: '1',
+          GIT_AUTHOR_NAME: 'test',
+          GIT_AUTHOR_EMAIL: 'test@localhost',
+          GIT_COMMITTER_NAME: 'test',
+          GIT_COMMITTER_EMAIL: 'test@localhost',
+        },
+      });
+      expect(result.exitCode).toBe(0);
+    };
+    await fs.writeFile(path.join(dir, 'package.json'), '{}\n');
+    await git('init', '--quiet', '--initial-branch=main');
+    await git('add', 'package.json');
+    await git('commit', '--quiet', '-m', 'template');
+    await fs.writeFile(path.join(dir, 'scratch.md'), 'not tracked\n');
+    const clean = await templateFingerprint(dir);
+    expect(clean.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(clean.dirty).toBe(false);
+
+    await fs.writeFile(path.join(dir, 'package.json'), '{"name":"edited"}\n');
+    const edited = await templateFingerprint(dir);
+    expect(edited.commit).toBe(clean.commit);
+    expect(edited.dirty).toBe(true);
+    expect(edited.contentHash).not.toBe(clean.contentHash);
   });
 });
 
@@ -65,9 +99,11 @@ describe('seedTemplate', () => {
     expect(tsconfig.extends).toBe('./tsconfig.base.json');
     const written = JSON.parse(await fs.readFile(path.join(destDir, 'template.json'), 'utf-8')) as {
       commit: string;
+      dirty: boolean;
       contentHash: string;
     };
     expect(written.commit).toBe(fp.commit);
+    expect(written.dirty).toBe(false);
     expect(written.contentHash).toBe(fp.contentHash);
     expect(calls.at(-1)).toEqual(['pnpm', 'install', '--ignore-workspace', '--prefer-offline']);
     await expect(

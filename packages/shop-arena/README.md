@@ -156,7 +156,7 @@ backend copy as a sidecar, and drives `runPlanExecLoop` from
 
 | Piece | Module | Role |
 | --- | --- | --- |
-| seeding | `src/gen/build/seed.ts` | copies each template's `git ls-files` output into `artifact/{storefront,backend}/`, writes `template.json` (commit + content hash), runs `pnpm install --ignore-workspace` |
+| seeding | `src/gen/build/seed.ts` | copies each template's `git ls-files` output into `artifact/{storefront,backend}/`, writes `template.json` (commit, a `dirty` flag for uncommitted template edits, content hash), runs `pnpm install --ignore-workspace` |
 | sidecar | `src/gen/build/sidecar.ts` | `node --import tsx src/cli.ts artifact/data <port>` in `artifact/backend/`, `/health` wait, `ensureCurrent()` before every `run_command`, `screenshot_page` and verifier that talks to it (restarts when the hash of `src/` + `package.json` moved, launches again after a failed launch), logs in `<runDir>/sidecar.log` |
 | prompts | `src/gen/build/prompts/*.md` | `agents.md`, `planner.md`, `execute.md`; `{{backend_url}}` and `{{gen_backend_mode}}` are substituted, `{{verifier_feedback}}` is left for the harness |
 | agent tools | `src/gen/build/agent_tools.ts` | added to the caller's `tools`: `run_command` (a shell line via `sh -c` inside the run dir, exit code plus head-and-tail of the output) and `screenshot_page` (rebuilds the storefront if needed and returns the judge's desktop and mobile captures of one route) |
@@ -265,7 +265,7 @@ backend serves its own `data/`. It writes `<shopDir>/shop.json`:
 ```json
 {
   "name": "<basename of shopDir>",
-  "templates": { "storefront": { "name": "storefront", "commit": "...", "contentHash": "...", "files": {}, "seededAt": "..." }, "backend": { "...": "..." } },
+  "templates": { "storefront": { "name": "storefront", "commit": "...", "dirty": false, "contentHash": "...", "files": {}, "seededAt": "..." }, "backend": { "...": "..." } },
   "genBackend": true,
   "publishedAt": "2026-09-30T00:00:00.000Z",
   "finalStatus": "completed"
@@ -273,4 +273,5 @@ backend serves its own `data/`. It writes `<shopDir>/shop.json`:
 ```
 
 Calling it again replaces both component directories and rewrites the
-manifest. `publish.readShopManifest(shopDir)` parses and validates it.
+manifest. `publish.readShopManifest(shopDir)` parses and validates it;
+`dirty` may be absent in manifests written before the flag existed.

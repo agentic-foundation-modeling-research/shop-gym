@@ -107,7 +107,7 @@ describe('sandbox_contract', () => {
             'src/data/schema.ts\0src/sandbox/episode.ts\0tests/contract/helpers.ts\0package.json\0',
         };
       }
-      return { ...OK, exitCode: 1 };
+      return argv[1] === 'rev-parse' ? { ...OK, exitCode: 1 } : OK;
     });
     await fs.writeFile(path.join(backendDir, TEMPLATE_JSON), JSON.stringify(fingerprint));
   }

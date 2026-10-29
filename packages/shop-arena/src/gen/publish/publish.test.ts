@@ -12,6 +12,7 @@ let shopDir: string;
 const FINGERPRINT = (name: string) => ({
   name,
   commit: 'abc123',
+  dirty: name === 'storefront',
   contentHash: `hash-${name}`,
   files: { 'package.json': 'f1' },
   seededAt: '2026-09-30T00:00:00.000Z',
@@ -88,8 +89,8 @@ describe('publishShop', () => {
       genBackend: true,
       finalStatus: 'completed',
       templates: {
-        storefront: { name: 'storefront', contentHash: 'hash-storefront' },
-        backend: { name: 'shop_backend', contentHash: 'hash-shop_backend' },
+        storefront: { name: 'storefront', dirty: true, contentHash: 'hash-storefront' },
+        backend: { name: 'shop_backend', dirty: false, contentHash: 'hash-shop_backend' },
       },
     });
     expect(result.manifest.publishedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -111,6 +112,18 @@ describe('publishShop', () => {
     await fs.rm(path.join(runDir, 'run.json'));
     const result = await publishShop({ runDir, shopDir });
     expect(result.manifest.finalStatus).toBe('unknown');
+  });
+
+  it('reads a manifest whose fingerprints predate the dirty flag', async () => {
+    await publishShop({ runDir, shopDir });
+    const file = path.join(shopDir, 'shop.json');
+    const raw: unknown = JSON.parse(await fs.readFile(file, 'utf-8'));
+    await fs.writeFile(
+      file,
+      JSON.stringify(raw, (key, value: unknown) => (key === 'dirty' ? undefined : value)),
+    );
+    const manifest = await readShopManifest(shopDir);
+    expect(manifest.templates.storefront.dirty).toBeUndefined();
   });
 
   it('refuses a run directory without build.json or template.json', async () => {

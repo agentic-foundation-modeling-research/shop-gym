@@ -32,9 +32,10 @@ storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) and the
 - **Seeding**: copying exactly the template's `git ls-files` output into
   `<runDir>/artifact/{storefront,backend}/` and running
   `pnpm install --ignore-workspace` there.
-- **Template fingerprint** (`template.json`): `{ name, commit, contentHash,
-  files, seededAt }` written into every seeded copy; `files` maps each
-  tracked path to its sha256.
+- **Template fingerprint** (`template.json`): `{ name, commit, dirty,
+  contentHash, files, seededAt }` written into every seeded copy; `files`
+  maps each tracked path to its sha256, and `dirty` is true when a tracked
+  file differed from `commit` at seeding.
 - **Sidecar**: the run's `artifact/backend` started as a child process
   (`node --import tsx src/cli.ts artifact/data <port>`) for the whole loop.
 - **Owned files**: the paths a task may change. Backend tasks own the
@@ -113,6 +114,12 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
   layout with an empty `plan.md` and no iterations, `runBuildLoop` removes
   it and seeds again; any other non-empty `runDir` is refused by the
   harness as before.
+- **The fingerprint records a dirty template (2026-10-28).** `commit`
+  alone named the template's `HEAD` even when the copy came from
+  uncommitted edits. `dirty` comes from `git status --porcelain
+  --untracked-files=no` in the template directory (untracked files are
+  never copied); `publish` carries it into `shop.json`, where it is
+  optional so manifests written before the flag still validate.
 - Dropped Python behaviour, on purpose: `quality_judge`, `_redo_N` task
   ids, retry-budget annotations, `prompts/fixes/`, the template override
   shim, and the Hydrogen template.
@@ -176,7 +183,8 @@ packages/shop-arena/src/gen/build/
 3. If `tsconfig.json` extends a `..`-relative base, copy the base next to it
    and rewrite `extends` to `./tsconfig.base.json` so the copy compiles
    outside the monorepo.
-4. Write `template.json`.
+4. Write `template.json`, with `dirty` set when `git status` reports a
+   tracked change in the template directory.
 5. `pnpm install --ignore-workspace --prefer-offline`, plus
    `--frozen-lockfile` when the template tracks `pnpm-lock.yaml`.
 
@@ -267,6 +275,7 @@ storefront verifier targets await `ensureCurrent()` themselves.
 | 11 | `artifact/` git checkpoints; rollback of abandoned iterations | Done |
 | 12 | Two-copy ownership (no storefront slices); `routes_200` on every page | Done |
 | 13 | Seed again after a seed that failed before `build.json` | Done |
+| 14 | `dirty` flag in `template.json` and `shop.json` | Done |
 
 ## 8. Appendix
 

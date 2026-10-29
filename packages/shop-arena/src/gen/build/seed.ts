@@ -4,8 +4,9 @@
  *
  * Only `git ls-files` output is copied, so local scratch files never leak
  * into a shop. Every seeded copy carries `template.json`, a fingerprint of
- * the template (commit, content hash, per-file digests) that `publish`
- * records and that the `sandbox_contract` verifier compares against.
+ * the template (commit, dirty flag, content hash, per-file digests) that
+ * `publish` records and that the `sandbox_contract` verifier compares
+ * against.
  */
 
 import * as fsSync from 'node:fs';
@@ -33,6 +34,12 @@ export interface TemplateFingerprint {
   readonly name: string;
   /** `git rev-parse HEAD` of the template checkout; `null` when unavailable. */
   readonly commit: string | null;
+  /**
+   * A tracked file differed from `commit` (staged or not) when the copy was
+   * taken, so `commit` alone does not reproduce it; `contentHash` and
+   * `files` still describe the copied content.
+   */
+  readonly dirty: boolean;
   /** Digest over every tracked file's path and content. */
   readonly contentHash: string;
   /** Tracked relative path -> SHA-256 of its content. */
@@ -62,7 +69,11 @@ export async function listTrackedFiles(
   return result.stdout.split('\0').filter((rel) => rel !== '');
 }
 
-/** Fingerprint `templateDir` without copying it. */
+/**
+ * Fingerprint `templateDir` without copying it.
+ *
+ * @throws SeedError when `git ls-files` or `git status` fails.
+ */
 export async function templateFingerprint(
   templateDir: string,
   runner: CommandRunner = runCommand,
@@ -78,12 +89,21 @@ export async function templateFingerprint(
     cwd: templateDir,
     timeoutMs: GIT_TIMEOUT_MS,
   });
+  // Tracked changes only: untracked files are never copied.
+  const status = await runner(
+    ['git', '--no-optional-locks', 'status', '--porcelain', '--untracked-files=no', '--', '.'],
+    { cwd: templateDir, timeoutMs: GIT_TIMEOUT_MS },
+  );
+  if (status.exitCode !== 0) {
+    throw new SeedError(`git status failed in ${templateDir}: ${status.stderr.trim()}`);
+  }
   const lines = Object.keys(files)
     .sort()
     .map((rel) => `${rel}\0${files[rel]}\n`);
   return {
     name: path.basename(templateDir),
     commit: head.exitCode === 0 ? head.stdout.trim() : null,
+    dirty: status.stdout.trim() !== '',
     contentHash: sha256Hex(lines.join('')),
     files,
     seededAt: new Date().toISOString(),
