@@ -1,12 +1,19 @@
 /**
  * Dataset invariants the backend zod schema cannot express: referential
- * integrity between files and the presence of referenced image files.
+ * integrity between files, the presence of referenced image files, and
+ * seeded order totals that follow the backend pricing rules.
  */
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import { datasetSchema } from '@shop-gym/shop-backend';
+import {
+  type Commerce,
+  DEFAULT_COMMERCE,
+  type Order,
+  computeOrderTotals,
+  datasetSchema,
+} from '@shop-gym/shop-backend';
 import type { z } from 'zod';
 
 import { readJsonFile, readJsonIfExists } from '../io.js';
@@ -25,6 +32,34 @@ async function fileExists(file: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Money fields of `order` that differ from what the backend pricing rules
+ * give for its lines, shipping method and Discount code under `commerce`.
+ */
+function checkOrderTotals(order: Order, commerce: Commerce): string[] {
+  const method = commerce.shipping_methods.find((m) => m.handle === order.shipping_method);
+  if (method === undefined) {
+    return [
+      `orders.json: order ${order.id} shipping method ${order.shipping_method} is not in commerce.json`,
+    ];
+  }
+  const totals = computeOrderTotals(order.line_items, method, commerce, order.discount_code);
+  const fields: readonly (readonly [string, string | null, string | null])[] = [
+    ['subtotal_price', order.subtotal_price, totals.subtotalPrice],
+    ['total_shipping_price', order.total_shipping_price, totals.totalShippingPrice],
+    ['total_tax', order.total_tax, totals.totalTax],
+    ['total_price', order.total_price, totals.totalPrice],
+    ['discount_code', order.discount_code, totals.discountCode],
+    ['discount_amount', order.discount_amount, totals.discountAmount],
+  ];
+  return fields
+    .filter(([, actual, expected]) => actual !== expected)
+    .map(
+      ([field, actual, expected]) =>
+        `orders.json: order ${order.id} ${field} is ${actual}, the pricing rules give ${expected}`,
+    );
 }
 
 /**
@@ -60,7 +95,8 @@ export async function checkDataset(dataDir: string): Promise<string[]> {
   const inventory = await load('inventory', datasetSchema.inventoryFileSchema, false);
   const customers = await load('customers', datasetSchema.customersFileSchema, false);
   const orders = await load('orders', datasetSchema.ordersFileSchema, false);
-  await load('commerce', datasetSchema.commerceSchema, false);
+  const commerce =
+    (await load('commerce', datasetSchema.commerceSchema, false)) ?? DEFAULT_COMMERCE;
   if (
     store === undefined ||
     products === undefined ||
@@ -151,6 +187,7 @@ export async function checkDataset(dataDir: string): Promise<string[]> {
         );
       }
     }
+    problems.push(...checkOrderTotals(o, commerce));
   }
   return problems;
 }
