@@ -209,6 +209,8 @@ New SDL modules and operations (names follow the Storefront API):
 | checkout | `Query.commerceSettings: CommerceSettings!` | yes |
 | checkout | `Mutation.checkoutComplete(cartId: ID!, input: CheckoutCompleteInput!): CheckoutCompletePayload!` | yes |
 | checkout | `CommerceSettings`, `ShippingMethod`, `PaymentMethod`, `CheckoutCompleteInput`, `CheckoutCompletePayload`, `CheckoutUserError` | yes |
+| catalog | `Product.reviews(first, after, sortKey: ReviewSortKeys = MOST_RECENT): ReviewConnection!` | yes |
+| catalog | `Review { id rating title body reviewerName createdAt verifiedBuyer helpfulCount variant }`, `ReviewConnection`, `ReviewEdge`, `ReviewSortKeys { MOST_RECENT HIGHEST_RATING LOWEST_RATING MOST_HELPFUL }` | yes |
 
 `@sandbox(reason: String)` is declared on `FIELD_DEFINITION | OBJECT |
 INPUT_OBJECT | ENUM | ARGUMENT_DEFINITION`.
@@ -240,12 +242,21 @@ never below zero, and a free-shipping code waives the shipping. Cart cost,
 waived shipping for a free-shipping code) on the order, exposed as the
 sandbox field `Order.discountCode`.
 
+Reviews: read-only and the same in every Episode. `Product.reviews` sorts
+by the sort key, then puts the more recent Review first, then keeps the
+`reviews.json` order, so every read gives the same pages. The product
+metafields `reviews.rating` (Shopify's `rating` JSON, the mean rounded half
+up to one decimal, scale 1.0 to 5.0) and `reviews.rating_count`
+(`number_integer`) are computed from the product's Reviews and are absent
+when it has none; `metafields.json` entries with those keys are ignored.
+
 ### 5.6 Dataset additions
 
 | File | Default | Shape (zod in `src/data/schema.ts`) |
 | --- | --- | --- |
 | `customers.json` | `[]` | `customerSchema[]`: `id, email, password, first_name, last_name, phone, accepts_marketing, created_at, addresses: addressSchema[], default_address_id` |
 | `orders.json` | `[]` | `orderSchema[]`: `id, customer_id, email, processed_at, financial_status, fulfillment_status, currency_code, line_items: { variant_id, title, quantity, price }[], shipping_address, shipping_method, payment_method, subtotal_price, total_shipping_price, total_tax, total_price, discount_code (null), discount_amount ('0.00')` |
+| `reviews.json` | `[]` | `reviewSchema[]`: `id, product_handle, variant_id, rating (integer 1 to 5), title, body, reviewer_name, created_at (ISO 8601), verified_buyer, helpful_count (integer, 0 or more)` |
 | `commerce.json` | `DEFAULT_COMMERCE` | `commerceSchema`: `tax_rate (0)`, `free_shipping_threshold (null)`, `shipping_methods: { handle, title, price }[] ([])`, `payment_methods: { handle, title }[] ([])`, `discount_codes: { code, kind: percentage / fixed_amount / free_shipping, amount, minimum_subtotal, hint }[] ([])` |
 
 `addressSchema`: `id, first_name, last_name, company, address1, address2,
@@ -291,6 +302,7 @@ city, province, province_code, country, country_code, zip, phone`.
 | 7 | `customerUpdate`, `customerAddress*`, `cartDeliveryAddressesAdd`, delivery options, `orderCancel`/return/reorder | not started (follow-up) |
 | 8 | Cross-episode cart id namespacing (ids are per-episode deterministic and may coincide) | not started (decide when graders need global ids) |
 | 9 | Discount codes: `commerce.json` codes, cart pricing and allocations, codes on orders and in the StateSnapshot | done |
+| 10 | Reviews: `reviews.json`, `Product.reviews` paging and sorting, computed rating metafields | done |
 
 ---
 
