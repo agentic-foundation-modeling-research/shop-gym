@@ -4,10 +4,20 @@
  * The pi runtime exposes only the tools a request names, so the executor
  * needs these three to read prefetched evidence and to write `plan.md`,
  * `artifact/parts/*`, and `artifact/evidence/*`. Every path is relative to
- * the run directory; anything resolving outside it is refused.
+ * the run directory; anything resolving outside it, also through a
+ * symlink, is refused.
  */
 
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 
 import type { Tool, ToolResult } from '@shop-gym/agent';
@@ -27,14 +37,34 @@ function errorResult(error: unknown): ToolResult {
   return { content: [{ type: 'text', text: `Error: ${message}` }], isError: true };
 }
 
-/** Resolves `path` under `root`; throws when it escapes. */
+/**
+ * Resolves `path` under `root`; throws when it escapes, also through a
+ * symlink. The deepest existing part of the path must resolve inside the
+ * real `root`, and the rest must not exist yet, so a write creates plain
+ * directories and files inside the run directory.
+ */
 export function resolveInside(root: string, path: string): string {
   const target = resolve(root, path);
-  const rel = relative(root, target);
-  if (rel === '..' || rel.startsWith(`..${sep}`) || resolve(root, rel) !== target) {
+  if (!isInside(root, target)) {
     throw new Error(`path escapes the run directory: ${path}`);
   }
+  let existing = target;
+  // `existsSync` follows symlinks, so it is false for a broken one.
+  while (!existsSync(existing)) {
+    if (lstatSync(existing, { throwIfNoEntry: false })?.isSymbolicLink() === true) {
+      throw new Error(`path goes through a broken symlink: ${path}`);
+    }
+    existing = dirname(existing);
+  }
+  if (!isInside(realpathSync(root), realpathSync(existing))) {
+    throw new Error(`path escapes the run directory through a symlink: ${path}`);
+  }
   return target;
+}
+
+function isInside(root: string, target: string): boolean {
+  const rel = relative(root, target);
+  return rel !== '..' && !rel.startsWith(`..${sep}`) && resolve(root, rel) === target;
 }
 
 function defineTool<P extends TSchema>(

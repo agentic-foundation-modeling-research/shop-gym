@@ -1,11 +1,11 @@
 # The Build loop runs on the developer's host, without a sandbox
 
-The build agent's `run_command` is `sh -c` on the developer's machine. It starts in the run directory but is not confined to it, and the storefront and backend the agent writes run on the same machine as Sidecars. Shop generation has one developer, who runs it locally on Shop Manuals they made, so a sandbox costs more than it protects today. Two host-side limits apply instead. Every command and Sidecar gets an allowlisted environment (`commandEnv()`), so API keys and tokens in the developer's shell do not reach agent-run code. `runCommand` kills a command's whole process group when it exits or times out, so nothing the agent starts outlives its call.
+The build agent's `run_command` is `sh -c` on the developer's machine. It starts in the run directory but is not confined to it, and the storefront and backend the agent writes run on the same machine as Sidecars. Shop generation has one developer, who runs it locally on Shop Manuals they made, so a sandbox costs more than it protects today. Three host-side limits apply instead. Every command and Sidecar gets an allowlisted environment (`commandEnv()`), so API keys and tokens in the developer's shell do not reach agent-run code. `runCommand` kills a command's whole process group when it exits or times out, so nothing the agent starts outlives its call. The file tools refuse a path that leaves the run directory, also through a symlink, so their reads and writes stay where they say; this does not confine `run_command`.
 
 ## Considered Options
 
 - A Build sandbox: one container per run (rootless Podman) with the run directory mounted and the shop's services inside. It confines files, network and processes, and the Verifiers would test the shop on the runtime that hosts it. It also adds a container engine, an image and lifecycle commands to every developer setup.
-- Path checks in the file tools only (refuse paths and symlinks that leave the run directory): no gain while `run_command` can read any file.
+- Path checks in the file tools as the only limit: they confine nothing while `run_command` can read any file. The file tools keep the check for their own correctness, not as a limit on the agent.
 
 ## Consequences
 

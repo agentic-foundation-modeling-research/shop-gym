@@ -134,6 +134,15 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
   API keys and tokens in the developer's shell no longer reach the agent's
   shell or the code it writes. Files the developer can read, the
   repository `.env` too, stay readable (ADR 0015).
+- **The file tools refuse symlinks that leave the run directory
+  (2026-10-28).** `resolveInside` (behind `read_file`, `write_file`,
+  `list_dir` and the `cwd` of `run_command`) resolves the deepest existing
+  part of a path with `realpath` and refuses it when it is outside the real
+  run directory. It also refuses a broken symlink, because a write follows
+  it to wherever it points. Symlinks that stay inside, like the ones pnpm
+  writes in `node_modules`, still work. Before, the check looked only at
+  the path text. This keeps the tools to their contract; it does not
+  confine `run_command` (ADR 0015).
 - Dropped Python behaviour, on purpose: `quality_judge`, `_redo_N` task
   ids, retry-budget annotations, `prompts/fixes/`, the template override
   shim, and the Hydrogen template.
@@ -292,6 +301,7 @@ storefront verifier targets await `ensureCurrent()` themselves.
 | 14 | `dirty` flag in `template.json` and `shop.json` | Done |
 | 15 | `runCommand` kills the command's process group on exit and timeout | Done |
 | 16 | `commandEnv()` allowlist for commands and both sidecars | Done |
+| 17 | File tools refuse symlinks that leave the run directory | Done |
 
 ## 8. Appendix
 
