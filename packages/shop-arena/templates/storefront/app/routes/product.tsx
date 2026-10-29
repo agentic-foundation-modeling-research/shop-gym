@@ -89,8 +89,7 @@ export default function Product() {
       </div>
       <ReviewsSection
         productPath={location.pathname}
-        reviews={product.reviews.nodes}
-        hasNextPage={product.reviews.pageInfo.hasNextPage}
+        reviews={product.reviews}
         rating={rating}
         view={reviewView}
       />

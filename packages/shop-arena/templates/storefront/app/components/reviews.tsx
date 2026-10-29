@@ -8,12 +8,12 @@ import {
   REVIEW_SORT_PARAM,
   type ReviewView,
 } from '~/lib/reviews';
-import type { Review } from '~/lib/types';
+import type { ProductDetail, Review } from '~/lib/types';
 
 const STAR_POSITIONS = [1, 2, 3, 4, 5] as const;
 
 /** The top of the rating scale of one Review. */
-const REVIEW_SCALE_MAX = 5;
+const REVIEW_SCALE_MAX = '5';
 
 /** Dawn's rating block near the product title: the stars, "3.8 / 5.0", then "(6)". */
 export function RatingBlock({ rating }: { readonly rating: ProductRating }) {
@@ -29,17 +29,15 @@ export function RatingBlock({ rating }: { readonly rating: ProductRating }) {
 export function ReviewsSection({
   productPath,
   reviews,
-  hasNextPage,
   rating,
   view,
 }: {
   readonly productPath: string;
-  readonly reviews: readonly Review[];
-  readonly hasNextPage: boolean;
+  readonly reviews: ProductDetail['reviews'];
   readonly rating: ProductRating | null;
   readonly view: ReviewView;
 }) {
-  if (reviews.length === 0) return null;
+  if (reviews.nodes.length === 0) return null;
   const action = `${productPath}#reviews`;
   return (
     <section id="reviews" className="page-width stack reviews" aria-labelledby="reviews-heading">
@@ -62,13 +60,13 @@ export function ReviewsSection({
         <button type="submit">Sort</button>
       </Form>
       <ol className="review-list">
-        {reviews.map((review) => (
+        {reviews.nodes.map((review) => (
           <li key={review.id}>
             <ReviewBlock review={review} />
           </li>
         ))}
       </ol>
-      {hasNextPage ? (
+      {reviews.pageInfo.hasNextPage ? (
         <Form method="get" action={action} reloadDocument>
           <input type="hidden" name={REVIEW_SORT_PARAM} value={view.sort.param} />
           <input type="hidden" name={REVIEW_PAGES_PARAM} value={view.pages + 1} />
@@ -85,7 +83,7 @@ function ReviewBlock({ review }: { readonly review: Review }) {
   const helpful = helpfulText(review.helpfulCount);
   return (
     <article className="review">
-      <Stars rating={review.rating} scaleMax={REVIEW_SCALE_MAX} />
+      <Stars rating={String(review.rating)} scaleMax={REVIEW_SCALE_MAX} />
       {review.title ? <h3>{review.title}</h3> : null}
       {review.body ? <p>{review.body}</p> : null}
       <p className="muted">
@@ -127,8 +125,9 @@ function Stars({
   rating,
   scaleMax,
 }: {
-  readonly rating: string | number;
-  readonly scaleMax: string | number;
+  /** As shown, e.g. "3.8" or "4". */
+  readonly rating: string;
+  readonly scaleMax: string;
 }) {
   return (
     <span className="stars" role="img" aria-label={`${rating} out of ${scaleMax} stars`}>
@@ -151,7 +150,10 @@ function starFill(rating: number, position: number): 'full' | 'half' | 'empty' {
   return 'empty';
 }
 
-/** The options of the variant bought, e.g. "Size: M / Color: Black"; null for a product with one variant. */
+/**
+ * The options of the variant bought, e.g. "Size: M / Color: Black"; null for
+ * a product with one variant.
+ */
 function variantText(variant: Review['variant']): string | null {
   if (variant === null || variantTitle(variant.title) === null) return null;
   return variant.selectedOptions.map((option) => `${option.name}: ${option.value}`).join(' / ');

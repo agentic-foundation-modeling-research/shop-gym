@@ -49,7 +49,8 @@ export function productRatingOf(
   product: Pick<ProductDetail, 'rating' | 'ratingCount'>,
 ): ProductRating | null {
   if (product.rating === null || product.ratingCount === null) return null;
-  // The Shopify `rating` metafield type: {"value":"3.8","scale_min":"1.0","scale_max":"5.0"}.
+  // The Shopify `rating` metafield type, e.g. {"value":"3.8","scale_min":"1.0","scale_max":"5.0"}.
+  // The backend computes this metafield from the Reviews in this shape, so the cast holds.
   const rating = JSON.parse(product.rating.value) as {
     readonly value: string;
     readonly scale_max: string;

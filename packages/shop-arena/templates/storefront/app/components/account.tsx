@@ -263,7 +263,7 @@ export function orderGid(orderNumber: string): string {
 // Dates and times are in UTC: the sandbox has no shop time zone, and the
 // server and the browser must render the same text.
 
-/** "March 3, 2025", in UTC. */
+/** "March 3, 2025". */
 export function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('en-US', {
     month: 'long',

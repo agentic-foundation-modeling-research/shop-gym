@@ -3,8 +3,9 @@
  * register, log in, log out, open a product page, sort its Reviews and show
  * more of them, add a product to the cart, apply or have a Discount code
  * turned down at checkout, place an order, and open that order's thank-you
- * page, the account order history and an account order page. Each step drives one Playwright page, never throws, and reports
- * what it observed so the callers can record it.
+ * page, the account order history and an account order page. Each step
+ * drives one Playwright page, never throws, and reports what it observed so
+ * the callers can record it.
  *
  * Forms are submitted with `requestSubmit()` rather than a pointer click so
  * consent or newsletter popups layered over the page cannot intercept them.
