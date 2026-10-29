@@ -138,7 +138,7 @@ describe('generateShop', () => {
     const finalEval = JSON.parse(
       await fs.readFile(path.join(result.finalEvalDir, 'report.json'), 'utf-8'),
     ) as FinalEvalReport;
-    expect(finalEval.visual.pages).toHaveLength(12);
+    expect(finalEval.visual.pages).toHaveLength(13);
     expect(finalEval.visual.pages.filter((page) => page.status === 'skipped')).toEqual([]);
     expect(finalEval.visual.failed).toBe(1); // the scripted judge fails `/search`
     // The synthesized Dataset has no Discount code, so that step is skipped.
@@ -146,6 +146,8 @@ describe('generateShop', () => {
       ['signUp', 'pass'],
       ['logOut', 'pass'],
       ['logIn', 'pass'],
+      ['addAddress', 'pass'],
+      ['editAddress', 'pass'],
       ['addToCart', 'pass'],
       ['applyDiscountCode', 'skipped'],
       ['checkout', 'pass'],

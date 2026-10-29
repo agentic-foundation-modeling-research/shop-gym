@@ -240,6 +240,12 @@ export interface OrderDetail extends OrderSummary {
   };
 }
 
+/** A country that the shop ships to. */
+export interface Country {
+  readonly isoCode: string;
+  readonly name: string;
+}
+
 export interface Customer {
   readonly id: string;
   readonly email: string | null;

@@ -533,6 +533,24 @@ export type CustomerAccessTokenDeletePayload = {
   readonly userErrors: ReadonlyArray<UserError>;
 };
 
+export type CustomerAddressCreatePayload = {
+  readonly __typename?: 'CustomerAddressCreatePayload';
+  readonly customerAddress: Maybe<MailingAddress>;
+  readonly customerUserErrors: ReadonlyArray<CustomerUserError>;
+};
+
+export type CustomerAddressDeletePayload = {
+  readonly __typename?: 'CustomerAddressDeletePayload';
+  readonly customerUserErrors: ReadonlyArray<CustomerUserError>;
+  readonly deletedCustomerAddressId: Maybe<Scalars['String']['output']>;
+};
+
+export type CustomerAddressUpdatePayload = {
+  readonly __typename?: 'CustomerAddressUpdatePayload';
+  readonly customerAddress: Maybe<MailingAddress>;
+  readonly customerUserErrors: ReadonlyArray<CustomerUserError>;
+};
+
 export type CustomerCreateInput = {
   readonly acceptsMarketing?: InputMaybe<Scalars['Boolean']['input']>;
   readonly email: Scalars['String']['input'];
@@ -548,9 +566,16 @@ export type CustomerCreatePayload = {
   readonly customerUserErrors: ReadonlyArray<CustomerUserError>;
 };
 
+export type CustomerDefaultAddressUpdatePayload = {
+  readonly __typename?: 'CustomerDefaultAddressUpdatePayload';
+  readonly customer: Maybe<Customer>;
+  readonly customerUserErrors: ReadonlyArray<CustomerUserError>;
+};
+
 export type CustomerErrorCode =
   | 'BLANK'
   | 'INVALID'
+  | 'NOT_FOUND'
   | 'TAKEN'
   | 'TOO_SHORT'
   | 'UNIDENTIFIED_CUSTOMER';
@@ -726,7 +751,11 @@ export type Mutation = {
   readonly checkoutComplete: CheckoutCompletePayload;
   readonly customerAccessTokenCreate: CustomerAccessTokenCreatePayload;
   readonly customerAccessTokenDelete: CustomerAccessTokenDeletePayload;
+  readonly customerAddressCreate: CustomerAddressCreatePayload;
+  readonly customerAddressDelete: CustomerAddressDeletePayload;
+  readonly customerAddressUpdate: CustomerAddressUpdatePayload;
   readonly customerCreate: CustomerCreatePayload;
+  readonly customerDefaultAddressUpdate: CustomerDefaultAddressUpdatePayload;
 };
 
 
@@ -811,8 +840,33 @@ export type MutationCustomerAccessTokenDeleteArgs = {
 };
 
 
+export type MutationCustomerAddressCreateArgs = {
+  address: MailingAddressInput;
+  customerAccessToken: Scalars['String']['input'];
+};
+
+
+export type MutationCustomerAddressDeleteArgs = {
+  customerAccessToken: Scalars['String']['input'];
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationCustomerAddressUpdateArgs = {
+  address: MailingAddressInput;
+  customerAccessToken: Scalars['String']['input'];
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationCustomerCreateArgs = {
   input: CustomerCreateInput;
+};
+
+
+export type MutationCustomerDefaultAddressUpdateArgs = {
+  addressId: Scalars['ID']['input'];
+  customerAccessToken: Scalars['String']['input'];
 };
 
 export type Order = {
@@ -1573,8 +1627,12 @@ export type ResolversTypes = {
   CustomerAccessTokenCreateInput: CustomerAccessTokenCreateInput;
   CustomerAccessTokenCreatePayload: ResolverTypeWrapper<CustomerAccessTokenCreatePayload>;
   CustomerAccessTokenDeletePayload: ResolverTypeWrapper<CustomerAccessTokenDeletePayload>;
+  CustomerAddressCreatePayload: ResolverTypeWrapper<CustomerAddressCreatePayload>;
+  CustomerAddressDeletePayload: ResolverTypeWrapper<CustomerAddressDeletePayload>;
+  CustomerAddressUpdatePayload: ResolverTypeWrapper<CustomerAddressUpdatePayload>;
   CustomerCreateInput: CustomerCreateInput;
   CustomerCreatePayload: ResolverTypeWrapper<Omit<CustomerCreatePayload, 'customer'> & { customer?: Maybe<ResolversTypes['Customer']> }>;
+  CustomerDefaultAddressUpdatePayload: ResolverTypeWrapper<Omit<CustomerDefaultAddressUpdatePayload, 'customer'> & { customer?: Maybe<ResolversTypes['Customer']> }>;
   CustomerErrorCode: CustomerErrorCode;
   CustomerUserError: ResolverTypeWrapper<CustomerUserError>;
   DiscountApplicationTargetType: DiscountApplicationTargetType;
@@ -1720,8 +1778,12 @@ export type ResolversParentTypes = {
   CustomerAccessTokenCreateInput: CustomerAccessTokenCreateInput;
   CustomerAccessTokenCreatePayload: CustomerAccessTokenCreatePayload;
   CustomerAccessTokenDeletePayload: CustomerAccessTokenDeletePayload;
+  CustomerAddressCreatePayload: CustomerAddressCreatePayload;
+  CustomerAddressDeletePayload: CustomerAddressDeletePayload;
+  CustomerAddressUpdatePayload: CustomerAddressUpdatePayload;
   CustomerCreateInput: CustomerCreateInput;
   CustomerCreatePayload: Omit<CustomerCreatePayload, 'customer'> & { customer?: Maybe<ResolversParentTypes['Customer']> };
+  CustomerDefaultAddressUpdatePayload: Omit<CustomerDefaultAddressUpdatePayload, 'customer'> & { customer?: Maybe<ResolversParentTypes['Customer']> };
   CustomerUserError: CustomerUserError;
   Float: Scalars['Float']['output'];
   HasMetafieldsIdentifier: HasMetafieldsIdentifier;
@@ -2206,7 +2268,31 @@ export type CustomerAccessTokenDeletePayloadResolvers<ContextType = ResolverCont
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type CustomerAddressCreatePayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerAddressCreatePayload'] = ResolversParentTypes['CustomerAddressCreatePayload']> = {
+  customerAddress?: Resolver<Maybe<ResolversTypes['MailingAddress']>, ParentType, ContextType>;
+  customerUserErrors?: Resolver<ReadonlyArray<ResolversTypes['CustomerUserError']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CustomerAddressDeletePayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerAddressDeletePayload'] = ResolversParentTypes['CustomerAddressDeletePayload']> = {
+  customerUserErrors?: Resolver<ReadonlyArray<ResolversTypes['CustomerUserError']>, ParentType, ContextType>;
+  deletedCustomerAddressId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CustomerAddressUpdatePayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerAddressUpdatePayload'] = ResolversParentTypes['CustomerAddressUpdatePayload']> = {
+  customerAddress?: Resolver<Maybe<ResolversTypes['MailingAddress']>, ParentType, ContextType>;
+  customerUserErrors?: Resolver<ReadonlyArray<ResolversTypes['CustomerUserError']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type CustomerCreatePayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerCreatePayload'] = ResolversParentTypes['CustomerCreatePayload']> = {
+  customer?: Resolver<Maybe<ResolversTypes['Customer']>, ParentType, ContextType>;
+  customerUserErrors?: Resolver<ReadonlyArray<ResolversTypes['CustomerUserError']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CustomerDefaultAddressUpdatePayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerDefaultAddressUpdatePayload'] = ResolversParentTypes['CustomerDefaultAddressUpdatePayload']> = {
   customer?: Resolver<Maybe<ResolversTypes['Customer']>, ParentType, ContextType>;
   customerUserErrors?: Resolver<ReadonlyArray<ResolversTypes['CustomerUserError']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
@@ -2359,7 +2445,11 @@ export type MutationResolvers<ContextType = ResolverContext, ParentType extends 
   checkoutComplete?: Resolver<ResolversTypes['CheckoutCompletePayload'], ParentType, ContextType, RequireFields<MutationCheckoutCompleteArgs, 'cartId' | 'input'>>;
   customerAccessTokenCreate?: Resolver<ResolversTypes['CustomerAccessTokenCreatePayload'], ParentType, ContextType, RequireFields<MutationCustomerAccessTokenCreateArgs, 'input'>>;
   customerAccessTokenDelete?: Resolver<ResolversTypes['CustomerAccessTokenDeletePayload'], ParentType, ContextType, RequireFields<MutationCustomerAccessTokenDeleteArgs, 'customerAccessToken'>>;
+  customerAddressCreate?: Resolver<ResolversTypes['CustomerAddressCreatePayload'], ParentType, ContextType, RequireFields<MutationCustomerAddressCreateArgs, 'address' | 'customerAccessToken'>>;
+  customerAddressDelete?: Resolver<ResolversTypes['CustomerAddressDeletePayload'], ParentType, ContextType, RequireFields<MutationCustomerAddressDeleteArgs, 'customerAccessToken' | 'id'>>;
+  customerAddressUpdate?: Resolver<ResolversTypes['CustomerAddressUpdatePayload'], ParentType, ContextType, RequireFields<MutationCustomerAddressUpdateArgs, 'address' | 'customerAccessToken' | 'id'>>;
   customerCreate?: Resolver<ResolversTypes['CustomerCreatePayload'], ParentType, ContextType, RequireFields<MutationCustomerCreateArgs, 'input'>>;
+  customerDefaultAddressUpdate?: Resolver<ResolversTypes['CustomerDefaultAddressUpdatePayload'], ParentType, ContextType, RequireFields<MutationCustomerDefaultAddressUpdateArgs, 'addressId' | 'customerAccessToken'>>;
 };
 
 export type OrderResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Order'] = ResolversParentTypes['Order']> = {
@@ -2757,7 +2847,11 @@ export type Resolvers<ContextType = ResolverContext> = {
   CustomerAccessToken?: CustomerAccessTokenResolvers<ContextType>;
   CustomerAccessTokenCreatePayload?: CustomerAccessTokenCreatePayloadResolvers<ContextType>;
   CustomerAccessTokenDeletePayload?: CustomerAccessTokenDeletePayloadResolvers<ContextType>;
+  CustomerAddressCreatePayload?: CustomerAddressCreatePayloadResolvers<ContextType>;
+  CustomerAddressDeletePayload?: CustomerAddressDeletePayloadResolvers<ContextType>;
+  CustomerAddressUpdatePayload?: CustomerAddressUpdatePayloadResolvers<ContextType>;
   CustomerCreatePayload?: CustomerCreatePayloadResolvers<ContextType>;
+  CustomerDefaultAddressUpdatePayload?: CustomerDefaultAddressUpdatePayloadResolvers<ContextType>;
   CustomerUserError?: CustomerUserErrorResolvers<ContextType>;
   Image?: ImageResolvers<ContextType>;
   ImageConnection?: ImageConnectionResolvers<ContextType>;

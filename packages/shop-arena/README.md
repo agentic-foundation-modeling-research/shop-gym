@@ -25,8 +25,9 @@ lockfile, is not a pnpm workspace member, and installs with
 PR) runs `src/templates.browser.test.ts`: it builds the template in a temp
 dir, serves it over the in-process backend on the template fixture, and
 walks one shopper in Chromium through sign up, log out, log in, add to cart,
-an unknown and a valid Discount code, check out, the thank-you page and the
-account order page, with the browser
+an unknown and a valid Discount code, check out, the thank-you page, the
+account order page and the address book (add, edit, set the default, see it
+prefilled at checkout, delete), with the browser
 steps that the final eval uses (`src/gen/build/verifiers/browser_steps.ts`).
 It checks the pages and the episode's StateSnapshot. `SHOPGYM_SLOW_TESTS=1
 pnpm test` also runs `src/templates.test.ts`, which drives the account and
@@ -244,12 +245,14 @@ build); `SHOPGYM_LIVE=1` sends one real judge call from
 llm, model, outDir, log?, signal? })` evaluates an already-running shop;
 the `final_eval` pipeline step boots the build artifacts and calls it
 with `outDir = <shopDir>/final_eval`.
-The visual sweep screenshots eleven canonical pages (home, a collection, a
-product, search, cart, checkout, the thank-you page of a guest order,
-account login, account profile, an order detail, a policy page) at both
-viewports and judges each with the same rubric as `visual_judge`; the
-functional sweep is a fixed browser script: sign up, log out, log in, add
-to cart, apply a Discount code, checkout, view order, and `requestReturn`
+The visual sweep screenshots thirteen canonical pages (home, a collection,
+a product, search, cart, checkout, the thank-you page of a guest order,
+account login, account profile, the order list, an order detail, the
+address book, a policy page) at both viewports and judges each with the
+same rubric as `visual_judge`; the functional sweep is a fixed browser
+script: sign up, log out, log in, add an address, edit it, add to cart,
+apply a Discount code, checkout, view order, and
+`requestReturn`
 recorded as `skipped: not supported by backend`. The sweep's code is a
 Dataset code with no minimum subtotal: a percent or fixed-amount code
 first, else a free-shipping code.

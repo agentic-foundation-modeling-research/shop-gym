@@ -10,7 +10,7 @@
 
 import type { MutationCheckoutCompleteArgs } from '../__generated__/resolvers-types.js';
 import type { Commerce, PaymentMethod, ShippingMethod } from '../data/types.js';
-import type { NewAddress } from '../state/shop_state.js';
+import { REQUIRED_ADDRESS_FIELDS, toNewAddress } from './address.js';
 import { type MoneyV2Node, buildMoneyV2 } from './builders.js';
 import type { ResolverContext } from './index.js';
 import { type OrderNode, buildOrderNode } from './order.js';
@@ -39,8 +39,6 @@ export interface CheckoutCompletePayloadNode {
   readonly order: OrderNode | null;
   readonly userErrors: readonly CheckoutUserErrorNode[];
 }
-
-const REQUIRED_ADDRESS_FIELDS = ['address1', 'city', 'country', 'zip'] as const;
 
 // ── Resolvers ─────────────────────────────────────────────────────────────
 
@@ -142,26 +140,6 @@ function pickMethod<T extends ShippingMethod | PaymentMethod>(
 ): T | undefined {
   if (handle === null || handle === undefined) return methods[0];
   return methods.find((m) => m.handle === handle);
-}
-
-function toNewAddress(
-  input: MutationCheckoutCompleteArgs['input']['shippingAddress'],
-  defaultCountryCode: string,
-): NewAddress {
-  return {
-    firstName: input.firstName ?? null,
-    lastName: input.lastName ?? null,
-    company: input.company ?? null,
-    address1: input.address1 ?? '',
-    address2: input.address2 ?? null,
-    city: input.city ?? '',
-    province: input.province ?? null,
-    provinceCode: null,
-    country: input.country ?? '',
-    countryCode: defaultCountryCode,
-    zip: input.zip ?? '',
-    phone: input.phone ?? null,
-  };
 }
 
 function failure(

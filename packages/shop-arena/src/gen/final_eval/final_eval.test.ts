@@ -64,10 +64,11 @@ describe('runFinalEval', () => {
         'accountProfile',
         'orderList',
         'orderDetail',
+        'addresses',
       ].sort(),
     );
     expect(report.visual.pages.every((page) => page.status !== 'skipped')).toBe(true);
-    expect(report.visual).toMatchObject({ passed: 11, failed: 1, skipped: 0 });
+    expect(report.visual).toMatchObject({ passed: 12, failed: 1, skipped: 0 });
     const search = report.visual.pages.find((page) => page.name === 'search');
     expect(search).toMatchObject({ status: 'fail', score: 5, httpStatus: 200 });
     expect(search?.screenshots.map((shot) => shot.path)).toEqual([
@@ -76,14 +77,18 @@ describe('runFinalEval', () => {
     ]);
     const orderList = report.visual.pages.find((page) => page.name === 'orderList');
     expect(orderList).toMatchObject({ route: '/account/orders', bucket: 'account' });
+    const addresses = report.visual.pages.find((page) => page.name === 'addresses');
+    expect(addresses).toMatchObject({ route: '/account/addresses', bucket: 'account' });
     const orderDetail = report.visual.pages.find((page) => page.name === 'orderDetail');
     expect(orderDetail?.route).toBe('/account/orders/1001');
     const thankYou = report.visual.pages.find((page) => page.name === 'thankYou');
     expect(thankYou?.route).toBe('/checkout/confirmation/1001');
-    expect(judge.requests).toHaveLength(12);
+    expect(judge.requests).toHaveLength(13);
 
     expect(report.functional.steps.map((step) => step.name)).toEqual([...FUNCTIONAL_STEP_NAMES]);
     expect(report.functional.steps.map((step) => step.status)).toEqual([
+      'pass',
+      'pass',
       'pass',
       'pass',
       'pass',
@@ -98,20 +103,20 @@ describe('runFinalEval', () => {
       report.functional.steps.find((step) => step.name === 'applyDiscountCode')?.detail,
     ).toContain('WELCOME10');
     expect(report.functional.steps.at(-1)?.detail).toBe('not supported by backend');
-    expect(report.functional).toMatchObject({ passed: 7, failed: 0, skipped: 1 });
+    expect(report.functional).toMatchObject({ passed: 9, failed: 0, skipped: 1 });
     expect(report).toMatchObject({
-      passed: 18,
+      passed: 21,
       failed: 1,
       skipped: 1,
       storefrontUrl,
       model: MODEL,
     });
-    expect(result).toMatchObject({ passed: 18, failed: 1, skipped: 1 });
+    expect(result).toMatchObject({ passed: 21, failed: 1, skipped: 1 });
 
-    expect((await fs.readdir(path.join(outDir, 'pages'))).sort()).toHaveLength(12);
-    expect(await fs.readdir(path.join(outDir, 'screenshots'))).toHaveLength(24);
+    expect((await fs.readdir(path.join(outDir, 'pages'))).sort()).toHaveLength(13);
+    expect(await fs.readdir(path.join(outDir, 'screenshots'))).toHaveLength(26);
     const summary = await fs.readFile(path.join(outDir, 'summary.md'), 'utf-8');
-    expect(summary).toContain('18 passed, 1 failed, 1 skipped');
+    expect(summary).toContain('21 passed, 1 failed, 1 skipped');
     expect(summary).toContain('| search | /search?q=');
     expect(lines.some((line) => line.includes('final_eval: capturing home'))).toBe(true);
   }, 180_000);
@@ -134,6 +139,7 @@ describe('runFinalEval', () => {
     expect(skipped.map((page) => page.name).sort()).toEqual(
       [
         'accountProfile',
+        'addresses',
         'cart',
         'checkout',
         'collection',
