@@ -4,7 +4,7 @@
 
 import type { Task } from '@shop-gym/core';
 
-import { type SeedContext, makeTaskId, skillRng } from './context.js';
+import { type SeedContext, makeTaskId, personaName, skillRng } from './context.js';
 
 export const SKILL = 'account';
 
@@ -16,15 +16,14 @@ export function generate(ctx: SeedContext, count: number): Task[] {
   return personas.slice(0, count).map((customer, i) => {
     const address = customer.addresses.find((a) => a.id === customer.default_address_id);
     const city = address?.city ?? '';
+    const zip = address?.zip ?? '';
     return {
       id: makeTaskId(ctx.shop, SKILL, i + 1),
       shop: ctx.shop,
       skill: SKILL,
-      goal:
-        'You are already signed in. Open your account page and report the email address on ' +
-        'the account and the city of your default shipping address.',
+      goal: `You are already signed in as ${personaName(customer)}. Open your account page and report the city and postal code of your default address.`,
       setup: { login: String(customer.id) },
-      eval: [{ type: 'string_match', mustInclude: [customer.email, city] }],
+      eval: [{ type: 'string_match', mustInclude: [city, zip] }],
       source: 'seed',
       evidence: { customerId: customer.id },
     };

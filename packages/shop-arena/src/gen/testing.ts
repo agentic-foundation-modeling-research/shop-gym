@@ -29,6 +29,8 @@ function handlesOf(value: unknown): string[] {
 export interface ScriptedSynthOptions {
   /** Vendor the first details reply uses for its first product; defaults to an allowlisted brand. */
   readonly firstVendor?: string;
+  /** When true, the first personas reply gives every persona one address. */
+  readonly singleAddressFirst?: boolean;
 }
 
 /**
@@ -39,6 +41,7 @@ export interface ScriptedSynthOptions {
 export class ScriptedSynthLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
   private detailsCalls = 0;
+  private personaCalls = 0;
 
   constructor(private readonly options: ScriptedSynthOptions = {}) {}
 
@@ -56,10 +59,7 @@ export class ScriptedSynthLlm implements LlmClient {
   }
 
   private reply(prompt: string): unknown {
-    const body = prompt.replace(
-      /^[\s\S]*?Re-emit the JSON value from scratch[^\n]*\n[^\n]*\n\n/,
-      '',
-    );
+    const body = prompt.replace(/^[\s\S]*?Re-emit the JSON value from scratch[^\n]*\n\n/, '');
     const first = body.split('\n')[0] ?? '';
     const blocks = jsonBlocks(body);
     if (first.includes('brand identity')) {
@@ -195,20 +195,23 @@ export class ScriptedSynthLlm implements LlmClient {
       };
     }
     if (first.includes('customer personas')) {
-      const count = Number(/inventing (\d+) fictional/.exec(body)?.[1] ?? 3);
+      const count = Number(/inventing (\d+) fictional/.exec(body)?.[1] ?? 5);
+      this.personaCalls += 1;
+      const single = this.personaCalls === 1 && this.options.singleAddressFirst === true;
       return Array.from({ length: count }, (_, i) => ({
-        first_name: ['Jane', 'Omar', 'Lena'][i] ?? `Person${i}`,
-        last_name: ['Doe', 'Haddad', 'Berg'][i] ?? 'Example',
+        first_name: ['Jane', 'Omar', 'Lena', 'Kenji', 'Ana'][i] ?? `Person${i}`,
+        last_name: ['Doe', 'Haddad', 'Berg', 'Sato', 'Silva'][i] ?? 'Example',
         phone: null,
         accepts_marketing: i === 0,
-        address: {
-          address1: `${i + 1} Example Street`,
+        // One, two or three addresses: 1, 2, 3, 1, 2, ...
+        addresses: Array.from({ length: single ? 1 : (i % 3) + 1 }, (_, k) => ({
+          address1: `${i + 1}${k} Example Street`,
           address2: null,
-          city: 'Springfield',
+          city: ['Springfield', 'Shelbyville', 'Ogdenville'][k] ?? 'Springfield',
           province: 'Illinois',
           province_code: 'IL',
-          zip: `6270${i}`,
-        },
+          zip: `627${i}${k}`,
+        })),
       }));
     }
     throw new Error(`ScriptedSynthLlm: unrecognised prompt: ${first}`);

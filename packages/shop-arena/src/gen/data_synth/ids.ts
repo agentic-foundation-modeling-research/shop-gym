@@ -1,4 +1,4 @@
-/** Deterministic numeric ids and money helpers shared by assembly. */
+/** Deterministic numeric ids and random numbers shared by assembly. */
 
 import { createHash } from 'node:crypto';
 
@@ -19,12 +19,4 @@ export function seededRandom(seed: string): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-export function toCents(price: string): number {
-  return Math.round(Number(price) * 100);
-}
-
-export function fromCents(cents: number): string {
-  return (cents / 100).toFixed(2);
 }

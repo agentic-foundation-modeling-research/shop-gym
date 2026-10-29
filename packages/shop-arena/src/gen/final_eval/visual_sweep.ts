@@ -165,6 +165,11 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
     route: '/account',
     bucket: 'account',
   };
+  const orderListPage: CanonicalPage = {
+    name: 'orderList',
+    route: '/account/orders',
+    bucket: 'account',
+  };
   const customer = await readSeededCustomer(options.dataDir);
   const orderId =
     customer === undefined ? undefined : await seededOrderId(options.dataDir, customer.email);
@@ -179,6 +184,7 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
       : await logIn(session.page, storefrontUrl, customer);
   if (login.ok) {
     await capture(profilePage);
+    await capture(orderListPage);
     if (orderId === undefined) {
       skip(orderPage, 'the seeded customer has no order');
     } else {
@@ -186,6 +192,7 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
     }
   } else {
     skip(profilePage, `could not log in: ${login.detail}`);
+    skip(orderListPage, `could not log in: ${login.detail}`);
     skip(orderPage, `could not log in: ${login.detail}`);
   }
 

@@ -58,12 +58,25 @@ describe('generateSeedTasks', () => {
     expect(tasks.every((t) => t.source === 'seed')).toBe(true);
   });
 
+  it('asks account tasks for the default address that the account page shows', () => {
+    const tasks = generateSeedTasks(ctx, { account: 10 });
+    const priya = tasks.find((t) => t.setup?.login === '3');
+    expect(priya?.goal).toContain('Priya Nair');
+    expect(priya?.eval).toEqual([{ type: 'string_match', mustInclude: ['Toronto', 'M5S 1G5'] }]);
+  });
+
   it('logs checkout tasks in as the persona with the variant in the cart', () => {
     const [task] = generateSeedTasks(ctx, { checkout: 1 });
+    const login = task?.setup?.login;
     expect(task?.setup).toEqual({
-      login: '1',
+      login: expect.any(String),
       cart: [{ variantId: expect.any(Number), quantity: 1 }],
     });
-    expect(task?.eval[0]).toMatchObject({ type: 'state_check', path: '/orders', match: 'some' });
+    expect(task?.eval[0]).toMatchObject({
+      type: 'state_check',
+      path: '/orders',
+      match: 'some',
+      value: { customerId: `gid://shopify/Customer/${login}` },
+    });
   });
 });

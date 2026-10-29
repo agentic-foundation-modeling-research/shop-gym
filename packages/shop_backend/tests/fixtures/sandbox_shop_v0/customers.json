@@ -26,5 +26,134 @@
       }
     ],
     "default_address_id": 1
+  },
+  {
+    "id": 2,
+    "email": "marc.tremblay@example.com",
+    "password": "password123",
+    "first_name": "Marc",
+    "last_name": "Tremblay",
+    "phone": "+15145550142",
+    "accepts_marketing": false,
+    "created_at": "2025-03-02T09:15:00.000Z",
+    "addresses": [
+      {
+        "id": 3,
+        "first_name": "Marc",
+        "last_name": "Tremblay",
+        "company": null,
+        "address1": "4520 Rue Saint-Denis",
+        "address2": null,
+        "city": "Montreal",
+        "province": "Quebec",
+        "province_code": "QC",
+        "country": "Canada",
+        "country_code": "CA",
+        "zip": "H2J 2L3",
+        "phone": "+15145550142"
+      },
+      {
+        "id": 4,
+        "first_name": "Marc",
+        "last_name": "Tremblay",
+        "company": "Tremblay Design",
+        "address1": "1000 Rue De La Gauchetiere Ouest",
+        "address2": "Suite 2400",
+        "city": "Montreal",
+        "province": "Quebec",
+        "province_code": "QC",
+        "country": "Canada",
+        "country_code": "CA",
+        "zip": "H3B 4W5",
+        "phone": "+15145550142"
+      }
+    ],
+    "default_address_id": 3
+  },
+  {
+    "id": 3,
+    "email": "priya.nair@example.com",
+    "password": "password123",
+    "first_name": "Priya",
+    "last_name": "Nair",
+    "phone": "+14165550199",
+    "accepts_marketing": true,
+    "created_at": "2025-01-20T12:00:00.000Z",
+    "addresses": [
+      {
+        "id": 5,
+        "first_name": "Priya",
+        "last_name": "Nair",
+        "company": null,
+        "address1": "88 Harbord Street",
+        "address2": "Unit 2",
+        "city": "Toronto",
+        "province": "Ontario",
+        "province_code": "ON",
+        "country": "Canada",
+        "country_code": "CA",
+        "zip": "M5S 1G5",
+        "phone": "+14165550199"
+      },
+      {
+        "id": 6,
+        "first_name": "Priya",
+        "last_name": "Nair",
+        "company": null,
+        "address1": "2150 West 4th Avenue",
+        "address2": null,
+        "city": "Vancouver",
+        "province": "British Columbia",
+        "province_code": "BC",
+        "country": "Canada",
+        "country_code": "CA",
+        "zip": "V6K 1N6",
+        "phone": "+14165550199"
+      },
+      {
+        "id": 7,
+        "first_name": "Priya",
+        "last_name": "Nair",
+        "company": null,
+        "address1": "14 Lakeshore Road",
+        "address2": null,
+        "city": "Huntsville",
+        "province": "Ontario",
+        "province_code": "ON",
+        "country": "Canada",
+        "country_code": "CA",
+        "zip": "P1H 1B2",
+        "phone": "+14165550199"
+      }
+    ],
+    "default_address_id": 5
+  },
+  {
+    "id": 4,
+    "email": "sam.okafor@example.com",
+    "password": "password123",
+    "first_name": "Sam",
+    "last_name": "Okafor",
+    "phone": null,
+    "accepts_marketing": false,
+    "created_at": "2025-10-05T16:45:00.000Z",
+    "addresses": [
+      {
+        "id": 8,
+        "first_name": "Sam",
+        "last_name": "Okafor",
+        "company": null,
+        "address1": "301 Elgin Street",
+        "address2": null,
+        "city": "Ottawa",
+        "province": "Ontario",
+        "province_code": "ON",
+        "country": "Canada",
+        "country_code": "CA",
+        "zip": "K2P 1M3",
+        "phone": null
+      }
+    ],
+    "default_address_id": 8
   }
 ]

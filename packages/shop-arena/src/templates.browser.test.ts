@@ -37,6 +37,7 @@ import {
   register,
   rejectDiscountCode,
   viewOrder,
+  viewOrderHistory,
   viewThankYou,
 } from './gen/build/verifiers/browser_steps.js';
 import { CHECKOUT_ADDRESS } from './gen/build/verifiers/storefront_target.js';
@@ -51,6 +52,8 @@ const SHOPPER = {
   email: 'suite.shopper@example.com',
   password: 'suite-password',
 };
+/** A seeded Persona of the test Dataset with three orders and three addresses. */
+const PERSONA = { email: 'priya.nair@example.com', password: 'password123' };
 
 let workDir: string;
 let backend: ReturnType<typeof createSandboxServer>;
@@ -87,6 +90,12 @@ async function shopperSessionCount(): Promise<number> {
 
 async function pageText(): Promise<string> {
   return session.page.locator('body').innerText();
+}
+
+/** Text of each order history row, in page order. */
+async function orderHistoryRows(): Promise<string[]> {
+  const rows = await session.page.locator('table tbody tr').allInnerTexts();
+  return rows.map((row) => row.replace(/\s+/g, ' ').trim());
 }
 
 describe('storefront template in a browser', () => {
@@ -193,13 +202,66 @@ describe('storefront template in a browser', () => {
     expect(text).toContain('Continue shopping');
   }, 60_000);
 
+  it('lists the placed order in the account order history', async () => {
+    const number = placedOrderNumber();
+    const outcome = await viewOrderHistory(session.page, sidecar.url, number);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await orderHistoryRows()).toEqual([
+      // The Episode clock starts at 2026-01-01 and ticks one second for each change.
+      `#${number} January 1, 2026 Paid Unfulfilled $27.98 CAD`,
+    ]);
+    // A new customer has no saved address.
+    expect(await pageText()).toContain('View addresses (0)');
+  }, 60_000);
+
   it('shows the order in the account order detail', async () => {
     const number = placedOrderNumber();
     const outcome = await viewOrder(session.page, sidecar.url, number);
     expect(outcome.ok, outcome.detail).toBe(true);
     const text = await pageText();
-    expect(text).toContain(`#${number}`);
+    expect(text).toContain('Return to Account details');
     expect(text).toContain(PRODUCT.title);
     expect(text).toContain('WELCOME10');
+    expect(text).toContain('Shipping (Standard Shipping (5-7 days))');
+    expect(text).toContain('Payment Status: Paid');
+    expect(text).toContain('Fulfillment Status: Unfulfilled');
+  }, 60_000);
+
+  it('logs in as a seeded Persona and reads their order history', async () => {
+    expect((await logOut(session.page, sidecar.url)).ok).toBe(true);
+    const login = await logIn(session.page, sidecar.url, PERSONA);
+    expect(login.ok, login.detail).toBe(true);
+    const outcome = await viewOrderHistory(session.page, sidecar.url, 1006);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await orderHistoryRows()).toEqual([
+      '#1006 December 28, 2025 Paid Partially fulfilled $99.98 CAD',
+      '#1004 November 8, 2025 Paid Fulfilled $37.97 CAD',
+      '#1003 September 30, 2025 Refunded Fulfilled $64.98 CAD',
+    ]);
+    const text = await pageText();
+    expect(text).toContain('Account details');
+    expect(text).toContain('88 Harbord Street');
+    expect(text).toContain('Toronto ON M5S 1G5');
+    expect(text).toContain('+14165550199');
+    expect(text).toContain('View addresses (3)');
+  }, 60_000);
+
+  it('reads one past order of the Persona', async () => {
+    const outcome = await viewOrder(session.page, sidecar.url, 1004);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const text = await pageText();
+    expect(text).toContain('Placed on November 8, 2025 at 10:30 am');
+    expect(text).toContain('Carthaeum Toothbrush');
+    // The toy has four variants, so its variant title shows; the toothbrush has one.
+    expect(text).toContain('Green Mushroom');
+    expect(text).not.toContain('Default Title');
+    // 12.99 + 19.99 = 32.98, less SAVE5 (5.00), plus 9.99 standard shipping.
+    expect(text).toMatch(/Subtotal\s+\$32\.98/);
+    expect(text).toMatch(/Discount\s+SAVE5 -\$5\.00/);
+    expect(text).toMatch(/Shipping \(Standard Shipping \(5-7 days\)\)\s+\$9\.99/);
+    expect(text).toMatch(/Total\s+\$37\.97 CAD/);
+    expect(text).toContain('Payment Status: Paid');
+    expect(text).toContain('Fulfillment Status: Fulfilled');
+    expect(text).toContain('88 Harbord Street');
   }, 60_000);
 });
