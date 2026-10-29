@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { capabilitiesSchema } from '../../explore/capabilities.js';
 import { type Tiebreaker, mergeCapabilities } from './capabilities.js';
 import { MANUAL_PARTS, splitManual } from './split.js';
+import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from './standard_sub_manual.js';
 import { mergeStats } from './stats.js';
 
 const seed = (overrides: Record<string, unknown>) => capabilitiesSchema.parse(overrides);
@@ -141,7 +142,7 @@ describe('runManualMerge', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('copies a single manual and writes parts and manifest', async () => {
+  it('copies a single manual and writes the Sub-manuals and manifest', async () => {
     const { writeManualFixture } = await import('../testing.js');
     const { manualMergeStep } = await import('./index.js');
     const seedDir = await writeManualFixture(path.join(root, 'seed'));
@@ -162,11 +163,21 @@ describe('runManualMerge', () => {
       'parts',
       'stats.json',
     ]);
-    expect((await fs.readdir(path.join(outDir, 'manual', 'parts'))).length).toBe(6);
+    expect((await fs.readdir(path.join(outDir, 'manual', 'parts'))).sort()).toEqual(
+      [...MANUAL_PARTS.map((part) => `${part}.md`), STANDARD_SUB_MANUAL_FILE].sort(),
+    );
+    expect(
+      await fs.readFile(path.join(outDir, 'manual', 'parts', STANDARD_SUB_MANUAL_FILE), 'utf-8'),
+    ).toBe(await fs.readFile(STANDARD_SUB_MANUAL_PATH, 'utf-8'));
     const manifest = JSON.parse(
       await fs.readFile(path.join(outDir, 'manual', 'manifest.json'), 'utf-8'),
     );
     expect(manifest.schemaVersion).toBe(1);
     expect(manifest.seeds).toEqual([seedDir]);
+  });
+
+  it('lists the Standard sub-manual as a step input, so an edit to it reruns the step', async () => {
+    const { manualMergeStep } = await import('./index.js');
+    expect(manualMergeStep([path.join(root, 'seed')]).inputs).toContain(STANDARD_SUB_MANUAL_PATH);
   });
 });

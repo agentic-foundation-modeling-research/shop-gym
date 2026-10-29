@@ -12,6 +12,10 @@ import type { SidecarLaunch } from './build/sidecar.js';
 import type { CommandRunner } from './build/verifiers/subprocess.js';
 import { GEN_STEPS } from './config.js';
 import type { FinalEvalReport } from './final_eval/final_eval.js';
+import {
+  STANDARD_SUB_MANUAL_FILE,
+  STANDARD_SUB_MANUAL_PATH,
+} from './manual_merge/standard_sub_manual.js';
 import { generateShop } from './pipeline.js';
 import { readShopManifest } from './publish/publish.js';
 import {
@@ -118,6 +122,15 @@ describe('generateShop', () => {
     expect(await fs.readdir(path.join(outDir, 'runs', 'build', 'artifact'))).toEqual(
       expect.arrayContaining(['data', 'manual', 'storefront']),
     );
+    const standard = await fs.readFile(STANDARD_SUB_MANUAL_PATH, 'utf-8');
+    for (const manual of [
+      path.join(outDir, 'manual'),
+      path.join(outDir, 'runs', 'build', 'artifact', 'manual'),
+    ]) {
+      expect(await fs.readFile(path.join(manual, 'parts', STANDARD_SUB_MANUAL_FILE), 'utf-8')).toBe(
+        standard,
+      );
+    }
     const report = JSON.parse(await fs.readFile(result.dataValidationPath, 'utf-8'));
     expect(report.ok).toBe(true);
     expect(log.some((l) => l.includes('[build] completed'))).toBe(true);

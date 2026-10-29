@@ -60,8 +60,12 @@ The single Shop Manual in a SandboxShop's `manual/` directory. Shop generation m
 _Avoid_: composite manual
 
 **Sub-manual**:
-One of the six area files (homepage, navigation, product, collections, cart and search, info pages) cut from the Merged manual, so that each build task reads only its own area.
+One of the area files in a SandboxShop's `manual/parts/`, so that each build task reads only its own area. Six are cut from the Merged manual (homepage, navigation, product, collections, cart and search, info pages); the seventh is the Standard sub-manual.
 _Avoid_: manual part, part
+
+**Standard sub-manual**:
+The one checked-in Sub-manual that Shop generation adds to every SandboxShop as `manual/parts/standard.md`. It describes, by the Shopify standard, the pages that Storefront exploration cannot observe (account, checkout, and order confirmation), the rules for the announcement bar and for product reviews, and the behavior that the backend supports.
+_Avoid_: standard manual, account manual
 
 **Storefront template**:
 The React Router SSR storefront app that every SandboxShop starts from. The build agent edits a copy of it, never the template itself.
