@@ -98,6 +98,10 @@ _Avoid_: coupon, promo code
 A customer account in the Dataset's `customers.json`, with an email and password that a Task's setup can log in with, saved addresses, and seeded orders in `orders.json` that its order history shows.
 _Avoid_: seeded customer
 
+**Address book**:
+The saved addresses of one customer in an Episode. A logged-in customer adds, edits and deletes them and picks one as the default, which checkout fills in. A customer with addresses always has a default. A Persona's addresses from the Dataset are where its address book starts.
+_Avoid_: address list
+
 **Review**:
 A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read and sort Reviews; they cannot write or vote on them.
 _Avoid_: rating (one field of a Review), testimonial

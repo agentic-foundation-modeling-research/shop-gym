@@ -110,7 +110,7 @@ Nothing in v1.1 reads the Python copy.
 | `/account/register` | same redirect | `customerCreate`, then the login action's steps | `CustomerCreate`, plus login |
 | `/account/logout` | redirect to `/account` | `customerAccessTokenDelete`, clears the token, redirects to `/` | `CustomerAccessTokenDelete` |
 | `/account` | H1 "Account" with "Log out"; the "Order history" table and "Account details" (default address with phone, "View addresses (<n>)") | - | `Customer`, `CustomerOrders(first: 100)`, `CustomerAddresses` |
-| `/account/addresses` | all `Customer.addresses`, default marked (read-only: the backend has no address mutations) | - | `Customer`, `CustomerAddresses` |
+| `/account/addresses` | the address book: all `Customer.addresses`, "Default" above the default, the add and edit forms (country options from `localization.availableCountries`) | intent `create` / `update`: `customerAddressCreate` / `customerAddressUpdate`, then `customerDefaultAddressUpdate` when "Set as default address" is checked; intent `delete`: `customerAddressDelete`; redirects to `/account/addresses`, or returns the errors and the submitted fields | `Customer`, `CustomerAddresses`, `Countries`, `CustomerAddressCreate`, `CustomerAddressUpdate`, `CustomerAddressDelete`, `CustomerDefaultAddressUpdate` |
 | `/account/orders` | the same "Order history" table on its own page, with "Return to Account details" | - | `Customer`, `CustomerOrders(first: 100)` |
 | `/account/orders/:orderNumber` | "Order #<n>": lines (product, SKU, price, quantity, total), totals, billing and shipping address with the statuses; 404 unless `order.email` matches the customer | - | `Customer`, `Order`, `CommerceSettings` |
 | `/checkout` | cart, `commerceSettings`, customer (prefill) | intent `discount` / `discount-remove`: `cartDiscountCodesUpdate`; else `cartBuyerIdentityUpdate` when logged in, then `checkoutComplete`; clears `cartId`; redirects | `Cart`, `CommerceSettings`, `Customer`, `CartDiscountCodesUpdate`, `CartBuyerIdentityUpdate`, `CheckoutComplete` |
@@ -133,6 +133,18 @@ selected shipping method client-side. The "Discount code" field on checkout,
 the cart page and the cart drawer replaces the cart's code; a code that does
 not apply is not kept (the earlier code comes back) and the field shows
 "Enter a valid discount code".
+
+The address book follows the Standard sub-manual. "Add a new address" and
+each "Edit" (named "Edit address <n>") open their form under the button;
+"Cancel" closes it. The forms have the checkout field names (`firstName`,
+`lastName`, `company`, `address1`, `address2`, `city`, `country`,
+`province`, `zip`, `phone`) with floating labels, a "Country/region"
+select and the "Set as default address" checkbox (`default`). "Delete"
+(named "Delete <n>") asks the browser's own confirm dialog. A turned-down
+form opens again with the submitted fields under "Please adjust the
+following:" and the backend's errors. The page renders the address book
+with a new key after each action, so the forms close when the new list
+shows. Checkout fills its form from the default address.
 
 The product page shows Reviews per the Standard sub-manual. Near the title,
 the stars (half stars for a decimal part from 0.3 to 0.7), "3.8 / 5.0" and
@@ -203,7 +215,10 @@ sign up, log out, log in, the Reviews of a product page (show more, sort, a
 half star, left-out fields, and a product with none), add to cart, an
 unknown and a valid Discount code,
 check out, the thank-you page, the new order in the order history and its
-account order page, then a seeded Persona's order history and one past order.
+account order page, the address book (the errors of a blank address,
+add an address, add and edit a second one, make it the default, see it
+prefilled at checkout, delete the first after the confirm dialog), then a
+seeded Persona's order history and one past order.
 Each test is one step; it asserts on the page and, where
 the step changes state, on the episode's StateSnapshot from the Control API.
 New template features add a test that calls one more shared step.
@@ -211,9 +226,8 @@ New template features add a test that calls one more shared step.
 ### 5.6 Out of scope
 
 Payment methods on the customer, return requests, order cancellation,
-reorder, address create / update / delete, and `customerUpdate` have no
-backend operations in M4, so the template has no UI for them. `/account/addresses`
-is read-only until the backend grows `customerAddress*` mutations.
+reorder, and `customerUpdate` have no backend operations in M4, so the
+template has no UI for them.
 
 ## 6. Alternatives
 
@@ -236,11 +250,12 @@ is read-only until the backend grows `customerAddress*` mutations.
 | 6 | Fixture files, queries, and types | done |
 | 7 | `STOREFRONT_TEMPLATE_DIR` export and gated smoke test | done |
 | 8 | Delete the Python template trees (Hydrogen and `react-vite`) | deferred to M11 |
-| 9 | Address and payment-method management, returns, cancellation | blocked on backend operations (spec 5.6.2 later rows) |
+| 9 | Payment-method management, returns, cancellation | blocked on backend operations (spec 5.6.2 later rows) |
 | 10 | Ungated browser suite in every `pnpm test` and CI (`src/templates.browser.test.ts`) | done |
 | 11 | Checkout and thank-you page per the Standard sub-manual, with the "Discount code" field; discount shown on the cart and the order detail | done |
 | 12 | Account page, order history and order page per the Standard sub-manual; fixture Personas with seeded orders | done |
 | 13 | Reviews on the product page per the Standard sub-manual; fixture `reviews.json` | done |
+| 14 | Address book on `/account/addresses` per the Standard sub-manual; checkout prefilled from the default address | done |
 
 ## 8. Appendix
 

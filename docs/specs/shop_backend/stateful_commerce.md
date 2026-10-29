@@ -111,7 +111,7 @@ src/
   sandbox/control_api.ts createControlApi
   http.ts               + optional `route` hook before GraphQL
   server.ts             EpisodeStore wiring, episode context, 400 on bad header
-tests/contract/         catalog, search, cart (read-only, no new features); later discount, reviews
+tests/contract/         catalog, search, cart (read-only, no new features); later discount, reviews, addresses
 AGENTS.md               template guide
 ```
 
@@ -130,7 +130,8 @@ AGENTS.md               template guide
 existing read resolvers and builders see decrements without changes.
 
 Methods: `fork(id)`, `getCustomer`, `findCustomerByEmail`
-(case-insensitive), `createCustomer`, `listCustomers`, `createSession`
+(case-insensitive), `createCustomer`, `listCustomers`, `createAddress`,
+`updateAddress`, `deleteAddress`, `setDefaultAddress`, `createSession`
 (14-day TTL on the episode clock), `resolveSession`, `deleteSession`,
 `listSessions`, `getOrder`, `ordersForCustomer`, `listOrders`,
 `placeOrder`, `inventoryDeltas`. Every mutation calls `clock.tick()`.
@@ -199,8 +200,9 @@ New SDL modules and operations (names follow the Storefront API):
 | customer | `Mutation.customerCreate(input: CustomerCreateInput!)` | no |
 | customer | `Mutation.customerAccessTokenCreate(input: CustomerAccessTokenCreateInput!)` | no |
 | customer | `Mutation.customerAccessTokenDelete(customerAccessToken: String!)` | no |
+| customer | `Mutation.customerAddressCreate(address: MailingAddressInput!, customerAccessToken: String!)`, `customerAddressUpdate(address, customerAccessToken, id: ID!)`, `customerAddressDelete(customerAccessToken, id: ID!)`, `customerDefaultAddressUpdate(addressId: ID!, customerAccessToken)` | no |
 | customer | `Customer { id email firstName lastName displayName phone acceptsMarketing createdAt updatedAt defaultAddress addresses(first) numberOfOrders orders(first, reverse, sortKey) }` | no |
-| customer | `MailingAddress`, `MailingAddressInput`, `CustomerAccessToken`, `CustomerUserError`, `CustomerErrorCode` | no |
+| customer | `MailingAddress`, `MailingAddressInput`, `CustomerAccessToken`, `CustomerUserError`, `CustomerErrorCode`, `CustomerAddressCreatePayload`, `CustomerAddressUpdatePayload`, `CustomerAddressDeletePayload { deletedCustomerAddressId }`, `CustomerDefaultAddressUpdatePayload { customer }` | no |
 | cart | `CartBuyerIdentityInput.customerAccessToken`, `CartBuyerIdentity.customer` | no |
 | cart | `Cart.discountAllocations`, `CartDiscountAllocation`, `CartCodeDiscountAllocation { code discountedAmount targetType }` | no |
 | order | `Query.order(id: ID!): Order` | yes |
@@ -219,6 +221,12 @@ Validation and error codes:
 
 - `customerCreate`: `BLANK` email, `TAKEN` email, `TOO_SHORT` password (< 5).
 - `customerAccessTokenCreate`: `UNIDENTIFIED_CUSTOMER` on bad credentials.
+- Address book mutations: `UNIDENTIFIED_CUSTOMER` on
+  `['customerAccessToken']` for an unknown token; `NOT_FOUND` on `['id']`
+  (`['addressId']` for the default) for an address the customer does not
+  have; `BLANK` on `['address', <field>]` for a blank `address1`, `city`,
+  `country` or `zip`, the lines that `checkoutComplete` requires. An update
+  changes only the fields it sends.
 - `cartBuyerIdentityUpdate` with an invalid token: `INVALID` on
   `['buyerIdentity', 'customerAccessToken']`; a valid token sets
   `customerId` and the customer's email on the cart.
@@ -241,6 +249,14 @@ never below zero, and a free-shipping code waives the shipping. Cart cost,
 `checkoutComplete` records the applied code and the discount amount (the
 waived shipping for a free-shipping code) on the order, exposed as the
 sandbox field `Order.discountCode`.
+
+Address book: the first address of a customer becomes the default, and
+deleting the default makes the first remaining address the default, so a
+customer with addresses always has one. New addresses take the next address
+id, after the seeded customer and order addresses. `countryCode` is the
+store's (the sandbox ships to one country), and a changed province clears
+`provinceCode`. Each success ticks the clock once and sets the customer's
+`updatedAt`; a user error changes nothing.
 
 Reviews: read-only and the same in every Episode. `Product.reviews` sorts
 by the sort key, then puts the more recent Review first, then keeps the
@@ -299,10 +315,11 @@ city, province, province_code, country, country_code, zip, phone`.
 | 4 | Customer / order / checkout resolvers; cart customer association | done |
 | 5 | Episode header, `StateSnapshot`, control API, server wiring | done |
 | 6 | Contract suite, template `AGENTS.md`, README, standalone install check | done |
-| 7 | `customerUpdate`, `customerAddress*`, `cartDeliveryAddressesAdd`, delivery options, `orderCancel`/return/reorder | not started (follow-up) |
+| 7 | `customerUpdate`, `cartDeliveryAddressesAdd`, delivery options, `orderCancel`/return/reorder | not started (follow-up) |
 | 8 | Cross-episode cart id namespacing (ids are per-episode deterministic and may coincide) | not started (decide when graders need global ids) |
 | 9 | Discount codes: `commerce.json` codes, cart pricing and allocations, codes on orders and in the StateSnapshot | done |
 | 10 | Reviews: `reviews.json`, `Product.reviews` paging and sorting, computed rating metafields | done |
+| 11 | Address book: `customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`, `customerDefaultAddressUpdate` | done |
 
 ---
 
