@@ -242,7 +242,7 @@ describe('rating metafields', () => {
 });
 
 describe('a Dataset without reviews.json', () => {
-  let old: ContractServer;
+  let withoutReviews: ContractServer;
   let dataDir: string;
 
   beforeAll(async () => {
@@ -259,21 +259,24 @@ describe('a Dataset without reviews.json', () => {
       { namespace: 'reviews', key: 'rating_count', value: '120', type: 'number_integer' },
     ];
     fs.writeFileSync(metafieldsPath, JSON.stringify(metafields));
-    old = await startContractServer(dataDir);
+    withoutReviews = await startContractServer(dataDir);
   });
 
   afterAll(async () => {
-    await old.server.close();
+    await withoutReviews.server.close();
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
 
   it('loads, with no Reviews and no rating metafields', async () => {
-    const result = await old.query<unknown>(
+    const result = await withoutReviews.query<unknown>(
       `{ product(handle: "${TOYS}") { title reviews(first: 5) { nodes { id } } } }`,
     );
     expect(result).toEqual({
       data: { product: { title: 'Shopliseum Mushroom Dog Toys', reviews: { nodes: [] } } },
     });
-    expect(await ratingMetafields(old, TOYS)).toEqual({ rating: null, ratingCount: null });
+    expect(await ratingMetafields(withoutReviews, TOYS)).toEqual({
+      rating: null,
+      ratingCount: null,
+    });
   });
 });
