@@ -79,7 +79,8 @@ export function runCommandTool(
     description:
       'Run a shell command with `sh -c` inside the run directory and return its exit code, stdout and stderr. ' +
       'Use it for `pnpm typecheck`, `pnpm build`, `pnpm test`, `pnpm codegen` and `curl` against the sidecar. ' +
-      'Chain commands with `&&` in one call; do not start servers that outlive the call.',
+      'Chain commands with `&&` in one call. Every process the call starts, also in the background, ' +
+      'is killed when the command exits or times out.',
     parameters: RUN_COMMAND_PARAMS,
     async execute(params, ctx): Promise<ToolResult> {
       let cwd: string;

@@ -111,9 +111,9 @@ re-runs are idempotent). Run scripts from inside the copy via `run_command`:
 returns exactly the captures the `visual_judge` verifier scores. Look at
 every page you styled before you mark the task done; the judge will.
 
-Do not start long-running dev servers across tool calls; a `run_command`
-call is killed when it times out, so start and stop servers inside one
-call.
+When the command of a `run_command` call exits or times out, every process
+it started is killed, also the processes you put in the background. To try
+a server, start it, query it and stop it inside one call.
 
 ---
 

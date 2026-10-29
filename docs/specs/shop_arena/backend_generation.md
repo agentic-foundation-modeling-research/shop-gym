@@ -120,6 +120,13 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
   --untracked-files=no` in the template directory (untracked files are
   never copied); `publish` carries it into `shop.json`, where it is
   optional so manifests written before the flag still validate.
+- **A command's processes end with it (2026-10-28).** `runCommand`
+  (behind `run_command`, the command-backed verifiers and seeding) starts
+  the command as the leader of a new process group and kills the group
+  when the command exits or times out. Before, a timeout killed only the
+  command itself, so a server it put in the background kept its port, and
+  a command that exited with a background child still running waited for
+  the full timeout because the child held its output open.
 - Dropped Python behaviour, on purpose: `quality_judge`, `_redo_N` task
   ids, retry-budget annotations, `prompts/fixes/`, the template override
   shim, and the Hydrogen template.
@@ -276,6 +283,7 @@ storefront verifier targets await `ensureCurrent()` themselves.
 | 12 | Two-copy ownership (no storefront slices); `routes_200` on every page | Done |
 | 13 | Seed again after a seed that failed before `build.json` | Done |
 | 14 | `dirty` flag in `template.json` and `shop.json` | Done |
+| 15 | `runCommand` kills the command's process group on exit and timeout | Done |
 
 ## 8. Appendix
 
