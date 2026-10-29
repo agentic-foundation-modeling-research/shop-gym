@@ -130,16 +130,30 @@ verifier returns `pass`, `fail` or `advisory`:
 You never invoke verifiers yourself; you read their feedback at the top of the
 next executor prompt and treat it as a hard error report.
 
-| Name                | Applies to                                  | Checks                                                              |
-| ------------------- | ------------------------------------------- | ------------------------------------------------------------------- |
-| `owned_files`       | every task                                  | edits stay in the task's template copy; read-only paths unchanged   |
-| `backend_typecheck` | `gen_backend`, `backend_*`                  | `pnpm typecheck` in `artifact/backend`                              |
-| `backend_test`      | `gen_backend`, `backend_*`                  | `pnpm test` in `artifact/backend`                                   |
-| `sandbox_contract`  | `gen_backend`, `backend_*`                  | read-only backend paths unchanged; `tests/contract` suite passes    |
-| `data_in_use`       | every task                                  | every storefront GraphQL operation validates against the live schema |
+"Storefront tasks" are all tasks other than `gen_backend` and `backend_*`.
+The backend rows run only when backend generation is enabled.
 
-Storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) are
-added by the orchestrator when the storefront template is wired in.
+| Name                | Applies to                                     | Checks                                                                       |
+| ------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| `owned_files`       | every task                                     | edits stay in the task's template copy; read-only paths unchanged            |
+| `typecheck`         | storefront tasks                               | `pnpm typecheck` in `artifact/storefront`                                    |
+| `build`             | storefront tasks                               | `pnpm build` in `artifact/storefront`; the verifiers below serve this build  |
+| `routes_200`        | storefront tasks                               | the static routes and the dataset routes of every page return 200            |
+| `backend_typecheck` | `gen_backend`, `backend_*`                     | `pnpm typecheck` in `artifact/backend`                                       |
+| `backend_test`      | `gen_backend`, `backend_*`                     | `pnpm test` in `artifact/backend`                                            |
+| `sandbox_contract`  | `gen_backend`, `backend_*`                     | read-only backend paths unchanged; `tests/contract` suite passes             |
+| `data_in_use`       | every task                                     | every storefront GraphQL operation validates against the live schema         |
+| `nav_coverage`      | `gen_theme`, `gen_navigation`, `visual_fix`    | every `navigation.json` target returns 200 and is a header or footer link    |
+| `cart_conformance`  | `gen_product`, `gen_cart_search`, `visual_fix` | cart and checkout forms add, update, remove and order as the backend records |
+| `visual_judge`      | page tasks (below), `visual_fix`               | a model judges the task's pages at desktop and mobile size                   |
+
+A storefront that does not build or start fails every verifier that serves it
+(`routes_200` and the rows after `data_in_use`) with the same error, so fix
+`build` first. The page tasks are `gen_homepage`, `gen_navigation`,
+`gen_collections`, `gen_product`, `gen_cart_search` and `gen_info_pages`;
+`visual_judge` judges the pages each one builds and every page for
+`visual_fix`. After a task fails `visual_judge` a fixed number of times, its
+`visual_judge` result becomes `advisory`.
 
 ---
 

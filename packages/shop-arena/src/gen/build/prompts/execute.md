@@ -27,6 +27,13 @@ Feedback shapes you should know how to react to:
 - `owned_files`: you changed a read-only path (`fail`) or a path in the
   other template copy (`advisory`). Restore read-only paths to their
   template content; leave the other copy to its own tasks.
+- `typecheck` / `build`: `pnpm typecheck` or `pnpm build` failed in
+  `artifact/storefront`. The body carries the compiler or bundler output.
+  The verifiers that serve the storefront fail with the same error until
+  the build passes.
+- `routes_200`: a route returned a status other than 200. The body names
+  the route and an excerpt of the response. A route of another page counts
+  too: a shared file you edited can break it.
 - `backend_typecheck` / `backend_test`: `pnpm typecheck` or `pnpm test`
   failed in `artifact/backend`. The body carries the compiler or test output.
 - `sandbox_contract`: a read-only backend file changed, or the
@@ -38,6 +45,9 @@ Feedback shapes you should know how to react to:
 - `nav_coverage`: a `navigation.json` target is missing from the rendered
   header or footer. Add the link where it belongs; do not rewrite the whole
   component, which tends to drop other links and reopen `visual_judge`.
+- `cart_conformance`: a cart or checkout step (add, update, remove, guest
+  order, confirmation page) did not match what the backend recorded. The
+  body names the step. Keep the template's form fields and actions.
 - `visual_judge`: a page scored below the bar. Fix the listed issues in
   order, then confirm with `screenshot_page` on the same route before you
   mark the task done.
