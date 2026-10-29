@@ -1,9 +1,9 @@
 /**
  * The functional sweep: a fixed shopper journey through the storefront in
- * one browser episode. Sign up, log out, log in, add to cart, apply a
- * Discount code, check out, view the order. Returns are not supported by
- * the backend, so that step is recorded as skipped. Steps run in order and
- * stop at the first failure.
+ * one browser episode. Sign up, log out, log in, add an address and edit
+ * it, add to cart, apply a Discount code, check out, view the order.
+ * Returns are not supported by the backend, so that step is recorded as
+ * skipped. Steps run in order and stop at the first failure.
  */
 
 import * as fs from 'node:fs/promises';
@@ -13,14 +13,17 @@ import type { BrowserSession } from '@shop-gym/browser';
 import { datasetSchema } from '@shop-gym/shop-backend';
 
 import {
+  addAddress,
   addToCart,
   applyDiscountCode,
+  editAddress,
   logIn,
   logOut,
   placeOrder,
   register,
   viewOrder,
 } from '../build/verifiers/browser_steps.js';
+import { CHECKOUT_ADDRESS } from '../build/verifiers/storefront_target.js';
 
 export type StepStatus = 'pass' | 'fail' | 'skipped';
 
@@ -44,6 +47,8 @@ export const FUNCTIONAL_STEP_NAMES = [
   'signUp',
   'logOut',
   'logIn',
+  'addAddress',
+  'editAddress',
   'addToCart',
   'applyDiscountCode',
   'checkout',
@@ -71,6 +76,13 @@ export async function runFunctionalSweep(
       step(
         'logIn',
         await logIn(page, storefrontUrl, { email: account.email, password: account.password }),
+      ),
+    addAddress: async () =>
+      step('addAddress', await addAddress(page, storefrontUrl, CHECKOUT_ADDRESS)),
+    editAddress: async () =>
+      step(
+        'editAddress',
+        await editAddress(page, storefrontUrl, 1, { address2: 'Unit 2' }, { setDefault: true }),
       ),
     addToCart: async () =>
       productHandle === undefined

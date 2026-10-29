@@ -319,11 +319,52 @@ function stubHtml(body: string, loggedIn: boolean): string {
   return `<!doctype html><html><head><title>Stub</title></head><body><header><nav><a href="/">Home</a><a href="/collections/dog-essentials">Dogs</a>${logout}</nav></header><main>${body}</main><footer><a href="/policies/privacy-policy">Privacy</a></footer></body></html>`;
 }
 
+/** Fields of the stub's address book forms, by input name. */
+const STUB_ADDRESS_FIELDS = [
+  'firstName',
+  'lastName',
+  'company',
+  'address1',
+  'address2',
+  'city',
+  'province',
+  'zip',
+  'phone',
+] as const;
+
+/**
+ * The stub's address book page: the add form, then the one saved address
+ * (always the default) with its edit and delete forms. Every form shows,
+ * because the stub has no client script to open them.
+ */
+function stubAddressBook(address: Readonly<Record<string, string>> | undefined): string {
+  const fields = (values: Readonly<Record<string, string>>) => {
+    const inputs = STUB_ADDRESS_FIELDS.map(
+      (name) => `<input name="${name}" value="${escapeHtml(values[name] ?? '')}">`,
+    ).join('');
+    return `${inputs}<label><input type="checkbox" name="default" value="true"> Set as default address</label>`;
+  };
+  const add = `<button type="button">Add a new address</button><form method="post"><input type="hidden" name="intent" value="create">${fields({})}<button type="submit">Add address</button></form>`;
+  if (address === undefined) return `<h1>Addresses</h1>${add}<ul></ul>`;
+  const name = [address.firstName, address.lastName].filter(Boolean).join(' ');
+  const cityLine = [address.city, address.province, address.zip].filter(Boolean).join(' ');
+  const lines = [name, address.company, address.address1, address.address2, cityLine]
+    .filter(Boolean)
+    .map((line) => `<span>${escapeHtml(line ?? '')}</span><br>`)
+    .join('');
+  return `<h1>Addresses</h1>${add}<ul><li><h2>Default</h2><address>${lines}</address><button type="button" aria-label="Edit address 1">Edit</button><form method="post" onsubmit="return confirm('Are you sure you wish to delete this address?')"><input type="hidden" name="intent" value="delete"><button type="submit" aria-label="Delete 1">Delete</button></form><form method="post"><input type="hidden" name="intent" value="update">${fields(address)}<button type="submit">Update address</button></form></li></ul>`;
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
 /**
  * A stand-in storefront that answers every route with a minimal page and
- * walks the account, cart and checkout flows with three cookies:
- * `session=1` marks a logged-in customer, `cart=1` a non-empty cart, and
- * `discount=1` a Discount code applied at checkout.
+ * walks the account, cart and checkout flows with four cookies:
+ * `session=1` marks a logged-in customer, `cart=1` a non-empty cart,
+ * `discount=1` a Discount code applied at checkout, and `address=<JSON>`
+ * the one saved address.
  */
 export function stubStorefront(): http.Server {
   return http.createServer((req, res) => {
@@ -332,6 +373,11 @@ export function stubStorefront(): http.Server {
     const loggedIn = cookies.includes('session=1');
     const hasCart = cookies.includes('cart=1');
     const hasDiscount = cookies.includes('discount=1');
+    const savedAddress = /(?:^|;\s*)address=([^;]+)/.exec(cookies)?.[1];
+    const address =
+      savedAddress === undefined
+        ? undefined
+        : (JSON.parse(decodeURIComponent(savedAddress)) as Record<string, string>);
     const page = (body: string): void => {
       res.writeHead(200, { 'content-type': 'text/html' });
       res.end(stubHtml(body, loggedIn));
@@ -355,6 +401,20 @@ export function stubStorefront(): http.Server {
           case '/account/logout':
             redirect('/', 'session=; Path=/; Max-Age=0');
             return;
+          case '/account/addresses': {
+            if (form.get('intent') === 'delete') {
+              redirect('/account/addresses', 'address=; Path=/; Max-Age=0');
+              return;
+            }
+            const saved = Object.fromEntries(
+              STUB_ADDRESS_FIELDS.map((name) => [name, form.get(name) ?? '']),
+            );
+            redirect(
+              '/account/addresses',
+              `address=${encodeURIComponent(JSON.stringify(saved))}; Path=/`,
+            );
+            return;
+          }
           case '/cart':
             redirect(form.get('redirectTo') ?? '/cart', 'cart=1; Path=/');
             return;
@@ -386,6 +446,10 @@ export function stubStorefront(): http.Server {
       case url.pathname.startsWith('/account'):
         if (!loggedIn) {
           redirect(`/account/login?redirectTo=${encodeURIComponent(url.pathname)}`);
+          return;
+        }
+        if (url.pathname === '/account/addresses') {
+          page(stubAddressBook(address));
           return;
         }
         page(
