@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 import { build } from '@shop-gym/shop-arena';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -92,5 +93,16 @@ describe('host process primitives', () => {
     );
     expect(bad.exitCode).toBe(2);
     expect(bad.output).toContain('x');
+  });
+
+  it('kills what a foreground command left in the background', async () => {
+    const result = await runCommand(['/bin/sh', '-c', 'sleep 30 & echo $!'], dir);
+
+    expect(result.exitCode).toBe(0);
+    const pid = Number(result.output.trim());
+    for (let attempt = 0; attempt < 20 && pidAlive(pid); attempt += 1) {
+      await sleep(50);
+    }
+    expect(pidAlive(pid)).toBe(false);
   });
 });

@@ -106,6 +106,25 @@ describe('run_command', () => {
     expect(result.isError).toBe(true);
     expect(text(result.content)).toContain('timed out');
   }, 10_000);
+
+  it('awaits beforeCommand and still runs the command when it fails', async () => {
+    const order: string[] = [];
+    const ok = runCommandTool(runCommand, async () => {
+      order.push('before');
+    });
+    const result = await ok.execute({ command: 'echo ran' }, ctx(os.tmpdir()));
+    expect(order).toEqual(['before']);
+    expect(text(result.content)).not.toContain('Warning');
+
+    const failing = runCommandTool(runCommand, async () => {
+      throw new Error('sidecar exited with code 1 before /health');
+    });
+    const warned = await failing.execute({ command: 'echo ran' }, ctx(os.tmpdir()));
+    expect(warned.isError).toBeUndefined();
+    const body = text(warned.content);
+    expect(body).toMatch(/^Warning: sidecar exited with code 1 before \/health\n/);
+    expect(body).toContain('exited with code 0');
+  });
 });
 
 describe('screenshot_page', () => {

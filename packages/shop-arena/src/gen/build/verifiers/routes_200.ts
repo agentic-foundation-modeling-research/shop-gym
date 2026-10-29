@@ -1,7 +1,8 @@
 /**
- * `routes_200` verifier: every route the task touches answers, over HTTP,
- * the way a shopper would see it. Static routes and the task's dataset
- * routes return 200; account pages redirect to the login page when logged
+ * `routes_200` verifier: every storefront page answers, over HTTP, the way
+ * a shopper would see it, after every storefront task (a task can break a
+ * page it does not work on through a shared file). Static routes and the
+ * dataset routes of every page bucket return 200; account pages redirect to the login page when logged
  * out and return 200 after logging in as the seeded customer; `/checkout`
  * returns 200 with a non-empty cart; internal links found in the rendered
  * pages do not 4xx/5xx.
@@ -25,7 +26,6 @@ import {
   ALL_BUCKETS,
   type BucketCaps,
   SWEEP_CAPS,
-  bucketsForTask,
   isStorefrontTask,
   readDatasetHandles,
   routesForBuckets,
@@ -74,12 +74,7 @@ export function routes200Verifier(options: Routes200Options): Verifier {
       }
       const handles = await readDatasetHandles(options.dataDir);
       const customer = await readSeededCustomer(options.dataDir);
-      const buckets = bucketsForTask(ctx.selectedTaskId);
-      const taskRoutes = routesForBuckets(
-        buckets.length > 0 ? buckets : ALL_BUCKETS,
-        handles,
-        caps,
-      );
+      const datasetRoutes = routesForBuckets(ALL_BUCKETS, handles, caps);
       const guest = new StorefrontClient({
         baseUrl: options.target.url,
         episodeId: `routes-200-${ctx.iterId}`,
@@ -89,7 +84,7 @@ export function routes200Verifier(options: Routes200Options): Verifier {
 
       // Member-only account routes are probed below in both sessions.
       const guestRoutes = new Set(
-        [...STATIC_ROUTES, ...taskRoutes].filter((route) => !ACCOUNT_ROUTES.includes(route)),
+        [...STATIC_ROUTES, ...datasetRoutes].filter((route) => !ACCOUNT_ROUTES.includes(route)),
       );
       for (const route of guestRoutes) {
         const result = await guest.get(route);

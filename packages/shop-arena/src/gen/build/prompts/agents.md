@@ -32,8 +32,10 @@ Build a working storefront on top of the inputs you already have:
 
 When backend generation is enabled, the `gen_backend` task runs first and may
 extend the backend's schema, resolvers and state so the storefront has the
-operations it needs. The sidecar is restarted automatically after any
-iteration that changes `artifact/backend/`.
+operations it needs. When `artifact/backend/` changed, the sidecar restarts
+automatically before your next `run_command` or `screenshot_page` and before
+the verifiers run. If it cannot start, the `run_command` output begins with a
+`Warning:` line that names `sidecar.log`; fix the backend before you continue.
 
 If a tradeoff appears between "more features" and "every verifier passes",
 pick the latter.
@@ -52,6 +54,7 @@ pick the latter.
     storefront/           storefront template copy: storefront tasks edit it
       template.json       read-only fingerprint
     backend/              backend template copy: backend tasks edit it
+                          (read-only when backend generation is disabled)
       template.json       read-only fingerprint
       src/data/schema.ts  read-only (dataset contract)
       src/sandbox/**      read-only (episode isolation)
@@ -63,13 +66,11 @@ pick the latter.
   seed-immutability check and the harness rejects the iteration.
 - Storefront tasks (`gen_theme`, `gen_navigation`, ...) edit
   `artifact/storefront/` only. Backend tasks (`gen_backend`, `backend_*`)
-  edit `artifact/backend/` only. The `owned_files` verifier reports edits
-  outside your task's slice.
-- Inside `artifact/backend/`, the allowed paths are `src/schema/**`,
-  `src/resolvers/**`, `src/state/**`, `src/__generated__/**` (via
-  `pnpm codegen`), co-located `*.test.ts` files, `src/data/loader.ts` and
-  `src/data/types.ts` (wiring only), `tests/fixtures/**`, and
-  `package.json` dependencies. `src/data/schema.ts`, `src/sandbox/**` and
+  edit `artifact/backend/` only. When backend generation is disabled,
+  `artifact/backend/` is read-only for every task. The `owned_files`
+  verifier fails an edit to a read-only path and reports an edit in the
+  other copy.
+- Inside `artifact/backend/`, `src/data/schema.ts`, `src/sandbox/**` and
   `tests/contract/**` are the sandbox contract and must stay byte-identical
   to the template.
 - Never edit `template.json` or `.env` files; the orchestrator owns them.
@@ -78,7 +79,9 @@ Final action of any executor iteration: edit `plan.md` to mark **only your
 selected task** as `[x]` (success) or `[!]` (blocked). The task line keeps
 its exact shape `- [<marker>] <task_id> — <brief> [priority: N]`; a
 blocked reason goes into the brief after the separator, never after the
-priority. Do not touch any other task's line.
+priority. Do not touch any other task's line. An iteration that times out,
+leaves `plan.md` unparseable or breaks this protocol is discarded: the
+harness restores `artifact/` to its state before the iteration.
 
 ---
 
@@ -108,9 +111,9 @@ re-runs are idempotent). Run scripts from inside the copy via `run_command`:
 returns exactly the captures the `visual_judge` verifier scores. Look at
 every page you styled before you mark the task done; the judge will.
 
-Do not start long-running dev servers across tool calls; a `run_command`
-call is killed when it times out, so start and stop servers inside one
-call.
+When the command of a `run_command` call exits or times out, every process
+it started is killed, also the processes you put in the background. To try
+a server, start it, query it and stop it inside one call.
 
 ---
 
@@ -127,16 +130,30 @@ verifier returns `pass`, `fail` or `advisory`:
 You never invoke verifiers yourself; you read their feedback at the top of the
 next executor prompt and treat it as a hard error report.
 
-| Name                | Applies to                                  | Checks                                                              |
-| ------------------- | ------------------------------------------- | ------------------------------------------------------------------- |
-| `owned_files`       | every task                                  | edits stay in the task's slice; protected paths unchanged           |
-| `backend_typecheck` | `gen_backend`, `backend_*`                  | `pnpm typecheck` in `artifact/backend`                              |
-| `backend_test`      | `gen_backend`, `backend_*`                  | `pnpm test` in `artifact/backend`                                   |
-| `sandbox_contract`  | `gen_backend`, `backend_*`                  | read-only backend paths unchanged; `tests/contract` suite passes    |
-| `data_in_use`       | every task                                  | every storefront GraphQL operation validates against the live schema |
+"Storefront tasks" are all tasks other than `gen_backend` and `backend_*`.
+The backend rows run only when backend generation is enabled.
 
-Storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) are
-added by the orchestrator when the storefront template is wired in.
+| Name                | Applies to                                     | Checks                                                                       |
+| ------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| `owned_files`       | every task                                     | edits stay in the task's template copy; read-only paths unchanged            |
+| `typecheck`         | storefront tasks                               | `pnpm typecheck` in `artifact/storefront`                                    |
+| `build`             | storefront tasks                               | `pnpm build` in `artifact/storefront`; the verifiers below serve this build  |
+| `routes_200`        | storefront tasks                               | the static routes and the dataset routes of every page return 200            |
+| `backend_typecheck` | `gen_backend`, `backend_*`                     | `pnpm typecheck` in `artifact/backend`                                       |
+| `backend_test`      | `gen_backend`, `backend_*`                     | `pnpm test` in `artifact/backend`                                            |
+| `sandbox_contract`  | `gen_backend`, `backend_*`                     | read-only backend paths unchanged; `tests/contract` suite passes             |
+| `data_in_use`       | every task                                     | every storefront GraphQL operation validates against the live schema         |
+| `nav_coverage`      | `gen_theme`, `gen_navigation`, `visual_fix`    | every `navigation.json` target returns 200 and is a header or footer link    |
+| `cart_conformance`  | `gen_product`, `gen_cart_search`, `visual_fix` | cart and checkout forms add, update, remove and order as the backend records |
+| `visual_judge`      | page tasks (below), `visual_fix`               | a model judges the task's pages at desktop and mobile size                   |
+
+A storefront that does not build or start fails every verifier that serves it
+(`routes_200` and the rows after `data_in_use`) with the same error, so fix
+`build` first. The page tasks are `gen_homepage`, `gen_navigation`,
+`gen_collections`, `gen_product`, `gen_cart_search` and `gen_info_pages`;
+`visual_judge` judges the pages each one builds and every page for
+`visual_fix`. After a task fails `visual_judge` a fixed number of times, its
+`visual_judge` result becomes `advisory`.
 
 ---
 

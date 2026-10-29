@@ -133,34 +133,42 @@ async function ctx(selectedTaskId: string): Promise<VerifierContext> {
 }
 
 describe('storefront command verifiers', () => {
-  it('run in the storefront copy for storefront tasks only', async () => {
+  it('run for storefront tasks only; typecheck runs in the storefront copy', async () => {
     const calls: { argv: string[]; cwd: string }[] = [];
     const runner: CommandRunner = async (argv, options) => {
       calls.push({ argv: [...argv], cwd: options.cwd });
       return OK;
     };
+    let builds = 0;
     const typecheck = storefrontTypecheckVerifier(runner);
-    const build = storefrontBuildVerifier(runner);
+    const build = storefrontBuildVerifier({
+      build: async () => {
+        builds += 1;
+        return OK;
+      },
+    });
     expect(typecheck.appliesTo('gen_homepage')).toBe(true);
     expect(typecheck.appliesTo('gen_backend')).toBe(false);
     expect(build.appliesTo('visual_fix')).toBe(true);
+    expect(build.appliesTo('gen_backend')).toBe(false);
     const context = await ctx('gen_homepage');
     expect((await typecheck.run(context)).verdict).toBe('pass');
     expect((await build.run(context)).verdict).toBe('pass');
-    expect(calls.map((c) => c.argv)).toEqual([
-      ['pnpm', 'typecheck'],
-      ['pnpm', 'build'],
+    expect(calls).toEqual([
+      { argv: ['pnpm', 'typecheck'], cwd: path.join(context.artifactDir, 'storefront') },
     ]);
-    expect(calls.every((c) => c.cwd === path.join(context.artifactDir, 'storefront'))).toBe(true);
+    expect(builds).toBe(1);
   });
 
   it('fails with the command output when the build exits non-zero', async () => {
-    const build = storefrontBuildVerifier(async () => ({
-      exitCode: 1,
-      stdout: '',
-      stderr: 'app/root.tsx: Unexpected token',
-      timedOut: false,
-    }));
+    const build = storefrontBuildVerifier({
+      build: async () => ({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'app/root.tsx: Unexpected token',
+        timedOut: false,
+      }),
+    });
     const result = await build.run(await ctx('gen_homepage'));
     expect(result.verdict).toBe('fail');
     expect(result.feedback).toContain('Unexpected token');
@@ -203,6 +211,21 @@ describe('routes_200', () => {
     expect(probes.every((p) => p.ok)).toBe(true);
     expect(probes.map((p) => p.route)).toEqual(
       expect.arrayContaining(['/', '/account', '/account/orders', '/checkout', '/account/login']),
+    );
+  });
+
+  it('probes the dataset routes of every page bucket, whatever the task', async () => {
+    const url = await serve();
+    const verifier = routes200Verifier({ target: { url }, dataDir: FIXTURE_DIR });
+    const result = await verifier.run(await ctx('gen_homepage'));
+    const probes = (result.details as { probes: { route: string; expected: string }[] }).probes;
+    expect(probes.filter((p) => p.expected === 'status 200').map((p) => p.route)).toEqual(
+      expect.arrayContaining([
+        '/collections/dog-essentials',
+        '/collections/cat-care',
+        '/pages/about-us',
+        '/policies/privacy-policy',
+      ]),
     );
   });
 
@@ -288,7 +311,10 @@ describe('buildVerifiers with a storefront', () => {
       logPath: '/tmp/y.log',
       launch: async () => ({ stop: async () => {} }),
     });
-    const ownedFiles = new OwnedFilesVerifier();
+    const ownedFiles = new OwnedFilesVerifier(
+      { changedPaths: async () => [] },
+      { genBackend: false },
+    );
     const judge = {
       llm: {
         complete: async () => ({

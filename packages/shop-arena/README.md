@@ -156,12 +156,13 @@ backend copy as a sidecar, and drives `runPlanExecLoop` from
 
 | Piece | Module | Role |
 | --- | --- | --- |
-| seeding | `src/gen/build/seed.ts` | copies each template's `git ls-files` output into `artifact/{storefront,backend}/`, writes `template.json` (commit + content hash), runs `pnpm install --ignore-workspace` |
-| sidecar | `src/gen/build/sidecar.ts` | `node --import tsx src/cli.ts artifact/data <port>` in `artifact/backend/`, `/health` wait, `restartIfChanged()` after every assistant turn (hash of `src/` + `package.json`), logs in `<runDir>/sidecar.log` |
+| seeding | `src/gen/build/seed.ts` | copies each template's `git ls-files` output into `artifact/{storefront,backend}/`, writes `template.json` (commit, a `dirty` flag for uncommitted template edits, content hash), runs `pnpm install --ignore-workspace` |
+| sidecar | `src/gen/build/sidecar.ts` | `node --import tsx src/cli.ts artifact/data <port>` in `artifact/backend/`, `/health` wait, `ensureCurrent()` before every `run_command`, `screenshot_page` and verifier that talks to it (restarts when the hash of `src/` + `package.json` moved, launches again after a failed launch), logs in `<runDir>/sidecar.log` |
 | prompts | `src/gen/build/prompts/*.md` | `agents.md`, `planner.md`, `execute.md`; `{{backend_url}}` and `{{gen_backend_mode}}` are substituted, `{{verifier_feedback}}` is left for the harness |
-| agent tools | `src/gen/build/agent_tools.ts` | added to the caller's `tools`: `run_command` (a shell line via `sh -c` inside the run dir, exit code plus head-and-tail of the output) and `screenshot_page` (rebuilds the storefront if needed and returns the judge's desktop and mobile captures of one route) |
-| owned files | `src/gen/build/owned_files.ts` | glob table per task id; `gen_backend` / `backend_*` tasks own `backend/src/{schema,resolvers,state}/**` and co-located tests, nobody may touch `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**` |
-| verifiers | `src/gen/build/verifiers/` | `owned_files` (all tasks), `backend_typecheck`, `backend_test`, `sandbox_contract` (backend tasks), `data_in_use` (all tasks: every GraphQL document under `storefront/app` validated against the sidecar's introspected schema) |
+| agent tools | `src/gen/build/agent_tools.ts` | added to the caller's `tools`: `run_command` (a shell line via `sh -c` inside the run dir, exit code plus head-and-tail of the output; `runCommand` kills the line's whole process group when it exits or times out; it and both sidecars pass only `commandEnv()`, the toolchain, locale, proxy and CA variables, so no API key or token in your shell reaches the agent) and `screenshot_page` (rebuilds the storefront if needed and returns the judge's desktop and mobile captures of one route) |
+| checkpoints | `src/gen/build/checkpoints.ts` | bare git repo `<runDir>/checkpoints.git` with work tree `artifact/` (seed roots, `node_modules` and build output untracked); commits after seeding and after each kept iteration, rolls an abandoned iteration (timeout, unparseable plan, protocol violation, runtime error) back through the harness `onIterationEnd` hook |
+| owned files | `src/gen/build/owned_files.ts` | `gen_backend` / `backend_*` tasks own `backend/` (only with `genBackend`; otherwise it is protected), every other task owns `storefront/`; nobody may touch `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**`, either `template.json`, `storefront/.env`, or anything outside the two copies |
+| verifiers | `src/gen/build/verifiers/` | `owned_files` (all tasks: the paths changed since the last checkpoint), `backend_typecheck`, `backend_test`, `sandbox_contract` (backend tasks), `data_in_use` (all tasks: every GraphQL document under `storefront/app` validated against the sidecar's introspected schema) |
 
 ```ts
 import { build, STOREFRONT_TEMPLATE_DIR } from '@shop-gym/shop-arena';
@@ -183,8 +184,10 @@ console.log(result.finalStatus, result.build.backendUrl);
 
 A run records `build.json` (`genBackend`, `backendPort`, both template
 fingerprints) so resuming with the same `runDir` renders identical
-prompts, and writes `artifact/storefront/.env` pointing
-`PUBLIC_STORE_DOMAIN` at the sidecar. The `sandbox_contract` suite runs
+prompts; a `runDir` whose seeding failed before `build.json` was written
+is removed and seeded again. The run also writes
+`artifact/storefront/.env` pointing `PUBLIC_STORE_DOMAIN` at the
+sidecar. The `sandbox_contract` suite runs
 on the backend fixture (its helpers hardcode the fixture path); the
 read-only drift check runs on the seeded copy. `SHOPGYM_SLOW_TESTS=1
 pnpm test` additionally runs `src/gen/build/build_loop.test.ts` with
@@ -205,22 +208,25 @@ manual directory and `{ llm, model }` for the judge) the order becomes
 
 | Verifier | Applies to | Checks |
 | --- | --- | --- |
-| `typecheck`, `build` | storefront tasks | `pnpm typecheck` / `pnpm build` in `artifact/storefront` |
-| `routes_200` | storefront tasks | the task's page-bucket routes plus static routes return 200; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` returns 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
+| `typecheck`, `build` | storefront tasks | `pnpm typecheck` in `artifact/storefront`; `build` asks the storefront sidecar for its `pnpm build`, so the HTTP verifiers that follow serve that build |
+| `routes_200` | storefront tasks | static routes and the routes of every page bucket return 200, whatever the task; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` returns 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
 | `nav_coverage` | `gen_navigation`, `gen_theme`, `visual_fix` | every `navigation.json` target returns 200 and is linked from the rendered header or footer |
 | `cart_conformance` | `gen_cart_search`, `gen_product`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order |
 | `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` routes and the first seeded customer logged in before `/account` (the `account` bucket belongs to `visual_fix` only); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
 
 `runBuildLoop` always passes `storefront` (its `judge` option supplies
 the visual judge; `generateShop` sets it to the synthesis model) and
-`storefrontLaunch` is the matching test seam. `build.StorefrontSidecar`
-mirrors the backend sidecar for `artifact/storefront`: `start()` runs
-`pnpm build` and `node server.mjs` in production mode with
-`PUBLIC_STORE_DOMAIN` pointed at the backend sidecar, waits for
-`/health` and logs to `<runDir>/storefront.log`; `ensureCurrent()`, which
-every HTTP verifier calls first, starts it on first use and rebuilds only
-when the storefront's source hash changed, so a run with no storefront
-task never builds it. `SHOPGYM_SLOW_TESTS=1` also runs
+`storefrontLaunch` (the serve step) and `commandRunner` (the build) are
+the matching test seams. `build.StorefrontSidecar` mirrors the backend
+sidecar for `artifact/storefront` and builds each version of the copy
+once: `build()` (the `build` verifier) runs `pnpm build` alone, and
+`ensureCurrent()`, which every HTTP verifier calls first, builds when
+the storefront's source hash changed, then starts `node server.mjs` in
+production mode with `PUBLIC_STORE_DOMAIN` pointed at the backend
+sidecar and waits for `/health`. Both log to `<runDir>/storefront.log`.
+A failed build is kept for its source hash and reported again, without
+a new build, until the copy changes. A run with no storefront task never
+builds it. `SHOPGYM_SLOW_TESTS=1` also runs
 `src/gen/build/verifiers/storefront_slow.test.ts` (real template, real
 build); `SHOPGYM_LIVE=1` sends one real judge call from
 `visual_judge.test.ts`.
@@ -259,7 +265,7 @@ backend serves its own `data/`. It writes `<shopDir>/shop.json`:
 ```json
 {
   "name": "<basename of shopDir>",
-  "templates": { "storefront": { "name": "storefront", "commit": "...", "contentHash": "...", "files": {}, "seededAt": "..." }, "backend": { "...": "..." } },
+  "templates": { "storefront": { "name": "storefront", "commit": "...", "dirty": false, "contentHash": "...", "files": {}, "seededAt": "..." }, "backend": { "...": "..." } },
   "genBackend": true,
   "publishedAt": "2026-09-30T00:00:00.000Z",
   "finalStatus": "completed"
@@ -267,4 +273,5 @@ backend serves its own `data/`. It writes `<shopDir>/shop.json`:
 ```
 
 Calling it again replaces both component directories and rewrites the
-manifest. `publish.readShopManifest(shopDir)` parses and validates it.
+manifest. `publish.readShopManifest(shopDir)` parses and validates it;
+`dirty` may be absent in manifests written before the flag existed.

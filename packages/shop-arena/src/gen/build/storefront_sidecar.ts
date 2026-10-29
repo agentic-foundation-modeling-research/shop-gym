@@ -8,10 +8,14 @@
  * Vite dev middleware: the built output is what `host` will serve, it has
  * no HMR or lazy-compile latency to confuse screenshots, and a build error
  * surfaces as a start failure instead of a half-rendered page.
- * `restartIfChanged()` re-hashes the copy (ignoring `node_modules`,
- * `build` and other generated trees) and rebuilds and restarts only when
- * the digest moved. Operations are serialised, so concurrent callers never
- * race a restart.
+ *
+ * The sidecar hashes the copy (ignoring `node_modules`, `build` and other
+ * generated trees) and builds at most once per digest: `build()` runs the
+ * build step alone (the `build` verifier), and `ensureCurrent()` builds
+ * when needed, then serves that build. A build replaces the files the
+ * server reads, so the server stops first. A failed build is kept for its
+ * digest and returned again, without a new build, until the copy changes.
+ * Operations are serialised, so concurrent callers never race a restart.
  */
 
 import { type ChildProcess, spawn } from 'node:child_process';
@@ -21,7 +25,12 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 import { SidecarError, type SidecarProcess } from './sidecar.js';
 import { hashSnapshot, snapshotTree } from './tree.js';
-import { type CommandRunner, runCommand } from './verifiers/subprocess.js';
+import {
+  type CommandResult,
+  type CommandRunner,
+  commandEnv,
+  runCommand,
+} from './verifiers/subprocess.js';
 
 export interface StorefrontLaunchOptions {
   readonly storefrontDir: string;
@@ -32,8 +41,24 @@ export interface StorefrontLaunchOptions {
   readonly healthTimeoutMs: number;
 }
 
-/** Builds and starts the storefront; resolves once `/health` answers. */
+/** Starts the built storefront; resolves once `/health` answers. */
 export type StorefrontLaunch = (options: StorefrontLaunchOptions) => Promise<SidecarProcess>;
+
+export const STOREFRONT_BUILD_ARGV: readonly string[] = ['pnpm', 'build'];
+export const STOREFRONT_BUILD_TIMEOUT_MS = 300_000;
+
+/** The copy did not build; `result` holds the build output. */
+export class StorefrontBuildError extends SidecarError {
+  constructor(
+    readonly result: CommandResult,
+    logPath: string,
+  ) {
+    super(
+      `storefront build failed (${result.timedOut ? 'timed out' : `exit ${result.exitCode}`}); see ${logPath}\n${tail(result.stderr || result.stdout)}`,
+    );
+    this.name = 'StorefrontBuildError';
+  }
+}
 
 export interface StorefrontSidecarOptions {
   readonly storefrontDir: string;
@@ -41,25 +66,30 @@ export interface StorefrontSidecarOptions {
   readonly port: number;
   readonly logPath: string;
   readonly healthTimeoutMs?: number;
-  /** Process seam; defaults to `pnpm build` followed by `node server.mjs`. */
+  /** Runs `pnpm build`; defaults to `runCommand`. */
+  readonly runner?: CommandRunner;
+  /** Process seam; defaults to `node server.mjs` in production mode. */
   readonly launch?: StorefrontLaunch;
 }
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 30_000;
-const BUILD_TIMEOUT_MS = 300_000;
 const HEALTH_POLL_MS = 100;
 const STOP_GRACE_MS = 3_000;
 
 export class StorefrontSidecar {
   readonly url: string;
+  private readonly runner: CommandRunner;
   private readonly launch: StorefrontLaunch;
   private readonly healthTimeoutMs: number;
   private process: SidecarProcess | undefined;
-  private sourceHash: string | undefined;
+  /** Digest of the copy the running process was built from. */
+  private servedHash: string | undefined;
+  private lastBuild: { readonly hash: string; readonly result: CommandResult } | undefined;
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly options: StorefrontSidecarOptions) {
     this.url = `http://127.0.0.1:${options.port}`;
+    this.runner = options.runner ?? runCommand;
     this.launch = options.launch ?? spawnStorefront;
     this.healthTimeoutMs = options.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS;
   }
@@ -68,24 +98,18 @@ export class StorefrontSidecar {
     return this.process !== undefined;
   }
 
-  /** Build and start the process; a no-op when already running. */
+  /** Build when needed and start; a no-op when already running. */
   start(): Promise<void> {
     return this.serialise(async () => {
-      if (this.process !== undefined) {
-        return;
+      if (this.process === undefined) {
+        await this.serve(await this.currentHash());
       }
-      this.sourceHash = await this.currentHash();
-      this.process = await this.launchProcess();
     });
   }
 
   /** Stop the process; a no-op when not running. */
   stop(): Promise<void> {
-    return this.serialise(async () => {
-      const current = this.process;
-      this.process = undefined;
-      await current?.stop();
-    });
+    return this.serialise(() => this.stopProcess());
   }
 
   /** Rebuild and restart when the copy changed since the last start. */
@@ -94,43 +118,48 @@ export class StorefrontSidecar {
       if (this.process === undefined) {
         return false;
       }
-      return this.relaunchIfChanged();
+      const hash = await this.currentHash();
+      if (hash === this.servedHash) {
+        return false;
+      }
+      await this.serve(hash);
+      return true;
     });
   }
 
   /**
-   * Bring the served tree up to date: start when stopped, otherwise
-   * rebuild and restart when the copy changed. The build-loop verifiers
-   * call this before their first request so the storefront is only built
-   * once a task needs it.
+   * Build the copy unless the last build was of the same digest, and
+   * resolve to that build's result. Does not start the server.
+   */
+  build(): Promise<CommandResult> {
+    return this.serialise(async () => this.buildOnce(await this.currentHash()));
+  }
+
+  /**
+   * Bring the served tree up to date: build when the copy changed, then
+   * start or restart on that build. The build-loop verifiers call this
+   * before their first request so the storefront is only built once a
+   * task needs it.
+   *
+   * @throws StorefrontBuildError when the copy does not build.
    */
   ensureCurrent(): Promise<void> {
     return this.serialise(async () => {
-      if (this.process === undefined) {
-        this.sourceHash = await this.currentHash();
-        this.process = await this.launchProcess();
-        return;
+      const hash = await this.currentHash();
+      if (this.process === undefined || hash !== this.servedHash) {
+        await this.serve(hash);
       }
-      await this.relaunchIfChanged();
     });
   }
 
-  /** Caller holds the queue and `this.process` is set. */
-  private async relaunchIfChanged(): Promise<boolean> {
-    const hash = await this.currentHash();
-    if (hash === this.sourceHash) {
-      return false;
+  /** Caller holds the queue. Build `hash` when needed, then (re)start on it. */
+  private async serve(hash: string): Promise<void> {
+    const build = await this.buildOnce(hash);
+    if (build.exitCode !== 0 || build.timedOut) {
+      throw new StorefrontBuildError(build, this.options.logPath);
     }
-    const current = this.process;
-    this.process = undefined;
-    await current?.stop();
-    this.sourceHash = hash;
-    this.process = await this.launchProcess();
-    return true;
-  }
-
-  private launchProcess(): Promise<SidecarProcess> {
-    return this.launch({
+    await this.stopProcess();
+    this.process = await this.launch({
       storefrontDir: this.options.storefrontDir,
       backendUrl: this.options.backendUrl,
       port: this.options.port,
@@ -138,6 +167,33 @@ export class StorefrontSidecar {
       logPath: this.options.logPath,
       healthTimeoutMs: this.healthTimeoutMs,
     });
+    this.servedHash = hash;
+  }
+
+  /** Caller holds the queue. */
+  private async buildOnce(hash: string): Promise<CommandResult> {
+    if (this.lastBuild?.hash === hash) {
+      return this.lastBuild.result;
+    }
+    await this.stopProcess();
+    const result = await this.runner(STOREFRONT_BUILD_ARGV, {
+      cwd: this.options.storefrontDir,
+      timeoutMs: STOREFRONT_BUILD_TIMEOUT_MS,
+    });
+    await fs.mkdir(path.dirname(this.options.logPath), { recursive: true });
+    await fs.appendFile(
+      this.options.logPath,
+      `[build] ${result.timedOut ? 'timed out' : `exit ${result.exitCode}`}\n${result.stdout}${result.stderr}\n`,
+    );
+    this.lastBuild = { hash, result };
+    return result;
+  }
+
+  /** Caller holds the queue. */
+  private async stopProcess(): Promise<void> {
+    const current = this.process;
+    this.process = undefined;
+    await current?.stop();
   }
 
   private async currentHash(): Promise<string> {
@@ -151,39 +207,19 @@ export class StorefrontSidecar {
   }
 }
 
-/** Default launch: `pnpm build`, then `node server.mjs` in production mode, logging to `logPath`. */
-export const spawnStorefront: StorefrontLaunch = (options) => launchWithRunner(runCommand, options);
-
-/** `spawnStorefront` with an injectable build runner. */
-export async function launchWithRunner(
-  runner: CommandRunner,
-  options: StorefrontLaunchOptions,
-): Promise<SidecarProcess> {
+/** Default launch: `node server.mjs` in production mode, logging to `logPath`. */
+export const spawnStorefront: StorefrontLaunch = async (options) => {
   await fs.mkdir(path.dirname(options.logPath), { recursive: true });
-  const build = await runner(['pnpm', 'build'], {
-    cwd: options.storefrontDir,
-    timeoutMs: BUILD_TIMEOUT_MS,
-  });
-  await fs.appendFile(
-    options.logPath,
-    `[build] exit ${build.exitCode}\n${build.stdout}${build.stderr}\n`,
-  );
-  if (build.exitCode !== 0) {
-    throw new SidecarError(
-      `storefront build failed (exit ${build.exitCode}); see ${options.logPath}\n${tail(build.stderr || build.stdout)}`,
-    );
-  }
   const log = await fs.open(options.logPath, 'a');
   const child = spawn(process.execPath, ['server.mjs'], {
     cwd: options.storefrontDir,
     stdio: ['ignore', log.fd, log.fd],
-    env: {
-      ...process.env,
+    env: commandEnv({
       NODE_ENV: 'production',
       PORT: String(options.port),
       PUBLIC_STORE_DOMAIN: options.backendUrl,
       SHOP_BACKEND_URL: options.backendUrl,
-    },
+    }),
   });
   const exited = new Promise<number | null>((resolve) => {
     child.once('exit', (code) => resolve(code));
@@ -196,7 +232,7 @@ export async function launchWithRunner(
     throw error;
   }
   return stopper;
-}
+};
 
 const TAIL_CHARS = 1500;
 

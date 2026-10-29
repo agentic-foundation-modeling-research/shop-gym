@@ -8,7 +8,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { STOREFRONT_TEMPLATE_DIR } from '../../templates.js';
 import { stubStorefrontLaunch } from '../testing.js';
-import { BUILD_JSON, type BuildRunInfo, runBuildLoop } from './build_loop.js';
+import { BUILD_JSON, type BuildRunInfo, CHECKPOINTS_DIRNAME, runBuildLoop } from './build_loop.js';
+import { ArtifactCheckpoints } from './checkpoints.js';
 import { defaultBackendTemplateDir } from './seed.js';
 import type { SidecarLaunch, SidecarLaunchOptions } from './sidecar.js';
 import type { CommandRunner } from './verifiers/subprocess.js';
@@ -173,7 +174,8 @@ describe('runBuildLoop', () => {
       ['routes_200', 'pass'],
       ['data_in_use', 'fail'],
     ]);
-    expect(commands).toContainEqual(['pnpm', 'build']);
+    // `build` and `routes_200` share one storefront build.
+    expect(commands.filter((argv) => argv[1] === 'build')).toEqual([['pnpm', 'build']]);
     expect(result.tasksFinal.map((task) => [task.id, task.status])).toEqual([
       ['gen_backend', 'done'],
       ['gen_homepage', 'in_progress'],
@@ -187,6 +189,121 @@ describe('runBuildLoop', () => {
     expect(launches).toHaveLength(2);
     expect(launches.every((l) => l.dataDir === path.join(runDir, 'artifact', 'data'))).toBe(true);
     expect(events).toContain('plan:message');
+  });
+
+  it('rolls an abandoned iteration back so the next task is not blamed for it', async () => {
+    const runDir = path.join(root, 'run');
+    const schema = path.join(runDir, 'artifact', 'backend', 'src', 'schema');
+    const runtime = new FakeRuntime([
+      plannerScript(),
+      {
+        writeFiles: {
+          'artifact/backend/src/schema/shop.ts': 'half done',
+          'artifact/backend/src/schema/loyalty.ts': 'half done',
+        },
+        status: 'aborted',
+      },
+      {
+        writeFiles: {
+          'artifact/storefront/app/routes/home.tsx': 'export default function Home() {}\n',
+          'plan.md': PLAN.replace('- [ ] gen_homepage', '- [x] gen_homepage'),
+        },
+      },
+    ]);
+    const result = await runBuildLoop({
+      runDir,
+      seedDir,
+      storefrontTemplateDir: STOREFRONT_TEMPLATE_DIR,
+      backendTemplateDir: defaultBackendTemplateDir(),
+      genBackend: true,
+      runtime,
+      model: MODEL,
+      tools: [],
+      maxIters: 2,
+      timeoutMs: 60_000,
+      commandRunner: fakeRunner,
+      sidecarLaunch: inProcessLaunch,
+      storefrontLaunch: stubStorefrontLaunch,
+    });
+
+    expect(result.finalStatus).toBe('timeout');
+    expect(await fs.readFile(path.join(schema, 'shop.ts'), 'utf-8')).toBe(
+      await fs.readFile(
+        path.join(defaultBackendTemplateDir(), 'src', 'schema', 'shop.ts'),
+        'utf-8',
+      ),
+    );
+    await expect(fs.stat(path.join(schema, 'loyalty.ts'))).rejects.toThrow();
+    const ownedFiles = JSON.parse(
+      await fs.readFile(
+        path.join(runDir, 'iters', 'exec-0001', 'checks', 'verifiers', 'owned_files.json'),
+        'utf-8',
+      ),
+    ) as { taskId: string; verdict: string; details: { changedPaths: string[] } };
+    expect(ownedFiles).toMatchObject({
+      taskId: 'gen_homepage',
+      verdict: 'pass',
+      details: { changedPaths: ['storefront/app/routes/home.tsx'] },
+    });
+    const checkpoints = new ArtifactCheckpoints({
+      gitDir: path.join(runDir, CHECKPOINTS_DIRNAME),
+      workTree: path.join(runDir, 'artifact'),
+    });
+    expect(await checkpoints.changedPaths()).toEqual([]);
+  });
+
+  it('seeds again after a seed that failed before build.json', async () => {
+    const runDir = path.join(root, 'run');
+    const base = {
+      runDir,
+      seedDir,
+      storefrontTemplateDir: STOREFRONT_TEMPLATE_DIR,
+      backendTemplateDir: defaultBackendTemplateDir(),
+      genBackend: false,
+      model: MODEL,
+      tools: [] as const,
+      maxIters: 1,
+      timeoutMs: 60_000,
+      sidecarLaunch: inProcessLaunch,
+    };
+    const failingInstall: CommandRunner = async (argv, options) =>
+      argv[1] === 'install'
+        ? { exitCode: 1, stdout: '', stderr: 'network down', timedOut: false }
+        : fakeRunner(argv, options);
+    await expect(
+      runBuildLoop({ ...base, runtime: new FakeRuntime([]), commandRunner: failingInstall }),
+    ).rejects.toThrow('network down');
+    await expect(fs.stat(path.join(runDir, BUILD_JSON))).rejects.toThrow();
+
+    const result = await runBuildLoop({
+      ...base,
+      runtime: new FakeRuntime([plannerScript(), { writeFiles: { 'plan.md': PLAN } }]),
+      commandRunner: fakeRunner,
+    });
+    expect(result.planIterCount).toBe(1);
+    await expect(fs.stat(path.join(runDir, BUILD_JSON))).resolves.toBeDefined();
+  });
+
+  it('leaves a non-empty run dir that it did not seed alone', async () => {
+    const runDir = path.join(root, 'run');
+    await fs.mkdir(runDir);
+    await fs.writeFile(path.join(runDir, 'notes.md'), 'keep me\n');
+    await expect(
+      runBuildLoop({
+        runDir,
+        seedDir,
+        storefrontTemplateDir: STOREFRONT_TEMPLATE_DIR,
+        backendTemplateDir: defaultBackendTemplateDir(),
+        genBackend: false,
+        runtime: new FakeRuntime([]),
+        model: MODEL,
+        tools: [],
+        maxIters: 1,
+        commandRunner: fakeRunner,
+        sidecarLaunch: inProcessLaunch,
+      }),
+    ).rejects.toThrow('run_dir is not empty');
+    expect(await fs.readFile(path.join(runDir, 'notes.md'), 'utf-8')).toBe('keep me\n');
   });
 
   it('resumes a run with the recorded port and flags', async () => {

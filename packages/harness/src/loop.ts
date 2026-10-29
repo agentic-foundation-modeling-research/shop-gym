@@ -5,7 +5,9 @@
  * highest-priority pending task one at a time until the plan drains, the
  * budget runs out, or a terminal failure occurs. Every iteration leaves a
  * `trajectory.json`, `metadata.json`, `plan.before.md` and `plan.after.md`
- * under `iters/<iterId>/`, and `run.json` is rewritten after each one.
+ * under `iters/<iterId>/`, and `run.json` is rewritten after each one. The
+ * caller's `onIterationEnd` then hears whether the iteration was kept or
+ * abandoned.
  *
  * Mode is inferred from `runDir`: empty or absent starts fresh, populated
  * resumes. Resume skips the planner when its trajectory exists, quarantines
@@ -28,6 +30,7 @@ import {
 import {
   DEFAULT_VERIFIER_FEEDBACK_MAX_CHARS,
   type FinalStatus,
+  type IterationOutcome,
   type PlanExecLoopConfig,
   type PlanExecLoopResult,
   validateConfig,
@@ -134,7 +137,7 @@ export async function runPlanExecLoop(
   return state.finalize();
 }
 
-type Outcome = { trajectory: Trajectory } | { errorStatus: FinalStatus };
+type Outcome = { trajectory: Trajectory } | { errorStatus: 'timeout' | 'runtime_error' };
 
 class LoopState {
   planIterCount = 0;
@@ -174,7 +177,7 @@ class LoopState {
     await this.workspace.snapshotPlan(path.join(planDir, PLAN_BEFORE_FILENAME));
     const outcome = await this.invokeRuntime(planDir, PLAN_ITER_ID, this.config.prompts.planner);
     if ('errorStatus' in outcome) {
-      return this.terminate(outcome.errorStatus);
+      return this.terminateAfter(PLAN_ITER_ID, null, outcome.errorStatus);
     }
     await this.workspace.snapshotPlan(path.join(planDir, PLAN_AFTER_FILENAME));
     await writeTrajectory(path.join(planDir, TRAJECTORY_FILENAME), outcome.trajectory);
@@ -196,18 +199,19 @@ class LoopState {
     if (seedResult !== undefined) {
       await writeProtocolResult(planDir, seedResult);
       if (!seedResult.passed) {
-        return this.terminate('protocol_violation');
+        return this.terminateAfter(PLAN_ITER_ID, null, 'protocol_violation');
       }
     }
     try {
       diff([], await this.parsePlan());
     } catch (error) {
       if (error instanceof InvalidPlanError) {
-        return this.terminate('invalid_plan');
+        return this.terminateAfter(PLAN_ITER_ID, null, 'invalid_plan');
       }
       throw error;
     }
     await this.rewriteRunSummary();
+    await this.endIteration(PLAN_ITER_ID, null, 'kept');
     return true;
   }
 
@@ -262,12 +266,13 @@ class LoopState {
     const outcome = await this.invokeRuntime(execDir, execId, prompt);
     if ('errorStatus' in outcome) {
       if (outcome.errorStatus !== 'timeout') {
-        return this.terminate(outcome.errorStatus);
+        return this.terminateAfter(execId, selected.id, outcome.errorStatus);
       }
       await quarantineIterDir(this.workspace.itersDir, execDir, 'timeout');
       this.skipped.add(selected.id);
       this.hadTimeout = true;
       await this.rewriteRunSummary();
+      await this.endIteration(execId, selected.id, 'timeout');
       return true;
     }
     await this.workspace.snapshotPlan(planAfter);
@@ -285,6 +290,7 @@ class LoopState {
         throw error;
       }
       await this.forceBlock(planBefore, planAfter, selected.id, `invalid_plan: ${error.message}`);
+      await this.endIteration(execId, selected.id, 'invalid_plan');
       return true;
     }
 
@@ -318,9 +324,11 @@ class LoopState {
     if (!protocol.passed) {
       const note = `protocol_violation: ${protocol.violations.join(', ')}`;
       await this.forceBlock(planBefore, planAfter, selected.id, note);
+      await this.endIteration(execId, selected.id, 'protocol_violation');
       return true;
     }
     await this.rewriteRunSummary();
+    await this.endIteration(execId, selected.id, 'kept');
     return true;
   }
 
@@ -419,6 +427,25 @@ class LoopState {
     this.finalStatus = status;
     await this.rewriteRunSummary();
     return false;
+  }
+
+  /** End the run because iteration `iterId` failed with `status`, then report that iteration. */
+  private async terminateAfter(
+    iterId: string,
+    taskId: string | null,
+    status: Exclude<IterationOutcome, 'kept'>,
+  ): Promise<false> {
+    await this.terminate(status);
+    await this.endIteration(iterId, taskId, status);
+    return false;
+  }
+
+  private async endIteration(
+    iterId: string,
+    taskId: string | null,
+    outcome: IterationOutcome,
+  ): Promise<void> {
+    await this.config.onIterationEnd?.({ iterId, taskId, outcome });
   }
 
   async finalize(): Promise<PlanExecLoopResult> {

@@ -2,22 +2,32 @@
  * The build loop: seeds the storefront and backend templates into a run,
  * starts the backend sidecar over the run's dataset, and drives the harness
  * plan-exec loop with the build prompts, the agent tools and the verifier
- * set. The storefront sidecar is built and started by the first storefront
- * verifier (or `screenshot_page` call) that needs it and restarted when the
- * copy changes.
+ * set. The storefront sidecar builds each version of the copy once, for the
+ * first verifier (or `screenshot_page` call) that needs it, and serves that
+ * build until the copy changes. The backend sidecar is brought up to date with the agent's
+ * edits before each `run_command`, `screenshot_page` and verifier that talks
+ * to it.
+ *
+ * `artifact/` is checkpointed in git after seeding and after each iteration
+ * the harness keeps. An iteration the harness abandons (timeout, unparseable
+ * plan, protocol violation, runtime error) is rolled back to the last
+ * checkpoint, and `owned_files` checks what changed since it.
  *
  * ```
  * <runDir>/
  *   AGENTS.md  prompts/  plan.md  iters/  run.json      (harness)
  *   build.json                                          (port, flags, template fingerprints)
  *   sidecar.log  storefront.log                         (sidecar stdout/stderr)
+ *   checkpoints.git/                                    (bare repo, work tree `artifact/`)
  *   artifact/
  *     data/ manual/            immutable seed (`artifactSeedDir`)
  *     storefront/ backend/     template copies the agent edits
  * ```
  *
  * A non-empty `runDir` is resumed: `build.json` supplies the port and flags
- * so the rendered prompts match the originals the harness checks.
+ * so the rendered prompts match the originals the harness checks. A `runDir`
+ * whose seeding failed before `build.json` was written, and that the harness
+ * has not run, is removed and seeded again.
  */
 
 import * as fs from 'node:fs/promises';
@@ -32,6 +42,7 @@ import {
 } from '@shop-gym/harness';
 
 import { buildAgentTools } from './agent_tools.js';
+import { ArtifactCheckpoints } from './checkpoints.js';
 import { loadBuildPrompts } from './prompts.js';
 import { type TemplateFingerprint, seedTemplate } from './seed.js';
 import { BackendSidecar, type SidecarLaunch, freePort } from './sidecar.js';
@@ -47,6 +58,7 @@ import type { CommandRunner } from './verifiers/subprocess.js';
 export const BUILD_JSON = 'build.json';
 export const SIDECAR_LOG = 'sidecar.log';
 export const STOREFRONT_LOG = 'storefront.log';
+export const CHECKPOINTS_DIRNAME = 'checkpoints.git';
 export const STOREFRONT_DIRNAME = 'storefront';
 export const BACKEND_DIRNAME = 'backend';
 export const DATA_DIRNAME = 'data';
@@ -74,7 +86,7 @@ export interface BuildLoopOptions {
   /** Visual judge for the storefront verifiers; `visual_judge` is skipped when omitted. */
   readonly judge?: StorefrontJudge;
   readonly onEvent?: (iterId: string, event: AgentEvent) => void;
-  /** Test seams. */
+  /** Test seams. `commandRunner` does not reach the checkpoint `git`, which always runs. */
   readonly commandRunner?: CommandRunner;
   readonly sidecarLaunch?: SidecarLaunch;
   readonly storefrontLaunch?: StorefrontLaunch;
@@ -115,10 +127,18 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     backendUrl,
     port: await freePort(),
     logPath: path.join(options.runDir, STOREFRONT_LOG),
+    ...(options.commandRunner !== undefined ? { runner: options.commandRunner } : {}),
     ...(options.storefrontLaunch !== undefined ? { launch: options.storefrontLaunch } : {}),
   });
   const agentTools = buildAgentTools({
-    target: { url: storefront.url, prepare: () => storefront.ensureCurrent() },
+    target: {
+      url: storefront.url,
+      prepare: async () => {
+        await sidecar.ensureCurrent();
+        await storefront.ensureCurrent();
+      },
+    },
+    beforeCommand: () => sidecar.ensureCurrent(),
     ...(options.commandRunner !== undefined ? { runner: options.commandRunner } : {}),
   });
   const config: PlanExecLoopConfig = {
@@ -134,6 +154,9 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
 
   let build = existing;
   if (build === undefined) {
+    if (await isUnfinishedSeed(options.runDir)) {
+      await fs.rm(options.runDir, { recursive: true, force: true });
+    }
     await Workspace.create(config);
     const seedOptions =
       options.commandRunner !== undefined ? { runner: options.commandRunner } : {};
@@ -155,7 +178,13 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     );
   }
 
-  const ownedFiles = new OwnedFilesVerifier();
+  const checkpoints = new ArtifactCheckpoints({
+    gitDir: path.join(options.runDir, CHECKPOINTS_DIRNAME),
+    workTree: artifactDir,
+    untrackedDirs: [DATA_DIRNAME, MANUAL_DIRNAME],
+  });
+  await checkpoints.open(existing === undefined ? 'seed' : 'resume');
+  const ownedFiles = new OwnedFilesVerifier(checkpoints, { genBackend });
   const verifiers = buildVerifiers({
     genBackend,
     sidecar,
@@ -172,17 +201,15 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
 
   await sidecar.start();
   try {
-    await ownedFiles.prime(artifactDir);
     const result = await runPlanExecLoop(
       {
         ...config,
         verifiers,
-        onEvent: (iterId, event) => {
-          options.onEvent?.(iterId, event);
-          if (event.kind === 'message' && event.role === 'assistant' && event.stopReason) {
-            void sidecar.restartIfChanged();
-          }
-        },
+        onIterationEnd: (end) =>
+          end.outcome === 'kept'
+            ? checkpoints.commit(`${end.iterId} ${end.taskId ?? ''}`.trimEnd())
+            : checkpoints.rollback(),
+        ...(options.onEvent !== undefined ? { onEvent: options.onEvent } : {}),
       },
       options.runtime,
       { force: existing === undefined || options.force === true },
@@ -198,6 +225,37 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
 export async function readBuildInfo(runDir: string): Promise<BuildRunInfo | undefined> {
   const raw = await fs.readFile(path.join(runDir, BUILD_JSON), 'utf-8').catch(() => undefined);
   return raw === undefined ? undefined : (JSON.parse(raw) as BuildRunInfo);
+}
+
+/**
+ * True when `runDir` holds only what `Workspace.create` and the seeding step
+ * write, with an empty `plan.md` and no iterations: a seed that stopped before
+ * `build.json`, safe to remove. Any other content is left for
+ * `Workspace.create` to refuse.
+ */
+async function isUnfinishedSeed(runDir: string): Promise<boolean> {
+  const entries = await fs.readdir(runDir).catch(() => undefined);
+  if (entries === undefined || entries.length === 0) {
+    return false;
+  }
+  const layout = new Workspace(runDir);
+  const known = new Set(
+    [
+      layout.agentsMd,
+      layout.plannerPrompt,
+      layout.executePrompt,
+      layout.artifactDir,
+      layout.planMd,
+      layout.itersDir,
+      layout.seedManifestPath,
+    ].map((file) => path.relative(runDir, file).split(path.sep)[0]),
+  );
+  if (!entries.every((entry) => known.has(entry))) {
+    return false;
+  }
+  const plan = await fs.stat(layout.planMd).catch(() => undefined);
+  const iters = await fs.readdir(layout.itersDir).catch(() => undefined);
+  return plan?.isFile() === true && plan.size === 0 && iters?.length === 0;
 }
 
 /** Point the storefront copy at the sidecar; the template's server reads `.env`. */

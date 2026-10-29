@@ -29,13 +29,22 @@ const OUTPUT_LIMIT_CHARS = 12_000;
 export interface AgentToolsOptions {
   /** The served storefront; `prepare` rebuilds it before a screenshot. */
   readonly target: StorefrontTarget;
+  /**
+   * Awaited before each `run_command`, e.g. to restart the backend sidecar on
+   * the agent's edits. A thrown error is reported above the command output;
+   * the command still runs, so the agent can typecheck the broken code.
+   */
+  readonly beforeCommand?: () => Promise<unknown>;
   /** Test seam for `run_command`. */
   readonly runner?: CommandRunner;
 }
 
 /** `run_command` and `screenshot_page`, both rooted at the run directory. */
 export function buildAgentTools(options: AgentToolsOptions): readonly Tool[] {
-  return [runCommandTool(options.runner ?? runCommand), screenshotTool(options.target)];
+  return [
+    runCommandTool(options.runner ?? runCommand, options.beforeCommand),
+    screenshotTool(options.target),
+  ];
 }
 
 const RUN_COMMAND_PARAMS = Type.Object({
@@ -61,13 +70,17 @@ const SCREENSHOT_PARAMS = Type.Object({
   }),
 });
 
-export function runCommandTool(runner: CommandRunner): Tool<typeof RUN_COMMAND_PARAMS> {
+export function runCommandTool(
+  runner: CommandRunner,
+  beforeCommand?: () => Promise<unknown>,
+): Tool<typeof RUN_COMMAND_PARAMS> {
   return {
     name: RUN_COMMAND_TOOL,
     description:
       'Run a shell command with `sh -c` inside the run directory and return its exit code, stdout and stderr. ' +
       'Use it for `pnpm typecheck`, `pnpm build`, `pnpm test`, `pnpm codegen` and `curl` against the sidecar. ' +
-      'Chain commands with `&&` in one call; do not start servers that outlive the call.',
+      'Chain commands with `&&` in one call. Every process the call starts, also in the background, ' +
+      'is killed when the command exits or times out.',
     parameters: RUN_COMMAND_PARAMS,
     async execute(params, ctx): Promise<ToolResult> {
       let cwd: string;
@@ -76,12 +89,18 @@ export function runCommandTool(runner: CommandRunner): Tool<typeof RUN_COMMAND_P
       } catch (error) {
         return errorResult(error);
       }
+      const warning = await beforeCommand?.().then(
+        () => '',
+        (error: unknown) => `Warning: ${errorMessage(error)}\n\n`,
+      );
       const result = await runner(['/bin/sh', '-c', params.command], {
         cwd,
         timeoutMs: params.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
       });
       return {
-        content: [{ type: 'text', text: renderCommandResult(params.command, result) }],
+        content: [
+          { type: 'text', text: (warning ?? '') + renderCommandResult(params.command, result) },
+        ],
         ...(result.exitCode === 0 ? {} : { isError: true }),
       };
     },

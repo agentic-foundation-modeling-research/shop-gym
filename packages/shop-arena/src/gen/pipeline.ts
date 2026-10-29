@@ -145,6 +145,7 @@ async function runFinalEvalStep(ctx: {
     backendUrl: build.backendUrl,
     port: await freePort(),
     logPath: path.join(outDir, 'storefront.log'),
+    ...(c.commandRunner !== undefined ? { runner: c.commandRunner } : {}),
     ...(c.storefrontLaunch !== undefined ? { launch: c.storefrontLaunch } : {}),
   });
   await backend.start();

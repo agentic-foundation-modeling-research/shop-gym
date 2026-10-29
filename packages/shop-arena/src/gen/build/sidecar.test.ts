@@ -4,11 +4,13 @@ import * as path from 'node:path';
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { BackendSidecar, type SidecarLaunchOptions, freePort } from './sidecar.js';
+import { BackendSidecar, SidecarError, type SidecarLaunchOptions, freePort } from './sidecar.js';
 
 let backendDir: string;
 let launches: SidecarLaunchOptions[];
 let stops: number;
+/** Launches that throw before the fake process starts. */
+let failLaunches: number;
 
 beforeEach(async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sidecar-'));
@@ -20,6 +22,7 @@ beforeEach(async () => {
   await fs.writeFile(path.join(backendDir, 'node_modules', 'x', 'i.js'), '1');
   launches = [];
   stops = 0;
+  failLaunches = 0;
 });
 
 function sidecar(): BackendSidecar {
@@ -30,6 +33,10 @@ function sidecar(): BackendSidecar {
     logPath: path.join(backendDir, '..', 'sidecar.log'),
     launch: async (options) => {
       launches.push(options);
+      if (failLaunches > 0) {
+        failLaunches -= 1;
+        throw new SidecarError('sidecar exited with code 1 before /health');
+      }
       return {
         stop: async () => {
           stops += 1;
@@ -56,16 +63,16 @@ describe('BackendSidecar', () => {
   it('restarts only when src or package.json changed', async () => {
     const s = sidecar();
     await s.start();
-    expect(await s.restartIfChanged()).toBe(false);
+    expect(await s.ensureCurrent()).toBe(false);
     await fs.writeFile(path.join(backendDir, 'node_modules', 'x', 'i.js'), '2');
-    expect(await s.restartIfChanged()).toBe(false);
+    expect(await s.ensureCurrent()).toBe(false);
     await fs.writeFile(path.join(backendDir, 'src', 'schema', 'shop.ts'), 'export const a = 2;\n');
-    expect(await s.restartIfChanged()).toBe(true);
+    expect(await s.ensureCurrent()).toBe(true);
     expect(stops).toBe(1);
     expect(launches).toHaveLength(2);
-    expect(await s.restartIfChanged()).toBe(false);
+    expect(await s.ensureCurrent()).toBe(false);
     await fs.writeFile(path.join(backendDir, 'package.json'), '{"name":"c"}\n');
-    expect(await s.restartIfChanged()).toBe(true);
+    expect(await s.ensureCurrent()).toBe(true);
     expect(launches).toHaveLength(3);
     await s.stop();
   });
@@ -74,16 +81,44 @@ describe('BackendSidecar', () => {
     const s = sidecar();
     await s.start();
     await fs.writeFile(path.join(backendDir, 'src', 'schema', 'shop.ts'), 'changed');
-    const results = await Promise.all([s.restartIfChanged(), s.restartIfChanged()]);
+    const results = await Promise.all([s.ensureCurrent(), s.ensureCurrent()]);
     expect(results).toEqual([true, false]);
     expect(launches).toHaveLength(2);
   });
 
-  it('does nothing when stopped', async () => {
+  it('launches again after a failed restart, even when nothing changed since', async () => {
     const s = sidecar();
-    expect(await s.restartIfChanged()).toBe(false);
+    await s.start();
+    await fs.writeFile(path.join(backendDir, 'src', 'schema', 'shop.ts'), 'broken');
+    failLaunches = 2;
+    await expect(s.ensureCurrent()).rejects.toThrow(SidecarError);
+    expect(s.running).toBe(false);
+    await expect(s.ensureCurrent()).rejects.toThrow(SidecarError);
+    await fs.writeFile(path.join(backendDir, 'src', 'schema', 'shop.ts'), 'fixed');
+    expect(await s.ensureCurrent()).toBe(true);
+    expect(s.running).toBe(true);
+    expect(await s.ensureCurrent()).toBe(false);
+    expect(launches).toHaveLength(4);
     await s.stop();
-    expect(launches).toHaveLength(0);
+  });
+
+  it('launches again after a failed start', async () => {
+    const s = sidecar();
+    failLaunches = 1;
+    await expect(s.start()).rejects.toThrow(SidecarError);
+    expect(await s.ensureCurrent()).toBe(true);
+    expect(s.running).toBe(true);
+    await s.stop();
+  });
+
+  it('does nothing before start and after stop', async () => {
+    const s = sidecar();
+    expect(await s.ensureCurrent()).toBe(false);
+    await s.start();
+    await s.stop();
+    await fs.writeFile(path.join(backendDir, 'src', 'schema', 'shop.ts'), 'changed');
+    expect(await s.ensureCurrent()).toBe(false);
+    expect(launches).toHaveLength(1);
   });
 });
 

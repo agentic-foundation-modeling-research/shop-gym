@@ -34,6 +34,8 @@ export const PUBLISH_EXCLUDED_DIRS: ReadonlySet<string> = new Set([
 const templateFingerprintSchema = z.object({
   name: z.string(),
   commit: z.string().nullable(),
+  /** Absent in copies seeded before the flag was recorded. */
+  dirty: z.boolean().optional(),
   contentHash: z.string(),
   files: z.record(z.string(), z.string()),
   seededAt: z.string(),

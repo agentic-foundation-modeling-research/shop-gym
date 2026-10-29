@@ -107,7 +107,7 @@ describe('sandbox_contract', () => {
             'src/data/schema.ts\0src/sandbox/episode.ts\0tests/contract/helpers.ts\0package.json\0',
         };
       }
-      return { ...OK, exitCode: 1 };
+      return argv[1] === 'rev-parse' ? { ...OK, exitCode: 1 } : OK;
     });
     await fs.writeFile(path.join(backendDir, TEMPLATE_JSON), JSON.stringify(fingerprint));
   }
@@ -153,28 +153,37 @@ describe('sandbox_contract', () => {
 });
 
 describe('owned_files verifier', () => {
-  it('diffs against the primed baseline and classifies changes', async () => {
-    const verifier = new OwnedFilesVerifier();
+  it('classifies the paths the iteration changed', async () => {
+    let changed: string[] = [];
+    const verifier = new OwnedFilesVerifier(
+      { changedPaths: async () => changed },
+      { genBackend: true },
+    );
     expect(verifier.appliesTo('anything')).toBe(true);
-    await fs.writeFile(path.join(backendDir, 'src', 'data', 'schema.ts'), 'a');
-    await verifier.prime(artifactDir);
+    expect((await verifier.run(ctx('gen_theme'))).verdict).toBe('pass');
 
-    await fs.writeFile(path.join(artifactDir, 'storefront', 'app', 'root.tsx'), 'x');
+    changed = ['storefront/app/root.tsx'];
     const first = await verifier.run(ctx('gen_theme'));
     expect(first.verdict).toBe('pass');
     expect(first.details).toMatchObject({ changedPaths: ['storefront/app/root.tsx'] });
 
-    await fs.writeFile(path.join(artifactDir, 'storefront', 'app', 'root.tsx'), 'y');
-    const second = await verifier.run(ctx('gen_homepage'));
+    const second = await verifier.run(ctx('gen_backend'));
     expect(second.verdict).toBe('advisory');
-    expect(second.feedback).toContain("another task's slice");
+    expect(second.feedback).toContain('other template copy');
 
-    await fs.writeFile(path.join(backendDir, 'src', 'data', 'schema.ts'), 'b');
+    changed = ['backend/src/data/schema.ts'];
     const third = await verifier.run(ctx('gen_backend'));
     expect(third.verdict).toBe('fail');
     expect(third.feedback).toContain('`backend/src/data/schema.ts`');
+  });
 
-    const fourth = await verifier.run(ctx('gen_backend'));
-    expect(fourth.verdict).toBe('pass');
+  it('fails any backend edit when backend generation is off', async () => {
+    const verifier = new OwnedFilesVerifier(
+      { changedPaths: async () => ['backend/src/resolvers/shop.ts'] },
+      { genBackend: false },
+    );
+    const result = await verifier.run(ctx('gen_product'));
+    expect(result.verdict).toBe('fail');
+    expect(result.feedback).toContain('Protected paths');
   });
 });

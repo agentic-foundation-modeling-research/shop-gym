@@ -32,14 +32,16 @@ storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) and the
 - **Seeding**: copying exactly the template's `git ls-files` output into
   `<runDir>/artifact/{storefront,backend}/` and running
   `pnpm install --ignore-workspace` there.
-- **Template fingerprint** (`template.json`): `{ name, commit, contentHash,
-  files, seededAt }` written into every seeded copy; `files` maps each
-  tracked path to its sha256.
+- **Template fingerprint** (`template.json`): `{ name, commit, dirty,
+  contentHash, files, seededAt }` written into every seeded copy; `files`
+  maps each tracked path to its sha256, and `dirty` is true when a tracked
+  file differed from `commit` at seeding.
 - **Sidecar**: the run's `artifact/backend` started as a child process
   (`node --import tsx src/cli.ts artifact/data <port>`) for the whole loop.
-- **Owned files**: the paths a task may change. Protected paths may never
-  change; a task that edits another slice's files is reported as
-  cross-slice.
+- **Owned files**: the paths a task may change. Backend tasks own the
+  backend copy and every other task owns the storefront copy. Protected
+  paths may never change; an edit in the other copy is reported as not
+  owned.
 - **Read-only backend paths**: `src/data/schema.ts`, `src/sandbox/**`,
   `tests/contract/**` in the backend copy. They define the sandbox contract
   (dataset shape, episode isolation, cart and checkout behaviour) and must
@@ -55,18 +57,44 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
 
 - **Owned-file enforcement is split by severity.** Edits to protected paths
   (read-only backend paths, `template.json`, `storefront/.env`, anything
-  outside `artifact/{storefront,backend}`) make `owned_files` `fail`.
-  Cross-slice edits (a storefront task editing another slice's route, a
-  storefront task editing `backend/`) are `advisory`: the agent cannot undo
-  them cleanly and a hard fail would loop forever. Python only enforced the
-  table through the prompt.
+  outside `artifact/{storefront,backend}`, and all of `backend/` when
+  `genBackend` is off) make `owned_files` `fail`. Edits in the other copy
+  (a storefront task editing `backend/`, a backend task editing
+  `storefront/`) are `advisory`. Python only enforced the table through the
+  prompt.
+- **No per-task storefront slices (2026-10-28).** The Python slice table
+  named files the TypeScript template does not have, and the template keeps
+  most of its UI in shared files (`root.tsx`, `app/components/storefront.tsx`,
+  `app/lib/queries.ts`), so slices could not be kept. Every storefront task
+  owns `storefront/`, and `routes_200` requests every page after each
+  storefront task instead of only the task's pages, so a shared-file edit
+  that breaks another page fails the task that made it. `visual_judge`
+  still judges only the task's page buckets.
+- **`artifact/` is checkpointed in git.** `ArtifactCheckpoints` keeps a
+  bare repository at `<runDir>/checkpoints.git` with `artifact/` as its
+  work tree, so the agent's tools and the published shop never see it.
+  The build loop commits after seeding and after each iteration the
+  harness keeps, and rolls back to the last commit when the harness
+  abandons one (timeout, unparseable plan, protocol violation, runtime
+  error), through the harness `onIterationEnd` hook. `owned_files` checks
+  the paths changed since the last commit, so a resumed run and the task
+  after an abandoned one are not blamed for edits they did not make. The
+  seed roots (`data/`, `manual/`, guarded by the harness seed check),
+  `node_modules` and build outputs are not tracked; a rollback leaves
+  them in place. On resume, what an interrupted iteration left is
+  committed as is, matching the harness, which keeps it too.
 - **`data_in_use` runs after every task**, not only backend tasks, because a
   schema change in `gen_backend` can break queries the storefront already
   ships. It is skipped (pass) only when no GraphQL document exists.
 - **The sidecar restarts on backend changes, not on every iteration.**
-  `BackendSidecar.restartIfChanged()` hashes `artifact/backend/src` plus
-  `package.json`; it is called at the end of every assistant turn and again
-  immediately before `data_in_use` introspects the schema.
+  `BackendSidecar.ensureCurrent()` hashes `artifact/backend/src` plus
+  `package.json` and restarts when the digest moved, or launches again when
+  the last launch failed. It is awaited before every `run_command`, before
+  `screenshot_page` and the storefront verifiers bring up the storefront,
+  and before `data_in_use` introspects the schema. A failed launch is
+  reported to the agent (a `Warning:` line above the `run_command` output,
+  or a failing verifier), and the next call retries, so a fixed edit brings
+  the sidecar back. Outside `start()` / `stop()` the call is a no-op.
 - **`sandbox_contract` runs the template's contract suite on the backend
   fixture**, because `tests/contract/helpers.ts` hardcodes
   `tests/fixtures/sandbox_shop_v0`. Running it against the shop's own
@@ -80,7 +108,41 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
   (`genBackend`, `backendPort`, `backendUrl`, both template fingerprints)
   so a resumed run renders byte-identical prompts, and
   `artifact/storefront/.env` (`PUBLIC_STORE_DOMAIN`, `SHOP_BACKEND_URL`)
-  so `pnpm dev` inside the copy talks to the sidecar.
+  so `pnpm dev` inside the copy talks to the sidecar. `build.json` is
+  written last, so a seed that failed (for example in `pnpm install`) leaves
+  none. When `build.json` is missing and `runDir` holds only the workspace
+  layout with an empty `plan.md` and no iterations, `runBuildLoop` removes
+  it and seeds again; any other non-empty `runDir` is refused by the
+  harness as before.
+- **The fingerprint records a dirty template (2026-10-28).** `commit`
+  alone named the template's `HEAD` even when the copy came from
+  uncommitted edits. `dirty` comes from `git status --porcelain
+  --untracked-files=no` in the template directory (untracked files are
+  never copied); `publish` carries it into `shop.json`, where it is
+  optional so manifests written before the flag still validate.
+- **A command's processes end with it (2026-10-28).** `runCommand`
+  (behind `run_command`, the command-backed verifiers and seeding) starts
+  the command as the leader of a new process group and kills the group
+  when the command exits or times out. Before, a timeout killed only the
+  command itself, so a server it put in the background kept its port, and
+  a command that exited with a background child still running waited for
+  the full timeout because the child held its output open.
+- **Agent-run code gets an allowlisted environment (2026-10-28).**
+  `runCommand` and both sidecar launches pass `commandEnv()`: the
+  variables node, pnpm and git need (`PATH`, `HOME`, `TMPDIR`, locale,
+  the pnpm and XDG homes, proxy and CA variables) plus the caller's own.
+  API keys and tokens in the developer's shell no longer reach the agent's
+  shell or the code it writes. Files the developer can read, the
+  repository `.env` too, stay readable (ADR 0015).
+- **The file tools refuse symlinks that leave the run directory
+  (2026-10-28).** `resolveInside` (behind `read_file`, `write_file`,
+  `list_dir` and the `cwd` of `run_command`) resolves the deepest existing
+  part of a path with `realpath` and refuses it when it is outside the real
+  run directory. It also refuses a broken symlink, because a write follows
+  it to wherever it points. Symlinks that stay inside, like the ones pnpm
+  writes in `node_modules`, still work. Before, the check looked only at
+  the path text. This keeps the tools to their contract; it does not
+  confine `run_command` (ADR 0015).
 - Dropped Python behaviour, on purpose: `quality_judge`, `_redo_N` task
   ids, retry-budget annotations, `prompts/fixes/`, the template override
   shim, and the Hydrogen template.
@@ -103,15 +165,16 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
 ```
 packages/shop-arena/src/gen/build/
   build_loop.ts        runBuildLoop(options): seed, sidecar, verifiers, runPlanExecLoop
+  checkpoints.ts       ArtifactCheckpoints (open, commit, rollback, changedPaths)
   seed.ts              seedTemplate / seedBackend / templateFingerprint / template.json
-  sidecar.ts           BackendSidecar (start, stop, restartIfChanged), freePort
-  owned_files.ts       glob table + ownedFileViolations(taskId, changedPaths)
+  sidecar.ts           BackendSidecar (start, stop, ensureCurrent), freePort
+  owned_files.ts       protected globs + ownedFileViolations(taskId, changedPaths, { genBackend })
   prompts.ts           loadBuildPrompts({ backendUrl, genBackend }), renderPlaceholders
   prompts/             agents.md, planner.md, execute.md (plain markdown)
   tree.ts              snapshotTree / diffTrees / hashSnapshot (sha256 per file)
   verifiers/
     index.ts           buildVerifiers({ genBackend, sidecar, ownedFiles })
-    owned_files.ts     OwnedFilesVerifier (diff vs previous iteration)
+    owned_files.ts     OwnedFilesVerifier (paths changed since the last checkpoint)
     backend_commands.ts backend_typecheck (pnpm typecheck), backend_test (pnpm test)
     sandbox_contract.ts read-only drift vs template.json + tests/contract suite
     data_in_use.ts     GraphQL documents validated against the live schema
@@ -126,6 +189,7 @@ packages/shop-arena/src/gen/build/
   AGENTS.md, plan.md, run.json, iters/        harness-owned
   build.json                                  genBackend, port, template fingerprints
   sidecar.log                                 backend stdout/stderr
+  checkpoints.git/                            bare repo; work tree artifact/
   artifact/
     data/, manual/                            seed roots (immutable, from artifactSeedDir)
     storefront/                               seeded template + .env + template.json
@@ -142,7 +206,8 @@ packages/shop-arena/src/gen/build/
 3. If `tsconfig.json` extends a `..`-relative base, copy the base next to it
    and rewrite `extends` to `./tsconfig.base.json` so the copy compiles
    outside the monorepo.
-4. Write `template.json`.
+4. Write `template.json`, with `dirty` set when `git status` reports a
+   tracked change in the template directory.
 5. `pnpm install --ignore-workspace --prefer-offline`, plus
    `--frozen-lockfile` when the template tracks `pnpm-lock.yaml`.
 
@@ -151,7 +216,7 @@ from the workspace root.
 
 ### 5.4 Sidecar
 
-`BackendSidecar` serialises `start`, `stop` and `restartIfChanged` through
+`BackendSidecar` serialises `start`, `stop` and `ensureCurrent` through
 one promise chain. The default launcher spawns
 `node --import tsx src/cli.ts <dataDir> <port>` with cwd `artifact/backend`,
 pipes both streams into `sidecar.log`, and polls `/health` every 100 ms
@@ -165,19 +230,19 @@ With `genBackend`, the planner emits `gen_backend` at priority 10 ahead of
 
 | Task | May change (under `artifact/`) |
 | --- | --- |
-| `gen_backend`, `backend_*` | `backend/src/{schema,resolvers,state,__generated__}/**`, co-located `*.test.ts`, `backend/src/data/{loader,types}.ts`, `backend/tests/fixtures/**`, `backend/package.json`, `backend/pnpm-lock.yaml` |
-| storefront tasks | their slice's routes (see `execute.md`) plus shared `storefront/app/{components,lib}/**`, `app/routes.ts`, `public/**`, `package.json`, lockfile |
-| `visual_fix` | `storefront/**` |
-| nobody | `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**`, both `template.json`, `storefront/.env` |
+| `gen_backend`, `backend_*` | `backend/**` when `genBackend`; nothing otherwise |
+| every other task | `storefront/**` |
+| nobody | `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**`, both `template.json`, `storefront/.env`, anything outside the two copies |
 
-`ownedFileViolations` is pure; `OwnedFilesVerifier` feeds it the diff of two
-`snapshotTree` calls (previous iteration vs now).
+`ownedFileViolations` is pure; `OwnedFilesVerifier` feeds it
+`ArtifactCheckpoints.changedPaths()`, the paths changed since the last
+kept iteration.
 
 ### 5.6 Verifiers
 
 | Name | Applies to | Pass condition |
 | --- | --- | --- |
-| `owned_files` | all | no protected edits (`fail`); cross-slice edits are `advisory` |
+| `owned_files` | all | no protected edits (`fail`); edits in the other copy are `advisory` |
 | `backend_typecheck` | backend tasks | `pnpm typecheck` exits 0 in `artifact/backend` (180 s) |
 | `backend_test` | backend tasks | `pnpm test` exits 0 (300 s) |
 | `sandbox_contract` | backend tasks | read-only paths match `template.json`, then `pnpm exec vitest run tests/contract` exits 0 |
@@ -190,19 +255,28 @@ feedback is truncated to 1500 characters per stream.
 
 ### 5.7 Loop
 
-`runBuildLoop` is thin: load prompts, create the workspace (fresh) or read
-`build.json` (resume), seed both templates, write `.env` and `build.json`,
-start the sidecar, prime `owned_files`, run `runPlanExecLoop` with the
-verifier list and an `onEvent` hook that calls `restartIfChanged()` after
-each assistant turn, and stop the sidecar in `finally`.
+`runBuildLoop` is thin: load prompts, create the workspace (fresh, after
+removing an unfinished seed) or read `build.json` (resume), seed both templates, write `.env` and `build.json`,
+open the `artifact/` checkpoints, start the sidecar, run
+`runPlanExecLoop` with the verifier list and an `onIterationEnd` hook that
+commits a kept iteration and rolls back an abandoned one, and stop the
+sidecar in `finally`. The agent tools and the
+storefront verifier targets await `ensureCurrent()` themselves.
 
 ## 6. Alternatives
 
 - **Restart the sidecar on every iteration** (Python). Simpler but slow
   (tsx boot per turn) and it discards episode state for no reason.
-- **Make `owned_files` cross-slice edits a hard fail.** Rejected: the agent
-  would need to revert another slice's file by hand, and the prompt already
-  explains the table; advisory feedback is enough to steer.
+- **Make `owned_files` edits in the other copy a hard fail.** Rejected: the
+  agent would need to revert the file by hand, and the prompt already
+  explains the rule; advisory feedback is enough to steer. With
+  `genBackend` off, `backend/` is protected instead, because no backend
+  verifier would check the edit.
+- **Keep per-task storefront slices, mapped onto the template's files.**
+  Rejected: the template's shared files serve every page, so most tasks
+  would need them and the slices would mostly be advisory noise. A global
+  `routes_200` catches the real risk, a task breaking a page it does not
+  own.
 - **Validate GraphQL by running the storefront's queries against the
   sidecar.** Static `validate()` catches the same schema errors without a
   storefront build and reports the exact offending field.
@@ -212,15 +286,22 @@ each assistant turn, and stop the sidecar in `finally`.
 | # | Item | Status |
 | --- | --- | --- |
 | 1 | `seed.ts` (seedTemplate, seedBackend, templateFingerprint) | Done |
-| 2 | `sidecar.ts` (BackendSidecar, restartIfChanged) | Done |
+| 2 | `sidecar.ts` (BackendSidecar, ensureCurrent) | Done |
 | 3 | Prompts with `gen_backend` + owned-file table, `prompts.ts` | Done |
 | 4 | `owned_files.ts` + `OwnedFilesVerifier` | Done |
 | 5 | `backend_typecheck`, `backend_test`, `sandbox_contract`, `data_in_use` | Done |
 | 6 | `runBuildLoop` + `buildVerifiers` | Done |
 | 7 | Unit tests (fast) and `SHOPGYM_SLOW_TESTS` end-to-end test | Done |
-| 8 | Storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) | M7 |
-| 9 | CLI `--gen-backend`, `publish` recording `template.json` | M7 |
+| 8 | Storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) | Done |
+| 9 | CLI `--gen-backend`, `publish` recording `template.json` | Done |
 | 10 | Contract suite against the shop's own dataset | M4 / M7 follow-up |
+| 11 | `artifact/` git checkpoints; rollback of abandoned iterations | Done |
+| 12 | Two-copy ownership (no storefront slices); `routes_200` on every page | Done |
+| 13 | Seed again after a seed that failed before `build.json` | Done |
+| 14 | `dirty` flag in `template.json` and `shop.json` | Done |
+| 15 | `runCommand` kills the command's process group on exit and timeout | Done |
+| 16 | `commandEnv()` allowlist for commands and both sidecars | Done |
+| 17 | File tools refuse symlinks that leave the run directory | Done |
 
 ## 8. Appendix
 

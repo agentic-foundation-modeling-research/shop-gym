@@ -5,9 +5,11 @@
  *
  * The copy is launched with `node --import tsx src/cli.ts <dataDir> <port>`,
  * the same entry its `shop-backend` script uses, so agent edits take effect
- * on restart without a build step. `restartIfChanged()` re-hashes the
- * copy's `src/` and `package.json` and restarts only when the digest moved.
- * Operations are serialised, so concurrent callers never race a restart.
+ * on restart without a build step. Between `start()` and `stop()`,
+ * `ensureCurrent()` re-hashes the copy's `src/` and `package.json` and
+ * restarts only when the digest moved, or launches again when an earlier
+ * launch failed, so a fixed edit brings the sidecar back. Operations are
+ * serialised, so concurrent callers never race a restart.
  */
 
 import { type ChildProcess, spawn } from 'node:child_process';
@@ -17,6 +19,7 @@ import * as path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { hashSnapshot, snapshotTree } from './tree.js';
+import { commandEnv } from './verifiers/subprocess.js';
 
 export class SidecarError extends Error {
   constructor(message: string) {
@@ -62,6 +65,8 @@ export class BackendSidecar {
   private readonly healthTimeoutMs: number;
   private process: SidecarProcess | undefined;
   private sourceHash: string | undefined;
+  /** Between `start()` and `stop()`; `process` is unset while active only after a failed launch. */
+  private active = false;
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly options: BackendSidecarOptions) {
@@ -77,53 +82,61 @@ export class BackendSidecar {
   /** Start the process; a no-op when already running. */
   start(): Promise<void> {
     return this.serialise(async () => {
+      this.active = true;
       if (this.process !== undefined) {
         return;
       }
       this.sourceHash = await this.currentHash();
-      this.process = await this.launch({
-        backendDir: this.options.backendDir,
-        dataDir: this.options.dataDir,
-        port: this.options.port,
-        url: this.url,
-        logPath: this.options.logPath,
-        healthTimeoutMs: this.healthTimeoutMs,
-      });
+      this.process = await this.launchProcess();
     });
   }
 
-  /** Stop the process; a no-op when not running. */
+  /** Stop the process; a no-op when not running. Later `ensureCurrent()` calls do nothing. */
   stop(): Promise<void> {
     return this.serialise(async () => {
+      this.active = false;
       const current = this.process;
       this.process = undefined;
       await current?.stop();
     });
   }
 
-  /** Restart when `src/` or `package.json` changed since the last start. */
-  restartIfChanged(): Promise<boolean> {
+  /**
+   * Restart when `src/` or `package.json` changed since the last launch, or
+   * launch again when the last launch failed. A no-op outside `start()` /
+   * `stop()`.
+   *
+   * @returns Whether a launch happened.
+   * @throws SidecarError when the launch fails; the next call tries again.
+   */
+  ensureCurrent(): Promise<boolean> {
     return this.serialise(async () => {
-      if (this.process === undefined) {
+      if (!this.active) {
         return false;
       }
       const hash = await this.currentHash();
-      if (hash === this.sourceHash) {
-        return false;
+      if (this.process !== undefined) {
+        if (hash === this.sourceHash) {
+          return false;
+        }
+        const current = this.process;
+        this.process = undefined;
+        await current.stop();
       }
-      const current = this.process;
-      this.process = undefined;
-      await current.stop();
       this.sourceHash = hash;
-      this.process = await this.launch({
-        backendDir: this.options.backendDir,
-        dataDir: this.options.dataDir,
-        port: this.options.port,
-        url: this.url,
-        logPath: this.options.logPath,
-        healthTimeoutMs: this.healthTimeoutMs,
-      });
+      this.process = await this.launchProcess();
       return true;
+    });
+  }
+
+  private launchProcess(): Promise<SidecarProcess> {
+    return this.launch({
+      backendDir: this.options.backendDir,
+      dataDir: this.options.dataDir,
+      port: this.options.port,
+      url: this.url,
+      logPath: this.options.logPath,
+      healthTimeoutMs: this.healthTimeoutMs,
     });
   }
 
@@ -175,7 +188,7 @@ export const spawnSidecar: SidecarLaunch = async (options) => {
   const child = spawn(
     process.execPath,
     ['--import', 'tsx', 'src/cli.ts', options.dataDir, String(options.port)],
-    { cwd: options.backendDir, stdio: ['ignore', log.fd, log.fd], env: { ...process.env } },
+    { cwd: options.backendDir, stdio: ['ignore', log.fd, log.fd], env: commandEnv() },
   );
   const exited = new Promise<number | null>((resolve) => {
     child.once('exit', (code) => resolve(code));

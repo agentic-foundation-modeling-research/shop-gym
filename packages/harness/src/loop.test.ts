@@ -290,6 +290,74 @@ describe('runPlanExecLoop: blocked-and-continue', () => {
   });
 });
 
+describe('runPlanExecLoop: onIterationEnd', () => {
+  const PLAN_ABCD =
+    '## Tasks\n\n- [ ] a [priority: 4]\n- [ ] b [priority: 3]\n- [ ] c [priority: 2]\n- [ ] d [priority: 1]\n';
+
+  it('reports each iteration as kept or abandoned after it is recorded', async () => {
+    const log: string[] = [];
+    const runtime = new FakeRuntime([
+      planner(PLAN_ABCD),
+      exec(PLAN_ABCD.replace('[ ] a', '[x] a')),
+      { status: 'aborted' },
+      exec('## Tasks\n- [ ] a\n- [ ] a\n'),
+      {},
+    ]);
+    const result = await runPlanExecLoop(
+      config({
+        verifiers: [
+          verifier('v', (taskId) => {
+            log.push(`verify ${taskId}`);
+            return { verdict: 'pass' };
+          }),
+        ],
+        onIterationEnd: async (end) => {
+          const execIterCount = (await readJson('run.json')).execIterCount;
+          log.push(`${end.iterId} ${end.taskId} ${end.outcome} ${execIterCount}`);
+        },
+      }),
+      runtime,
+    );
+    expect(result.finalStatus).toBe('timeout');
+    expect(log).toEqual([
+      'plan null kept 0',
+      'verify a',
+      'exec-0001 a kept 1',
+      'exec-0002 b timeout 1',
+      'exec-0002 c invalid_plan 2',
+      'verify d',
+      'exec-0003 d protocol_violation 3',
+    ]);
+  });
+
+  it('reports the iteration that ended the run', async () => {
+    const ends: unknown[] = [];
+    const onIterationEnd = async (end: unknown): Promise<void> => {
+      ends.push(end);
+    };
+    await runPlanExecLoop(config({ onIterationEnd }), new ThrowingRuntime());
+    const runtime = new FakeRuntime([planner(), { status: 'error', error: 'boom' }]);
+    await runPlanExecLoop(config({ runDir: path.join(root, 'run2'), onIterationEnd }), runtime);
+    expect(ends).toEqual([
+      { iterId: 'plan', taskId: null, outcome: 'runtime_error' },
+      { iterId: 'plan', taskId: null, outcome: 'kept' },
+      { iterId: 'exec-0001', taskId: 'a', outcome: 'runtime_error' },
+    ]);
+    expect((await readJson('run.json', path.join(root, 'run2'))).finalStatus).toBe('runtime_error');
+  });
+
+  it('rejects the run when the hook throws', async () => {
+    const runtime = new FakeRuntime([planner(), exec(PLAN_A_DONE)]);
+    const onIterationEnd = async (): Promise<void> => {
+      throw new Error('checkpoint failed');
+    };
+    await expect(runPlanExecLoop(config({ onIterationEnd }), runtime)).rejects.toThrow(
+      'checkpoint failed',
+    );
+    expect(runtime.requests).toHaveLength(1);
+  });
+});
+
 describe('runPlanExecLoop: verifiers', () => {
   it('a passing verifier keeps [x] and records a per-verifier file', async () => {
     const runtime = new FakeRuntime([planner(), exec(PLAN_A_DONE), exec(PLAN_AB_DONE)]);

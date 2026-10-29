@@ -109,6 +109,12 @@ outputs/shops/mock_shop/
   shop.json      publish manifest (templates, genBackend, finalStatus)
 ```
 
+The build agent runs shell commands on your machine, without a sandbox
+([ADR 0015](docs/adr/0015-build-loop-runs-on-the-host.md)). It can read
+every file you can, but its commands get no API keys or tokens from your
+environment, and nothing they start outlives the call. Run `gen` only on
+manuals you trust.
+
 ### 3. Host the shop
 
 ```bash

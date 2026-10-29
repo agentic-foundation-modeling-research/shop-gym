@@ -79,6 +79,10 @@ coupled to neither. Its tests run against arbitrary toy tasks.
   `run.json`, `metadata.json`, and `checks/*.json` use camelCase keys;
   `native.log`, the `inspect` tool, replay recording, and the `CLAUDE.md`
   symlink are dropped. The Python engine is removed at the v1.1 cutover.
+- **Iteration-end hook (2026-10-28).** `PlanExecLoopConfig.onIterationEnd`
+  reports how each iteration ended: `kept`, or the reason the harness
+  abandoned it (§5.9). The ShopArena build loop uses it to keep or roll
+  back its `artifact/` checkpoints.
 
 ---
 
@@ -381,6 +385,35 @@ result to `iters/<exec_id>/checks/protocol.json`. Domain-specific
 quality checks either stay in executor self-check instructions or live
 behind caller-owned verifiers.
 
+### 5.9 Iteration-end hook
+
+The harness does not roll back `artifact/`. Its edits stay on disk when
+an iteration is abandoned. A caller that wants a clean tree after a
+failed iteration passes `onIterationEnd(end)`. The harness awaits it
+once after each planner and executor iteration, after the iteration is
+recorded (verifiers, `plan.md` repair, `run.json`) and before the next
+iteration starts.
+
+`end` is `{ iterId, taskId, outcome }`. `taskId` is `null` for the
+planner. `outcome` is one of:
+
+| Outcome              | When                                                   | Run          |
+| -------------------- | ------------------------------------------------------ | ------------ |
+| `kept`               | the iteration's edits stand                             | continues    |
+| `timeout`            | the runtime aborted; the iter dir is quarantined        | continues (planner: ends) |
+| `invalid_plan`       | `plan.md` does not parse; the task is force-blocked     | continues (planner: ends) |
+| `protocol_violation` | a protocol or seed check failed; the task is force-blocked | continues (planner: ends) |
+| `runtime_error`      | the runtime threw or returned `error`                   | ends         |
+
+A timed-out executor's `iterId` is used again by the next iteration,
+because the timed-out iteration is not counted. Verifiers still run on
+a `protocol_violation` iteration (see
+[protocol_violation_recovery.md](protocol_violation_recovery.md) §5.4),
+so the next prompt carries their feedback even when the caller has
+rolled the edits back. An error thrown by the hook rejects
+`runPlanExecLoop`. A crash inside an iteration reports nothing; on
+resume the partial iteration is quarantined and its edits stay.
+
 ---
 
 ## 6. Alternative
@@ -417,12 +450,12 @@ cassette drift.
 ### 8.1 Public surface (informative)
 
 - **Types**: `Task`, `TaskList`, `TaskStatus`, `Trajectory`, `TrajectoryStep`, `AgentRuntime`, `IterationMetadata`, `ProtocolCheckResult`.
-- **Config & result**: `PlanExecLoopConfig` (contains `run_dir`, `prompts`, `agents_md`, `artifact_seed_dir`, and loop budget), `Prompts`, `PlanExecLoopResult`.
+- **Config & result**: `PlanExecLoopConfig` (contains `run_dir`, `prompts`, `agents_md`, `artifact_seed_dir`, loop budget, and the `onEvent` / `onIterationEnd` hooks), `Prompts`, `PlanExecLoopResult`, `IterationEnd`, `IterationOutcome`.
 - **Entry points**: `run_plan_exec_loop(config, runtime)`, `get_runtime(name, **kwargs)`.
 
 ### 8.2 Future directions (non-blocking)
 
-- **Hooks.** OpenClaw-style `before_iter`/`after_iter`/`on_stuck` callbacks for callers to add observability without forking.
+- **Hooks.** OpenClaw-style `before_iter`/`on_stuck` callbacks for callers to add observability without forking. `after_iter` shipped as `onIterationEnd` (§5.9).
 - **Independent evaluator phases.** Add isolated evaluator phases for benchmark-grade evaluation, with read-only access to the main workspace and separate telemetry.
 - **Long-lived orchestrator mode.** Alternative entry point reusing the runtime protocol, workspace, and trajectory schema.
 - **Parallelism.** Shard `plan.md` Tasks by id with per-iteration locks.

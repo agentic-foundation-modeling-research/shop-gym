@@ -136,6 +136,7 @@ describe('generateShop', () => {
       'pages',
       'report.json',
       'screenshots',
+      'storefront.log',
       'summary.md',
     ]);
 
