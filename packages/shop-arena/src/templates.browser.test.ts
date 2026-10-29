@@ -52,6 +52,9 @@ const PRODUCT = { handle: 'shopliseum-mushroom-dog-toys', title: 'Shopliseum Mus
 const PRODUCT_PATH = `/products/${PRODUCT.handle}`;
 /** A product of the test Dataset with no Reviews. */
 const NO_REVIEWS_PRODUCT = 'cartanvil-mackerel-and-sardines-70g';
+/** Products of the test Dataset rated 4.5 over two Reviews and 4.0 over one. */
+const HALF_STAR_PRODUCT = 'aislearena-anti-tick-collar';
+const ONE_VARIANT_PRODUCT = 'agoracage-skin-and-coat-chicken-with-grains-12lb';
 const SHOPPER = {
   firstName: 'Suite',
   lastName: 'Shopper',
@@ -118,8 +121,7 @@ async function reviewTitles(): Promise<string[]> {
 
 /** Text of each order history row, in page order. */
 async function orderHistoryRows(): Promise<string[]> {
-  const rows = await session.page.locator('table tbody tr').allInnerTexts();
-  return rows.map((row) => row.replace(/\s+/g, ' ').trim());
+  return (await session.page.locator('table tbody tr').allInnerTexts()).map(normalized);
 }
 
 describe('storefront template in a browser', () => {
@@ -239,6 +241,31 @@ describe('storefront template in a browser', () => {
     expect((await reviewTitles()).slice(4)).toEqual([
       'Still squeaking after a month',
       "Our puppy's favourite",
+    ]);
+  }, 60_000);
+
+  it('shows a half star for a 4.5 rating', async () => {
+    const outcome = await viewProduct(session.page, sidecar.url, HALF_STAR_PRODUCT);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const stars = session.page.getByRole('img', { name: '4.5 out of 5.0 stars' }).first();
+    // The stars are drawn by CSS; their classes are the only page output that tells them apart.
+    const fills = await Promise.all(
+      (await stars.locator('.star').all()).map((star) => star.getAttribute('class')),
+    );
+    expect(fills).toEqual([
+      'star star-full',
+      'star star-full',
+      'star star-full',
+      'star star-full',
+      'star star-half',
+    ]);
+  }, 60_000);
+
+  it('leaves out the variant of a one-variant product and a helpful count of 0', async () => {
+    const outcome = await viewProduct(session.page, sidecar.url, ONE_VARIANT_PRODUCT);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await reviewBlocks()).toEqual([
+      'Shinier coat After six weeks on this food his coat is softer and shinier. Omar H. Verified Buyer May 22, 2025',
     ]);
   }, 60_000);
 
