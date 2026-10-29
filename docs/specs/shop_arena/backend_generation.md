@@ -37,9 +37,10 @@ storefront verifiers (`routes_200`, `nav_coverage`, `visual_judge`) and the
   tracked path to its sha256.
 - **Sidecar**: the run's `artifact/backend` started as a child process
   (`node --import tsx src/cli.ts artifact/data <port>`) for the whole loop.
-- **Owned files**: the paths a task may change. Protected paths may never
-  change; a task that edits another slice's files is reported as
-  cross-slice.
+- **Owned files**: the paths a task may change. Backend tasks own the
+  backend copy and every other task owns the storefront copy. Protected
+  paths may never change; an edit in the other copy is reported as not
+  owned.
 - **Read-only backend paths**: `src/data/schema.ts`, `src/sandbox/**`,
   `tests/contract/**` in the backend copy. They define the sandbox contract
   (dataset shape, episode isolation, cart and checkout behaviour) and must
@@ -55,11 +56,19 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
 
 - **Owned-file enforcement is split by severity.** Edits to protected paths
   (read-only backend paths, `template.json`, `storefront/.env`, anything
-  outside `artifact/{storefront,backend}`) make `owned_files` `fail`.
-  Cross-slice edits (a storefront task editing another slice's route, a
-  storefront task editing `backend/`) are `advisory`: the agent cannot undo
-  them cleanly and a hard fail would loop forever. Python only enforced the
-  table through the prompt.
+  outside `artifact/{storefront,backend}`, and all of `backend/` when
+  `genBackend` is off) make `owned_files` `fail`. Edits in the other copy
+  (a storefront task editing `backend/`, a backend task editing
+  `storefront/`) are `advisory`. Python only enforced the table through the
+  prompt.
+- **No per-task storefront slices (2026-10-28).** The Python slice table
+  named files the TypeScript template does not have, and the template keeps
+  most of its UI in shared files (`root.tsx`, `app/components/storefront.tsx`,
+  `app/lib/queries.ts`), so slices could not be kept. Every storefront task
+  owns `storefront/`, and `routes_200` requests every page after each
+  storefront task instead of only the task's pages, so a shared-file edit
+  that breaks another page fails the task that made it. `visual_judge`
+  still judges only the task's page buckets.
 - **`artifact/` is checkpointed in git.** `ArtifactCheckpoints` keeps a
   bare repository at `<runDir>/checkpoints.git` with `artifact/` as its
   work tree, so the agent's tools and the published shop never see it.
@@ -124,7 +133,7 @@ packages/shop-arena/src/gen/build/
   checkpoints.ts       ArtifactCheckpoints (open, commit, rollback, changedPaths)
   seed.ts              seedTemplate / seedBackend / templateFingerprint / template.json
   sidecar.ts           BackendSidecar (start, stop, ensureCurrent), freePort
-  owned_files.ts       glob table + ownedFileViolations(taskId, changedPaths)
+  owned_files.ts       protected globs + ownedFileViolations(taskId, changedPaths, { genBackend })
   prompts.ts           loadBuildPrompts({ backendUrl, genBackend }), renderPlaceholders
   prompts/             agents.md, planner.md, execute.md (plain markdown)
   tree.ts              snapshotTree / diffTrees / hashSnapshot (sha256 per file)
@@ -185,10 +194,9 @@ With `genBackend`, the planner emits `gen_backend` at priority 10 ahead of
 
 | Task | May change (under `artifact/`) |
 | --- | --- |
-| `gen_backend`, `backend_*` | `backend/src/{schema,resolvers,state,__generated__}/**`, co-located `*.test.ts`, `backend/src/data/{loader,types}.ts`, `backend/tests/fixtures/**`, `backend/package.json`, `backend/pnpm-lock.yaml` |
-| storefront tasks | their slice's routes (see `execute.md`) plus shared `storefront/app/{components,lib}/**`, `app/routes.ts`, `public/**`, `package.json`, lockfile |
-| `visual_fix` | `storefront/**` |
-| nobody | `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**`, both `template.json`, `storefront/.env` |
+| `gen_backend`, `backend_*` | `backend/**` when `genBackend`; nothing otherwise |
+| every other task | `storefront/**` |
+| nobody | `backend/src/data/schema.ts`, `backend/src/sandbox/**`, `backend/tests/contract/**`, both `template.json`, `storefront/.env`, anything outside the two copies |
 
 `ownedFileViolations` is pure; `OwnedFilesVerifier` feeds it
 `ArtifactCheckpoints.changedPaths()`, the paths changed since the last
@@ -198,7 +206,7 @@ kept iteration.
 
 | Name | Applies to | Pass condition |
 | --- | --- | --- |
-| `owned_files` | all | no protected edits (`fail`); cross-slice edits are `advisory` |
+| `owned_files` | all | no protected edits (`fail`); edits in the other copy are `advisory` |
 | `backend_typecheck` | backend tasks | `pnpm typecheck` exits 0 in `artifact/backend` (180 s) |
 | `backend_test` | backend tasks | `pnpm test` exits 0 (300 s) |
 | `sandbox_contract` | backend tasks | read-only paths match `template.json`, then `pnpm exec vitest run tests/contract` exits 0 |
@@ -223,9 +231,16 @@ storefront verifier targets await `ensureCurrent()` themselves.
 
 - **Restart the sidecar on every iteration** (Python). Simpler but slow
   (tsx boot per turn) and it discards episode state for no reason.
-- **Make `owned_files` cross-slice edits a hard fail.** Rejected: the agent
-  would need to revert another slice's file by hand, and the prompt already
-  explains the table; advisory feedback is enough to steer.
+- **Make `owned_files` edits in the other copy a hard fail.** Rejected: the
+  agent would need to revert the file by hand, and the prompt already
+  explains the rule; advisory feedback is enough to steer. With
+  `genBackend` off, `backend/` is protected instead, because no backend
+  verifier would check the edit.
+- **Keep per-task storefront slices, mapped onto the template's files.**
+  Rejected: the template's shared files serve every page, so most tasks
+  would need them and the slices would mostly be advisory noise. A global
+  `routes_200` catches the real risk, a task breaking a page it does not
+  own.
 - **Validate GraphQL by running the storefront's queries against the
   sidecar.** Static `validate()` catches the same schema errors without a
   storefront build and reports the exact offending field.
@@ -245,6 +260,7 @@ storefront verifier targets await `ensureCurrent()` themselves.
 | 9 | CLI `--gen-backend`, `publish` recording `template.json` | M7 |
 | 10 | Contract suite against the shop's own dataset | M4 / M7 follow-up |
 | 11 | `artifact/` git checkpoints; rollback of abandoned iterations | Done |
+| 12 | Two-copy ownership (no storefront slices); `routes_200` on every page | Done |
 
 ## 8. Appendix
 

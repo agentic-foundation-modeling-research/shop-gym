@@ -1,13 +1,16 @@
 /**
  * `owned_files` verifier: classifies every `artifact/` path the iteration
- * changed with the owned-file table. Protected paths fail the iteration;
- * edits in another task's slice are advisory, since the agent can only
- * move forward.
+ * changed against the owned-file rules. Protected paths fail the iteration;
+ * edits in the template copy the other kind of task owns are advisory.
  */
 
 import type { Verifier, VerifierContext, VerifierResult } from '@shop-gym/harness';
 
-import { type OwnedFileViolation, ownedFileViolations } from '../owned_files.js';
+import {
+  type OwnedFileOptions,
+  type OwnedFileViolation,
+  ownedFileViolations,
+} from '../owned_files.js';
 
 export const OWNED_FILES_NAME = 'owned_files';
 
@@ -20,7 +23,10 @@ export interface ChangedPaths {
 export class OwnedFilesVerifier implements Verifier {
   readonly name = OWNED_FILES_NAME;
 
-  constructor(private readonly changes: ChangedPaths) {}
+  constructor(
+    private readonly changes: ChangedPaths,
+    private readonly options: OwnedFileOptions,
+  ) {}
 
   appliesTo(_taskId: string): boolean {
     return true;
@@ -28,7 +34,7 @@ export class OwnedFilesVerifier implements Verifier {
 
   async run(ctx: VerifierContext): Promise<VerifierResult> {
     const changed = await this.changes.changedPaths();
-    const violations = ownedFileViolations(ctx.selectedTaskId, changed);
+    const violations = ownedFileViolations(ctx.selectedTaskId, changed, this.options);
     const details = { changedPaths: changed, violations };
     if (violations.length === 0) {
       return { verdict: 'pass', details };
@@ -43,19 +49,19 @@ function renderViolations(taskId: string, violations: readonly OwnedFileViolatio
     `\`owned_files\`: ${violations.length} path(s) outside what \`${taskId}\` may edit.`,
   ];
   const protectedPaths = violations.filter((v) => v.kind === 'protected');
-  const crossSlice = violations.filter((v) => v.kind === 'cross_slice');
+  const notOwned = violations.filter((v) => v.kind === 'not_owned');
   if (protectedPaths.length > 0) {
     lines.push(
       '',
-      'Protected paths (read-only for every task; restore them to the template content):',
+      'Protected paths (read-only for this run; restore them to the template content):',
       ...protectedPaths.map((v) => `- \`${v.path}\``),
     );
   }
-  if (crossSlice.length > 0) {
+  if (notOwned.length > 0) {
     lines.push(
       '',
-      "Paths in another task's slice (leave them to that task or to `visual_fix`):",
-      ...crossSlice.map((v) => `- \`${v.path}\``),
+      'Paths in the other template copy (storefront tasks edit `storefront/`, backend tasks edit `backend/`):',
+      ...notOwned.map((v) => `- \`${v.path}\``),
     );
   }
   return lines.join('\n');

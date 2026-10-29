@@ -155,7 +155,10 @@ describe('sandbox_contract', () => {
 describe('owned_files verifier', () => {
   it('classifies the paths the iteration changed', async () => {
     let changed: string[] = [];
-    const verifier = new OwnedFilesVerifier({ changedPaths: async () => changed });
+    const verifier = new OwnedFilesVerifier(
+      { changedPaths: async () => changed },
+      { genBackend: true },
+    );
     expect(verifier.appliesTo('anything')).toBe(true);
     expect((await verifier.run(ctx('gen_theme'))).verdict).toBe('pass');
 
@@ -164,13 +167,23 @@ describe('owned_files verifier', () => {
     expect(first.verdict).toBe('pass');
     expect(first.details).toMatchObject({ changedPaths: ['storefront/app/root.tsx'] });
 
-    const second = await verifier.run(ctx('gen_homepage'));
+    const second = await verifier.run(ctx('gen_backend'));
     expect(second.verdict).toBe('advisory');
-    expect(second.feedback).toContain("another task's slice");
+    expect(second.feedback).toContain('other template copy');
 
     changed = ['backend/src/data/schema.ts'];
     const third = await verifier.run(ctx('gen_backend'));
     expect(third.verdict).toBe('fail');
     expect(third.feedback).toContain('`backend/src/data/schema.ts`');
+  });
+
+  it('fails any backend edit when backend generation is off', async () => {
+    const verifier = new OwnedFilesVerifier(
+      { changedPaths: async () => ['backend/src/resolvers/shop.ts'] },
+      { genBackend: false },
+    );
+    const result = await verifier.run(ctx('gen_product'));
+    expect(result.verdict).toBe('fail');
+    expect(result.feedback).toContain('Protected paths');
   });
 });

@@ -24,9 +24,9 @@ retries; do not track retry counts in `plan.md`.
 
 Feedback shapes you should know how to react to:
 
-- `owned_files`: you changed a path outside your task's slice (`advisory`)
-  or a protected path (`fail`). Restore protected paths to their template
-  content; leave other slices to their own tasks or to `visual_fix`.
+- `owned_files`: you changed a read-only path (`fail`) or a path in the
+  other template copy (`advisory`). Restore read-only paths to their
+  template content; leave the other copy to its own tasks.
 - `backend_typecheck` / `backend_test`: `pnpm typecheck` or `pnpm test`
   failed in `artifact/backend`. The body carries the compiler or test output.
 - `sandbox_contract`: a read-only backend file changed, or the
@@ -79,26 +79,22 @@ separator is your spec. Do not edit any other task's line.
 
 ### 3a. Storefront tasks
 
-Each `gen_*` storefront task owns a slice of `artifact/storefront/app/`:
-
-| Task              | Owned slice                                                                    |
-| ----------------- | ------------------------------------------------------------------------------ |
-| `gen_theme`       | `app/styles/`, `app/root.tsx` (theme bindings only), tailwind / token config  |
-| `gen_navigation`  | `Header`, `Footer`, `MegaMenu`, `MobileNav`, `AnnouncementBar` components     |
-| `gen_homepage`    | `app/routes/_index.tsx`, hero / featured / promo components                   |
-| `gen_collections` | `app/routes/collections*.tsx`, `CollectionGrid`, `ProductItem`, filter / sort |
-| `gen_product`     | `app/routes/products*.tsx`, `ProductGallery`, `VariantSelector`               |
-| `gen_cart_search` | `app/routes/cart*.tsx`, `app/routes/search*.tsx`, cart and search components  |
-| `gen_info_pages`  | `app/routes/pages*.tsx`, `app/routes/policies*.tsx`, about / contact / FAQ    |
-| `visual_fix`      | any storefront path                                                            |
-
-Shared GraphQL documents live under `app/lib/` or `app/graphql/`; every
-storefront task may edit those, `public/`, and `package.json`.
+Every storefront task may edit any file in `artifact/storefront/` except
+`template.json` and `.env`. The template keeps one route module per page in
+`app/routes/` (`home.tsx`, `collections.tsx`, `collection.tsx`,
+`product.tsx`, `cart.tsx`, `search.tsx`, `checkout.tsx`,
+`checkout-confirmation.tsx`, `page.tsx`, `policy.tsx`, `account/*.tsx`),
+the route table in `app/routes.ts`, the document shell in `app/root.tsx`,
+shared components (`Header`, `Footer`, `ProductGrid`, `CollectionGrid`,
+`CartDrawer`, ...) in `app/components/storefront.tsx`, GraphQL documents in
+`app/lib/queries.ts`, and styles in `app/styles/app.css`.
 
 Rules:
 
-1. Stay in your slice. If another slice must change, mark your task
-   `[!] needs cross-task fix in <slice>` and let `visual_fix` pick it up.
+1. Work on your task's pages. Edit a shared file (`root.tsx`,
+   `app/components/storefront.tsx`, `app/lib/queries.ts`, `app.css`) when
+   your task needs it, and keep the other pages working: `routes_200`
+   requests every page after each storefront task.
 2. Talk to the sidecar through the template's GraphQL client. Reuse the
    template's queries for shape; add new operations when you need new
    fields. Only use fields the schema exposes.
@@ -107,7 +103,7 @@ Rules:
    another verifier.
 4. Type-check and build before you exit: `run_command` with
    `pnpm typecheck && pnpm build` and `cwd: artifact/storefront`.
-5. Look at what you built: `screenshot_page` on each route your task owns
+5. Look at what you built: `screenshot_page` on each route your task works on
    (`/` for the homepage, `/collections/<handle>`, `/products/<handle>`,
    `/cart`, `/search?q=<word>`, `/pages/<handle>`). The judge sees these
    captures; fix clipped headers, empty media slots, overflowing tables and
@@ -120,10 +116,9 @@ Rules:
 ### 3b. `gen_backend` and `backend_*` tasks
 
 You are extending `artifact/backend/` so the storefront has the operations
-the manual promises. Allowed paths: `src/schema/**`, `src/resolvers/**`,
-`src/state/**`, `src/__generated__/**` (regenerate with `pnpm codegen`),
-co-located `*.test.ts`, `src/data/loader.ts` and `src/data/types.ts`
-(wiring only), `tests/fixtures/**`, and `package.json` dependencies.
+the manual promises. Put new SDL modules in `src/schema/`, resolvers in
+`src/resolvers/`, and episode state in `src/state/`; regenerate
+`src/__generated__/` with `pnpm codegen`.
 
 Rules:
 
@@ -140,7 +135,7 @@ Rules:
 ### 3c. `visual_fix` scope
 
 Walk these in order: address every `[!]` task whose note describes a
-cross-slice fix or leftover verifier failure; converge duplicated shared
+leftover verifier failure; converge duplicated shared
 components; replace hard-coded values with `gen_theme` tokens; fix nav links
 pointing at renamed routes; delete orphan imports and dead routes; hoist
 duplicated GraphQL fragments into one shared document; then a final
@@ -152,9 +147,7 @@ Edit only your task's line and keep its shape
 `- [<marker>] <task_id> — <brief> [priority: N]`. Choose one marker:
 
 - `[x]`: your work is complete and your self-check passes.
-- `[!]` with the brief replaced by `needs cross-task fix in <slice>`: the
-  issue cannot be solved inside your owned slice.
-- `[!]` with the brief replaced by a one-line reason: blocked otherwise.
+- `[!]` with the brief replaced by a one-line reason: blocked.
 
 Never append text after the priority or anywhere else on the line; the
 harness rejects the plan and blocks the task.
@@ -177,7 +170,7 @@ failure unless your edits in this iteration addressed that exact failure.
 
 ## 5. Self-check before exit
 
-- Every file you wrote lives under your task's template copy and slice.
+- Every file you wrote lives under your task's template copy.
 - The copy's `pnpm typecheck` passes (and `pnpm build` for the storefront,
   `pnpm test` for the backend).
 - Storefront tasks: the `screenshot_page` captures of your routes show no

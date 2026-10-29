@@ -54,6 +54,7 @@ pick the latter.
     storefront/           storefront template copy: storefront tasks edit it
       template.json       read-only fingerprint
     backend/              backend template copy: backend tasks edit it
+                          (read-only when backend generation is disabled)
       template.json       read-only fingerprint
       src/data/schema.ts  read-only (dataset contract)
       src/sandbox/**      read-only (episode isolation)
@@ -65,13 +66,11 @@ pick the latter.
   seed-immutability check and the harness rejects the iteration.
 - Storefront tasks (`gen_theme`, `gen_navigation`, ...) edit
   `artifact/storefront/` only. Backend tasks (`gen_backend`, `backend_*`)
-  edit `artifact/backend/` only. The `owned_files` verifier reports edits
-  outside your task's slice.
-- Inside `artifact/backend/`, the allowed paths are `src/schema/**`,
-  `src/resolvers/**`, `src/state/**`, `src/__generated__/**` (via
-  `pnpm codegen`), co-located `*.test.ts` files, `src/data/loader.ts` and
-  `src/data/types.ts` (wiring only), `tests/fixtures/**`, and
-  `package.json` dependencies. `src/data/schema.ts`, `src/sandbox/**` and
+  edit `artifact/backend/` only. When backend generation is disabled,
+  `artifact/backend/` is read-only for every task. The `owned_files`
+  verifier fails an edit to a read-only path and reports an edit in the
+  other copy.
+- Inside `artifact/backend/`, `src/data/schema.ts`, `src/sandbox/**` and
   `tests/contract/**` are the sandbox contract and must stay byte-identical
   to the template.
 - Never edit `template.json` or `.env` files; the orchestrator owns them.
@@ -133,7 +132,7 @@ next executor prompt and treat it as a hard error report.
 
 | Name                | Applies to                                  | Checks                                                              |
 | ------------------- | ------------------------------------------- | ------------------------------------------------------------------- |
-| `owned_files`       | every task                                  | edits stay in the task's slice; protected paths unchanged           |
+| `owned_files`       | every task                                  | edits stay in the task's template copy; read-only paths unchanged   |
 | `backend_typecheck` | `gen_backend`, `backend_*`                  | `pnpm typecheck` in `artifact/backend`                              |
 | `backend_test`      | `gen_backend`, `backend_*`                  | `pnpm test` in `artifact/backend`                                   |
 | `sandbox_contract`  | `gen_backend`, `backend_*`                  | read-only backend paths unchanged; `tests/contract` suite passes    |

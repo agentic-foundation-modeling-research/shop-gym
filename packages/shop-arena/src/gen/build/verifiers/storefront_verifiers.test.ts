@@ -206,6 +206,21 @@ describe('routes_200', () => {
     );
   });
 
+  it('probes the dataset routes of every page bucket, whatever the task', async () => {
+    const url = await serve();
+    const verifier = routes200Verifier({ target: { url }, dataDir: FIXTURE_DIR });
+    const result = await verifier.run(await ctx('gen_homepage'));
+    const probes = (result.details as { probes: { route: string; expected: string }[] }).probes;
+    expect(probes.filter((p) => p.expected === 'status 200').map((p) => p.route)).toEqual(
+      expect.arrayContaining([
+        '/collections/dog-essentials',
+        '/collections/cat-care',
+        '/pages/about-us',
+        '/policies/privacy-policy',
+      ]),
+    );
+  });
+
   it('reports status, redirect target and body excerpt for broken routes', async () => {
     const url = await serve({ broken: ['/collections/dog-essentials'] });
     const verifier = routes200Verifier({ target: { url }, dataDir: FIXTURE_DIR });
@@ -288,7 +303,10 @@ describe('buildVerifiers with a storefront', () => {
       logPath: '/tmp/y.log',
       launch: async () => ({ stop: async () => {} }),
     });
-    const ownedFiles = new OwnedFilesVerifier({ changedPaths: async () => [] });
+    const ownedFiles = new OwnedFilesVerifier(
+      { changedPaths: async () => [] },
+      { genBackend: false },
+    );
     const judge = {
       llm: {
         complete: async () => ({

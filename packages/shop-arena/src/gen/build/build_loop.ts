@@ -178,7 +178,7 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     untrackedDirs: [DATA_DIRNAME, MANUAL_DIRNAME],
   });
   await checkpoints.open(existing === undefined ? 'seed' : 'resume');
-  const ownedFiles = new OwnedFilesVerifier(checkpoints);
+  const ownedFiles = new OwnedFilesVerifier(checkpoints, { genBackend });
   const verifiers = buildVerifiers({
     genBackend,
     sidecar,

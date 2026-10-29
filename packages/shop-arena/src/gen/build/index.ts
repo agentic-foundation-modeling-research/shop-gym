@@ -19,12 +19,10 @@ export {
   CheckpointError,
 } from './checkpoints.js';
 export {
-  BACKEND_TASK_GLOBS,
+  type OwnedFileOptions,
   type OwnedFileViolation,
   PROTECTED_GLOBS,
-  STOREFRONT_TASK_GLOBS,
   type ViolationKind,
-  allowedGlobs,
   globToRegExp,
   ownedFileViolations,
 } from './owned_files.js';
