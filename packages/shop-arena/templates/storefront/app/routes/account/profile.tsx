@@ -1,5 +1,5 @@
 import { Link, type LoaderFunctionArgs, useLoaderData } from 'react-router';
-import { AccountNav, AddressBlock, OrderTable } from '~/components/account';
+import { AddressBlock, LogoutLink, ORDER_HISTORY_SIZE, OrderHistory } from '~/components/account';
 import { getAppContext, getCustomerAccessToken } from '~/lib/context';
 import { requireCustomer } from '~/lib/customer';
 import { CUSTOMER_ORDERS_QUERY } from '~/lib/queries';
@@ -9,6 +9,7 @@ import type { Customer, OrderSummary } from '~/lib/types';
 interface CustomerOrdersData {
   readonly customer:
     | (Customer & {
+        readonly addresses: { readonly nodes: readonly { readonly id: string }[] };
         readonly orders: {
           readonly totalCount: number;
           readonly nodes: readonly OrderSummary[];
@@ -16,8 +17,6 @@ interface CustomerOrdersData {
       })
     | null;
 }
-
-const RECENT_ORDERS = 5;
 
 export function meta() {
   return [{ title: 'Account' }];
@@ -28,42 +27,36 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
   const customer = await requireCustomer(appContext, request);
   const data = await storefrontQuery<CustomerOrdersData>(appContext, CUSTOMER_ORDERS_QUERY, {
     customerAccessToken: getCustomerAccessToken(appContext),
-    first: RECENT_ORDERS,
+    first: ORDER_HISTORY_SIZE,
   });
-  return { customer, orders: data.customer?.orders.nodes ?? [] };
+  return {
+    customer,
+    addressCount: data.customer?.addresses.nodes.length ?? 0,
+    orders: data.customer?.orders.nodes ?? [],
+  };
 }
 
 export default function AccountRoute() {
-  const { customer, orders } = useLoaderData<typeof loader>();
+  const { customer, addressCount, orders } = useLoaderData<typeof loader>();
   return (
-    <div className="page-width stack">
-      <h1>Account</h1>
-      <AccountNav />
-      <section className="stack" aria-labelledby="profile-heading">
-        <h2 id="profile-heading">Profile</h2>
-        <dl className="order-meta">
-          <dt>Name</dt>
-          <dd>{customer.displayName}</dd>
-          <dt>Email</dt>
-          <dd>{customer.email ?? '-'}</dd>
-          <dt>Phone</dt>
-          <dd>{customer.phone ?? '-'}</dd>
-        </dl>
-      </section>
-      <section className="stack" aria-labelledby="address-heading">
-        <h2 id="address-heading">Default address</h2>
-        {customer.defaultAddress ? (
-          <AddressBlock address={customer.defaultAddress} />
-        ) : (
-          <p>No default address on file.</p>
-        )}
-        <Link to="/account/addresses">All addresses</Link>
-      </section>
-      <section className="stack" aria-labelledby="orders-heading">
-        <h2 id="orders-heading">Recent orders</h2>
-        <OrderTable orders={orders} />
-        <Link to="/account/orders">All orders</Link>
-      </section>
+    <div className="page-width account-page">
+      <div>
+        <h1>Account</h1>
+        <LogoutLink />
+      </div>
+      <div className="account-columns">
+        <section className="stack" aria-labelledby="order-history-heading">
+          <h2 id="order-history-heading">Order history</h2>
+          <OrderHistory orders={orders} />
+        </section>
+        <section className="stack" aria-labelledby="account-details-heading">
+          <h2 id="account-details-heading">Account details</h2>
+          {customer.defaultAddress ? (
+            <AddressBlock address={customer.defaultAddress} withPhone />
+          ) : null}
+          <Link to="/account/addresses">View addresses ({addressCount})</Link>
+        </section>
+      </div>
     </div>
   );
 }

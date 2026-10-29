@@ -2,9 +2,9 @@
  * Fixed browser scripts over the storefront template's forms and pages:
  * register, log in, log out, add a product to the cart, apply or have a
  * Discount code turned down at checkout, place an order, and open that
- * order's thank-you page and account order page. Each step drives one
- * Playwright page, never throws, and reports what it observed so the
- * callers can record it.
+ * order's thank-you page, the account order history and an account order
+ * page. Each step drives one Playwright page, never throws, and reports
+ * what it observed so the callers can record it.
  *
  * Forms are submitted with `requestSubmit()` rather than a pointer click so
  * consent or newsletter popups layered over the page cannot intercept them.
@@ -227,13 +227,28 @@ async function checkoutTotal(page: Page): Promise<string> {
   return row.replace(/\s+/g, ' ').trim();
 }
 
-/** Open the account page of order `orderNumber`; expects 200 and a heading that names an order. */
+/** Open the account page of order `orderNumber`; expects 200 and the heading "Order #<number>". */
 export async function viewOrder(
   page: Page,
   baseUrl: string,
   orderNumber: number,
 ): Promise<StepOutcome> {
-  return viewPage(page, baseUrl, `/account/orders/${orderNumber}`, /order/i);
+  const name = `Order #${orderNumber}`;
+  return viewPage(page, baseUrl, `/account/orders/${orderNumber}`, `heading "${name}"`, (p) =>
+    p.getByRole('heading', { name, exact: true }),
+  );
+}
+
+/** Open `/account`; expects 200 and an order history link to order `orderNumber`. */
+export async function viewOrderHistory(
+  page: Page,
+  baseUrl: string,
+  orderNumber: number,
+): Promise<StepOutcome> {
+  const name = `Order number #${orderNumber}`;
+  return viewPage(page, baseUrl, '/account', `link "${name}"`, (p) =>
+    p.getByRole('link', { name, exact: true }),
+  );
 }
 
 /** Open the thank-you page of order `orderNumber`; expects 200 and a "Thank you" heading. */
@@ -242,15 +257,22 @@ export async function viewThankYou(
   baseUrl: string,
   orderNumber: number,
 ): Promise<StepOutcome> {
-  return viewPage(page, baseUrl, `/checkout/confirmation/${orderNumber}`, /thank you/i);
+  return viewPage(
+    page,
+    baseUrl,
+    `/checkout/confirmation/${orderNumber}`,
+    'a "Thank you" heading',
+    (p) => p.getByRole('heading', { level: 1, name: /thank you/i }),
+  );
 }
 
-/** Open `path`; ok when it answers 200 and its first `h1` matches `expectedHeading`. */
+/** Open `path`; ok when it answers 200 and shows what `find` locates, described by `what`. */
 async function viewPage(
   page: Page,
   baseUrl: string,
   path: string,
-  expectedHeading: RegExp,
+  what: string,
+  find: (page: Page) => Locator,
 ): Promise<StepOutcome> {
   return attempt(async () => {
     const response = await page.goto(`${baseUrl}${path}`, {
@@ -258,10 +280,10 @@ async function viewPage(
       timeout: NAVIGATION_TIMEOUT_MS,
     });
     const status = response?.status() ?? 0;
-    const title = await heading(page);
+    const found = (await find(page).count()) > 0;
     return {
-      ok: status === 200 && expectedHeading.test(title),
-      detail: `${path} returned ${status} with heading "${title}"`,
+      ok: status === 200 && found,
+      detail: `${path} returned ${status} with heading "${await heading(page)}" and ${found ? '' : 'no '}${what}`,
       url: path,
     };
   });
