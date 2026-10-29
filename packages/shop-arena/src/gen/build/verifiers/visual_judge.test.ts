@@ -21,9 +21,10 @@ import { loadCredentials } from '@shop-gym/core';
 import type { VerifierContext } from '@shop-gym/harness';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { STANDARD_PART_FILE, STANDARD_SUB_MANUAL_PATH } from '../../manual_merge/standard.js';
+import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from '../../manual_merge/standard.js';
 import { defaultBackendTemplateDir } from '../seed.js';
 import { judgeContext, routeSlug } from './page_judge.js';
+import { ALL_BUCKETS } from './task_routes.js';
 import { type RetryBudgetState, VISUAL_BUDGET_FILE, visualJudgeVerifier } from './visual_judge.js';
 
 const FIXTURE_DIR = path.join(defaultBackendTemplateDir(), 'tests', 'fixtures', 'sandbox_shop_v0');
@@ -96,7 +97,10 @@ beforeAll(async () => {
   );
   await fs.writeFile(path.join(manualDir, 'parts', 'homepage.md'), '# Homepage\nHero then grid.\n');
   await fs.writeFile(path.join(manualDir, 'parts', 'cart.md'), '# Cart\nDrawer-less.\n');
-  await fs.copyFile(STANDARD_SUB_MANUAL_PATH, path.join(manualDir, 'parts', STANDARD_PART_FILE));
+  await fs.copyFile(
+    STANDARD_SUB_MANUAL_PATH,
+    path.join(manualDir, 'parts', STANDARD_SUB_MANUAL_FILE),
+  );
 });
 
 afterAll(async () => {
@@ -131,6 +135,18 @@ describe('judgeContext', () => {
     expect((await judgeContext(manualDir, ['homepage'])).manual).not.toContain(
       'Forgot your password?',
     );
+  });
+
+  it('keeps the whole Account section when the cut Sub-manuals fill their budget', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'manual-'));
+    await fs.mkdir(path.join(dir, 'parts'));
+    await fs.writeFile(path.join(dir, 'parts', 'cart_and_search.md'), 'x'.repeat(20_000));
+    await fs.copyFile(STANDARD_SUB_MANUAL_PATH, path.join(dir, 'parts', STANDARD_SUB_MANUAL_FILE));
+    const { manual } = await judgeContext(dir, ALL_BUCKETS);
+    expect(manual).toContain('"Forgot your password?"');
+    expect(manual).toContain('"Are you sure you wish to delete this address?"');
+    expect(manual.match(/\[\.\.\.truncated\]/g)).toHaveLength(1);
+    await fs.rm(dir, { recursive: true, force: true });
   });
 
   it('names screenshots after the route', () => {

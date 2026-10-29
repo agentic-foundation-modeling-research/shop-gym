@@ -15,7 +15,7 @@ import type { BrowserSession } from '@shop-gym/browser';
 import { z } from 'zod';
 
 import { parseManualSections } from '../../manual_merge/prose.js';
-import { STANDARD_PART_FILE } from '../../manual_merge/standard.js';
+import { STANDARD_SUB_MANUAL_FILE } from '../../manual_merge/standard.js';
 import { globToRegExp } from '../owned_files.js';
 import type { PageBucket } from './task_routes.js';
 
@@ -35,6 +35,11 @@ const MAX_CAPTURE_SCREENS = 3;
 const SETTLE_MS = 300;
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 30_000;
 const MANUAL_EXCERPT_CHARS = 6000;
+/**
+ * The Standard sub-manual sections have their own budget, so that the cut
+ * Sub-manuals of a task with many buckets (`visual_fix`) never push them out.
+ */
+const STANDARD_EXCERPT_CHARS = 8000;
 const CAPABILITIES_CHARS = 6000;
 
 export type ViewportName = 'desktop' | 'mobile';
@@ -308,20 +313,20 @@ async function manualExcerpt(partsDir: string, buckets: readonly PageBucket[]): 
   const names = await fs.readdir(partsDir).catch(() => [] as string[]);
   const words = buckets.flatMap((b) => BUCKET_MANUAL_WORDS[b]);
   const chosen = names
-    .filter(
-      (name) =>
-        name.endsWith('.md') &&
-        name !== STANDARD_PART_FILE &&
-        words.some((w) => name.toLowerCase().includes(w)),
-    )
+    .filter((name) => name.endsWith('.md') && words.some((w) => name.toLowerCase().includes(w)))
     .sort();
   const parts = await Promise.all(
     chosen.map(
       async (name) => `### ${name}\n\n${await fs.readFile(path.join(partsDir, name), 'utf-8')}`,
     ),
   );
-  const standard = await standardSections(path.join(partsDir, STANDARD_PART_FILE), buckets);
-  return truncate([...parts, ...standard].join('\n\n'), MANUAL_EXCERPT_CHARS);
+  const standard = await standardSections(path.join(partsDir, STANDARD_SUB_MANUAL_FILE), buckets);
+  return [
+    truncate(parts.join('\n\n'), MANUAL_EXCERPT_CHARS),
+    truncate(standard.join('\n\n'), STANDARD_EXCERPT_CHARS),
+  ]
+    .filter((excerpt) => excerpt.length > 0)
+    .join('\n\n');
 }
 
 async function standardSections(file: string, buckets: readonly PageBucket[]): Promise<string[]> {
@@ -336,7 +341,7 @@ async function standardSections(file: string, buckets: readonly PageBucket[]): P
   const sections = parseManualSections(text);
   return names.flatMap((name) => {
     const body = sections.get(name);
-    return body === undefined ? [] : [`### ${STANDARD_PART_FILE} - ${name}\n\n${body}`];
+    return body === undefined ? [] : [`### ${STANDARD_SUB_MANUAL_FILE} - ${name}\n\n${body}`];
   });
 }
 

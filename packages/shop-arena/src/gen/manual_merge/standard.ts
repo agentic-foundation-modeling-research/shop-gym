@@ -9,9 +9,10 @@
 
 import { fileURLToPath } from 'node:url';
 
+/** Path of the checked-in Standard sub-manual that every shop gets. */
 export const STANDARD_SUB_MANUAL_PATH = fileURLToPath(
   new URL('./standard_sub_manual.md', import.meta.url),
 );
 
 /** File name of the Standard sub-manual under `manual/parts/`. */
-export const STANDARD_PART_FILE = 'standard.md';
+export const STANDARD_SUB_MANUAL_FILE = 'standard.md';

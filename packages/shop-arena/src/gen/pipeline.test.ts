@@ -12,7 +12,7 @@ import type { SidecarLaunch } from './build/sidecar.js';
 import type { CommandRunner } from './build/verifiers/subprocess.js';
 import { GEN_STEPS } from './config.js';
 import type { FinalEvalReport } from './final_eval/final_eval.js';
-import { STANDARD_PART_FILE, STANDARD_SUB_MANUAL_PATH } from './manual_merge/standard.js';
+import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from './manual_merge/standard.js';
 import { generateShop } from './pipeline.js';
 import { readShopManifest } from './publish/publish.js';
 import {
@@ -124,7 +124,7 @@ describe('generateShop', () => {
       path.join(outDir, 'manual'),
       path.join(outDir, 'runs', 'build', 'artifact', 'manual'),
     ]) {
-      expect(await fs.readFile(path.join(manual, 'parts', STANDARD_PART_FILE), 'utf-8')).toBe(
+      expect(await fs.readFile(path.join(manual, 'parts', STANDARD_SUB_MANUAL_FILE), 'utf-8')).toBe(
         standard,
       );
     }

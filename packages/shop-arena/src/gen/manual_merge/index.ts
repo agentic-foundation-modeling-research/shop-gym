@@ -24,7 +24,7 @@ import { type LlmCall, completeText, loadPrompt } from '../llm.js';
 import { type MergeConflict, type Tiebreaker, mergeCapabilities } from './capabilities.js';
 import { mergeManualProse, seedBlocks } from './prose.js';
 import { MANUAL_PARTS, splitManual } from './split.js';
-import { STANDARD_PART_FILE, STANDARD_SUB_MANUAL_PATH } from './standard.js';
+import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from './standard.js';
 import { mergeStats, statsSchema } from './stats.js';
 
 export {
@@ -142,7 +142,10 @@ export async function runManualMerge(ctx: StepContext<GenContext>): Promise<void
   for (const part of MANUAL_PARTS) {
     await writeTextFile(path.join(manualDir, 'parts', `${part}.md`), parts[part]);
   }
-  await fs.copyFile(STANDARD_SUB_MANUAL_PATH, path.join(manualDir, 'parts', STANDARD_PART_FILE));
+  await fs.copyFile(
+    STANDARD_SUB_MANUAL_PATH,
+    path.join(manualDir, 'parts', STANDARD_SUB_MANUAL_FILE),
+  );
   const manifest: ManualManifest = {
     schemaVersion: 1,
     seeds: ctx.context.manualDirs,

@@ -14,8 +14,11 @@ shop's backend supports.
   Order confirmation follows the Shopify thank-you page.
 - Text in double quotes is an exact label or message. Use it word for word.
   Account and announcement bar labels come from the Dawn locale file. The
-  discount error comes from the Shopify Help Center. The other checkout,
-  thank-you and Reviews labels are the sandbox standard.
+  discount error "Enter a valid discount code" comes from the Shopify Help
+  Center, which shows it for a code that does not exist or is not active.
+  The other checkout, thank-you and Reviews labels, and the use of the
+  discount error for every code that does not apply, are the sandbox
+  standard.
 - `<...>` is a value from the Dataset or from the Episode state.
 - Show only what the backend supports (see "Supported behavior"). Every
   visible control must work.
@@ -42,11 +45,16 @@ profile editing: the customer cannot change their name or email.
 ### All account pages
 
 - The header account icon links to `/account/login` when the customer is
-  logged out, and to `/account` when the customer is logged in.
+  logged out, and to `/account` when the customer is logged in. Its
+  accessible name is "Log in" when logged out and "Account" when logged
+  in.
 - The login, register and addresses pages are one narrow, centered column
-  (Dawn: about 330 px wide on mobile and 480 px on desktop), with centered
-  headings, full-width fields and full-width buttons. Each field has a
-  floating label with the same text as its placeholder.
+  (Dawn: about 330 px wide, and 480 px from 750 px wide). The fields are
+  full width. The buttons are centered and at least 120 px wide, not full
+  width. Each text field has a floating label with the same text as its
+  placeholder.
+- On login and register the headings are centered. The addresses page
+  differs: see "Addresses".
 - The account page and the order page use the full page width. From 990 px
   wide they have two columns: the table on the left, and a narrow column on
   the right. Below 990 px the right column goes under the table.
@@ -63,7 +71,9 @@ profile editing: the customer cannot change their name or email.
   `/account/register`.
 - A wrong email or password keeps the customer on the page and shows the
   error.
-- On success the customer goes to `/account`.
+- On success the customer goes to the path in the `redirectTo` query
+  parameter when the URL has one (for example `/checkout`), and else to
+  `/account`. The "Create account" link keeps the `redirectTo` value.
 
 "Forgot your password?" opens the recover form in place of the login form,
 on the same page:
@@ -83,17 +93,19 @@ on the same page:
   button "Create".
 - An email that is already taken, or a password that is too short, shows
   the error under the field and in the list above the form.
-- On success the customer is logged in and goes to `/account`.
+- On success the customer is logged in and goes to the `redirectTo` path
+  when the URL has one, and else to `/account`.
 
 ### Account page (`/account`)
 
-- H1 "Account". Next to it, the link "Log out" with the account icon.
+- H1 "Account". Under it, the link "Log out" with the account icon.
   "Log out" ends the session and goes to `/`.
 - Left column: H2 "Order history" and a table with the columns "Order",
   "Date", "Payment status", "Fulfillment status" and "Total". One row for
   each order, newest first.
   - "Order" is the order name, for example `#1001`. It links to the order
-    page.
+    page. The link's accessible name is "Order number <order name>", for
+    example "Order number #1001".
   - "Date" is the order date, for example `March 3, 2025`.
   - "Payment status" and "Fulfillment status" are short labels in sentence
     case, for example Paid, Partially refunded, Refunded, Unfulfilled,
@@ -105,9 +117,11 @@ on the same page:
 - Right column: H2 "Account details", the default address as postal lines
   (name, company, address lines, city, province and postal code, country,
   phone), and the link "View addresses (<number of addresses>)" to
-  `/account/addresses`.
-- Below 750 px wide, each table row becomes a block of "label: value"
-  lines, and the header row is hidden.
+  `/account/addresses`. A customer with no default address, for example a
+  new customer, has no address lines, and the link is "View addresses (0)".
+- Below 750 px wide, each table row becomes a block of lines, and the
+  header row is hidden. Each line has the column name on the left and the
+  value on the right, with no colon.
 - `/account/orders` shows the same "Order history" table on its own page.
 
 ### Order page (`/account/orders/<order number>`)
@@ -123,9 +137,12 @@ on the same page:
 - Under the rows, the totals in this order:
   - "Subtotal".
   - "Discount", with the Discount code and the amount as a negative, for
-    example `WELCOME10 -$5.80`. Only when the order has a discount.
+    example `WELCOME10 -$5.80`. Only when the order has a percent or fixed
+    amount discount. A free-shipping code shows no "Discount" row: the
+    shipping row shows the zero price.
   - "Shipping (<shipping method title>)".
-  - "Tax".
+  - "Tax". Dawn adds the tax title and rate, as in "Tax (VAT 13.0%)". The
+    sandbox has one tax rate with no title, so the row shows only "Tax".
   - "Total", with the currency code.
 - Right column: H2 "Billing Address" with "Payment Status: <status>" and
   the billing address, then H2 "Shipping Address" with
@@ -135,24 +152,33 @@ on the same page:
 
 ### Addresses (`/account/addresses`)
 
-- H1 "Addresses", then the link "Return to Account details" to `/account`.
+- H1 "Addresses", centered, then the link "Return to Account details" to
+  `/account`. The H2 headings of the forms and the form fields are
+  left-aligned.
 - The button "Add a new address" opens the add form under it:
   - H2 "Add a new address".
   - Fields "First name", "Last name", "Company", "Address 1", "Address 2",
     "City", "Country/region", "Province", "Postal/ZIP code" and "Phone".
-    From 750 px wide, the fields are two to a row.
+  - From 750 px wide, "First name" and "Last name" share one row. Every
+    other field is full width.
+  - "Country/region" is a select with a fixed label above it. Its options
+    are the countries that the backend lists. "Province" is a text field
+    with a floating label, because the sandbox has no list of provinces.
   - The checkbox "Set as default address".
   - The buttons "Add address" and "Cancel". "Cancel" closes the form.
 - Then one block for each saved address:
-  - The heading "Default" above the default address only.
+  - The centered heading "Default" above the default address only.
   - The address as postal lines.
-  - The buttons "Edit" and "Delete".
+  - The buttons "Edit" and "Delete". For the address in place <n> of the
+    list, their accessible names are "Edit address <n>" and "Delete <n>",
+    for example "Edit address 1" and "Delete 1".
   - "Edit" opens the edit form under the address: H2 "Edit address", the
     same fields filled with the address, the checkbox
     "Set as default address", and the buttons "Update address" and
     "Cancel".
-  - "Delete" asks "Are you sure you wish to delete this address?". On
-    confirm, the address is removed.
+  - "Delete" opens the browser's own confirm dialog with the text
+    "Are you sure you wish to delete this address?". It is not a custom
+    modal. On confirm, the address is removed.
 - After add, update or delete, the page shows the new list.
 
 ## Checkout
@@ -172,9 +198,10 @@ check out. A logged-in customer can check out too.
 
 1. **Contact**: the field "Email". A guest also sees a "Log in" link to
    `/account/login?redirectTo=%2Fcheckout`.
-2. **Delivery**: the shipping address fields: country, first name, last
-   name, company (optional), address, apartment or suite (optional), city,
-   province or state, postal code, phone (optional).
+2. **Delivery**: the shipping address fields "Country", "First name",
+   "Last name", "Company (optional)", "Address",
+   "Apartment, suite, etc. (optional)", "City", "Province / State",
+   "Postal code" and "Phone (optional)".
 3. **Shipping method**: one radio choice for each shipping method in the
    checkout rules, with its title and price. The first method is selected.
    Free shipping from a free-shipping code or from the free-shipping
@@ -198,26 +225,35 @@ check out. A logged-in customer can check out too.
   badge, the product title, the variant title, and the line price.
 - The field "Discount code" and the button "Apply".
   - A valid code shows as a tag with the code name and a remove button
-    under the field. The discount line appears in the totals.
-  - A cart has one code at a time. Applying another code replaces it.
+    under the field. A percent or fixed amount code adds the "Discount"
+    line to the totals. A free-shipping code adds no "Discount" line: the
+    shipping price shows "Free".
+  - A cart has one code at a time. A valid code replaces the code that was
+    applied before.
   - Codes match with any upper and lower case.
   - An unknown code, or a code whose minimum subtotal is not met, shows
     "Enter a valid discount code" under the field and does not change the
-    price.
+    price. The code is not kept, and the code that was applied before, if
+    any, stays.
+  - When the cart drops below the minimum of a code that was applied
+    before, the tag stays, the code stops applying, and
+    "Enter a valid discount code" shows under the field.
 - Totals in this order: "Subtotal", "Discount" (the code name and the
   amount as a negative, only when a code applies), "Shipping", "Taxes",
   and "Total" in larger text with the currency code before the amount.
+  Checkout follows Shopify checkout and says "Taxes". The order page
+  follows Dawn and says "Tax".
 
 ## Order confirmation
 
 The thank-you page at `/checkout/confirmation/<order number>` shows after
-"Pay now". It shows a thank-you message, details about the order, and a
-confirmation number. It uses the checkout layout: the details on the left
-and the order summary on the right.
+"Pay now". It uses the checkout layout: the details on the left and the
+order summary on the right.
 
-- A check-mark icon, then "Confirmation #<order number>" in small text.
-  The sandbox uses the order number as the confirmation number, so it
-  matches the order name in the order history.
+- A check-mark icon, then "Confirmation #<order number>" in small text,
+  for example "Confirmation #1001". The sandbox uses the order number as
+  the confirmation number, so it matches the order name `#1001` in the
+  order history.
 - The heading "Thank you, <first name>!", with the first name from the
   shipping address. Without a first name, the heading is "Thank you!".
 - An "Order details" block with:
@@ -241,17 +277,19 @@ Discount codes.
 - One slide for each Discount code, in Dataset order. The slide text is
   the code's hint text from the backend, for example
   `Use code WELCOME10 for 10% off orders over $50`. The text is not a link.
-- With two or more slides, a "Previous" arrow button on the left and a
-  "Next" arrow button on the right of the text. Their accessible names are
-  "Previous announcement" and "Next announcement".
-- The bar is a carousel region with the accessible name
-  "Announcement bar". Each slide has the accessible name
+- With two or more slides, a Previous arrow button on the left and a Next
+  arrow button on the right of the text. They show only an arrow icon, no
+  text. Their accessible names are "Previous announcement" and
+  "Next announcement".
+- With two or more slides, the bar is a carousel region with the
+  accessible name "Announcement bar". Each slide has the accessible name
   "<n> of <total>", for example "1 of 3".
 - The bar starts at the first code and never moves by itself.
   Auto-rotate is off.
 - "Next" on the last slide goes to the first slide. "Previous" on the
   first slide goes to the last slide.
-- With one code, the bar shows that one slide with no arrows.
+- With one code, the bar shows that one slide with no arrows. The bar is
+  then a plain region with the accessible name "Announcement".
 - With no codes, there is no announcement bar.
 - Never type a code or a hint into the storefront code. They all come
   from the backend.
@@ -285,8 +323,10 @@ Reviews are read-only data from the backend.
   - the date;
   - a "Verified Buyer" badge, only when the Review has the flag;
   - the variant bought, for example `Size: M / Color: Black`;
-  - the helpful count as plain text, for example "12 people found this
-    helpful". It is not a button.
+  - the helpful count as plain text: "1 person found this helpful", or
+    "<count> people found this helpful" for a larger count, for example
+    "12 people found this helpful". It is not a button. A count of 0 shows
+    no text.
 - A "Show more reviews" button loads the next page of Reviews. It is
   hidden when there are no more Reviews.
 - Show only the fields that have data. Leave out an element that has no
@@ -322,15 +362,18 @@ keep the standard text above.
 - One shipping method and one payment method for each order, from the
   checkout rules. No payment details.
 - One tax rate from the checkout rules on the subtotal after discount, and
-  an optional free-shipping threshold.
+  an optional free-shipping threshold, which is checked against the
+  merchandise subtotal before the discount.
 - One Discount code for each cart, with one of three kinds: a percent off
   the merchandise subtotal, a fixed amount off the merchandise subtotal,
-  or free shipping. A code can have a minimum merchandise subtotal, which
-  is checked before the discount. A discount never makes the subtotal
-  negative.
+  or free shipping. Codes match with any upper and lower case. A code can
+  have a minimum merchandise subtotal, which is checked before the
+  discount. A discount never makes the subtotal negative.
 - A code stays on the cart when the cart drops below the minimum, but it
   stops applying.
-- The order records the Discount code and the discount amount.
+- The order records the Discount code and the discount amount. For a
+  free-shipping code, the amount is the shipping charge that the code
+  removed.
 - An order placed while logged in goes into the customer's order history.
 - Seeded orders can have the payment statuses paid, partially refunded and
   refunded, and the fulfillment statuses unfulfilled, partially fulfilled
@@ -347,7 +390,8 @@ keep the standard text above.
 
 Keep the standard text, and show no control, for:
 
-- New customer accounts: passwordless login with a one-time code.
+- New customer accounts: passwordless login with a one-time code, the
+  Customer Account API, and OAuth.
 - Social login, "Sign in with Shop", Shop Pay, and express payment buttons
   (Shop Pay, PayPal, Apple Pay, Google Pay buttons above the form).
 - A reset-password link, a reset-password page, and account activation.
@@ -357,5 +401,7 @@ Keep the standard text, and show no control, for:
 - A separate billing address.
 - Several codes on one cart, codes for some products or collections only,
   codes for one use per customer, and codes with start or end dates.
+- A separate offers page, and code hints on product pages.
 - Returns, exchanges, cancellations, refund lines, and shipment tracking.
-- Writing Reviews, Review photos, and helpful votes.
+- Writing Reviews, Review photos, helpful votes, AI summaries, topic
+  chips, and age or height filters.

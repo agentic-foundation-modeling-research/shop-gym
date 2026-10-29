@@ -64,7 +64,7 @@ One of the area files in a SandboxShop's `manual/parts/`, so that each build tas
 _Avoid_: manual part, part
 
 **Standard sub-manual**:
-The one checked-in Sub-manual that every SandboxShop gets unchanged as `manual/parts/standard.md`. It describes, by the Shopify standard, the pages that Storefront exploration cannot observe (account, checkout, and order confirmation), the rules for the announcement bar and for Reviews, and the behavior that the backend supports.
+The one checked-in Sub-manual that Manual merge adds to every SandboxShop as `manual/parts/standard.md`. It describes, by the Shopify standard, the pages that Storefront exploration cannot observe (account, checkout, and order confirmation), the rules for the announcement bar and for Reviews, and the behavior that the backend supports.
 _Avoid_: standard manual, account manual
 
 **Storefront template**:
