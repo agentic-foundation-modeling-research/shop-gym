@@ -199,8 +199,9 @@ customer's order, and episode isolation under `x-shopgym-episode: ep1`.
 and in CI. It seeds and builds the template, serves it through
 `StorefrontSidecar` over the in-process backend on the template fixture, and
 walks one shopper in Chromium with the shared browser steps of the final eval:
-sign up, log out, log in, the Reviews of a product page (show more, sort,
-and a product with none), add to cart, an unknown and a valid Discount code,
+sign up, log out, log in, the Reviews of a product page (show more, sort, a
+half star, left-out fields, and a product with none), add to cart, an
+unknown and a valid Discount code,
 check out, the thank-you page, the new order in the order history and its
 account order page, then a seeded Persona's order history and one past order.
 Each test is one step; it asserts on the page and, where
