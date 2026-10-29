@@ -56,9 +56,12 @@ const inProcessLaunch: SidecarLaunch = async (options) => {
 
 /** Synthesis prompts are strings; judge prompts carry screenshots. */
 class PipelineLlm implements LlmClient {
+  /** `provider/id` of every request, in call order. */
+  readonly models: string[] = [];
   private readonly synth = new ScriptedSynthLlm();
   private readonly judge = new ScriptedJudge();
   complete(request: CompleteRequest): Promise<Completion> {
+    this.models.push(`${request.model.provider}/${request.model.id}`);
     return typeof request.prompt === 'string'
       ? this.synth.complete(request)
       : this.judge.complete(request);
@@ -80,6 +83,8 @@ describe('generateShop', () => {
     const manualDir = await writeManualFixture(path.join(root, 'manual'));
     const outDir = path.join(root, 'shop');
     const log: string[] = [];
+    const llm = new PipelineLlm();
+    const runtime = new FakeRuntime([{ writeFiles: { 'plan.md': DONE_PLAN }, reply: 'planned' }]);
     const run = () =>
       generateShop(
         {
@@ -87,12 +92,13 @@ describe('generateShop', () => {
           manualDirs: [manualDir],
           outDir,
           model: 'fake/scripted',
+          buildModel: 'fake/builder',
           catalog: { collections: 2, productsPerCollection: 2, imagesPerProduct: 1 },
           maxIters: 2,
         },
         {
-          llm: new PipelineLlm(),
-          runtime: new FakeRuntime([{ writeFiles: { 'plan.md': DONE_PLAN }, reply: 'planned' }]),
+          llm,
+          runtime,
           credentials: {},
           commandRunner: fakeRunner,
           sidecarLaunch: inProcessLaunch,
@@ -134,6 +140,11 @@ describe('generateShop', () => {
     const report = JSON.parse(await fs.readFile(result.dataValidationPath, 'utf-8'));
     expect(report.ok).toBe(true);
     expect(log.some((l) => l.includes('[build] completed'))).toBe(true);
+    // The build agent runs on `buildModel`; synthesis, merge and the judges on `model`.
+    expect(new Set(runtime.requests.map((r) => `${r.model.provider}/${r.model.id}`))).toEqual(
+      new Set(['fake/builder']),
+    );
+    expect(new Set(llm.models)).toEqual(new Set(['fake/scripted']));
 
     const finalEval = JSON.parse(
       await fs.readFile(path.join(result.finalEvalDir, 'report.json'), 'utf-8'),

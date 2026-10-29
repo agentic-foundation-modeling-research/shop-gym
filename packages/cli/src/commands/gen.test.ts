@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CliError, DEFAULT_MODEL } from '../context.js';
-import { parseGenArgs } from './gen.js';
+import { USAGE, parseGenArgs } from './gen.js';
 
 describe('parseGenArgs', () => {
   it('collects manual dirs and maps every option onto the gen config', () => {
@@ -49,15 +49,24 @@ describe('parseGenArgs', () => {
     });
   });
 
-  it('applies the default model and leaves the catalog to zod defaults', () => {
+  it('applies the default models and leaves the catalog to zod defaults', () => {
     expect(parseGenArgs(['m', '--name', 's']).config).toEqual({
       name: 's',
       manualDirs: ['m'],
       model: DEFAULT_MODEL,
+      buildModel: 'openai/gpt-6-sol',
       genBackend: false,
       forceResume: false,
       catalog: {},
     });
+  });
+
+  it('keeps the build agent on its default when only --model is set', () => {
+    expect(parseGenArgs(['m', '--name', 's', '--model', 'p/m']).config).toMatchObject({
+      model: 'p/m',
+      buildModel: 'openai/gpt-6-sol',
+    });
+    expect(USAGE).toContain('Model for the build agent (default: openai/gpt-6-sol)');
   });
 
   it('validates --from against the gen steps', () => {
