@@ -12,6 +12,7 @@ import type { MutationCheckoutCompleteArgs } from '../__generated__/resolvers-ty
 import type { Commerce, PaymentMethod, ShippingMethod } from '../data/types.js';
 import type { NewAddress } from '../state/shop_state.js';
 import { type MoneyV2Node, buildMoneyV2 } from './builders.js';
+import { REQUIRED_ADDRESS_FIELDS } from './customer.js';
 import type { ResolverContext } from './index.js';
 import { type OrderNode, buildOrderNode } from './order.js';
 
@@ -39,8 +40,6 @@ export interface CheckoutCompletePayloadNode {
   readonly order: OrderNode | null;
   readonly userErrors: readonly CheckoutUserErrorNode[];
 }
-
-const REQUIRED_ADDRESS_FIELDS = ['address1', 'city', 'country', 'zip'] as const;
 
 // ── Resolvers ─────────────────────────────────────────────────────────────
 
