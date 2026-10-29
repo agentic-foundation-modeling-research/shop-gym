@@ -21,7 +21,10 @@ import { loadCredentials } from '@shop-gym/core';
 import type { VerifierContext } from '@shop-gym/harness';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from '../../manual_merge/standard.js';
+import {
+  STANDARD_SUB_MANUAL_FILE,
+  STANDARD_SUB_MANUAL_PATH,
+} from '../../manual_merge/standard_sub_manual.js';
 import { defaultBackendTemplateDir } from '../seed.js';
 import { judgeContext, routeSlug } from './page_judge.js';
 import { ALL_BUCKETS } from './task_routes.js';

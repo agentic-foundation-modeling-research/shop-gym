@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { capabilitiesSchema } from '../../explore/capabilities.js';
 import { type Tiebreaker, mergeCapabilities } from './capabilities.js';
 import { MANUAL_PARTS, splitManual } from './split.js';
-import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from './standard.js';
+import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from './standard_sub_manual.js';
 import { mergeStats } from './stats.js';
 
 const seed = (overrides: Record<string, unknown>) => capabilitiesSchema.parse(overrides);

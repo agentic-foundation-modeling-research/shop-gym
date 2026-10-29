@@ -12,7 +12,10 @@ import type { SidecarLaunch } from './build/sidecar.js';
 import type { CommandRunner } from './build/verifiers/subprocess.js';
 import { GEN_STEPS } from './config.js';
 import type { FinalEvalReport } from './final_eval/final_eval.js';
-import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from './manual_merge/standard.js';
+import {
+  STANDARD_SUB_MANUAL_FILE,
+  STANDARD_SUB_MANUAL_PATH,
+} from './manual_merge/standard_sub_manual.js';
 import { generateShop } from './pipeline.js';
 import { readShopManifest } from './publish/publish.js';
 import {

@@ -15,7 +15,7 @@ import type { BrowserSession } from '@shop-gym/browser';
 import { z } from 'zod';
 
 import { parseManualSections } from '../../manual_merge/prose.js';
-import { STANDARD_SUB_MANUAL_FILE } from '../../manual_merge/standard.js';
+import { STANDARD_SUB_MANUAL_FILE } from '../../manual_merge/standard_sub_manual.js';
 import { globToRegExp } from '../owned_files.js';
 import type { PageBucket } from './task_routes.js';
 

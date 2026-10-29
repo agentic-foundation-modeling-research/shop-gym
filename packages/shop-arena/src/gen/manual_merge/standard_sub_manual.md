@@ -98,8 +98,9 @@ on the same page:
 
 ### Account page (`/account`)
 
-- H1 "Account". Under it, the link "Log out" with the account icon.
-  "Log out" ends the session and goes to `/`.
+- H1 "Account". Under it, "Log out" with the account icon. It looks like
+  a link, but it is the button of a form that posts to `/account/logout`.
+  It ends the session and goes to `/`.
 - Left column: H2 "Order history" and a table with the columns "Order",
   "Date", "Payment status", "Fulfillment status" and "Total". One row for
   each order, newest first.
