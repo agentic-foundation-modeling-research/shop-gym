@@ -107,7 +107,7 @@ Nothing in v1.1 reads the Python copy.
 | `/account/login` | redirect to `redirectTo` when already logged in | `customerAccessTokenCreate`, then `cartBuyerIdentityUpdate` when a cart exists; sets the cookie | `CustomerAccessTokenCreate`, `CartBuyerIdentityUpdate`, `Customer` |
 | `/account/register` | same redirect | `customerCreate`, then the login action's steps | `CustomerCreate`, plus login |
 | `/account/logout` | redirect to `/account` | `customerAccessTokenDelete`, clears the token, redirects to `/` | `CustomerAccessTokenDelete` |
-| `/account` | H1 "Account" with "Log out"; the "Order history" table and "Account details" (default address with phone, "View addresses (<n>)") | - | `Customer`, `CustomerOrders(first: 100)` |
+| `/account` | H1 "Account" with "Log out"; the "Order history" table and "Account details" (default address with phone, "View addresses (<n>)") | - | `Customer`, `CustomerOrders(first: 100)`, `CustomerAddresses` |
 | `/account/addresses` | all `Customer.addresses`, default marked (read-only: the backend has no address mutations) | - | `Customer`, `CustomerAddresses` |
 | `/account/orders` | the same "Order history" table on its own page, with "Return to Account details" | - | `Customer`, `CustomerOrders(first: 100)` |
 | `/account/orders/:orderNumber` | "Order #<n>": lines (product, SKU, price, quantity, total), totals, billing and shipping address with the statuses; 404 unless `order.email` matches the customer | - | `Customer`, `Order`, `CommerceSettings` |
