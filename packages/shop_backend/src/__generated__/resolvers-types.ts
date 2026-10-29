@@ -982,6 +982,11 @@ export type Product = {
   readonly priceRange: ProductPriceRange;
   readonly productType: Scalars['String']['output'];
   readonly publishedAt: Maybe<Scalars['String']['output']>;
+  /**
+   * The product's Reviews. The Storefront API has no Review type; shops show
+   * Reviews through a review app.
+   */
+  readonly reviews: ReviewConnection;
   readonly selectedOrFirstAvailableVariant: Maybe<ProductVariant>;
   readonly seo: Seo;
   readonly tags: ReadonlyArray<Scalars['String']['output']>;
@@ -1012,6 +1017,13 @@ export type ProductMetafieldArgs = {
 
 export type ProductMetafieldsArgs = {
   identifiers: ReadonlyArray<HasMetafieldsIdentifier>;
+};
+
+
+export type ProductReviewsArgs = {
+  after: InputMaybe<Scalars['String']['input']>;
+  first: InputMaybe<Scalars['Int']['input']>;
+  sortKey?: InputMaybe<ReviewSortKeys>;
 };
 
 
@@ -1241,6 +1253,47 @@ export type QuerySearchArgs = {
   unavailableProducts: InputMaybe<SearchUnavailableProductsType>;
 };
 
+/** One read-only product Review from reviews.json. */
+export type Review = {
+  readonly __typename?: 'Review';
+  readonly body: Scalars['String']['output'];
+  /** ISO 8601 date and time in UTC. */
+  readonly createdAt: Scalars['String']['output'];
+  readonly helpfulCount: Scalars['Int']['output'];
+  readonly id: Scalars['ID']['output'];
+  /** 1 to 5. */
+  readonly rating: Scalars['Int']['output'];
+  /** First name and last initial, e.g. "Maya R.". */
+  readonly reviewerName: Scalars['String']['output'];
+  readonly title: Scalars['String']['output'];
+  /** The variant the reviewer bought; null when the product no longer has it. */
+  readonly variant: Maybe<ProductVariant>;
+  readonly verifiedBuyer: Scalars['Boolean']['output'];
+};
+
+export type ReviewConnection = {
+  readonly __typename?: 'ReviewConnection';
+  readonly edges: ReadonlyArray<ReviewEdge>;
+  readonly nodes: ReadonlyArray<Review>;
+  readonly pageInfo: PageInfo;
+};
+
+export type ReviewEdge = {
+  readonly __typename?: 'ReviewEdge';
+  readonly cursor: Scalars['String']['output'];
+  readonly node: Review;
+};
+
+/**
+ * Review orders. Ties put the more recent Review first, then keep the
+ * reviews.json order.
+ */
+export type ReviewSortKeys =
+  | 'HIGHEST_RATING'
+  | 'LOWEST_RATING'
+  | 'MOST_HELPFUL'
+  | 'MOST_RECENT';
+
 export type Seo = {
   readonly __typename?: 'SEO';
   readonly description: Maybe<Scalars['String']['output']>;
@@ -1444,9 +1497,9 @@ export type DirectiveResolverFn<TResult = {}, TParent = {}, TContext = {}, TArgs
 export type ResolversUnionTypes<_RefType extends Record<string, unknown>> = {
   BaseCartLine: ( Omit<CartLine, 'merchandise'> & { merchandise: _RefType['Merchandise'] } ) | ( Omit<ComponentizableCartLine, 'lineComponents' | 'merchandise'> & { lineComponents: ReadonlyArray<_RefType['CartLine']>, merchandise: _RefType['Merchandise'] } );
   Merchandise: ( Omit<ProductVariant, 'metafield' | 'metafields'> & { metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>> } );
-  MetafieldParentResource: ( Omit<Collection, 'metafield' | 'metafields' | 'products'> & { metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, products: _RefType['ProductConnection'] } ) | ( Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<_RefType['ProductVariant']>, metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, options: ReadonlyArray<_RefType['ProductOption']>, selectedOrFirstAvailableVariant?: Maybe<_RefType['ProductVariant']>, variants: _RefType['ProductVariantConnection'] } ) | ( Omit<ProductVariant, 'metafield' | 'metafields'> & { metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>> } );
-  MetafieldReference: ( Omit<Collection, 'metafield' | 'metafields' | 'products'> & { metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, products: _RefType['ProductConnection'] } ) | ( Page ) | ( Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<_RefType['ProductVariant']>, metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, options: ReadonlyArray<_RefType['ProductOption']>, selectedOrFirstAvailableVariant?: Maybe<_RefType['ProductVariant']>, variants: _RefType['ProductVariantConnection'] } );
-  SearchResultItem: ( Article ) | ( Page ) | ( Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<_RefType['ProductVariant']>, metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, options: ReadonlyArray<_RefType['ProductOption']>, selectedOrFirstAvailableVariant?: Maybe<_RefType['ProductVariant']>, variants: _RefType['ProductVariantConnection'] } );
+  MetafieldParentResource: ( Omit<Collection, 'metafield' | 'metafields' | 'products'> & { metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, products: _RefType['ProductConnection'] } ) | ( Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'reviews' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<_RefType['ProductVariant']>, metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, options: ReadonlyArray<_RefType['ProductOption']>, reviews: _RefType['ReviewConnection'], selectedOrFirstAvailableVariant?: Maybe<_RefType['ProductVariant']>, variants: _RefType['ProductVariantConnection'] } ) | ( Omit<ProductVariant, 'metafield' | 'metafields'> & { metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>> } );
+  MetafieldReference: ( Omit<Collection, 'metafield' | 'metafields' | 'products'> & { metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, products: _RefType['ProductConnection'] } ) | ( Page ) | ( Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'reviews' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<_RefType['ProductVariant']>, metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, options: ReadonlyArray<_RefType['ProductOption']>, reviews: _RefType['ReviewConnection'], selectedOrFirstAvailableVariant?: Maybe<_RefType['ProductVariant']>, variants: _RefType['ProductVariantConnection'] } );
+  SearchResultItem: ( Article ) | ( Page ) | ( Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'reviews' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<_RefType['ProductVariant']>, metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, options: ReadonlyArray<_RefType['ProductOption']>, reviews: _RefType['ReviewConnection'], selectedOrFirstAvailableVariant?: Maybe<_RefType['ProductVariant']>, variants: _RefType['ProductVariantConnection'] } );
 };
 
 /** Mapping of interface types */
@@ -1566,7 +1619,7 @@ export type ResolversTypes = {
   PredictiveSearchLimitScope: PredictiveSearchLimitScope;
   PredictiveSearchResult: ResolverTypeWrapper<Omit<PredictiveSearchResult, 'collections' | 'products'> & { collections: ReadonlyArray<ResolversTypes['Collection']>, products: ReadonlyArray<ResolversTypes['Product']> }>;
   PredictiveSearchType: PredictiveSearchType;
-  Product: ResolverTypeWrapper<Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<ResolversTypes['ProductVariant']>, metafield?: Maybe<ResolversTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversTypes['Metafield']>>, options: ReadonlyArray<ResolversTypes['ProductOption']>, selectedOrFirstAvailableVariant?: Maybe<ResolversTypes['ProductVariant']>, variants: ResolversTypes['ProductVariantConnection'] }>;
+  Product: ResolverTypeWrapper<Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'reviews' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<ResolversTypes['ProductVariant']>, metafield?: Maybe<ResolversTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversTypes['Metafield']>>, options: ReadonlyArray<ResolversTypes['ProductOption']>, reviews: ResolversTypes['ReviewConnection'], selectedOrFirstAvailableVariant?: Maybe<ResolversTypes['ProductVariant']>, variants: ResolversTypes['ProductVariantConnection'] }>;
   ProductConnection: ResolverTypeWrapper<Omit<ProductConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['ProductEdge']>, nodes: ReadonlyArray<ResolversTypes['Product']> }>;
   ProductEdge: ResolverTypeWrapper<Omit<ProductEdge, 'node'> & { node: ResolversTypes['Product'] }>;
   ProductOption: ResolverTypeWrapper<Omit<ProductOption, 'optionValues'> & { optionValues: ReadonlyArray<ResolversTypes['ProductOptionValue']> }>;
@@ -1578,6 +1631,10 @@ export type ResolversTypes = {
   ProductVariantConnection: ResolverTypeWrapper<Omit<ProductVariantConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['ProductVariantEdge']>, nodes: ReadonlyArray<ResolversTypes['ProductVariant']> }>;
   ProductVariantEdge: ResolverTypeWrapper<Omit<ProductVariantEdge, 'node'> & { node: ResolversTypes['ProductVariant'] }>;
   Query: ResolverTypeWrapper<{}>;
+  Review: ResolverTypeWrapper<Omit<Review, 'variant'> & { variant?: Maybe<ResolversTypes['ProductVariant']> }>;
+  ReviewConnection: ResolverTypeWrapper<Omit<ReviewConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['ReviewEdge']>, nodes: ReadonlyArray<ResolversTypes['Review']> }>;
+  ReviewEdge: ResolverTypeWrapper<Omit<ReviewEdge, 'node'> & { node: ResolversTypes['Review'] }>;
+  ReviewSortKeys: ReviewSortKeys;
   SEO: ResolverTypeWrapper<Seo>;
   SearchPrefixQueryType: SearchPrefixQueryType;
   SearchQuerySuggestion: ResolverTypeWrapper<SearchQuerySuggestion>;
@@ -1701,7 +1758,7 @@ export type ResolversParentTypes = {
   PaymentMethod: PaymentMethod;
   PaymentSettings: PaymentSettings;
   PredictiveSearchResult: Omit<PredictiveSearchResult, 'collections' | 'products'> & { collections: ReadonlyArray<ResolversParentTypes['Collection']>, products: ReadonlyArray<ResolversParentTypes['Product']> };
-  Product: Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<ResolversParentTypes['ProductVariant']>, metafield?: Maybe<ResolversParentTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversParentTypes['Metafield']>>, options: ReadonlyArray<ResolversParentTypes['ProductOption']>, selectedOrFirstAvailableVariant?: Maybe<ResolversParentTypes['ProductVariant']>, variants: ResolversParentTypes['ProductVariantConnection'] };
+  Product: Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'reviews' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<ResolversParentTypes['ProductVariant']>, metafield?: Maybe<ResolversParentTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversParentTypes['Metafield']>>, options: ReadonlyArray<ResolversParentTypes['ProductOption']>, reviews: ResolversParentTypes['ReviewConnection'], selectedOrFirstAvailableVariant?: Maybe<ResolversParentTypes['ProductVariant']>, variants: ResolversParentTypes['ProductVariantConnection'] };
   ProductConnection: Omit<ProductConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['ProductEdge']>, nodes: ReadonlyArray<ResolversParentTypes['Product']> };
   ProductEdge: Omit<ProductEdge, 'node'> & { node: ResolversParentTypes['Product'] };
   ProductOption: Omit<ProductOption, 'optionValues'> & { optionValues: ReadonlyArray<ResolversParentTypes['ProductOptionValue']> };
@@ -1712,6 +1769,9 @@ export type ResolversParentTypes = {
   ProductVariantConnection: Omit<ProductVariantConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['ProductVariantEdge']>, nodes: ReadonlyArray<ResolversParentTypes['ProductVariant']> };
   ProductVariantEdge: Omit<ProductVariantEdge, 'node'> & { node: ResolversParentTypes['ProductVariant'] };
   Query: {};
+  Review: Omit<Review, 'variant'> & { variant?: Maybe<ResolversParentTypes['ProductVariant']> };
+  ReviewConnection: Omit<ReviewConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['ReviewEdge']>, nodes: ReadonlyArray<ResolversParentTypes['Review']> };
+  ReviewEdge: Omit<ReviewEdge, 'node'> & { node: ResolversParentTypes['Review'] };
   SEO: Seo;
   SearchQuerySuggestion: SearchQuerySuggestion;
   SearchResultItem: ResolversUnionTypes<ResolversParentTypes>['SearchResultItem'];
@@ -2420,6 +2480,7 @@ export type ProductResolvers<ContextType = ResolverContext, ParentType extends R
   priceRange?: Resolver<ResolversTypes['ProductPriceRange'], ParentType, ContextType>;
   productType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   publishedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  reviews?: Resolver<ResolversTypes['ReviewConnection'], ParentType, ContextType, RequireFields<ProductReviewsArgs, 'sortKey'>>;
   selectedOrFirstAvailableVariant?: Resolver<Maybe<ResolversTypes['ProductVariant']>, ParentType, ContextType, Partial<ProductSelectedOrFirstAvailableVariantArgs>>;
   seo?: Resolver<ResolversTypes['SEO'], ParentType, ContextType>;
   tags?: Resolver<ReadonlyArray<ResolversTypes['String']>, ParentType, ContextType>;
@@ -2521,6 +2582,32 @@ export type QueryResolvers<ContextType = ResolverContext, ParentType extends Res
   products?: Resolver<ResolversTypes['ProductConnection'], ParentType, ContextType, Partial<QueryProductsArgs>>;
   search?: Resolver<ResolversTypes['SearchResultItemConnection'], ParentType, ContextType, RequireFields<QuerySearchArgs, 'query'>>;
   shop?: Resolver<ResolversTypes['Shop'], ParentType, ContextType>;
+};
+
+export type ReviewResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Review'] = ResolversParentTypes['Review']> = {
+  body?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  helpfulCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  rating?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  reviewerName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  title?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  variant?: Resolver<Maybe<ResolversTypes['ProductVariant']>, ParentType, ContextType>;
+  verifiedBuyer?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type ReviewConnectionResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['ReviewConnection'] = ResolversParentTypes['ReviewConnection']> = {
+  edges?: Resolver<ReadonlyArray<ResolversTypes['ReviewEdge']>, ParentType, ContextType>;
+  nodes?: Resolver<ReadonlyArray<ResolversTypes['Review']>, ParentType, ContextType>;
+  pageInfo?: Resolver<ResolversTypes['PageInfo'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type ReviewEdgeResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['ReviewEdge'] = ResolversParentTypes['ReviewEdge']> = {
+  cursor?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  node?: Resolver<ResolversTypes['Review'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export type SeoResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['SEO'] = ResolversParentTypes['SEO']> = {
@@ -2713,6 +2800,9 @@ export type Resolvers<ContextType = ResolverContext> = {
   ProductVariantConnection?: ProductVariantConnectionResolvers<ContextType>;
   ProductVariantEdge?: ProductVariantEdgeResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
+  Review?: ReviewResolvers<ContextType>;
+  ReviewConnection?: ReviewConnectionResolvers<ContextType>;
+  ReviewEdge?: ReviewEdgeResolvers<ContextType>;
   SEO?: SeoResolvers<ContextType>;
   SearchQuerySuggestion?: SearchQuerySuggestionResolvers<ContextType>;
   SearchResultItem?: SearchResultItemResolvers<ContextType>;

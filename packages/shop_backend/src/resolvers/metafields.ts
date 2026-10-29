@@ -6,6 +6,8 @@
  * spec §8.1.2). When the file is absent the loader defaults the field to
  * `{ shop: [], products: {}, collections: {} }`, so every resolver here
  * gracefully returns `null` (or a same-length array of `null`s) on miss.
+ * The product metafields `reviews.rating` and `reviews.rating_count` are
+ * never read from the file: they are computed from the product's Reviews.
  *
  * Resolver shapes:
  *   - `Product.metafield(namespace, key): Metafield` — first match in the
@@ -37,6 +39,7 @@ import type { Metafield } from '../data/types.js';
 import type { CollectionNode, ProductNode } from './builders.js';
 import { gid } from './builders.js';
 import type { ResolverContext } from './index.js';
+import { isRatingMetafield, ratingMetafields } from './review.js';
 import type { ShopParentNode } from './shop.js';
 
 // ── Node shape ─────────────────────────────────────────────────────────────
@@ -130,7 +133,10 @@ export const metafieldResolvers = {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function productMetafields(ctx: ResolverContext, handle: string): readonly Metafield[] {
-  return ctx.data.metafields.products[handle] ?? [];
+  const stored = (ctx.data.metafields.products[handle] ?? []).filter(
+    (metafield) => !isRatingMetafield(metafield),
+  );
+  return [...stored, ...ratingMetafields(ctx.data.reviewsByProductHandle.get(handle) ?? [])];
 }
 
 function collectionMetafields(ctx: ResolverContext, handle: string): readonly Metafield[] {
