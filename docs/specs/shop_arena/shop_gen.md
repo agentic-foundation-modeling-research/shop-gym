@@ -167,7 +167,16 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
 - `data_synth/` ports every v1 sub-step in registration order and adds
   `synth_commerce`, `synth_customers`, and deterministic
   `synth_orders` / inventory so the dataset exercises the stateful
-  backend (`commerce.json`, `customers.json`, `orders.json`). Every
+  backend (`commerce.json`, `customers.json`, `orders.json`).
+  `synth_customers` makes five Personas: the LLM writes names and one
+  to three addresses (at least two Personas have two or more), and code
+  assigns emails, passwords and ids. `synth_orders` makes fifteen
+  orders by code from a fixed seed: the last Persona has none, the
+  others one to six; random lines, shipping and payment method and
+  saved address; dates in the twelve months before the Episode clock
+  start; totals by the backend pricing rules; the newest order is not
+  shipped, one older order is refunded, one partly refunded, the rest
+  are paid and shipped. Every
   LLM step goes through `completeJson` with a zod-derived JSON Schema
   and one validation-feedback retry; drafts cache under
   `<shopDir>/.shop_gen/stage_cache/` (v1 file names kept; details per
@@ -176,7 +185,8 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   or `openai` (content-hash cache in `.shop_gen/image_cache/`).
 - `data_validation/` validates `data/` with the backend zod schema,
   checks referential integrity (variant ids in inventory and orders,
-  collection membership, navigation targets, image files), then boots
+  collection membership, navigation targets, image files) and that
+  every seeded order's totals match the backend pricing rules, then boots
   the pristine `packages/shop_backend` template on the dataset and
   runs a fixed Storefront query set ending in `checkoutComplete` as
   the first seeded customer; the report is `data_validation.json`.

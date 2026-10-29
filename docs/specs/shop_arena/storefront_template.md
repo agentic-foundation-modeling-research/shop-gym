@@ -88,7 +88,7 @@ packages/shop-arena/
     app/lib/customer.ts       loadCustomer, requireCustomer, loginCustomer
     app/lib/queries.ts        GraphQL documents (`*_QUERY`, `*_MUTATION`, `*_FRAGMENT`)
     app/lib/types.ts          hand-written response types
-    app/components/account.tsx   AccountNav, FormErrors, AddressBlock, OrderTable, OrderDetails
+    app/components/account.tsx   AccountNav, LogoutLink, FormErrors, AddressBlock, OrderHistory, OrderDetails
     app/routes/account/*.tsx  login, register, logout, profile, addresses, orders, order
     app/routes/checkout.tsx   real checkout
     app/routes/checkout-confirmation.tsx
@@ -107,10 +107,10 @@ Nothing in v1.1 reads the Python copy.
 | `/account/login` | redirect to `redirectTo` when already logged in | `customerAccessTokenCreate`, then `cartBuyerIdentityUpdate` when a cart exists; sets the cookie | `CustomerAccessTokenCreate`, `CartBuyerIdentityUpdate`, `Customer` |
 | `/account/register` | same redirect | `customerCreate`, then the login action's steps | `CustomerCreate`, plus login |
 | `/account/logout` | redirect to `/account` | `customerAccessTokenDelete`, clears the token, redirects to `/` | `CustomerAccessTokenDelete` |
-| `/account` | profile, default address, 5 most recent orders | - | `Customer`, `CustomerOrders(first: 5)` |
+| `/account` | H1 "Account" with "Log out"; the "Order history" table and "Account details" (default address with phone, "View addresses (<n>)") | - | `Customer`, `CustomerOrders(first: 100)` |
 | `/account/addresses` | all `Customer.addresses`, default marked (read-only: the backend has no address mutations) | - | `Customer`, `CustomerAddresses` |
-| `/account/orders` | up to 100 orders, newest first, with `totalCount` | - | `Customer`, `CustomerOrders(first: 100)` |
-| `/account/orders/:orderNumber` | order detail; 404 unless `order.email` matches the customer | - | `Customer`, `Order` |
+| `/account/orders` | the same "Order history" table on its own page, with "Return to Account details" | - | `Customer`, `CustomerOrders(first: 100)` |
+| `/account/orders/:orderNumber` | "Order #<n>": lines (product, SKU, price, quantity, total), totals, billing and shipping address with the statuses; 404 unless `order.email` matches the customer | - | `Customer`, `Order`, `CommerceSettings` |
 | `/checkout` | cart, `commerceSettings`, customer (prefill) | intent `discount` / `discount-remove`: `cartDiscountCodesUpdate`; else `cartBuyerIdentityUpdate` when logged in, then `checkoutComplete`; clears `cartId`; redirects | `Cart`, `CommerceSettings`, `Customer`, `CartDiscountCodesUpdate`, `CartBuyerIdentityUpdate`, `CheckoutComplete` |
 | `/checkout/confirmation/:orderNumber` | the thank-you page: order detail, `commerceSettings` for method titles | - | `Order`, `CommerceSettings` |
 
@@ -150,10 +150,17 @@ not apply is not kept (the earlier code comes back) and the field shows
 
 `fixtures/sandbox_shop_v0/` gains `customers.json`, `orders.json`, and
 `commerce.json` copied from `packages/shop_backend/tests/fixtures/`, so the
-seeded customer (`jane.doe@example.com` / `password123`, one address, order
-`#1001`), two shipping methods, two payment methods, the free-shipping
-threshold, and the Discount codes `WELCOME10`, `SAVE5` and `FREESHIP` are
-identical on both sides.
+four Personas (all with password `password123`), two shipping methods, two
+payment methods, the free-shipping threshold, and the Discount codes
+`WELCOME10`, `SAVE5` and `FREESHIP` are identical on both sides. The
+Personas and their seeded orders `#1001`-`#1006`:
+
+| Persona | Addresses | Orders |
+| --- | --- | --- |
+| `jane.doe@example.com` | 1 | `#1001` paid, shipped |
+| `marc.tremblay@example.com` | 2 | `#1002` partly refunded; `#1005` paid, not shipped, express |
+| `priya.nair@example.com` | 3 | `#1003` refunded; `#1004` paid, shipped, `SAVE5`; `#1006` paid, partly shipped |
+| `sam.okafor@example.com` | 1 | none |
 
 ### 5.5 Verification
 
@@ -172,7 +179,9 @@ and in CI. It seeds and builds the template, serves it through
 `StorefrontSidecar` over the in-process backend on the template fixture, and
 walks one shopper in Chromium with the shared browser steps of the final eval:
 sign up, log out, log in, add to cart, an unknown and a valid Discount code,
-check out, the thank-you page and the account order page. Each test is one step; it asserts on the page and, where
+check out, the thank-you page, the new order in the order history and its
+account order page, then a seeded Persona's order history and one past order.
+Each test is one step; it asserts on the page and, where
 the step changes state, on the episode's StateSnapshot from the Control API.
 New template features add a test that calls one more shared step.
 
@@ -189,7 +198,7 @@ is read-only until the backend grows `customerAddress*` mutations.
 | --- | --- |
 | Separate cookie for the access token | Two session storages to configure and commit; one signed cookie with two keys is the smallest change and keeps the cart-cookie behaviour. |
 | Look up `/account/orders/:n` through `Customer.orders` | Needs the full order list per detail view; `Query.order(id)` plus an email ownership check is one call and also serves the guest confirmation page. |
-| Nested `/account` layout route | A flat route table is easier for the build agent to read and rename; `AccountNav` is rendered by each page instead. |
+| Nested `/account` layout route | A flat route table is easier for the build agent to read and rename; each page renders its own heading and links instead. |
 | Keep Hydrogen alongside | Rejected in `v1_1_typescript_redesign.md` decision 2; its account routes need Shopify's hosted auth. |
 
 ## 7. Execution Table
@@ -207,6 +216,7 @@ is read-only until the backend grows `customerAddress*` mutations.
 | 9 | Address and payment-method management, returns, cancellation | blocked on backend operations (spec 5.6.2 later rows) |
 | 10 | Ungated browser suite in every `pnpm test` and CI (`src/templates.browser.test.ts`) | done |
 | 11 | Checkout and thank-you page per the Standard sub-manual, with the "Discount code" field; discount shown on the cart and the order detail | done |
+| 12 | Account page, order history and order page per the Standard sub-manual; fixture Personas with seeded orders | done |
 
 ## 8. Appendix
 

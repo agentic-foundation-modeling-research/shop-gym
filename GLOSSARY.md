@@ -95,7 +95,7 @@ A code in the Dataset's commerce settings that lowers the price of a cart: a per
 _Avoid_: coupon, promo code
 
 **Persona**:
-A customer account in the Dataset's `customers.json`, with an email and password that a Task's setup can log in with.
+A customer account in the Dataset's `customers.json`, with an email and password that a Task's setup can log in with, saved addresses, and seeded orders in `orders.json` that its order history shows.
 _Avoid_: seeded customer
 
 **Episode**:
