@@ -4,11 +4,13 @@
  * and a foreground command runner for `pnpm install` / `pnpm build`.
  */
 
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as net from 'node:net';
 import * as path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+
+import { build } from '@shop-gym/shop-arena';
 
 import { CliError } from '../context.js';
 
@@ -139,7 +141,7 @@ export function portFree(port: number): Promise<boolean> {
 
 export interface CommandResult {
   readonly exitCode: number | null;
-  /** Interleaved stdout and stderr. */
+  /** stdout followed by stderr. */
   readonly output: string;
 }
 
@@ -148,30 +150,8 @@ export type CommandRunner = (argv: readonly string[], cwd: string) => Promise<Co
 
 const COMMAND_TIMEOUT_MS = 15 * 60_000;
 
-export const runCommand: CommandRunner = (argv, cwd) => {
-  const [command, ...args] = argv;
-  if (command === undefined) {
-    throw new Error('runCommand: empty argv');
-  }
-  return new Promise((resolve) => {
-    execFile(
-      command,
-      args,
-      {
-        cwd,
-        timeout: COMMAND_TIMEOUT_MS,
-        maxBuffer: 16 * 1024 * 1024,
-        env: { ...process.env, CI: '1', FORCE_COLOR: '0' },
-      },
-      (error, stdout, stderr) => {
-        const exitCode =
-          error === null
-            ? 0
-            : typeof (error as { code?: unknown }).code === 'number'
-              ? ((error as { code: number }).code ?? null)
-              : null;
-        resolve({ exitCode, output: `${stdout}${stderr}` });
-      },
-    );
-  });
+/** The build loop's runner: nothing the command starts outlives its exit or timeout. */
+export const runCommand: CommandRunner = async (argv, cwd) => {
+  const result = await build.runCommand(argv, { cwd, timeoutMs: COMMAND_TIMEOUT_MS });
+  return { exitCode: result.exitCode, output: `${result.stdout}${result.stderr}` };
 };
