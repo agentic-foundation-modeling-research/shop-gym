@@ -1,8 +1,9 @@
 /**
- * Fixed browser scripts over the storefront template's forms: register, log
- * in, log out, add a product to the cart, place an order. Each step drives
+ * Fixed browser scripts over the storefront template's forms and pages:
+ * register, log in, log out, add a product to the cart, place an order, and
+ * open that order's thank-you page and account order page. Each step drives
  * one Playwright page, never throws, and reports what it observed so the
- * sweeps can record it.
+ * callers can record it.
  *
  * Forms are submitted with `requestSubmit()` rather than a pointer click so
  * consent or newsletter popups layered over the page cannot intercept them.
@@ -89,8 +90,17 @@ export async function addToCart(
   });
 }
 
+export interface OrderOutcome extends StepOutcome {
+  /** Number of the placed order, read from the landing path; set when `ok`. */
+  readonly orderNumber?: number;
+}
+
 /** Fill the checkout form and place the order; expects an order or confirmation page. */
-export async function placeOrder(page: Page, baseUrl: string, email: string): Promise<StepOutcome> {
+export async function placeOrder(
+  page: Page,
+  baseUrl: string,
+  email: string,
+): Promise<OrderOutcome> {
   return attempt(async () => {
     await open(page, `${baseUrl}/checkout`);
     const form = page.locator('form:has(input[name="address1"])').first();
@@ -108,9 +118,52 @@ export async function placeOrder(page: Page, baseUrl: string, email: string): Pr
       }
     }
     const path = await submit(page, form);
-    const ok =
-      /^\/account\/orders\/\d+$/.test(path) || /^\/checkout\/confirmation\/\d+$/.test(path);
-    return { ok, detail: `placing the order landed on ${path}`, url: path };
+    const match = /^\/(?:account\/orders|checkout\/confirmation)\/(\d+)$/.exec(path);
+    const detail = `placing the order landed on ${path}`;
+    if (match?.[1] === undefined) {
+      return { ok: false, detail, url: path };
+    }
+    return { ok: true, detail, url: path, orderNumber: Number(match[1]) };
+  });
+}
+
+/** Open the account page of order `orderNumber`; expects 200 and a heading that names an order. */
+export async function viewOrder(
+  page: Page,
+  baseUrl: string,
+  orderNumber: number,
+): Promise<StepOutcome> {
+  return viewPage(page, baseUrl, `/account/orders/${orderNumber}`, /order/i);
+}
+
+/** Open the thank-you page of order `orderNumber`; expects 200 and a "Thank you" heading. */
+export async function viewThankYou(
+  page: Page,
+  baseUrl: string,
+  orderNumber: number,
+): Promise<StepOutcome> {
+  return viewPage(page, baseUrl, `/checkout/confirmation/${orderNumber}`, /thank you/i);
+}
+
+/** Open `path`; ok when it answers 200 and its first `h1` matches `expectedHeading`. */
+async function viewPage(
+  page: Page,
+  baseUrl: string,
+  path: string,
+  expectedHeading: RegExp,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    const response = await page.goto(`${baseUrl}${path}`, {
+      waitUntil: 'load',
+      timeout: NAVIGATION_TIMEOUT_MS,
+    });
+    const status = response?.status() ?? 0;
+    const title = await heading(page);
+    return {
+      ok: status === 200 && expectedHeading.test(title),
+      detail: `${path} returned ${status} with heading "${title}"`,
+      url: path,
+    };
   });
 }
 
@@ -163,7 +216,7 @@ async function fillFields(form: Locator, fields: Readonly<Record<string, string>
   }
 }
 
-async function attempt(run: () => Promise<StepOutcome>): Promise<StepOutcome> {
+async function attempt<T extends StepOutcome>(run: () => Promise<T>): Promise<T | StepOutcome> {
   try {
     return await run();
   } catch (error) {

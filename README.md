@@ -36,8 +36,8 @@ shopgym explore  ->  Shop Manual  ->  shopgym gen  ->  SandboxShop (data + store
 
 - Node >= 22.19 (required by the `pi` SDK) with [`pnpm`](https://pnpm.io/) >= 9 (the repo pins
   `pnpm@9.12.0` via `packageManager`).
-- Playwright's Chromium, used by exploration, the build-loop verifiers, and
-  benchmark episodes.
+- Playwright's Chromium, used by exploration, the build-loop verifiers,
+  benchmark episodes, and the storefront template browser suite in `pnpm test`.
 - A `.env` at the repo root with model credentials. Either a gateway key
   (`PI_PROXY_API_KEY`) together with `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`
   routing, or provider keys (`ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`,
@@ -175,12 +175,12 @@ and the proposed 9-shop, 900-task RL and transfer-evaluation pilot across six Sa
 pnpm install                     # install the workspace
 pnpm -r build                    # build every package (produces packages/cli/dist/main.js)
 pnpm -r typecheck                # tsc --noEmit for every package
-pnpm -r test                     # vitest for every package
+pnpm -r test                     # vitest for every package, incl. the storefront template browser suite
 pnpm lint                        # biome check
 pnpm format                      # biome format
 pnpm codegen:check               # shop_backend GraphQL codegen drift check
 
-SHOPGYM_SLOW_TESTS=1 pnpm -r test   # also install/build the templates and host a fixture shop
+SHOPGYM_SLOW_TESTS=1 pnpm -r test   # also install/build both templates and host a fixture shop
 SHOPGYM_LIVE=1 pnpm -r test         # also call real models (reads .env); SHOPGYM_LIVE_MODEL=<provider>/<id>
 
 pnpm --filter @shop-gym/shop-backend dev   # run the GraphQL server against a dataset
