@@ -1,0 +1,179 @@
+/**
+ * Browser suite of the storefront template: seeds and builds a copy of the
+ * template, serves it over the in-process backend on the template's test
+ * Dataset, and walks one shopper through real pages with the browser steps
+ * that the final eval also uses. Each test is the next step of that
+ * shopper's journey, so the tests run in order and share one browser
+ * episode. Assertions read only pages and the episode's StateSnapshot from
+ * the Control API. To cover one more page or flow, add a test that calls
+ * one more step from `gen/build/verifiers/browser_steps.ts`.
+ *
+ * Not gated: it runs in every `pnpm test`. It needs `pnpm` on PATH,
+ * Playwright Chromium and a built `packages/shop_backend`.
+ */
+
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+import { BrowserSession } from '@shop-gym/browser';
+import {
+  type StateSnapshot,
+  createSandboxServer,
+  loadShopData,
+  stateSnapshotSchema,
+} from '@shop-gym/shop-backend';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { seedTemplate } from './gen/build/seed.js';
+import { freePort } from './gen/build/sidecar.js';
+import { StorefrontSidecar } from './gen/build/storefront_sidecar.js';
+import {
+  addToCart,
+  logIn,
+  logOut,
+  placeOrder,
+  register,
+  viewOrder,
+  viewThankYou,
+} from './gen/build/verifiers/browser_steps.js';
+import { STOREFRONT_TEMPLATE_DIR } from './templates.js';
+
+const FIXTURE_DIR = path.join(STOREFRONT_TEMPLATE_DIR, 'fixtures', 'sandbox_shop_v0');
+const EPISODE_ID = 'storefront-template-browser';
+const PRODUCT = { handle: 'shopliseum-mushroom-dog-toys', title: 'Shopliseum Mushroom Dog Toys' };
+const SHOPPER = {
+  firstName: 'Suite',
+  lastName: 'Shopper',
+  email: 'suite.shopper@example.com',
+  password: 'suite-password',
+};
+
+let workDir: string;
+let backend: ReturnType<typeof createSandboxServer>;
+let backendUrl: string;
+let sidecar: StorefrontSidecar;
+let session: BrowserSession;
+let orderNumber: number | undefined;
+
+/** Number of the order placed by the checkout test; fails the test when none was placed. */
+function placedOrderNumber(): number {
+  expect(orderNumber, 'no order was placed').toBeDefined();
+  return orderNumber ?? 0;
+}
+
+/** The episode's StateSnapshot, read through the Control API. */
+async function snapshot(): Promise<StateSnapshot> {
+  const response = await fetch(`${backendUrl}/__shopgym/episodes/${EPISODE_ID}/state`);
+  expect(response.status).toBe(200);
+  return stateSnapshotSchema.parse(await response.json());
+}
+
+/** Id of the shopper's customer in `state`; fails the test when absent. */
+function shopperId(state: StateSnapshot): string {
+  const customer = state.customers.find((entry) => entry.email === SHOPPER.email);
+  expect(customer, `no customer ${SHOPPER.email} in the StateSnapshot`).toBeDefined();
+  return customer?.id ?? '';
+}
+
+async function shopperSessionCount(): Promise<number> {
+  const state = await snapshot();
+  const customerId = shopperId(state);
+  return state.sessions.filter((entry) => entry.customerId === customerId).length;
+}
+
+async function pageText(): Promise<string> {
+  return session.page.locator('body').innerText();
+}
+
+describe('storefront template in a browser', () => {
+  beforeAll(async () => {
+    workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'storefront-browser-'));
+    const storefrontDir = path.join(workDir, 'storefront');
+    await seedTemplate({ templateDir: STOREFRONT_TEMPLATE_DIR, destDir: storefrontDir });
+    const backendPort = await freePort();
+    backend = createSandboxServer({
+      data: loadShopData(FIXTURE_DIR),
+      dataDir: FIXTURE_DIR,
+      port: backendPort,
+    });
+    await backend.listen();
+    backendUrl = `http://127.0.0.1:${backendPort}`;
+    sidecar = new StorefrontSidecar({
+      storefrontDir,
+      backendUrl,
+      port: await freePort(),
+      logPath: path.join(workDir, 'storefront.log'),
+    });
+    await sidecar.start();
+    session = await BrowserSession.launch({ episodeId: EPISODE_ID });
+  }, 600_000);
+
+  afterAll(async () => {
+    await session?.close();
+    await sidecar?.stop();
+    await backend?.close();
+    if (workDir) await fs.rm(workDir, { recursive: true, force: true });
+  });
+
+  it('signs up a new customer', async () => {
+    const outcome = await register(session.page, sidecar.url, SHOPPER);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const { customers } = await snapshot();
+    expect(customers.find((customer) => customer.email === SHOPPER.email)).toMatchObject({
+      firstName: SHOPPER.firstName,
+      lastName: SHOPPER.lastName,
+    });
+  }, 60_000);
+
+  it('logs out', async () => {
+    const outcome = await logOut(session.page, sidecar.url);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await shopperSessionCount()).toBe(0);
+  }, 60_000);
+
+  it('logs back in', async () => {
+    const outcome = await logIn(session.page, sidecar.url, SHOPPER);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await shopperSessionCount()).toBe(1);
+  }, 60_000);
+
+  it('adds a product to the cart', async () => {
+    const outcome = await addToCart(session.page, sidecar.url, PRODUCT.handle);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const { carts } = await snapshot();
+    expect(carts.map((cart) => cart.lines.map((line) => line.quantity))).toEqual([[1]]);
+  }, 60_000);
+
+  it('places the order and lands on its account order page', async () => {
+    const outcome = await placeOrder(session.page, sidecar.url, SHOPPER.email);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    orderNumber = outcome.orderNumber;
+    expect(outcome.url).toBe(`/account/orders/${orderNumber}`);
+    const state = await snapshot();
+    const customerId = shopperId(state);
+    const orders = state.orders.filter((order) => order.customerId === customerId);
+    expect(orders).toHaveLength(1);
+    expect(orders[0]).toMatchObject({
+      name: `#${orderNumber}`,
+      email: SHOPPER.email,
+      lineItems: [{ title: expect.stringContaining(PRODUCT.title), quantity: 1 }],
+    });
+  }, 60_000);
+
+  it('shows the thank-you page of the order', async () => {
+    const number = placedOrderNumber();
+    const outcome = await viewThankYou(session.page, sidecar.url, number);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await pageText()).toContain(`#${number}`);
+  }, 60_000);
+
+  it('shows the order in the account order detail', async () => {
+    const number = placedOrderNumber();
+    const outcome = await viewOrder(session.page, sidecar.url, number);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const text = await pageText();
+    expect(text).toContain(`#${number}`);
+    expect(text).toContain(PRODUCT.title);
+  }, 60_000);
+});

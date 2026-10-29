@@ -161,6 +161,15 @@ inline `CheckoutUserError`, register, profile, logout, login with cart
 attach, prefilled checkout to `/account/orders/<n>`, 404 on another
 customer's order, and episode isolation under `x-shopgym-episode: ep1`.
 
+`src/templates.browser.test.ts` is not gated, so it runs in every `pnpm test`
+and in CI. It seeds and builds the template, serves it through
+`StorefrontSidecar` over the in-process backend on the template fixture, and
+walks one shopper in Chromium with the shared browser steps of the final eval:
+sign up, log out, log in, add to cart, check out, the thank-you page and the
+account order page. Each test is one step; it asserts on the page and, where
+the step changes state, on the episode's StateSnapshot from the Control API.
+New template features add a test that calls one more shared step.
+
 ### 5.6 Out of scope
 
 Payment methods on the customer, return requests, order cancellation,
@@ -190,6 +199,7 @@ is read-only until the backend grows `customerAddress*` mutations.
 | 7 | `STOREFRONT_TEMPLATE_DIR` export and gated smoke test | done |
 | 8 | Delete the Python template trees (Hydrogen and `react-vite`) | deferred to M11 |
 | 9 | Address and payment-method management, returns, cancellation | blocked on backend operations (spec 5.6.2 later rows) |
+| 10 | Ungated browser suite in every `pnpm test` and CI (`src/templates.browser.test.ts`) | done |
 
 ## 8. Appendix
 

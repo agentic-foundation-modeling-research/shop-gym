@@ -21,10 +21,16 @@ templates/
 
 The storefront template is standalone: it has its own `package.json` and
 lockfile, is not a pnpm workspace member, and installs with
-`pnpm install --ignore-workspace`. `SHOPGYM_SLOW_TESTS=1 pnpm test` runs
-`src/templates.test.ts`, which builds the template in a temp dir and drives
-the account and checkout flows against `packages/shop_backend/dist/cli.js`
-(build the backend first).
+`pnpm install --ignore-workspace`. Every `pnpm test` (and so CI on every
+PR) runs `src/templates.browser.test.ts`: it builds the template in a temp
+dir, serves it over the in-process backend on the template fixture, and
+walks one shopper in Chromium through sign up, log out, log in, add to cart,
+check out, the thank-you page and the account order page, with the browser
+steps that the final eval uses (`src/gen/build/verifiers/browser_steps.ts`).
+It checks the pages and the episode's StateSnapshot. `SHOPGYM_SLOW_TESTS=1
+pnpm test` also runs `src/templates.test.ts`, which drives the account and
+checkout flows over HTTP against `packages/shop_backend/dist/cli.js`. Build
+the backend first for both.
 
 ## Explore
 

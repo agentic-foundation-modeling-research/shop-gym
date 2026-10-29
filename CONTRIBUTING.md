@@ -99,6 +99,9 @@ Every change that adjusts behaviour needs a test. Tests are `vitest`
 suites co-located as `*.test.ts` next to the unit under test; slow suites
 (template installs, hosting a fixture shop) are gated behind
 `SHOPGYM_SLOW_TESTS=1` and model-calling suites behind `SHOPGYM_LIVE=1`.
+One exception: the storefront template browser suite
+(`packages/shop-arena/src/templates.browser.test.ts`) builds the template
+and runs in every `pnpm test`, so CI checks the template website on every PR.
 
 - One behaviour per test, named for the unit and the behaviour.
 - Don't mock what you can run cheaply — prefer real filesystem,

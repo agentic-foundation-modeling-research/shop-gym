@@ -13,6 +13,7 @@ import {
   logOut,
   placeOrder,
   register,
+  viewOrder,
 } from '../build/verifiers/browser_steps.js';
 
 export type StepStatus = 'pass' | 'fail' | 'skipped';
@@ -53,7 +54,7 @@ export async function runFunctionalSweep(
     password: 'final-eval-password',
   };
   const steps: FunctionalStep[] = [];
-  let orderUrl: string | undefined;
+  let orderNumber: number | undefined;
   const scripted: Record<(typeof FUNCTIONAL_STEP_NAMES)[number], () => Promise<FunctionalStep>> = {
     signUp: async () => step('signUp', await register(page, storefrontUrl, account)),
     logOut: async () => step('logOut', await logOut(page, storefrontUrl)),
@@ -68,27 +69,13 @@ export async function runFunctionalSweep(
         : step('addToCart', await addToCart(page, storefrontUrl, productHandle)),
     checkout: async () => {
       const outcome = await placeOrder(page, storefrontUrl, account.email);
-      orderUrl = outcome.ok ? outcome.url : undefined;
+      orderNumber = outcome.orderNumber;
       return step('checkout', outcome);
     },
-    viewOrder: async () => {
-      if (orderUrl === undefined) {
-        return { name: 'viewOrder', status: 'skipped', detail: 'no order was placed' };
-      }
-      const response = await page.goto(`${storefrontUrl}${orderUrl}`, { waitUntil: 'load' });
-      const status = response?.status() ?? 0;
-      const heading = await page
-        .locator('h1')
-        .first()
-        .innerText()
-        .catch(() => '');
-      return {
-        name: 'viewOrder',
-        status: status === 200 && /order/i.test(heading) ? 'pass' : 'fail',
-        detail: `${orderUrl} returned ${status} with heading "${heading}"`,
-        url: orderUrl,
-      };
-    },
+    viewOrder: async () =>
+      orderNumber === undefined
+        ? { name: 'viewOrder', status: 'skipped', detail: 'no order was placed' }
+        : step('viewOrder', await viewOrder(page, storefrontUrl, orderNumber)),
     requestReturn: async () => ({
       name: 'requestReturn',
       status: 'skipped',
