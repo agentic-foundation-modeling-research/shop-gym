@@ -168,15 +168,17 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   `synth_commerce`, `synth_customers`, and deterministic
   `synth_orders` / inventory so the dataset exercises the stateful
   backend (`commerce.json`, `customers.json`, `orders.json`).
-  `synth_customers` makes five Personas: the LLM writes names and one
-  to three addresses (at least two Personas have two or more), and code
-  assigns emails, passwords and ids. `synth_orders` makes fifteen
-  orders by code from a fixed seed: the last Persona has none, the
-  others one to six; random lines, shipping and payment method and
-  saved address; dates in the twelve months before the Episode clock
-  start; totals by the backend pricing rules; the newest order is not
-  shipped, one older order is refunded, one partly refunded, the rest
-  are paid and shipped. Every
+  `synth_customers` makes five Personas. The LLM writes the names and
+  one to three addresses for each Persona, and at least two Personas
+  have two or more addresses. Code assigns the emails, passwords and
+  ids. `synth_orders` makes fifteen orders by code from a fixed seed.
+  The last Persona has no orders, and each other Persona has one to
+  six. Each order has random lines, a random shipping and payment
+  method and one of the Persona's saved addresses. Its date is in the
+  twelve months before the Episode clock starts, and its totals follow
+  the backend pricing rules. The newest order is not shipped. Three
+  older orders are refunded, partly refunded and partly shipped. The
+  other orders are paid and shipped. Every
   LLM step goes through `completeJson` with a zod-derived JSON Schema
   and one validation-feedback retry; drafts cache under
   `<shopDir>/.shop_gen/stage_cache/` (v1 file names kept; details per

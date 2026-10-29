@@ -1,10 +1,10 @@
 /**
- * `synth_orders`: about fifteen historical orders for the seeded customers,
- * drawn from the catalog with a fixed seed so no LLM call is needed. The
- * last customer has no orders and every other customer has one to six.
- * Orders fall in the twelve months before the episode clock starts, ship
- * to one of the customer's saved addresses with a random shipping and
- * payment method, and cost what the backend charges at checkout.
+ * `synth_orders`: fifteen past orders for the Personas, drawn from the
+ * catalog with a fixed seed so no LLM call is needed. The last Persona has
+ * no orders and every other Persona has one to six. Orders fall in the
+ * twelve months before the Episode clock starts, ship to one of the
+ * Persona's saved addresses with a random shipping and payment method,
+ * and cost what the backend charges at checkout.
  */
 
 import type { z } from 'zod';
@@ -39,6 +39,10 @@ const PARTLY_REFUNDED: Status = {
   financial_status: 'PARTIALLY_REFUNDED',
   fulfillment_status: 'FULFILLED',
 };
+const PARTLY_SHIPPED: Status = {
+  financial_status: 'PAID',
+  fulfillment_status: 'PARTIALLY_FULFILLED',
+};
 
 interface Sellable {
   readonly variantId: number;
@@ -56,6 +60,7 @@ function sellables(products: readonly Product[]): Sellable[] {
 
 /** A uniformly random element of `items`, which must not be empty. */
 function pick<T>(rng: () => number, items: readonly T[]): T {
+  // The index is below `items.length`, so it names an element of a non-empty array.
   return items[Math.floor(rng() * items.length)] as T;
 }
 
@@ -122,24 +127,17 @@ export function synthOrders(
     }),
   );
   drafts.sort((a, b) => a.processed_at.localeCompare(b.processed_at));
-  // The newest order is not shipped yet; two older ones were refunded, one of them partly.
+  // The newest order is not shipped yet. Three random older orders are
+  // refunded, partly refunded and partly shipped; the rest are shipped.
+  const statuses = new Map<number, Status>([[drafts.length - 1, NOT_SHIPPED]]);
   const older = drafts.slice(0, -1).map((_, i) => i);
-  const refunded = older.splice(Math.floor(rng() * older.length), 1)[0];
-  const partlyRefunded = older.splice(Math.floor(rng() * older.length), 1)[0];
-  const statusOf = (i: number): Status =>
-    i === drafts.length - 1
-      ? NOT_SHIPPED
-      : i === refunded
-        ? REFUNDED
-        : i === partlyRefunded
-          ? PARTLY_REFUNDED
-          : SHIPPED;
-  return drafts.map(({ customer_id, email, processed_at, ...rest }, i) => ({
+  for (const status of [REFUNDED, PARTLY_REFUNDED, PARTLY_SHIPPED]) {
+    const [i] = older.splice(Math.floor(rng() * older.length), 1);
+    if (i !== undefined) statuses.set(i, status);
+  }
+  return drafts.map((draft, i) => ({
     id: FIRST_ORDER_ID + i,
-    customer_id,
-    email,
-    processed_at,
-    ...statusOf(i),
-    ...rest,
+    ...(statuses.get(i) ?? SHIPPED),
+    ...draft,
   }));
 }

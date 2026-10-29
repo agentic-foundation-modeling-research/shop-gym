@@ -279,12 +279,13 @@ describe('synthOrders', () => {
     }
   });
 
-  it('makes most orders paid and shipped, the newest not shipped, one refunded, one partly', () => {
+  it('makes most orders paid and shipped, the newest not shipped, one each refunded, partly refunded and partly shipped', () => {
     const statuses = orders.map((o) => `${o.financial_status}/${o.fulfillment_status}`);
     expect(statuses.at(-1)).toBe('PAID/UNFULFILLED');
     expect(statuses.filter((s) => s === 'REFUNDED/FULFILLED')).toHaveLength(1);
     expect(statuses.filter((s) => s === 'PARTIALLY_REFUNDED/FULFILLED')).toHaveLength(1);
-    expect(statuses.filter((s) => s === 'PAID/FULFILLED')).toHaveLength(12);
+    expect(statuses.filter((s) => s === 'PAID/PARTIALLY_FULFILLED')).toHaveLength(1);
+    expect(statuses.filter((s) => s === 'PAID/FULFILLED')).toHaveLength(11);
   });
 
   it('mixes shipping methods, payment methods and saved shipping addresses', () => {
