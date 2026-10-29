@@ -212,10 +212,11 @@ underlying functions stay plain and testable on their own:
 
 - `final_eval/runFinalEval({ dataDir, manualDir?, backendUrl,
   storefrontUrl, llm, model, outDir, log?, signal? })` runs against an
-  already-running shop. The visual sweep captures eleven canonical pages
+  already-running shop. The visual sweep captures twelve canonical pages
   (home, a collection, a product, search, cart, checkout, the thank-you
   page of a guest order, account login, the account profile after
-  login, an order detail, a policy page) at both viewports and judges
+  login, the order list, an order detail, a policy page) at both
+  viewports and judges
   each with the single `visual_judge.md` rubric; the functional sweep is
   a fixed browser script (sign up, log out, log in, add to cart, apply
   a Discount code with no minimum subtotal, checkout, view order;
