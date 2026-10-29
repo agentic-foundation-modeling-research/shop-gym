@@ -2,20 +2,20 @@ import { Link, type LoaderFunctionArgs, useLoaderData } from 'react-router';
 import { AddressBlock, LogoutLink, ORDER_HISTORY_SIZE, OrderHistory } from '~/components/account';
 import { getAppContext, getCustomerAccessToken } from '~/lib/context';
 import { requireCustomer } from '~/lib/customer';
-import { CUSTOMER_ORDERS_QUERY } from '~/lib/queries';
+import { CUSTOMER_ADDRESSES_QUERY, CUSTOMER_ORDERS_QUERY } from '~/lib/queries';
 import { storefrontQuery } from '~/lib/storefront';
-import type { Customer, OrderSummary } from '~/lib/types';
+import type { MailingAddress, OrderSummary } from '~/lib/types';
 
 interface CustomerOrdersData {
-  readonly customer:
-    | (Customer & {
-        readonly addresses: { readonly nodes: readonly { readonly id: string }[] };
-        readonly orders: {
-          readonly totalCount: number;
-          readonly nodes: readonly OrderSummary[];
-        };
-      })
-    | null;
+  readonly customer: {
+    readonly orders: { readonly nodes: readonly OrderSummary[] };
+  } | null;
+}
+
+interface CustomerAddressesData {
+  readonly customer: {
+    readonly addresses: { readonly nodes: readonly MailingAddress[] };
+  } | null;
 }
 
 export function meta() {
@@ -25,14 +25,20 @@ export function meta() {
 export async function loader({ context, request }: LoaderFunctionArgs) {
   const appContext = getAppContext(context);
   const customer = await requireCustomer(appContext, request);
-  const data = await storefrontQuery<CustomerOrdersData>(appContext, CUSTOMER_ORDERS_QUERY, {
-    customerAccessToken: getCustomerAccessToken(appContext),
-    first: ORDER_HISTORY_SIZE,
-  });
+  const customerAccessToken = getCustomerAccessToken(appContext);
+  const [ordersData, addressesData] = await Promise.all([
+    storefrontQuery<CustomerOrdersData>(appContext, CUSTOMER_ORDERS_QUERY, {
+      customerAccessToken,
+      first: ORDER_HISTORY_SIZE,
+    }),
+    storefrontQuery<CustomerAddressesData>(appContext, CUSTOMER_ADDRESSES_QUERY, {
+      customerAccessToken,
+    }),
+  ]);
   return {
     customer,
-    addressCount: data.customer?.addresses.nodes.length ?? 0,
-    orders: data.customer?.orders.nodes ?? [],
+    addressCount: addressesData.customer?.addresses.nodes.length ?? 0,
+    orders: ordersData.customer?.orders.nodes ?? [],
   };
 }
 

@@ -30,8 +30,8 @@ export function skillRng(ctx: SeedContext, skill: string): Rng {
 }
 
 /**
- * The persona's full name, or the email when it has none. Goals name the
- * signed-in persona so tasks for different personas never share a goal.
+ * The Persona's full name, or the email when it has none. Goals name the
+ * signed-in Persona so Tasks for different Personas never share a goal.
  */
 export function personaName(customer: Customer): string {
   const name = [customer.first_name, customer.last_name].filter((p) => p !== null).join(' ');

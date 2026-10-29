@@ -617,11 +617,6 @@ export const CUSTOMER_ORDERS_QUERY = `#graphql
   query CustomerOrders($customerAccessToken: String!, $first: Int!) {
     customer(customerAccessToken: $customerAccessToken) {
       ...CustomerFields
-      addresses(first: 50) {
-        nodes {
-          id
-        }
-      }
       orders(first: $first, reverse: true, sortKey: PROCESSED_AT) {
         totalCount
         nodes {

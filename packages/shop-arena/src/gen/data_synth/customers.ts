@@ -1,6 +1,6 @@
 /**
- * `synth_customers`: five seeded personas with one to three saved addresses
- * each; email, password, and ids are assigned by code.
+ * `synth_customers`: five Personas with one to three saved addresses each;
+ * email, password, and ids are assigned by code.
  */
 
 import { completeStructured } from '../llm.js';
@@ -17,6 +17,7 @@ export function synthCustomers(sc: SynthContext, identity: Identity): Promise<Pe
       sc.call,
       synthPrompt(sc, 'synth_customers', {
         count: String(CUSTOMER_COUNT),
+        multi_address_count: String(MIN_MULTI_ADDRESS_PERSONAS),
         identity: pretty(identity),
         country: identity.country,
       }),

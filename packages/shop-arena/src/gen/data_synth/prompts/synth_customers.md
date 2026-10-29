@@ -22,11 +22,12 @@ has exactly these fields and nothing else:
 - `addresses`: array of 1 to 3 saved address objects. The first is
   the persona's home and default address; others are places such as
   an office, a relative's home, or a holiday cottage, often in another
-  city. At least two personas have two or more addresses. Each object
-  has `address1` (street address), `address2` (unit, or `null`),
-  `city`, `province` (state/region name, or `null` where the country
-  has none), `province_code` (short code such as `"CA"` or `"ON"`, or
-  `null`), and `zip` (a postal code in the country's format).
+  city. At least {{multi_address_count}} personas have two or more
+  addresses. Each object has `address1` (street address), `address2`
+  (unit, or `null`), `city`, `province` (state/region name, or `null`
+  where the country has none), `province_code` (short code such as
+  `"CA"` or `"ON"`, or `null`), and `zip` (a postal code in the
+  country's format).
 
 Rules:
 

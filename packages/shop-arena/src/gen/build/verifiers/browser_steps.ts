@@ -266,12 +266,15 @@ export async function viewThankYou(
   );
 }
 
-/** Open `path`; ok when it answers 200 and shows what `find` locates, described by `what`. */
+/**
+ * Open `path`; ok when it answers 200 and shows what `find` locates.
+ * `targetDescription` names that target in the detail.
+ */
 async function viewPage(
   page: Page,
   baseUrl: string,
   path: string,
-  what: string,
+  targetDescription: string,
   find: (page: Page) => Locator,
 ): Promise<StepOutcome> {
   return attempt(async () => {
@@ -283,7 +286,7 @@ async function viewPage(
     const found = (await find(page).count()) > 0;
     return {
       ok: status === 200 && found,
-      detail: `${path} returned ${status} with heading "${await heading(page)}" and ${found ? '' : 'no '}${what}`,
+      detail: `${path} returned ${status} with heading "${await heading(page)}" and ${found ? '' : 'no '}${targetDescription}`,
       url: path,
     };
   });
