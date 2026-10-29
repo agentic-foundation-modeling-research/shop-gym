@@ -26,7 +26,11 @@ the model; the runtime executes each iteration in-process.
 - `loop.ts` - `runPlanExecLoop(config, runtime, { force? })`. Fresh or
   resume mode is inferred from `runDir`; executor-phase timeouts quarantine
   the iteration dir and skip the task; protocol violations and unparseable
-  plan edits restore `plan.md`, force-block the task, and continue.
+  plan edits restore `plan.md`, force-block the task, and continue. After
+  each iteration, the optional `onIterationEnd` hook receives whether the
+  harness kept it or abandoned it (timeout, invalid plan, protocol
+  violation, runtime error). The harness never rolls back `artifact/`
+  itself; a caller that wants abandoned edits gone does it in the hook.
 - `telemetry/` - iteration ids, `metadata.json` schema, secret scrubbing,
   atomic `run.json` writes, and `reconstruct(runDir)` for crashed runs.
 - `trace.ts` - `renderIterDir(iterDir)` renders an iteration's

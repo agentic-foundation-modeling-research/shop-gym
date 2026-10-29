@@ -2,6 +2,8 @@ export {
   DEFAULT_VERIFIER_FEEDBACK_MAX_CHARS,
   type FinalStatus,
   HarnessConfigError,
+  type IterationEnd,
+  type IterationOutcome,
   type PlanExecLoopConfig,
   type PlanExecLoopResult,
   type Prompts,

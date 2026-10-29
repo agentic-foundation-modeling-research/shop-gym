@@ -22,6 +22,24 @@ export type FinalStatus =
   | 'timeout'
   | 'runtime_error';
 
+/**
+ * How one iteration ended. `kept`: its edits stand. Any other value is the
+ * reason the harness abandoned it: the task is skipped or blocked, or the
+ * run ends. The harness does not roll back `artifact/`; a caller that wants
+ * the abandoned edits gone does that in `onIterationEnd`.
+ */
+export type IterationOutcome =
+  | 'kept'
+  | Extract<FinalStatus, 'timeout' | 'invalid_plan' | 'protocol_violation' | 'runtime_error'>;
+
+export interface IterationEnd {
+  /** `plan` or `exec-NNNN`. A timed-out executor id is used again by the next iteration. */
+  readonly iterId: string;
+  /** The executor's selected task; `null` for the planner. */
+  readonly taskId: string | null;
+  readonly outcome: IterationOutcome;
+}
+
 export interface PlanExecLoopConfig {
   /** Workspace root. Empty or absent for a fresh run, populated to resume. */
   readonly runDir: string;
@@ -40,6 +58,12 @@ export interface PlanExecLoopConfig {
   /** Truncation budget of verifier feedback rendered into the prompt. */
   readonly verifierFeedbackMaxChars?: number;
   readonly onEvent?: (iterId: string, event: AgentEvent) => void;
+  /**
+   * Awaited once after each planner and executor iteration, when the harness
+   * has recorded it (verifiers, `plan.md` repair, `run.json`) and before the
+   * next iteration starts. An error thrown here rejects `runPlanExecLoop`.
+   */
+  readonly onIterationEnd?: (end: IterationEnd) => Promise<void>;
 }
 
 export const DEFAULT_VERIFIER_FEEDBACK_MAX_CHARS = 4000;
