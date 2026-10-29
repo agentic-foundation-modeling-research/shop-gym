@@ -12,7 +12,8 @@
  * Optional files: `blogs.json` (defaults to `[]`), `metafields.json` (defaults
  * to `{ shop: [], products: {}, collections: {} }`), `inventory.json`
  * (defaults to `{}`), `customers.json` (defaults to `[]`), `orders.json`
- * (defaults to `[]`), `commerce.json` (defaults to `DEFAULT_COMMERCE`).
+ * (defaults to `[]`), `commerce.json` (defaults to `DEFAULT_COMMERCE`),
+ * `reviews.json` (defaults to `[]`).
  */
 
 import * as fs from 'node:fs';
@@ -32,6 +33,7 @@ import {
   pagesFileSchema,
   policiesFileSchema,
   productsFileSchema,
+  reviewsFileSchema,
   storeSchema,
 } from './schema.js';
 import type {
@@ -39,6 +41,7 @@ import type {
   InventoryEntry,
   InventoryFile,
   Product,
+  Review,
   SandboxShopData,
   VariantLookup,
 } from './types.js';
@@ -110,6 +113,7 @@ export function loadShopData(dir: string): SandboxShopData {
   const customers = readOptional(dir, 'customers.json', customersFileSchema) ?? [];
   const orders = readOptional(dir, 'orders.json', ordersFileSchema) ?? [];
   const commerce = readOptional(dir, 'commerce.json', commerceSchema) ?? DEFAULT_COMMERCE;
+  const reviews = readOptional(dir, 'reviews.json', reviewsFileSchema) ?? [];
 
   const data: SandboxShopData = {
     store,
@@ -124,9 +128,11 @@ export function loadShopData(dir: string): SandboxShopData {
     customers,
     orders,
     commerce,
+    reviews,
     productsByHandle: buildProductsByHandle(products),
     variantsByGid: buildVariantsByGid(products),
     inventoryByVariantId: buildInventoryByVariantId(inventory),
+    reviewsByProductHandle: buildReviewsByProductHandle(reviews),
   };
   return Object.freeze(data);
 }
@@ -206,6 +212,21 @@ function buildInventoryByVariantId(inventory: InventoryFile): ReadonlyMap<number
   const map = new Map<number, InventoryEntry>();
   for (const [variantId, entry] of Object.entries(inventory)) {
     map.set(Number.parseInt(variantId, 10), entry);
+  }
+  return map;
+}
+
+function buildReviewsByProductHandle(
+  reviews: readonly Review[],
+): ReadonlyMap<string, readonly Review[]> {
+  const map = new Map<string, Review[]>();
+  for (const review of reviews) {
+    const list = map.get(review.product_handle);
+    if (list === undefined) {
+      map.set(review.product_handle, [review]);
+    } else {
+      list.push(review);
+    }
   }
   return map;
 }

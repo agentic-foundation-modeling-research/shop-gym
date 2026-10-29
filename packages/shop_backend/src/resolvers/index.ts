@@ -9,8 +9,9 @@
  * `BaseCartLine` / `Merchandise` discriminators), cart line mutations
  * (T4.3 — `cartCreate` / `cartLinesAdd` / `cartLinesUpdate` /
  * `cartLinesRemove`), product / collection metafields (T5.1), shop
- * metafields (T5.2), and since v1.1 the stateful customer / order /
- * checkout domains backed by the per-episode `ShopState`.
+ * metafields (T5.2), since v1.1 the stateful customer / order /
+ * checkout domains backed by the per-episode `ShopState`, and the
+ * read-only product Reviews.
  */
 
 import type { SandboxShopData } from '../data/types.js';
@@ -24,6 +25,7 @@ import { customerResolvers } from './customer.js';
 import { metafieldResolvers } from './metafields.js';
 import { orderResolvers } from './order.js';
 import { productResolvers } from './product.js';
+import { reviewResolvers } from './review.js';
 import { searchResolvers } from './search.js';
 import { shopResolvers } from './shop.js';
 
@@ -68,7 +70,11 @@ export const sandboxResolvers: SandboxSchemaResolvers = {
     ...checkoutResolvers.Mutation,
   },
   Shop: { ...shopResolvers.Shop, ...metafieldResolvers.Shop },
-  Product: { ...productResolvers.Product, ...metafieldResolvers.Product },
+  Product: {
+    ...productResolvers.Product,
+    ...metafieldResolvers.Product,
+    ...reviewResolvers.Product,
+  },
   Collection: { ...productResolvers.Collection, ...metafieldResolvers.Collection },
   Blog: contentResolvers.Blog,
   SearchResultItem: searchResolvers.SearchResultItem,

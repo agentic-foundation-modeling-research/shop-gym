@@ -88,11 +88,13 @@ packages/shop-arena/
     app/lib/customer.ts       loadCustomer, requireCustomer, loginCustomer
     app/lib/queries.ts        GraphQL documents (`*_QUERY`, `*_MUTATION`, `*_FRAGMENT`)
     app/lib/types.ts          hand-written response types
+    app/lib/reviews.ts        Reviews URL parameters, sort options, page size, product rating
     app/components/account.tsx   AccountNav, LogoutLink, FormErrors, AddressBlock, OrderHistory, OrderDetails
+    app/components/reviews.tsx   RatingBlock, ReviewsSection
     app/routes/account/*.tsx  login, register, logout, profile, addresses, orders, order
     app/routes/checkout.tsx   real checkout
     app/routes/checkout-confirmation.tsx
-    fixtures/sandbox_shop_v0/ catalog fixture + customers.json, orders.json, commerce.json
+    fixtures/sandbox_shop_v0/ catalog fixture + customers.json, orders.json, commerce.json, reviews.json
 ```
 
 The Python tree under `packages/shop_arena/.../templates/` is left in place:
@@ -113,6 +115,7 @@ Nothing in v1.1 reads the Python copy.
 | `/account/orders/:orderNumber` | "Order #<n>": lines (product, SKU, price, quantity, total), totals, billing and shipping address with the statuses; 404 unless `order.email` matches the customer | - | `Customer`, `Order`, `CommerceSettings` |
 | `/checkout` | cart, `commerceSettings`, customer (prefill) | intent `discount` / `discount-remove`: `cartDiscountCodesUpdate`; else `cartBuyerIdentityUpdate` when logged in, then `checkoutComplete`; clears `cartId`; redirects | `Cart`, `CommerceSettings`, `Customer`, `CartDiscountCodesUpdate`, `CartBuyerIdentityUpdate`, `CheckoutComplete` |
 | `/checkout/confirmation/:orderNumber` | the thank-you page: order detail, `commerceSettings` for method titles | - | `Order`, `CommerceSettings` |
+| `/products/:handle` | product detail with the Reviews: `?reviews_sort=<order>` picks the order, `?reviews_pages=<n>` shows the first `5 * n` Reviews | - | `Product` (with `reviews(first, sortKey)` and the `reviews.rating` / `reviews.rating_count` metafields) |
 
 Protected loaders go through `requireCustomer`, which redirects to
 `/account/login?redirectTo=<path>` and clears a stale token cookie when the
@@ -131,6 +134,21 @@ the cart page and the cart drawer replaces the cart's code; a code that does
 not apply is not kept (the earlier code comes back) and the field shows
 "Enter a valid discount code".
 
+The product page shows Reviews per the Standard sub-manual. Near the title,
+the stars (half stars for a decimal part from 0.3 to 0.7), "3.8 / 5.0" and
+"(6)" come from the rating metafields; the stars are named "3.8 out of 5.0
+stars". Below the product details, a "Reviews" section shows the rating
+and the number of Reviews, a "Sort by" control ("Most recent", "Highest
+rating", "Lowest rating", "Most helpful") with a "Sort" button, five
+Reviews a page, and a "Show more reviews" button while more remain. Each
+Review shows its stars, title, text, reviewer name, date, a "Verified
+Buyer" badge when flagged, the options of the variant bought, and the
+helpful count as text ("1 person found this helpful"; nothing for 0). Both
+controls are GET forms that reload the page at `#reviews`, so the order
+and the page count live in the URL. A product with no Reviews has no
+stars and no section. There is no Review form, photo, summary, topic chip,
+filter or helpful vote.
+
 ### 5.3 Cookies and headers
 
 - `__shop_gym_session` (renamed from `__shop_gym_cart`, which only ever held
@@ -148,11 +166,14 @@ not apply is not kept (the earlier code comes back) and the field shows
 
 ### 5.4 Fixtures
 
-`fixtures/sandbox_shop_v0/` gains `customers.json`, `orders.json`, and
-`commerce.json` copied from `packages/shop_backend/tests/fixtures/`, so the
-four Personas (all with password `password123`), two shipping methods, two
-payment methods, the free-shipping threshold, and the Discount codes
-`WELCOME10`, `SAVE5` and `FREESHIP` are identical on both sides. The
+`fixtures/sandbox_shop_v0/` gains `customers.json`, `orders.json`,
+`commerce.json` and `reviews.json` copied from
+`packages/shop_backend/tests/fixtures/`, so the four Personas (all with
+password `password123`), two shipping methods, two payment methods, the
+free-shipping threshold, the Discount codes `WELCOME10`, `SAVE5` and
+`FREESHIP`, and the Reviews of four products are identical on both sides.
+The toy `shopliseum-mushroom-dog-toys` has six Reviews, more than one page;
+`cartanvil-mackerel-and-sardines-70g` has none. The
 Personas and their seeded orders `#1001`-`#1006`:
 
 | Persona | Addresses | Orders |
@@ -178,7 +199,9 @@ customer's order, and episode isolation under `x-shopgym-episode: ep1`.
 and in CI. It seeds and builds the template, serves it through
 `StorefrontSidecar` over the in-process backend on the template fixture, and
 walks one shopper in Chromium with the shared browser steps of the final eval:
-sign up, log out, log in, add to cart, an unknown and a valid Discount code,
+sign up, log out, log in, the Reviews of a product page (show more, sort, a
+half star, left-out fields, and a product with none), add to cart, an
+unknown and a valid Discount code,
 check out, the thank-you page, the new order in the order history and its
 account order page, then a seeded Persona's order history and one past order.
 Each test is one step; it asserts on the page and, where
@@ -217,6 +240,7 @@ is read-only until the backend grows `customerAddress*` mutations.
 | 10 | Ungated browser suite in every `pnpm test` and CI (`src/templates.browser.test.ts`) | done |
 | 11 | Checkout and thank-you page per the Standard sub-manual, with the "Discount code" field; discount shown on the cart and the order detail | done |
 | 12 | Account page, order history and order page per the Standard sub-manual; fixture Personas with seeded orders | done |
+| 13 | Reviews on the product page per the Standard sub-manual; fixture `reviews.json` | done |
 
 ## 8. Appendix
 

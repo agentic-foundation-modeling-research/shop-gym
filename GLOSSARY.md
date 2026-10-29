@@ -87,7 +87,7 @@ The advisory check of a built shop after the Build loop: a visual sweep that scr
 ### ShopBackend
 
 **Dataset**:
-The read-only JSON files and images under a SandboxShop's `data/` directory: store, catalog, content, policies, customers, orders, and commerce settings (shipping methods, payment methods, tax, the free-shipping threshold, and Discount codes). The backend loads it and never changes it.
+The read-only JSON files and images under a SandboxShop's `data/` directory: store, catalog, Reviews, content, policies, customers, orders, and commerce settings (shipping methods, payment methods, tax, the free-shipping threshold, and Discount codes). The backend loads it and never changes it.
 _Avoid_: shop data, catalog (the catalog is only one part of it)
 
 **Discount code**:
@@ -97,6 +97,10 @@ _Avoid_: coupon, promo code
 **Persona**:
 A customer account in the Dataset's `customers.json`, with an email and password that a Task's setup can log in with, saved addresses, and seeded orders in `orders.json` that its order history shows.
 _Avoid_: seeded customer
+
+**Review**:
+A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read and sort Reviews; they cannot write or vote on them.
+_Avoid_: rating (one field of a Review), testimonial
 
 **Episode**:
 One attempt by one agent at one Task on one SandboxShop. The backend keeps the state of each Episode (cart, login, orders) apart from all others, by the episode id in the `x-shopgym-episode` header.
