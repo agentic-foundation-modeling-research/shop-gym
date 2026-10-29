@@ -257,13 +257,32 @@ async function waitForAddressBook(
   settled: () => Promise<boolean>,
 ): Promise<{ readonly settled: boolean; readonly error: string }> {
   const errors = page.getByRole('alert').filter({ visible: true });
+  const [done, alerts] = await pollPage(
+    page,
+    () => Promise.all([settled(), errors.allInnerTexts()]),
+    [false, []],
+    ([ok, texts]) => ok || texts.length > 0,
+  );
+  return { settled: done, error: normalizedText(alerts.join(' ')) };
+}
+
+/**
+ * Read the page every `POLL_INTERVAL_MS` until `done` holds for a read or
+ * `SUBMIT_TIMEOUT_MS` passes, then wait for the load event and return the
+ * last read. A read that fails while the page reloads gives `unsettled`.
+ */
+async function pollPage<T>(
+  page: Page,
+  read: () => Promise<T>,
+  unsettled: T,
+  done: (observed: T) => boolean,
+): Promise<T> {
   const deadline = Date.now() + SUBMIT_TIMEOUT_MS;
   for (;;) {
-    const observed = await Promise.all([settled(), errors.allInnerTexts()]).catch(() => undefined);
-    const [done, alerts] = observed ?? [false, []];
-    if (done || alerts.length > 0 || Date.now() > deadline) {
+    const observed = await read().catch(() => unsettled);
+    if (done(observed) || Date.now() > deadline) {
       await page.waitForLoadState('load');
-      return { settled: done, error: normalizedText(alerts.join(' ')) };
+      return observed;
     }
     await sleep(POLL_INTERVAL_MS);
   }
@@ -409,18 +428,14 @@ async function enterDiscountCode(
     (element as unknown as { requestSubmit(): void }).requestSubmit(),
   );
   const error = page.getByText(INVALID_DISCOUNT_CODE, { exact: true }).filter({ visible: true });
-  const deadline = Date.now() + SUBMIT_TIMEOUT_MS;
-  for (;;) {
-    // A document reload drops the total row, or the page, for a moment; such a read is not settled.
-    const observed = await Promise.all([checkoutTotal(page), error.count()]).catch(() => undefined);
-    const [after, errors] = observed ?? ['', 0];
-    const settled = after !== '' && (after !== before || errors > 0);
-    if (settled || Date.now() > deadline) {
-      await page.waitForLoadState('load');
-      return { before, after, error: errors > 0 };
-    }
-    await sleep(POLL_INTERVAL_MS);
-  }
+  // A document reload drops the total row, or the page, for a moment; such a read is not settled.
+  const [after, errors] = await pollPage(
+    page,
+    () => Promise.all([checkoutTotal(page), error.count()]),
+    ['', 0],
+    ([total, count]) => total !== '' && (total !== before || count > 0),
+  );
+  return { before, after, error: errors > 0 };
 }
 
 /** Text of the visible checkout "Total" row, e.g. "Total CAD $17.99"; empty when there is none. */
