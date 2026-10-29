@@ -138,12 +138,19 @@ describe('generateShop', () => {
     const finalEval = JSON.parse(
       await fs.readFile(path.join(result.finalEvalDir, 'report.json'), 'utf-8'),
     ) as FinalEvalReport;
-    expect(finalEval.visual.pages).toHaveLength(10);
+    expect(finalEval.visual.pages).toHaveLength(11);
     expect(finalEval.visual.pages.filter((page) => page.status === 'skipped')).toEqual([]);
     expect(finalEval.visual.failed).toBe(1); // the scripted judge fails `/search`
-    expect(finalEval.functional.steps.map((step) => step.status)).toEqual([
-      ...Array<string>(6).fill('pass'),
-      'skipped',
+    // The synthesized Dataset has no Discount code, so that step is skipped.
+    expect(finalEval.functional.steps.map((step) => [step.name, step.status])).toEqual([
+      ['signUp', 'pass'],
+      ['logOut', 'pass'],
+      ['logIn', 'pass'],
+      ['addToCart', 'pass'],
+      ['applyDiscountCode', 'skipped'],
+      ['checkout', 'pass'],
+      ['viewOrder', 'pass'],
+      ['requestReturn', 'skipped'],
     ]);
     expect((await fs.readdir(result.finalEvalDir)).sort()).toEqual([
       'pages',

@@ -1,14 +1,16 @@
 /**
  * The functional sweep: a fixed shopper journey through the storefront in
- * one browser episode. Sign up, log out, log in, add to cart, check out,
- * view the order. Returns are not supported by the backend, so that step
- * is recorded as skipped. Steps run in order and stop at the first failure.
+ * one browser episode. Sign up, log out, log in, add to cart, apply a
+ * Discount code, check out, view the order. Returns are not supported by
+ * the backend, so that step is recorded as skipped. Steps run in order and
+ * stop at the first failure.
  */
 
 import type { BrowserSession } from '@shop-gym/browser';
 
 import {
   addToCart,
+  applyDiscountCode,
   logIn,
   logOut,
   placeOrder,
@@ -30,6 +32,8 @@ export interface FunctionalSweepOptions {
   readonly storefrontUrl: string;
   /** Handle of the product to buy. */
   readonly productHandle: string | undefined;
+  /** Dataset Discount code that applies to any cart. */
+  readonly discountCode: string | undefined;
 }
 
 export const FUNCTIONAL_STEP_NAMES = [
@@ -37,6 +41,7 @@ export const FUNCTIONAL_STEP_NAMES = [
   'logOut',
   'logIn',
   'addToCart',
+  'applyDiscountCode',
   'checkout',
   'viewOrder',
   'requestReturn',
@@ -45,7 +50,7 @@ export const FUNCTIONAL_STEP_NAMES = [
 export async function runFunctionalSweep(
   options: FunctionalSweepOptions,
 ): Promise<FunctionalStep[]> {
-  const { session, storefrontUrl, productHandle } = options;
+  const { session, storefrontUrl, productHandle, discountCode } = options;
   const page = session.page;
   const account = {
     firstName: 'Final',
@@ -67,6 +72,14 @@ export async function runFunctionalSweep(
       productHandle === undefined
         ? { name: 'addToCart', status: 'skipped', detail: 'the dataset has no product' }
         : step('addToCart', await addToCart(page, storefrontUrl, productHandle)),
+    applyDiscountCode: async () =>
+      discountCode === undefined
+        ? {
+            name: 'applyDiscountCode',
+            status: 'skipped',
+            detail: 'the dataset has no Discount code that applies to any cart',
+          }
+        : step('applyDiscountCode', await applyDiscountCode(page, storefrontUrl, discountCode)),
     checkout: async () => {
       const outcome = await placeOrder(page, storefrontUrl, account.email);
       orderNumber = outcome.orderNumber;

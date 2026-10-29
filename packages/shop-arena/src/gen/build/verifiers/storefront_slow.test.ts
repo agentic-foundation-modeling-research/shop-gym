@@ -133,6 +133,7 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)(
         ['logOut', 'pass', expect.any(String)],
         ['logIn', 'pass', expect.any(String)],
         ['addToCart', 'pass', expect.any(String)],
+        ['applyDiscountCode', 'pass', expect.stringContaining('WELCOME10')],
         ['checkout', 'pass', expect.any(String)],
         ['viewOrder', 'pass', expect.any(String)],
         ['requestReturn', 'skipped', 'not supported by backend'],
