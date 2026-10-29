@@ -96,11 +96,11 @@ After this work:
 
 ```
 src/
-  data/schema.ts        + addressSchema, customerSchema, orderSchema, commerceSchema
-  data/loader.ts        + customers.json / orders.json / commerce.json, DEFAULT_COMMERCE
+  data/schema.ts        + addressSchema, customerSchema, orderSchema, commerceSchema, reviewSchema
+  data/loader.ts        + customers.json / orders.json / commerce.json / reviews.json, DEFAULT_COMMERCE
   schema/               directives, common, shop, catalog, content, search, cart,
                         customer, order, checkout, index (merge order)
-  resolvers/            + customer.ts, order.ts, checkout.ts; cart.ts extended
+  resolvers/            + customer.ts, order.ts, checkout.ts, review.ts; cart.ts and metafields.ts extended
   state/money.ts        cents <-> decimal strings
   state/pricing.ts      Discount codes, tax, shipping, order totals from commerce.json
   state/episode_clock.ts EpisodeClock, DEFAULT_EPISODE_START
@@ -111,7 +111,7 @@ src/
   sandbox/control_api.ts createControlApi
   http.ts               + optional `route` hook before GraphQL
   server.ts             EpisodeStore wiring, episode context, 400 on bad header
-tests/contract/         catalog, search, cart (read-only, no new features)
+tests/contract/         catalog, search, cart (read-only, no new features); later discount, reviews
 AGENTS.md               template guide
 ```
 
