@@ -4,7 +4,7 @@
 
 import type { Task } from '@shop-gym/core';
 
-import { type SeedContext, makeTaskId, skillRng } from './context.js';
+import { type SeedContext, makeTaskId, personaName, skillRng } from './context.js';
 
 export const SKILL = 'account';
 
@@ -21,8 +21,8 @@ export function generate(ctx: SeedContext, count: number): Task[] {
       shop: ctx.shop,
       skill: SKILL,
       goal:
-        'You are already signed in. Open your account page and report the email address on ' +
-        'the account and the city of your default shipping address.',
+        `You are already signed in as ${personaName(customer)}. Open your account page and ` +
+        'report the email address on the account and the city of your default shipping address.',
       setup: { login: String(customer.id) },
       eval: [{ type: 'string_match', mustInclude: [customer.email, city] }],
       source: 'seed',

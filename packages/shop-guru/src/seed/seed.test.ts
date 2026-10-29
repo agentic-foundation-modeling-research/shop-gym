@@ -60,10 +60,16 @@ describe('generateSeedTasks', () => {
 
   it('logs checkout tasks in as the persona with the variant in the cart', () => {
     const [task] = generateSeedTasks(ctx, { checkout: 1 });
+    const login = task?.setup?.login;
     expect(task?.setup).toEqual({
-      login: '1',
+      login: expect.any(String),
       cart: [{ variantId: expect.any(Number), quantity: 1 }],
     });
-    expect(task?.eval[0]).toMatchObject({ type: 'state_check', path: '/orders', match: 'some' });
+    expect(task?.eval[0]).toMatchObject({
+      type: 'state_check',
+      path: '/orders',
+      match: 'some',
+      value: { customerId: `gid://shopify/Customer/${login}` },
+    });
   });
 });

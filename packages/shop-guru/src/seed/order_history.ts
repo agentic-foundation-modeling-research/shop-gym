@@ -5,7 +5,7 @@
 
 import type { Task } from '@shop-gym/core';
 
-import { type SeedContext, makeTaskId, skillRng } from './context.js';
+import { type SeedContext, makeTaskId, personaName, skillRng } from './context.js';
 
 export const SKILL = 'order_history';
 
@@ -23,8 +23,8 @@ export function generate(ctx: SeedContext, count: number): Task[] {
       shop: ctx.shop,
       skill: SKILL,
       goal:
-        'You are already signed in. Open your order history and report the order number and ' +
-        'the total amount paid for your most recent order.',
+        `You are already signed in as ${personaName(customer)}. Open your order history and ` +
+        'report the order number and the total amount paid for your most recent order.',
       setup: { login: String(customer.id) },
       eval: [{ type: 'string_match', mustInclude: [String(latest.id), latest.total_price] }],
       source: 'seed',
