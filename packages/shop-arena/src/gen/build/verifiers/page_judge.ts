@@ -14,6 +14,8 @@ import { type LlmClient, type ModelRef, completeJson } from '@shop-gym/agent';
 import type { BrowserSession } from '@shop-gym/browser';
 import { z } from 'zod';
 
+import { parseManualSections } from '../../manual_merge/prose.js';
+import { STANDARD_PART_FILE } from '../../manual_merge/standard.js';
 import { globToRegExp } from '../owned_files.js';
 import type { PageBucket } from './task_routes.js';
 
@@ -241,7 +243,7 @@ const BUCKET_CAPABILITY_GLOBS: Readonly<Record<PageBucket, readonly string[]>> =
   account: ['account', 'account.*'],
 };
 
-/** Manual part file names containing one of these words are shown to the judge. */
+/** Cut Sub-manual file names containing one of these words are shown to the judge. */
 const BUCKET_MANUAL_WORDS: Readonly<Record<PageBucket, readonly string[]>> = {
   homepage: ['home', 'brand', 'theme'],
   navigation: ['nav', 'header', 'footer', 'menu', 'theme'],
@@ -252,12 +254,24 @@ const BUCKET_MANUAL_WORDS: Readonly<Record<PageBucket, readonly string[]>> = {
   account: ['account', 'order', 'login'],
 };
 
+/** H2 sections of the Standard sub-manual (`parts/standard.md`) shown to the judge. */
+const BUCKET_STANDARD_SECTIONS: Readonly<Record<PageBucket, readonly string[]>> = {
+  homepage: [],
+  navigation: [],
+  collections: [],
+  product: [],
+  cart_search: [],
+  info_pages: [],
+  account: ['Account'],
+};
+
 /**
  * The capabilities slice and manual excerpt for `buckets`.
  *
  * Reads `<manualDir>/capabilities.json` (top-level keys filtered by the
- * bucket globs; the whole document when no key matches) and
- * `<manualDir>/parts/*.md` whose names mention the buckets. Both are
+ * bucket globs; the whole document when no key matches), the cut
+ * `<manualDir>/parts/*.md` whose names mention the buckets, and the
+ * buckets' sections of the Standard sub-manual `parts/standard.md`. All are
  * optional: missing files yield empty strings.
  */
 export async function judgeContext(
@@ -294,14 +308,36 @@ async function manualExcerpt(partsDir: string, buckets: readonly PageBucket[]): 
   const names = await fs.readdir(partsDir).catch(() => [] as string[]);
   const words = buckets.flatMap((b) => BUCKET_MANUAL_WORDS[b]);
   const chosen = names
-    .filter((name) => name.endsWith('.md') && words.some((w) => name.toLowerCase().includes(w)))
+    .filter(
+      (name) =>
+        name.endsWith('.md') &&
+        name !== STANDARD_PART_FILE &&
+        words.some((w) => name.toLowerCase().includes(w)),
+    )
     .sort();
   const parts = await Promise.all(
     chosen.map(
       async (name) => `### ${name}\n\n${await fs.readFile(path.join(partsDir, name), 'utf-8')}`,
     ),
   );
-  return truncate(parts.join('\n\n'), MANUAL_EXCERPT_CHARS);
+  const standard = await standardSections(path.join(partsDir, STANDARD_PART_FILE), buckets);
+  return truncate([...parts, ...standard].join('\n\n'), MANUAL_EXCERPT_CHARS);
+}
+
+async function standardSections(file: string, buckets: readonly PageBucket[]): Promise<string[]> {
+  const names = [...new Set(buckets.flatMap((b) => BUCKET_STANDARD_SECTIONS[b]))];
+  if (names.length === 0) {
+    return [];
+  }
+  const text = await fs.readFile(file, 'utf-8').catch(() => undefined);
+  if (text === undefined) {
+    return [];
+  }
+  const sections = parseManualSections(text);
+  return names.flatMap((name) => {
+    const body = sections.get(name);
+    return body === undefined ? [] : [`### ${STANDARD_PART_FILE} - ${name}\n\n${body}`];
+  });
 }
 
 function truncate(text: string, limit: number): string {

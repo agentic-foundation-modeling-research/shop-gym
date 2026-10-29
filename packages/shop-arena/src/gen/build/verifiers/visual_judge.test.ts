@@ -21,6 +21,7 @@ import { loadCredentials } from '@shop-gym/core';
 import type { VerifierContext } from '@shop-gym/harness';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { STANDARD_PART_FILE, STANDARD_SUB_MANUAL_PATH } from '../../manual_merge/standard.js';
 import { defaultBackendTemplateDir } from '../seed.js';
 import { judgeContext, routeSlug } from './page_judge.js';
 import { type RetryBudgetState, VISUAL_BUDGET_FILE, visualJudgeVerifier } from './visual_judge.js';
@@ -95,6 +96,7 @@ beforeAll(async () => {
   );
   await fs.writeFile(path.join(manualDir, 'parts', 'homepage.md'), '# Homepage\nHero then grid.\n');
   await fs.writeFile(path.join(manualDir, 'parts', 'cart.md'), '# Cart\nDrawer-less.\n');
+  await fs.copyFile(STANDARD_SUB_MANUAL_PATH, path.join(manualDir, 'parts', STANDARD_PART_FILE));
 });
 
 afterAll(async () => {
@@ -118,6 +120,17 @@ describe('judgeContext', () => {
     expect(context.manual).toContain('Hero then grid');
     expect(context.manual).not.toContain('Drawer-less');
     expect(await judgeContext(undefined, ['homepage'])).toEqual({ capabilities: '', manual: '' });
+  });
+
+  it('gives account pages the Account section of the Standard sub-manual only', async () => {
+    const account = await judgeContext(manualDir, ['account']);
+    expect(account.manual).toContain('"Forgot your password?"');
+    expect(account.manual).toContain('"Order history"');
+    expect(account.manual).not.toContain('"Enter a valid discount code"');
+    expect(account.manual).not.toContain('Drawer-less');
+    expect((await judgeContext(manualDir, ['homepage'])).manual).not.toContain(
+      'Forgot your password?',
+    );
   });
 
   it('names screenshots after the route', () => {

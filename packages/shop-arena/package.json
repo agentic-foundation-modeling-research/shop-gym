@@ -21,7 +21,7 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp -R src/explore/prompts dist/explore/ && cp -R src/gen/build/prompts dist/gen/build/ && cp -R src/gen/build/verifiers/prompts dist/gen/build/verifiers/ && cp -R src/gen/manual_merge/prompts dist/gen/manual_merge/ && cp -R src/gen/data_synth/prompts dist/gen/data_synth/ && cp src/gen/brands/fake_brands.json dist/gen/brands/",
+    "build": "tsc -p tsconfig.json && cp -R src/explore/prompts dist/explore/ && cp -R src/gen/build/prompts dist/gen/build/ && cp -R src/gen/build/verifiers/prompts dist/gen/build/verifiers/ && cp -R src/gen/manual_merge/prompts dist/gen/manual_merge/ && cp src/gen/manual_merge/standard_sub_manual.md dist/gen/manual_merge/ && cp -R src/gen/data_synth/prompts dist/gen/data_synth/ && cp src/gen/brands/fake_brands.json dist/gen/brands/",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -5,7 +5,8 @@
  *
  * A single manual is copied byte for byte and split; several manuals are
  * merged (deterministic capability rules with LLM tiebreaks, LLM prose
- * merge per shared section, numeric stats merge).
+ * merge per shared section, numeric stats merge). Every shop also gets the
+ * checked-in Standard sub-manual as `parts/standard.md`, unchanged.
  */
 
 import * as fs from 'node:fs/promises';
@@ -23,6 +24,7 @@ import { type LlmCall, completeText, loadPrompt } from '../llm.js';
 import { type MergeConflict, type Tiebreaker, mergeCapabilities } from './capabilities.js';
 import { mergeManualProse, seedBlocks } from './prose.js';
 import { MANUAL_PARTS, splitManual } from './split.js';
+import { STANDARD_PART_FILE, STANDARD_SUB_MANUAL_PATH } from './standard.js';
 import { mergeStats, statsSchema } from './stats.js';
 
 export {
@@ -140,6 +142,7 @@ export async function runManualMerge(ctx: StepContext<GenContext>): Promise<void
   for (const part of MANUAL_PARTS) {
     await writeTextFile(path.join(manualDir, 'parts', `${part}.md`), parts[part]);
   }
+  await fs.copyFile(STANDARD_SUB_MANUAL_PATH, path.join(manualDir, 'parts', STANDARD_PART_FILE));
   const manifest: ManualManifest = {
     schemaVersion: 1,
     seeds: ctx.context.manualDirs,
@@ -158,7 +161,10 @@ export async function runManualMerge(ctx: StepContext<GenContext>): Promise<void
 export function manualMergeStep(manualDirs: readonly string[]): Step<GenContext> {
   return {
     id: 'manual_merge',
-    inputs: manualDirs.flatMap((dir) => SEED_FILES.map((name) => path.join(dir, name))),
+    inputs: [
+      ...manualDirs.flatMap((dir) => SEED_FILES.map((name) => path.join(dir, name))),
+      STANDARD_SUB_MANUAL_PATH,
+    ],
     outputs: [MANUAL_DIR],
     run: runManualMerge,
   };
