@@ -4,7 +4,9 @@
  * plan-exec loop with the build prompts, the agent tools and the verifier
  * set. The storefront sidecar is built and started by the first storefront
  * verifier (or `screenshot_page` call) that needs it and restarted when the
- * copy changes.
+ * copy changes. The backend sidecar is brought up to date with the agent's
+ * edits before each `run_command`, `screenshot_page` and verifier that talks
+ * to it.
  *
  * ```
  * <runDir>/
@@ -118,7 +120,14 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     ...(options.storefrontLaunch !== undefined ? { launch: options.storefrontLaunch } : {}),
   });
   const agentTools = buildAgentTools({
-    target: { url: storefront.url, prepare: () => storefront.ensureCurrent() },
+    target: {
+      url: storefront.url,
+      prepare: async () => {
+        await sidecar.ensureCurrent();
+        await storefront.ensureCurrent();
+      },
+    },
+    beforeCommand: () => sidecar.ensureCurrent(),
     ...(options.commandRunner !== undefined ? { runner: options.commandRunner } : {}),
   });
   const config: PlanExecLoopConfig = {
@@ -177,12 +186,7 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
       {
         ...config,
         verifiers,
-        onEvent: (iterId, event) => {
-          options.onEvent?.(iterId, event);
-          if (event.kind === 'message' && event.role === 'assistant' && event.stopReason) {
-            void sidecar.restartIfChanged();
-          }
-        },
+        ...(options.onEvent !== undefined ? { onEvent: options.onEvent } : {}),
       },
       options.runtime,
       { force: existing === undefined || options.force === true },

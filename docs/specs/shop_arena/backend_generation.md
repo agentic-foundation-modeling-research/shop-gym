@@ -64,9 +64,14 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
   schema change in `gen_backend` can break queries the storefront already
   ships. It is skipped (pass) only when no GraphQL document exists.
 - **The sidecar restarts on backend changes, not on every iteration.**
-  `BackendSidecar.restartIfChanged()` hashes `artifact/backend/src` plus
-  `package.json`; it is called at the end of every assistant turn and again
-  immediately before `data_in_use` introspects the schema.
+  `BackendSidecar.ensureCurrent()` hashes `artifact/backend/src` plus
+  `package.json` and restarts when the digest moved, or launches again when
+  the last launch failed. It is awaited before every `run_command`, before
+  `screenshot_page` and the storefront verifiers bring up the storefront,
+  and before `data_in_use` introspects the schema. A failed launch is
+  reported to the agent (a `Warning:` line above the `run_command` output,
+  or a failing verifier), and the next call retries, so a fixed edit brings
+  the sidecar back. Outside `start()` / `stop()` the call is a no-op.
 - **`sandbox_contract` runs the template's contract suite on the backend
   fixture**, because `tests/contract/helpers.ts` hardcodes
   `tests/fixtures/sandbox_shop_v0`. Running it against the shop's own
@@ -104,7 +109,7 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
 packages/shop-arena/src/gen/build/
   build_loop.ts        runBuildLoop(options): seed, sidecar, verifiers, runPlanExecLoop
   seed.ts              seedTemplate / seedBackend / templateFingerprint / template.json
-  sidecar.ts           BackendSidecar (start, stop, restartIfChanged), freePort
+  sidecar.ts           BackendSidecar (start, stop, ensureCurrent), freePort
   owned_files.ts       glob table + ownedFileViolations(taskId, changedPaths)
   prompts.ts           loadBuildPrompts({ backendUrl, genBackend }), renderPlaceholders
   prompts/             agents.md, planner.md, execute.md (plain markdown)
@@ -151,7 +156,7 @@ from the workspace root.
 
 ### 5.4 Sidecar
 
-`BackendSidecar` serialises `start`, `stop` and `restartIfChanged` through
+`BackendSidecar` serialises `start`, `stop` and `ensureCurrent` through
 one promise chain. The default launcher spawns
 `node --import tsx src/cli.ts <dataDir> <port>` with cwd `artifact/backend`,
 pipes both streams into `sidecar.log`, and polls `/health` every 100 ms
@@ -193,8 +198,8 @@ feedback is truncated to 1500 characters per stream.
 `runBuildLoop` is thin: load prompts, create the workspace (fresh) or read
 `build.json` (resume), seed both templates, write `.env` and `build.json`,
 start the sidecar, prime `owned_files`, run `runPlanExecLoop` with the
-verifier list and an `onEvent` hook that calls `restartIfChanged()` after
-each assistant turn, and stop the sidecar in `finally`.
+verifier list, and stop the sidecar in `finally`. The agent tools and the
+storefront verifier targets await `ensureCurrent()` themselves.
 
 ## 6. Alternatives
 
@@ -212,7 +217,7 @@ each assistant turn, and stop the sidecar in `finally`.
 | # | Item | Status |
 | --- | --- | --- |
 | 1 | `seed.ts` (seedTemplate, seedBackend, templateFingerprint) | Done |
-| 2 | `sidecar.ts` (BackendSidecar, restartIfChanged) | Done |
+| 2 | `sidecar.ts` (BackendSidecar, ensureCurrent) | Done |
 | 3 | Prompts with `gen_backend` + owned-file table, `prompts.ts` | Done |
 | 4 | `owned_files.ts` + `OwnedFilesVerifier` | Done |
 | 5 | `backend_typecheck`, `backend_test`, `sandbox_contract`, `data_in_use` | Done |

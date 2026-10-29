@@ -59,7 +59,10 @@ export function buildVerifiers(options: BuildVerifierOptions): Verifier[] {
     verifiers.push(
       storefrontTypecheckVerifier(options.runner),
       storefrontBuildVerifier(options.runner),
-      routes200Verifier({ target: storefrontTarget(storefront), dataDir: storefront.dataDir }),
+      routes200Verifier({
+        target: storefrontTarget(storefront, options.sidecar),
+        dataDir: storefront.dataDir,
+      }),
     );
   }
   if (options.genBackend) {
@@ -72,11 +75,11 @@ export function buildVerifiers(options: BuildVerifierOptions): Verifier[] {
   verifiers.push(
     dataInUseVerifier({
       introspect: options.introspect ?? introspectSidecar(options.sidecar.url),
-      beforeIntrospect: () => options.sidecar.restartIfChanged(),
+      beforeIntrospect: () => options.sidecar.ensureCurrent(),
     }),
   );
   if (storefront !== undefined) {
-    const target = storefrontTarget(storefront);
+    const target = storefrontTarget(storefront, options.sidecar);
     verifiers.push(
       navCoverageVerifier({ target, dataDir: storefront.dataDir }),
       cartConformanceVerifier({
@@ -100,11 +103,20 @@ export function buildVerifiers(options: BuildVerifierOptions): Verifier[] {
   return verifiers;
 }
 
-/** Point the HTTP verifiers at the sidecar; start or restart it before each check. */
-function storefrontTarget(options: StorefrontVerifierOptions): StorefrontTarget {
+/**
+ * Point the HTTP verifiers at the storefront sidecar. Before each check, bring
+ * the backend it renders from up to date, then start or rebuild the storefront.
+ */
+function storefrontTarget(
+  options: StorefrontVerifierOptions,
+  backend: BackendSidecar,
+): StorefrontTarget {
   return {
     url: options.sidecar.url,
-    prepare: () => options.sidecar.ensureCurrent(),
+    prepare: async () => {
+      await backend.ensureCurrent();
+      await options.sidecar.ensureCurrent();
+    },
   };
 }
 

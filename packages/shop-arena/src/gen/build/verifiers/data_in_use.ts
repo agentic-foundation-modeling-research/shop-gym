@@ -185,7 +185,7 @@ function collectFragments(
 
 export interface DataInUseOptions {
   readonly introspect: SchemaIntrospector;
-  /** Awaited before introspection, e.g. `sidecar.restartIfChanged`. */
+  /** Awaited before introspection, e.g. `sidecar.ensureCurrent`. */
   readonly beforeIntrospect?: () => Promise<unknown>;
 }
 

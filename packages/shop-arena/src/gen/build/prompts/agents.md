@@ -32,8 +32,10 @@ Build a working storefront on top of the inputs you already have:
 
 When backend generation is enabled, the `gen_backend` task runs first and may
 extend the backend's schema, resolvers and state so the storefront has the
-operations it needs. The sidecar is restarted automatically after any
-iteration that changes `artifact/backend/`.
+operations it needs. When `artifact/backend/` changed, the sidecar restarts
+automatically before your next `run_command` or `screenshot_page` and before
+the verifiers run. If it cannot start, the `run_command` output begins with a
+`Warning:` line that names `sidecar.log`; fix the backend before you continue.
 
 If a tradeoff appears between "more features" and "every verifier passes",
 pick the latter.
