@@ -89,7 +89,8 @@ describe('runDataSynth', () => {
     const orders = datasetSchema.ordersFileSchema.parse(
       await readJson(path.join(dataDir, 'orders.json')),
     );
-    expect(orders.length).toBeGreaterThanOrEqual(3);
+    expect(orders).toHaveLength(15);
+    expect(orders.some((o) => o.email === 'ana.silva@example.com')).toBe(false);
     const identity = (await readJson(path.join(shopDir, 'identity.json'))) as { name: string };
     const store = datasetSchema.storeSchema.parse(await readJson(path.join(dataDir, 'store.json')));
     expect(store.name).toBe(identity.name);
@@ -127,6 +128,21 @@ describe('runDataSynth', () => {
     expect(first.requests.length).toBeGreaterThan(8);
   });
 
+  it('gives the same Personas and orders on a fresh run', async () => {
+    const dataFiles = () =>
+      Promise.all(
+        ['customers.json', 'orders.json'].map((f) =>
+          fs.readFile(path.join(shopDir, 'data', f), 'utf-8'),
+        ),
+      );
+    await runDataSynth(stepContext(new ScriptedSynthLlm()));
+    const before = await dataFiles();
+    await fs.rm(path.join(shopDir, 'data'), { recursive: true });
+    await fs.rm(path.join(shopDir, '.shop_gen'), { recursive: true });
+    await runDataSynth(stepContext(new ScriptedSynthLlm()));
+    expect(await dataFiles()).toEqual(before);
+  });
+
   it('resumes synth_product_details per collection', async () => {
     await runDataSynth(stepContext(new ScriptedSynthLlm()));
     await fs.rm(path.join(shopDir, 'data'), { recursive: true });
@@ -156,7 +172,9 @@ describe('runDataSynth', () => {
   it('retries Personas when fewer than two have more than one address', async () => {
     const llm = new ScriptedSynthLlm({ singleAddressFirst: true });
     await runDataSynth(stepContext(llm));
-    const personaPrompts = llm.requests.filter((r) => String(r.prompt).includes('customer personas'));
+    const personaPrompts = llm.requests.filter((r) =>
+      String(r.prompt).includes('customer personas'),
+    );
     expect(personaPrompts).toHaveLength(2);
     expect(String(personaPrompts[1]?.prompt)).toContain(
       'need at least 2 personas with 2 or more addresses, got 0',
@@ -165,8 +183,17 @@ describe('runDataSynth', () => {
 });
 
 describe('synthOrders', () => {
-  it('derives totals from commerce rules deterministically', () => {
-    const product = {
+  const variant = {
+    sku: null,
+    compare_at_price: null,
+    available: true,
+    option1: null,
+    option2: null,
+    option3: null,
+    requires_shipping: true,
+  };
+  const products = [
+    {
       id: 1,
       title: 'Oak Bowl',
       handle: 'oak-bowl',
@@ -180,46 +207,110 @@ describe('synthOrders', () => {
       options: [],
       images: [],
       variants: [
-        {
-          id: 11,
-          title: 'Small',
-          sku: null,
-          price: '20.00',
-          compare_at_price: null,
-          available: true,
-          option1: null,
-          option2: null,
-          option3: null,
-          position: 1,
-          requires_shipping: true,
-        },
+        { ...variant, id: 11, title: 'Small', price: '20.00', position: 1 },
+        { ...variant, id: 12, title: 'Large', price: '45.50', position: 2 },
+        { ...variant, id: 13, title: 'Huge', price: '99.00', position: 3, available: false },
       ],
-    };
-    const customer = {
-      id: 5,
-      email: 'jane.doe@example.com',
-      password: 'x',
-      first_name: 'Jane',
-      last_name: 'Doe',
-      phone: null,
-      accepts_marketing: false,
-      created_at: '',
-      addresses: [],
-      default_address_id: null,
-    };
-    const commerce = {
-      tax_rate: 0.1,
-      free_shipping_threshold: '100.00',
-      shipping_methods: [{ handle: 'standard', title: 'Standard', price: '5.00' }],
-      payment_methods: [{ handle: 'card', title: 'Card' }],
-    };
-    const orders = synthOrders([customer], [product], commerce, 'USD');
-    expect(orders).toEqual(synthOrders([customer], [product], commerce, 'USD'));
+    },
+  ];
+  const address = (id: number, address1: string) => ({
+    id,
+    first_name: null,
+    last_name: null,
+    company: null,
+    address1,
+    address2: null,
+    city: 'Springfield',
+    province: null,
+    province_code: null,
+    country: 'United States',
+    country_code: 'US',
+    zip: '62701',
+    phone: null,
+  });
+  const customers = [1, 2, 3, 4, 5].map((id) => ({
+    id,
+    email: `persona${id}@example.com`,
+    password: 'x',
+    first_name: null,
+    last_name: null,
+    phone: null,
+    accepts_marketing: false,
+    created_at: '',
+    addresses: [address(id * 10, `${id} Home Road`), address(id * 10 + 1, `${id} Work Road`)],
+    default_address_id: id * 10,
+  }));
+  const commerce = {
+    tax_rate: 0.1,
+    free_shipping_threshold: '100.00',
+    shipping_methods: [
+      { handle: 'standard', title: 'Standard', price: '5.00' },
+      { handle: 'express', title: 'Express', price: '15.00' },
+    ],
+    payment_methods: [
+      { handle: 'card', title: 'Card' },
+      { handle: 'paypal', title: 'PayPal' },
+    ],
+    discount_codes: [],
+  };
+  const orders = synthOrders(customers, products, commerce, 'USD');
+
+  it('is the same for the same inputs', () => {
+    expect(synthOrders(customers, products, commerce, 'USD')).toEqual(orders);
+  });
+
+  it('makes 15 orders: none for the last Persona, 1 to 6 for every other', () => {
+    expect(orders).toHaveLength(15);
+    const counts = customers.map((c) => orders.filter((o) => o.customer_id === c.id).length);
+    expect(counts.at(-1)).toBe(0);
+    for (const count of counts.slice(0, -1)) {
+      expect(count).toBeGreaterThanOrEqual(1);
+      expect(count).toBeLessThanOrEqual(6);
+    }
+    expect(orders.every((o) => o.email === `persona${o.customer_id}@example.com`)).toBe(true);
+  });
+
+  it('dates orders in the 12 months before 2026-01-01 and numbers them by date from 1001', () => {
+    expect(orders.map((o) => o.id)).toEqual(Array.from({ length: 15 }, (_, i) => 1001 + i));
+    const dates = orders.map((o) => o.processed_at);
+    expect([...dates].sort()).toEqual(dates);
+    for (const date of dates) {
+      expect(date >= '2025-01-01T00:00:00.000Z' && date < '2026-01-01T00:00:00.000Z').toBe(true);
+    }
+  });
+
+  it('makes most orders paid and shipped, the newest not shipped, one refunded, one partly', () => {
+    const statuses = orders.map((o) => `${o.financial_status}/${o.fulfillment_status}`);
+    expect(statuses.at(-1)).toBe('PAID/UNFULFILLED');
+    expect(statuses.filter((s) => s === 'REFUNDED/FULFILLED')).toHaveLength(1);
+    expect(statuses.filter((s) => s === 'PARTIALLY_REFUNDED/FULFILLED')).toHaveLength(1);
+    expect(statuses.filter((s) => s === 'PAID/FULFILLED')).toHaveLength(12);
+  });
+
+  it('mixes shipping methods, payment methods and saved shipping addresses', () => {
+    expect(new Set(orders.map((o) => o.shipping_method))).toEqual(new Set(['standard', 'express']));
+    expect(new Set(orders.map((o) => o.payment_method))).toEqual(new Set(['card', 'paypal']));
+    const saved = (o: (typeof orders)[number]) =>
+      customers.find((c) => c.id === o.customer_id)?.addresses.map((a) => a.address1) ?? [];
+    expect(orders.every((o) => saved(o).includes(o.shipping_address?.address1 ?? ''))).toBe(true);
+    const lines = new Set(orders.map((o) => o.shipping_address?.address1.split(' ')[1]));
+    expect(lines).toEqual(new Set(['Home', 'Work']));
+  });
+
+  it('buys available variants only and prices orders by the commerce rules', () => {
     for (const o of orders) {
-      const subtotal = o.line_items.reduce((s, li) => s + Number(li.price) * li.quantity, 0);
-      expect(Number(o.subtotal_price)).toBeCloseTo(subtotal);
-      expect(o.total_shipping_price).toBe(subtotal >= 100 ? '0.00' : '5.00');
-      expect(Number(o.total_tax)).toBeCloseTo(Math.round(subtotal * 10) / 100);
+      expect(o.line_items.every((li) => li.variant_id !== 13)).toBe(true);
+      const subtotal = o.line_items.reduce(
+        (s, li) => s + Math.round(Number(li.price) * 100) * li.quantity,
+        0,
+      );
+      const method = o.shipping_method === 'express' ? 1500 : 500;
+      const shipping = subtotal >= 10000 ? 0 : method;
+      const tax = Math.round(subtotal * 0.1);
+      expect([o.subtotal_price, o.total_shipping_price, o.total_tax, o.total_price]).toEqual(
+        [subtotal, shipping, tax, subtotal + shipping + tax].map((c) => (c / 100).toFixed(2)),
+      );
+      expect(o.discount_code).toBeNull();
       expect(datasetSchema.orderSchema.safeParse(o).success).toBe(true);
     }
   });

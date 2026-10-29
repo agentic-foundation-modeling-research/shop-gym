@@ -59,10 +59,7 @@ export class ScriptedSynthLlm implements LlmClient {
   }
 
   private reply(prompt: string): unknown {
-    const body = prompt.replace(
-      /^[\s\S]*?Re-emit the JSON value from scratch[^\n]*\n\n/,
-      '',
-    );
+    const body = prompt.replace(/^[\s\S]*?Re-emit the JSON value from scratch[^\n]*\n\n/, '');
     const first = body.split('\n')[0] ?? '';
     const blocks = jsonBlocks(body);
     if (first.includes('brand identity')) {
