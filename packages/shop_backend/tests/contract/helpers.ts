@@ -31,10 +31,11 @@ export interface ContractServer {
   snapshot(episode: string): Promise<StateSnapshot>;
 }
 
-export async function startContractServer(): Promise<ContractServer> {
+/** Start a server over the Dataset in `dataDir`, the committed fixture by default. */
+export async function startContractServer(dataDir = FIXTURE_DIR): Promise<ContractServer> {
   const server = createSandboxServer({
-    data: loadShopData(FIXTURE_DIR),
-    dataDir: FIXTURE_DIR,
+    data: loadShopData(dataDir),
+    dataDir,
     port: 0,
   });
   await server.listen();

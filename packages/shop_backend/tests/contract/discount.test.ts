@@ -5,9 +5,13 @@
  * uses its own episode so carts and orders do not leak between tests.
  */
 
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { type ContractServer, startContractServer } from './helpers.js';
+import { type ContractServer, FIXTURE_DIR, startContractServer } from './helpers.js';
 
 // $19.99 each; no inventory entry, so any quantity is in stock.
 const UNTRACKED_VARIANT = 'gid://shopify/ProductVariant/47242720215214';
@@ -309,6 +313,71 @@ describe('checkoutComplete with a Discount code', () => {
     expect(after.orders.find((o) => o.name === order.name)).toMatchObject({
       discountCode: null,
       discountAmount: '0.00',
+    });
+  });
+});
+
+describe('a seeded order with a Discount code', () => {
+  let seeded: ContractServer;
+  let dataDir: string;
+
+  beforeAll(async () => {
+    // The fixture order #1001 bought one 19.99 item; here it used WELCOME10.
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'discount-seeded-'));
+    fs.cpSync(FIXTURE_DIR, dataDir, { recursive: true });
+    const ordersPath = path.join(dataDir, 'orders.json');
+    const orders = JSON.parse(fs.readFileSync(ordersPath, 'utf8')) as Record<string, unknown>[];
+    const [order] = orders;
+    if (order === undefined) throw new Error('fixture has no orders');
+    Object.assign(order, {
+      discount_code: 'WELCOME10',
+      discount_amount: '2.00',
+      total_price: '27.98',
+    });
+    fs.writeFileSync(ordersPath, JSON.stringify(orders));
+    seeded = await startContractServer(dataDir);
+  });
+
+  afterAll(async () => {
+    await seeded.server.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('shows the code and amount on the order and in the StateSnapshot', async () => {
+    const episode = 'discount-seeded-code';
+    const login = await seeded.query<{
+      customerAccessTokenCreate: { customerAccessToken: { accessToken: string } | null };
+    }>(
+      /* GraphQL */ `mutation {
+        customerAccessTokenCreate(input: { email: "jane.doe@example.com", password: "password123" }) {
+          customerAccessToken { accessToken }
+        }
+      }`,
+      episode,
+    );
+    const token = login.data?.customerAccessTokenCreate.customerAccessToken?.accessToken;
+    if (token === undefined) throw new Error(JSON.stringify(login));
+
+    const result = await seeded.query<{
+      customer: { orders: { nodes: readonly Pick<OrderShape, 'name' | 'discountCode'>[] } };
+    }>(
+      `{ customer(customerAccessToken: "${token}") {
+        orders(first: 5) { nodes { name discountCode { code targetType amount { amount } } } }
+      } }`,
+      episode,
+    );
+
+    expect(result.data?.customer.orders.nodes).toEqual([
+      {
+        name: '#1001',
+        discountCode: { code: 'WELCOME10', targetType: 'LINE_ITEM', amount: { amount: '2.00' } },
+      },
+    ]);
+    const snapshot = await seeded.snapshot(episode);
+    expect(snapshot.orders.find((o) => o.name === '#1001')).toMatchObject({
+      discountCode: 'WELCOME10',
+      discountAmount: '2.00',
+      totalPrice: '27.98',
     });
   });
 });
