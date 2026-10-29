@@ -1,5 +1,5 @@
 import { Form, Link, NavLink } from 'react-router';
-import { Price } from '~/components/storefront';
+import { DiscountRow, Price } from '~/components/storefront';
 import type { MailingAddress, OrderDetail, OrderSummary } from '~/lib/types';
 
 export function AccountNav() {
@@ -146,6 +146,7 @@ export function OrderDetails({ order }: { readonly order: OrderDetail }) {
             <Price money={order.subtotalPrice} />
           </div>
         ) : null}
+        {order.discountCode ? <DiscountRow discount={order.discountCode} /> : null}
         <div className="cart-total-row">
           <span>Shipping</span>
           <Price money={order.totalShippingPrice} />

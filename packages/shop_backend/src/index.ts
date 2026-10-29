@@ -24,6 +24,8 @@ export type {
   Blog,
   Commerce,
   Customer,
+  DiscountCode,
+  DiscountCodeKind,
   InventoryEntry,
   InventoryFile,
   Collection,

@@ -189,7 +189,34 @@ describe('loadShopData', () => {
       free_shipping_threshold: null,
       shipping_methods: [],
       payment_methods: [],
+      discount_codes: [],
     });
+  });
+
+  it('loads the Discount codes and gives an order without a code no discount', () => {
+    const data = loadShopData(FIXTURE_DIR);
+    expect(data.commerce.discount_codes.map((c) => [c.code, c.kind])).toEqual([
+      ['WELCOME10', 'percentage'],
+      ['SAVE5', 'fixed_amount'],
+      ['FREESHIP', 'free_shipping'],
+    ]);
+    expect(data.orders[0]).toMatchObject({ discount_code: null, discount_amount: '0.00' });
+  });
+
+  it('loads the Discount code and discount amount of a seeded order', () => {
+    tmpDir = copyFixture();
+    const orders = JSON.parse(fs.readFileSync(path.join(tmpDir, 'orders.json'), 'utf8')) as {
+      discount_code?: string;
+      discount_amount?: string;
+    }[];
+    const [order] = orders;
+    if (order === undefined) throw new Error('fixture has no orders');
+    order.discount_code = 'FREESHIP';
+    order.discount_amount = '9.99';
+    fs.writeFileSync(path.join(tmpDir, 'orders.json'), JSON.stringify(orders));
+
+    const data = loadShopData(tmpDir);
+    expect(data.orders[0]).toMatchObject({ discount_code: 'FREESHIP', discount_amount: '9.99' });
   });
 
   it('throws InvalidDatasetError when an order line quantity is not a positive integer', () => {

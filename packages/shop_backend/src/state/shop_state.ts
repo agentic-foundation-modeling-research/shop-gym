@@ -28,7 +28,7 @@ import type {
 } from '../data/types.js';
 import { type CartState, CartStore } from '../resolvers/cart.js';
 import { EpisodeClock } from './episode_clock.js';
-import { computeOrderTotals } from './pricing.js';
+import { computeOrderTotals, priceDiscountCode, subtotalCents } from './pricing.js';
 
 // ── Records ────────────────────────────────────────────────────────────────
 
@@ -105,10 +105,15 @@ export interface OrderRecord {
   readonly shippingAddress: AddressRecord | null;
   readonly shippingMethod: string | null;
   readonly paymentMethod: string | null;
+  /** Merchandise subtotal before the discount. */
   readonly subtotalPrice: string;
   readonly totalShippingPrice: string;
   readonly totalTax: string;
   readonly totalPrice: string;
+  /** Discount code applied at checkout, or `null`. */
+  readonly discountCode: string | null;
+  /** Merchandise discount, or the shipping charge waived by a free-shipping code. */
+  readonly discountAmount: string;
 }
 
 /** Inventory entry whose live quantity differs from the loaded dataset. */
@@ -272,10 +277,23 @@ export class ShopState {
     return [...this.orders.values()];
   }
 
+  /** The cart's Discount code when it applies to the cart now, else `null`. */
+  appliedDiscountCode(cart: CartState): string | null {
+    // A cart holds at most one Discount code.
+    const [code] = cart.discountCodes;
+    if (code === undefined) return null;
+    const lines = cart.lines.flatMap((line) => {
+      const lookup = this.base.variantsByGid.get(line.merchandiseId);
+      return lookup === undefined ? [] : [{ price: lookup.variant.price, quantity: line.quantity }];
+    });
+    return priceDiscountCode(code, subtotalCents(lines), this.commerce)?.discountCode.code ?? null;
+  }
+
   /**
    * Convert a cart into an order. Checks every line against live inventory
    * first and commits nothing on a shortfall. On success the inventory is
-   * decremented, the order is stored, and the cart is removed.
+   * decremented, the order is stored with the cart's Discount code when the
+   * code applies, and the cart is removed.
    */
   placeOrder(input: PlaceOrderInput): PlaceOrderResult {
     const { cart } = input;
@@ -309,7 +327,13 @@ export class ShopState {
       shippingAddress: this.allocateAddress(input.shippingAddress),
       shippingMethod: input.shippingMethod.handle,
       paymentMethod: input.paymentMethod.handle,
-      ...computeOrderTotals(lineItems, input.shippingMethod, this.commerce),
+      // A cart holds at most one Discount code.
+      ...computeOrderTotals(
+        lineItems,
+        input.shippingMethod,
+        this.commerce,
+        cart.discountCodes[0] ?? null,
+      ),
     };
     this.orders.set(order.id, order);
     this.carts.delete(cart.id);
@@ -389,6 +413,8 @@ export class ShopState {
         totalShippingPrice: order.total_shipping_price,
         totalTax: order.total_tax,
         totalPrice: order.total_price,
+        discountCode: order.discount_code,
+        discountAmount: order.discount_amount,
       });
       this.counters.order = Math.max(this.counters.order, order.id);
       if (shippingAddress !== null) {

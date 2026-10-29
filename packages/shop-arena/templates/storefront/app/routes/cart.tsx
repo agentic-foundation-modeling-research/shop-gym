@@ -2,13 +2,14 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
   redirect,
+  useActionData,
   useLoaderData,
 } from 'react-router';
 import { CartLineItem, CartSummary } from '~/components/storefront';
 import { commitCartId, getAppContext, getCartId } from '~/lib/context';
+import { applyDiscountCode, removeDiscountCode } from '~/lib/discount';
 import {
   CART_CREATE_MUTATION,
-  CART_DISCOUNT_CODES_UPDATE_MUTATION,
   CART_LINES_ADD_MUTATION,
   CART_LINES_REMOVE_MUTATION,
   CART_LINES_UPDATE_MUTATION,
@@ -40,10 +41,6 @@ interface CartLinesUpdateData {
 
 interface CartLinesRemoveData {
   readonly cartLinesRemove: CartMutationPayload;
-}
-
-interface CartDiscountCodesUpdateData {
-  readonly cartDiscountCodesUpdate: CartMutationPayload;
 }
 
 export function meta() {
@@ -89,42 +86,23 @@ export async function action({ context, request }: ActionFunctionArgs) {
     });
   }
 
-  if (intent === 'discount') {
-    const discountCodes = discountCodesField(formData);
-    if (cartId === null) {
-      if (discountCodes.length === 0) return redirect(redirectTo);
-      const cart = (
-        await storefrontQuery<CartCreateData>(appContext, CART_CREATE_MUTATION, {
-          input: { discountCodes },
-        })
-      ).cartCreate.cart;
-      if (!cart) {
-        throw new Response('Cart create did not return a cart.', { status: 502 });
-      }
-      return redirect(redirectTo, {
-        headers: await commitCartId(appContext, cart.id),
-      });
-    }
-    const data = await storefrontQuery<CartDiscountCodesUpdateData>(
-      appContext,
-      CART_DISCOUNT_CODES_UPDATE_MUTATION,
-      {
-        cartId,
-        discountCodes: discountCodes.length > 0 ? discountCodes : null,
-      },
-    );
-    const cart = data.cartDiscountCodesUpdate.cart;
-    if (!cart) {
-      throw new Response('Discount update did not return a cart.', {
-        status: 502,
-      });
-    }
-    return redirect(redirectTo, {
-      headers: await commitCartId(appContext, cart.id),
-    });
+  if (cartId === null) {
+    return redirect(redirectTo);
   }
 
-  if (cartId === null) {
+  if (intent === 'discount') {
+    const applied = await applyDiscountCode(
+      appContext,
+      cartId,
+      optionalStringField(formData, 'discountCode') ?? '',
+    );
+    // A turned-down code renders the cart page with the error, also for the drawer.
+    if (!applied) return { discountRejected: true };
+    return redirect(redirectTo);
+  }
+
+  if (intent === 'discount-remove') {
+    await removeDiscountCode(appContext, cartId);
     return redirect(redirectTo);
   }
 
@@ -166,6 +144,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
 
 export default function CartRoute() {
   const { cart } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
   return (
     <div className="page-width stack">
       <h1>Cart</h1>
@@ -178,7 +157,11 @@ export default function CartRoute() {
               <CartLineItem key={line.id} line={line} />
             ))}
           </ul>
-          <CartSummary cart={cart} layout="page" />
+          <CartSummary
+            cart={cart}
+            layout="page"
+            discountRejected={actionData?.discountRejected === true}
+          />
         </>
       )}
     </div>
@@ -196,20 +179,6 @@ function stringField(formData: FormData, name: string): string {
 function optionalStringField(formData: FormData, name: string): string | null {
   const value = formData.get(name);
   return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
-function discountCodesField(formData: FormData): readonly string[] {
-  const existingCodes = formData
-    .getAll('discountCodes')
-    .filter((value): value is string => typeof value === 'string')
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-  const newCode = optionalStringField(formData, 'discountCode')?.trim();
-  return uniqueCodes(newCode ? [...existingCodes, newCode] : existingCodes);
-}
-
-function uniqueCodes(codes: readonly string[]): readonly string[] {
-  return [...new Set(codes.map((code) => code.toUpperCase()))];
 }
 
 function safeRedirect(raw: string): string {

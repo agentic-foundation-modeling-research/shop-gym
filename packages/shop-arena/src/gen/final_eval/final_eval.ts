@@ -16,7 +16,11 @@ import {
   readDatasetHandles,
   sampleProductHandles,
 } from '../build/verifiers/task_routes.js';
-import { type FunctionalStep, runFunctionalSweep } from './functional_sweep.js';
+import {
+  type FunctionalStep,
+  readSweepDiscountCode,
+  runFunctionalSweep,
+} from './functional_sweep.js';
 import { type VisualPageResult, runVisualSweep } from './visual_sweep.js';
 
 export const FINAL_EVAL_REPORT = 'report.json';
@@ -80,6 +84,7 @@ export async function runFinalEval(options: FinalEvalOptions): Promise<FinalEval
   await fs.mkdir(pagesDir, { recursive: true });
   const handles = await readDatasetHandles(options.dataDir);
   const productHandle = sampleProductHandles(handles, SWEEP_CAPS)[0];
+  const discountCode = await readSweepDiscountCode(options.dataDir);
 
   const visual = await withSession(options, 'final-eval-visual', (session) =>
     runVisualSweep({
@@ -97,7 +102,12 @@ export async function runFinalEval(options: FinalEvalOptions): Promise<FinalEval
   );
   log('final_eval: running the functional sweep');
   const steps = await withSession(options, 'final-eval-functional', (session) =>
-    runFunctionalSweep({ session, storefrontUrl: options.storefrontUrl, productHandle }),
+    runFunctionalSweep({
+      session,
+      storefrontUrl: options.storefrontUrl,
+      productHandle,
+      discountCode,
+    }),
   );
 
   const pages = visual.map((page) => pageReport(page, options.outDir));

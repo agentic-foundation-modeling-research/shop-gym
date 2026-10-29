@@ -60,12 +60,13 @@ describe('runFinalEval', () => {
         'policy',
         'cart',
         'checkout',
+        'thankYou',
         'accountProfile',
         'orderDetail',
       ].sort(),
     );
     expect(report.visual.pages.every((page) => page.status !== 'skipped')).toBe(true);
-    expect(report.visual).toMatchObject({ passed: 9, failed: 1, skipped: 0 });
+    expect(report.visual).toMatchObject({ passed: 10, failed: 1, skipped: 0 });
     const search = report.visual.pages.find((page) => page.name === 'search');
     expect(search).toMatchObject({ status: 'fail', score: 5, httpStatus: 200 });
     expect(search?.screenshots.map((shot) => shot.path)).toEqual([
@@ -74,7 +75,9 @@ describe('runFinalEval', () => {
     ]);
     const orderDetail = report.visual.pages.find((page) => page.name === 'orderDetail');
     expect(orderDetail?.route).toBe('/account/orders/1001');
-    expect(judge.requests).toHaveLength(10);
+    const thankYou = report.visual.pages.find((page) => page.name === 'thankYou');
+    expect(thankYou?.route).toBe('/checkout/confirmation/1001');
+    expect(judge.requests).toHaveLength(11);
 
     expect(report.functional.steps.map((step) => step.name)).toEqual([...FUNCTIONAL_STEP_NAMES]);
     expect(report.functional.steps.map((step) => step.status)).toEqual([
@@ -84,23 +87,28 @@ describe('runFinalEval', () => {
       'pass',
       'pass',
       'pass',
+      'pass',
       'skipped',
     ]);
+    // The fixture's first percent or fixed code with no minimum.
+    expect(
+      report.functional.steps.find((step) => step.name === 'applyDiscountCode')?.detail,
+    ).toContain('WELCOME10');
     expect(report.functional.steps.at(-1)?.detail).toBe('not supported by backend');
-    expect(report.functional).toMatchObject({ passed: 6, failed: 0, skipped: 1 });
+    expect(report.functional).toMatchObject({ passed: 7, failed: 0, skipped: 1 });
     expect(report).toMatchObject({
-      passed: 15,
+      passed: 17,
       failed: 1,
       skipped: 1,
       storefrontUrl,
       model: MODEL,
     });
-    expect(result).toMatchObject({ passed: 15, failed: 1, skipped: 1 });
+    expect(result).toMatchObject({ passed: 17, failed: 1, skipped: 1 });
 
-    expect((await fs.readdir(path.join(outDir, 'pages'))).sort()).toHaveLength(10);
-    expect(await fs.readdir(path.join(outDir, 'screenshots'))).toHaveLength(20);
+    expect((await fs.readdir(path.join(outDir, 'pages'))).sort()).toHaveLength(11);
+    expect(await fs.readdir(path.join(outDir, 'screenshots'))).toHaveLength(22);
     const summary = await fs.readFile(path.join(outDir, 'summary.md'), 'utf-8');
-    expect(summary).toContain('15 passed, 1 failed, 1 skipped');
+    expect(summary).toContain('17 passed, 1 failed, 1 skipped');
     expect(summary).toContain('| search | /search?q=');
     expect(lines.some((line) => line.includes('final_eval: capturing home'))).toBe(true);
   }, 180_000);
@@ -129,12 +137,16 @@ describe('runFinalEval', () => {
         'orderDetail',
         'policy',
         'product',
+        'thankYou',
       ].sort(),
     );
     expect(skipped.find((page) => page.name === 'cart')?.reason).toContain('no product');
     expect(result.report.functional.steps.find((step) => step.name === 'addToCart')?.status).toBe(
       'skipped',
     );
+    expect(
+      result.report.functional.steps.find((step) => step.name === 'applyDiscountCode')?.status,
+    ).toBe('skipped');
     expect(result.report.functional.steps.find((step) => step.name === 'checkout')?.status).toBe(
       'fail',
     );

@@ -167,7 +167,8 @@ export function assembleDataset(d: Drafts): Dataset {
     }
   }
   const customers = d.personas.map((p) => buildCustomer(p, d.identity.country));
-  const commerce = { ...d.commerce };
+  // Discount codes are not synthesized yet; the Dataset has none.
+  const commerce = { ...d.commerce, discount_codes: [] };
   const store = {
     shop_id: stableId('shop', d.identity.name),
     name: d.identity.name,
