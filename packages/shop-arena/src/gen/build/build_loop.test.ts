@@ -251,6 +251,60 @@ describe('runBuildLoop', () => {
     expect(await checkpoints.changedPaths()).toEqual([]);
   });
 
+  it('seeds again after a seed that failed before build.json', async () => {
+    const runDir = path.join(root, 'run');
+    const base = {
+      runDir,
+      seedDir,
+      storefrontTemplateDir: STOREFRONT_TEMPLATE_DIR,
+      backendTemplateDir: defaultBackendTemplateDir(),
+      genBackend: false,
+      model: MODEL,
+      tools: [] as const,
+      maxIters: 1,
+      timeoutMs: 60_000,
+      sidecarLaunch: inProcessLaunch,
+    };
+    const failingInstall: CommandRunner = async (argv, options) =>
+      argv[1] === 'install'
+        ? { exitCode: 1, stdout: '', stderr: 'network down', timedOut: false }
+        : fakeRunner(argv, options);
+    await expect(
+      runBuildLoop({ ...base, runtime: new FakeRuntime([]), commandRunner: failingInstall }),
+    ).rejects.toThrow('network down');
+    await expect(fs.stat(path.join(runDir, BUILD_JSON))).rejects.toThrow();
+
+    const result = await runBuildLoop({
+      ...base,
+      runtime: new FakeRuntime([plannerScript(), { writeFiles: { 'plan.md': PLAN } }]),
+      commandRunner: fakeRunner,
+    });
+    expect(result.planIterCount).toBe(1);
+    await expect(fs.stat(path.join(runDir, BUILD_JSON))).resolves.toBeDefined();
+  });
+
+  it('leaves a non-empty run dir that it did not seed alone', async () => {
+    const runDir = path.join(root, 'run');
+    await fs.mkdir(runDir);
+    await fs.writeFile(path.join(runDir, 'notes.md'), 'keep me\n');
+    await expect(
+      runBuildLoop({
+        runDir,
+        seedDir,
+        storefrontTemplateDir: STOREFRONT_TEMPLATE_DIR,
+        backendTemplateDir: defaultBackendTemplateDir(),
+        genBackend: false,
+        runtime: new FakeRuntime([]),
+        model: MODEL,
+        tools: [],
+        maxIters: 1,
+        commandRunner: fakeRunner,
+        sidecarLaunch: inProcessLaunch,
+      }),
+    ).rejects.toThrow('run_dir is not empty');
+    expect(await fs.readFile(path.join(runDir, 'notes.md'), 'utf-8')).toBe('keep me\n');
+  });
+
   it('resumes a run with the recorded port and flags', async () => {
     const runDir = path.join(root, 'run');
     const base = {

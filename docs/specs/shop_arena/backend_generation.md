@@ -107,7 +107,12 @@ of `v1_1_typescript_redesign.md`, recorded here rather than silently:
   (`genBackend`, `backendPort`, `backendUrl`, both template fingerprints)
   so a resumed run renders byte-identical prompts, and
   `artifact/storefront/.env` (`PUBLIC_STORE_DOMAIN`, `SHOP_BACKEND_URL`)
-  so `pnpm dev` inside the copy talks to the sidecar.
+  so `pnpm dev` inside the copy talks to the sidecar. `build.json` is
+  written last, so a seed that failed (for example in `pnpm install`) leaves
+  none. When `build.json` is missing and `runDir` holds only the workspace
+  layout with an empty `plan.md` and no iterations, `runBuildLoop` removes
+  it and seeds again; any other non-empty `runDir` is refused by the
+  harness as before.
 - Dropped Python behaviour, on purpose: `quality_judge`, `_redo_N` task
   ids, retry-budget annotations, `prompts/fixes/`, the template override
   shim, and the Hydrogen template.
@@ -219,8 +224,8 @@ feedback is truncated to 1500 characters per stream.
 
 ### 5.7 Loop
 
-`runBuildLoop` is thin: load prompts, create the workspace (fresh) or read
-`build.json` (resume), seed both templates, write `.env` and `build.json`,
+`runBuildLoop` is thin: load prompts, create the workspace (fresh, after
+removing an unfinished seed) or read `build.json` (resume), seed both templates, write `.env` and `build.json`,
 open the `artifact/` checkpoints, start the sidecar, run
 `runPlanExecLoop` with the verifier list and an `onIterationEnd` hook that
 commits a kept iteration and rolls back an abandoned one, and stop the
@@ -261,6 +266,7 @@ storefront verifier targets await `ensureCurrent()` themselves.
 | 10 | Contract suite against the shop's own dataset | M4 / M7 follow-up |
 | 11 | `artifact/` git checkpoints; rollback of abandoned iterations | Done |
 | 12 | Two-copy ownership (no storefront slices); `routes_200` on every page | Done |
+| 13 | Seed again after a seed that failed before `build.json` | Done |
 
 ## 8. Appendix
 

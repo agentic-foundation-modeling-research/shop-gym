@@ -25,7 +25,9 @@
  * ```
  *
  * A non-empty `runDir` is resumed: `build.json` supplies the port and flags
- * so the rendered prompts match the originals the harness checks.
+ * so the rendered prompts match the originals the harness checks. A `runDir`
+ * whose seeding failed before `build.json` was written, and that the harness
+ * has not run, is removed and seeded again.
  */
 
 import * as fs from 'node:fs/promises';
@@ -151,6 +153,9 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
 
   let build = existing;
   if (build === undefined) {
+    if (await isUnfinishedSeed(options.runDir)) {
+      await fs.rm(options.runDir, { recursive: true, force: true });
+    }
     await Workspace.create(config);
     const seedOptions =
       options.commandRunner !== undefined ? { runner: options.commandRunner } : {};
@@ -219,6 +224,37 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
 export async function readBuildInfo(runDir: string): Promise<BuildRunInfo | undefined> {
   const raw = await fs.readFile(path.join(runDir, BUILD_JSON), 'utf-8').catch(() => undefined);
   return raw === undefined ? undefined : (JSON.parse(raw) as BuildRunInfo);
+}
+
+/**
+ * True when `runDir` holds only what `Workspace.create` and the seeding step
+ * write, with an empty `plan.md` and no iterations: a seed that stopped before
+ * `build.json`, safe to remove. Any other content is left for
+ * `Workspace.create` to refuse.
+ */
+async function isUnfinishedSeed(runDir: string): Promise<boolean> {
+  const entries = await fs.readdir(runDir).catch(() => undefined);
+  if (entries === undefined || entries.length === 0) {
+    return false;
+  }
+  const layout = new Workspace(runDir);
+  const known = new Set(
+    [
+      layout.agentsMd,
+      layout.plannerPrompt,
+      layout.executePrompt,
+      layout.artifactDir,
+      layout.planMd,
+      layout.itersDir,
+      layout.seedManifestPath,
+    ].map((file) => path.relative(runDir, file).split(path.sep)[0]),
+  );
+  if (!entries.every((entry) => known.has(entry))) {
+    return false;
+  }
+  const plan = await fs.stat(layout.planMd).catch(() => undefined);
+  const iters = await fs.readdir(layout.itersDir).catch(() => undefined);
+  return plan?.isFile() === true && plan.size === 0 && iters?.length === 0;
 }
 
 /** Point the storefront copy at the sidecar; the template's server reads `.env`. */

@@ -184,8 +184,10 @@ console.log(result.finalStatus, result.build.backendUrl);
 
 A run records `build.json` (`genBackend`, `backendPort`, both template
 fingerprints) so resuming with the same `runDir` renders identical
-prompts, and writes `artifact/storefront/.env` pointing
-`PUBLIC_STORE_DOMAIN` at the sidecar. The `sandbox_contract` suite runs
+prompts; a `runDir` whose seeding failed before `build.json` was written
+is removed and seeded again. The run also writes
+`artifact/storefront/.env` pointing `PUBLIC_STORE_DOMAIN` at the
+sidecar. The `sandbox_contract` suite runs
 on the backend fixture (its helpers hardcode the fixture path); the
 read-only drift check runs on the seeded copy. `SHOPGYM_SLOW_TESTS=1
 pnpm test` additionally runs `src/gen/build/build_loop.test.ts` with
