@@ -109,7 +109,7 @@ Nothing in v1.1 reads the Python copy.
 
 | Path | Loader | Action | Backend operations |
 | --- | --- | --- | --- |
-| `/account/login` | redirect to `redirectTo` when already logged in | intent `recover`: `customerRecover`, then the login form with the sent message; else `customerAccessTokenCreate`, then `cartBuyerIdentityUpdate` when a cart exists; sets the cookie | `CustomerRecover`, `CustomerAccessTokenCreate`, `CartBuyerIdentityUpdate`, `Customer` |
+| `/account/login` | redirect to `redirectTo` when already logged in | intent `recover`: `customerRecover`, then the login form with the sent message, or with the backend's errors if there are any; else `customerAccessTokenCreate`, then `cartBuyerIdentityUpdate` when a cart exists; sets the cookie | `CustomerRecover`, `CustomerAccessTokenCreate`, `CartBuyerIdentityUpdate`, `Customer` |
 | `/account/register` | same redirect | `customerCreate`, then the login action's steps | `CustomerCreate`, plus login |
 | `/account/logout` | redirect to `/account` | `customerAccessTokenDelete`, clears the token, redirects to `/` | `CustomerAccessTokenDelete` |
 | `/account` | H1 "Account" with "Log out"; the "Order history" table and "Account details" (default address with phone, "View addresses (<n>)") | - | `Customer`, `CustomerOrders(first: 100)`, `CustomerAddresses` |
@@ -166,10 +166,10 @@ The login and register pages follow the Standard sub-manual: a narrow
 centered column, centered headings and buttons, and floating labels. Login
 has "Email", "Password", the link "Forgot your password?", "Sign in" and
 "Create account". The link opens "Reset your password" in place of the
-login form (a CSS `:target` toggle); its "Submit" sends `customerRecover`,
-and the page then shows the login form with "We've sent you an email with
-a link to update your password." above it, for any email. "Cancel" goes
-back to the login form. Register has "First name", "Last name", "Email",
+login form, with a CSS `:target` toggle. Its "Submit" sends
+`customerRecover`. Then the page shows the login form with "We've sent you
+an email with a link to update your password." above it, for any email.
+"Cancel" goes back to the login form. Register has "First name", "Last name", "Email",
 "Password" and "Create"; a backend error on a field shows under that field
 and in the list under "Please adjust the following:". The form field names
 (`email`, `password`, `firstName`, `lastName`) are the same as before.

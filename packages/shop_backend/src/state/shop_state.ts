@@ -3,9 +3,10 @@
  *
  * One `ShopState` holds everything a shopping session can change: carts,
  * customer accounts and their access-token sessions, password reset
- * requests, orders, and per-variant inventory. It is seeded from `customers.json`, `orders.json`, and
- * `inventory.json` and never touches the dataset it was built from, so any
- * number of episodes can be forked from one `SandboxShopData`.
+ * requests, orders, and per-variant inventory. It is seeded from
+ * `customers.json`, `orders.json`, and `inventory.json` and never touches
+ * the dataset it was built from, so any number of episodes can be forked
+ * from one `SandboxShopData`.
  *
  * Determinism: ids come from sequential counters and timestamps from an
  * `EpisodeClock` that advances one second per mutation, so the same action
@@ -91,7 +92,10 @@ export interface SessionRecord {
   readonly expiresAt: string;
 }
 
-/** A "Forgot your password?" request. The sandbox sends no email and changes no password. */
+/**
+ * A password reset request ("Forgot your password?"). The sandbox sends no
+ * email and changes no password.
+ */
 export interface PasswordResetRequestRecord {
   /** The email as requested; it need not belong to a customer. */
   readonly email: string;

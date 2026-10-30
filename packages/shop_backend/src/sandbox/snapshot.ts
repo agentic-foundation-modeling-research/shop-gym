@@ -114,7 +114,7 @@ export const stateSnapshotSchema = z.object({
   now: z.string(),
   customers: z.array(snapshotCustomerSchema),
   sessions: z.array(snapshotSessionSchema),
-  /** "Forgot your password?" requests of the episode, in request order. */
+  /** Password reset requests of the episode, in request order. */
   passwordResetRequests: z.array(snapshotPasswordResetRequestSchema),
   carts: z.array(snapshotCartSchema),
   orders: z.array(snapshotOrderSchema),

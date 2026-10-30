@@ -106,7 +106,7 @@ The saved addresses of one customer in an Episode. A logged-in customer adds, ed
 _Avoid_: address list
 
 **Password reset request**:
-A "Forgot your password?" submit in an Episode: the email and the Episode clock time. The sandbox sends no email and changes no password, and it answers every email the same, known or not. The StateSnapshot lists the requests, so a Check can see that the agent asked for a reset.
+A request that an agent sends with the "Forgot your password?" form in an Episode: the email and the Episode clock time. The sandbox sends no email and changes no password, and it answers every email the same, known or not. The StateSnapshot lists the requests, so a Check can see that the agent asked for a reset.
 _Avoid_: password recovery email
 
 **Review**:
