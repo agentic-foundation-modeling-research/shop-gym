@@ -25,10 +25,10 @@ lockfile, is not a pnpm workspace member, and installs with
 PR) runs `src/templates.browser.test.ts`: it builds the template in a temp
 dir, serves it over the in-process backend on the template fixture, and
 walks one shopper in Chromium through sign up, log out, log in, add to cart,
-every Discount code in the announcement bar, an unknown and a valid
-Discount code, check out, the thank-you page, the account order page and
-the address book (add, edit, set the default, see it prefilled at checkout,
-delete), with the browser
+every Discount code in the announcement bar (on a fake clock it does not
+move by itself), an unknown and a valid Discount code, check out, the
+thank-you page, the account order page and the address book (add, edit,
+set the default, see it prefilled at checkout, delete), with the browser
 steps that the final eval uses (`src/gen/build/verifiers/browser_steps.ts`).
 It checks the pages and the episode's StateSnapshot. It also serves the
 same build over backends with one Discount code and with none, for the

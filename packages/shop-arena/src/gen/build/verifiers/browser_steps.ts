@@ -289,21 +289,27 @@ async function pollPage<T>(
 }
 
 export interface AnnouncementOutcome extends StepOutcome {
-  /** Text of each slide, from the first, in the order "Next announcement" showed them. */
+  /** Text of each slide that the bar showed, from the first; empty when there is no bar. */
   readonly slides?: readonly string[];
 }
 
-/** The label ("<n> of <total>") and the text of the slide that the announcement bar shows. */
+/**
+ * The slide that the announcement bar shows. `label` is its accessible
+ * name, "<n> of <total>"; when not exactly one slide shows, it tells how
+ * many do, for the step's detail.
+ */
 interface Slide {
   readonly label: string;
   readonly text: string;
 }
 
 /**
- * Open `/` and step through the "Announcement bar" carousel: read the slide
- * it starts on, press "Next announcement" until the bar is back on the
- * first slide, then press "Previous announcement" once. ok when the bar
- * starts on "1 of <n>", Next shows "2 of <n>" to "<n> of <n>" and then
+ * Open `/` and read every slide of the announcement bar. With no bar, ok
+ * with no slides. A plain "Announcement" region is one slide, ok when it
+ * has no buttons. An "Announcement bar" carousel is stepped through: read
+ * the slide it starts on, press "Next announcement" until the bar is back
+ * on the first slide, then press "Previous announcement" once. ok when the
+ * bar starts on "1 of <n>", Next shows "2 of <n>" to "<n> of <n>" and then
  * "1 of <n>" again, and Previous on the first slide shows "<n> of <n>".
  */
 export async function stepThroughAnnouncements(
@@ -312,46 +318,60 @@ export async function stepThroughAnnouncements(
 ): Promise<AnnouncementOutcome> {
   return attempt(async () => {
     await open(page, `${baseUrl}/`);
-    const bar = page.getByRole('region', { name: 'Announcement bar', exact: true });
-    if ((await bar.count()) === 0) {
-      return { ok: false, detail: 'no "Announcement bar" carousel on /', url: '/' };
+    const carousel = page.getByRole('region', { name: 'Announcement bar', exact: true });
+    if ((await carousel.count()) > 0) return stepThroughCarousel(page, carousel);
+    const plain = page.getByRole('region', { name: 'Announcement', exact: true });
+    if ((await plain.count()) === 0) {
+      return { ok: true, detail: 'no announcement bar on /', url: '/', slides: [] };
     }
-    const next = bar.getByRole('button', { name: 'Next announcement', exact: true });
-    const previous = bar.getByRole('button', { name: 'Previous announcement', exact: true });
-    if ((await next.count()) === 0 || (await previous.count()) === 0) {
-      return {
-        ok: false,
-        detail: 'the "Announcement bar" has no Previous and Next arrows',
-        url: '/',
-      };
-    }
-    const first = await shownSlide(bar);
-    const total = Number(/^1 of (\d+)$/.exec(first.label)?.[1] ?? 0);
-    if (total < 2) {
-      return { ok: false, detail: `the bar starts on "${first.label}"`, url: '/' };
-    }
-    const slides = [first];
-    let last = first;
-    while (slides.length < total) {
-      const slide = await pressArrow(page, bar, next, last.label);
-      if (slide.label === last.label) break;
-      slides.push(slide);
-      last = slide;
-    }
-    const wrapped = await pressArrow(page, bar, next, last.label);
-    const back = await pressArrow(page, bar, previous, wrapped.label);
-    const labels = slides.map((slide) => slide.label);
+    const buttons = await plain.getByRole('button').count();
+    const text = normalizedText(await plain.innerText());
     return {
-      ok:
-        labels.length === total &&
-        labels.every((label, index) => label === `${index + 1} of ${total}`) &&
-        wrapped.label === `1 of ${total}` &&
-        back.label === `${total} of ${total}`,
-      detail: `the bar showed ${labels.map((label) => `"${label}"`).join(', ')}, then Next showed "${wrapped.label}" and Previous "${back.label}"`,
+      ok: buttons === 0,
+      detail: `the "Announcement" region shows "${text}" with ${buttons} buttons`,
       url: '/',
-      slides: slides.map((slide) => slide.text),
+      slides: [text],
     };
   });
+}
+
+/** Step through the "Announcement bar" carousel `bar` as `stepThroughAnnouncements` says. */
+async function stepThroughCarousel(page: Page, bar: Locator): Promise<AnnouncementOutcome> {
+  const next = bar.getByRole('button', { name: 'Next announcement', exact: true });
+  const previous = bar.getByRole('button', { name: 'Previous announcement', exact: true });
+  if ((await next.count()) === 0 || (await previous.count()) === 0) {
+    return {
+      ok: false,
+      detail: 'the "Announcement bar" has no Previous and Next arrows',
+      url: '/',
+    };
+  }
+  const first = await shownSlide(bar);
+  const total = Number(/^1 of (\d+)$/.exec(first.label)?.[1] ?? 0);
+  if (total < 2) {
+    return { ok: false, detail: `the bar starts on "${first.label}"`, url: '/' };
+  }
+  const slides = [first];
+  let last = first;
+  while (slides.length < total) {
+    const slide = await pressArrow(page, bar, next, last.label);
+    if (slide.label === last.label) break;
+    slides.push(slide);
+    last = slide;
+  }
+  const wrapped = await pressArrow(page, bar, next, last.label);
+  const back = await pressArrow(page, bar, previous, wrapped.label);
+  const labels = slides.map((slide) => slide.label);
+  return {
+    ok:
+      labels.length === total &&
+      labels.every((label, index) => label === `${index + 1} of ${total}`) &&
+      wrapped.label === `1 of ${total}` &&
+      back.label === `${total} of ${total}`,
+    detail: `the bar showed ${labels.map((label) => `"${label}"`).join(', ')}, then Next showed "${wrapped.label}" and Previous "${back.label}"`,
+    url: '/',
+    slides: slides.map((slide) => slide.text),
+  };
 }
 
 /**
