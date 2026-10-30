@@ -1093,8 +1093,8 @@ html:has(.cart-popup) {
   padding: 0;
   list-style: none;
 }
+
 /* Address book: the headings are centered; the form headings and fields are left-aligned. */
-/* Address book: a narrow, centered column; the form headings and fields are left-aligned. */
 .addresses-heading,
 .address-default {
   text-align: center;

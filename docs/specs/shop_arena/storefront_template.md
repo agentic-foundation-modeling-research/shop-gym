@@ -168,10 +168,11 @@ has "Email", "Password", the link "Forgot your password?", "Sign in" and
 "Create account". The link opens "Reset your password" in place of the
 login form, with a CSS `:target` toggle. Its "Submit" sends
 `customerRecover`. Then the page shows the login form with "We've sent you
-an email with a link to update your password." above it, for any email.
-"Cancel" goes back to the login form. Register has "First name", "Last name", "Email",
-"Password" and "Create"; a backend error on a field shows under that field
-and in the list under "Please adjust the following:". The form field names
+an email with a link to update your password." above it, for any email,
+or with the backend's errors if there are any. "Cancel" goes back to the
+login form. Register has "First name", "Last name", "Email", "Password"
+and "Create"; a backend error on a field shows under that field and in
+the list under "Please adjust the following:". The form field names
 (`email`, `password`, `firstName`, `lastName`) are the same as before.
 
 The product page shows Reviews per the Standard sub-manual. Near the title,

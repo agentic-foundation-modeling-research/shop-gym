@@ -390,11 +390,12 @@ function stubHtml(body: string, loggedIn: boolean): string {
 
 /**
  * The stub's login page: the login form, then the "Forgot your password?"
- * form, which shows only while the URL targets `#recover`. It posts to
- * the path with no `#recover`, so the answer shows the login form again.
+ * form, which shows in place of the login form only while the URL targets
+ * `#recover`. It posts to the path with no `#recover`, so the answer shows
+ * the login form again.
  */
 const STUB_LOGIN =
-  '<style>#recover:not(:target){display:none}</style><h1>Login</h1><form method="post"><input name="email"><input name="password" type="password"><a href="#recover">Forgot your password?</a><button type="submit">Sign in</button></form><form method="post" action="/account/login" id="recover"><input type="hidden" name="intent" value="recover"><input name="email"><button type="submit">Submit</button></form>';
+  '<style>#recover:not(:target),main:has(#recover:target) form:not(#recover){display:none}</style><h1>Login</h1><form method="post"><input name="email"><input name="password" type="password"><a href="#recover">Forgot your password?</a><button type="submit">Sign in</button></form><form method="post" action="/account/login" id="recover"><input type="hidden" name="intent" value="recover"><input name="email"><button type="submit">Submit</button></form>';
 
 /** Fields of the stub's address book forms, by input name. */
 const STUB_ADDRESS_FIELDS = [

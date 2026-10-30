@@ -86,10 +86,11 @@ export async function logOut(page: Page, baseUrl: string): Promise<StepOutcome> 
 
 /**
  * Open `/account/login`, follow "Forgot your password?", enter `email` in
- * the form that opens and press "Submit"; ok when the page then shows
- * "We've sent you an email with a link to update your password." and the
- * recover form is closed. The customer must be logged out, as the login
- * page sends a logged-in customer away.
+ * the form that opens in place of the login form and press "Submit"; ok
+ * when the page then shows "We've sent you an email with a link to update
+ * your password." and the login form in place of the recover form. The
+ * customer must be logged out, as the login page sends a logged-in
+ * customer away.
  */
 export async function requestPasswordReset(
   page: Page,
@@ -104,23 +105,33 @@ export async function requestPasswordReset(
     }
     const emailForms = page.locator('form:has(input[name="email"])');
     const form = formWithButton(emailForms, page, 'Submit').first();
+    const loginForm = page.locator('form:has(input[name="password"])').filter({ visible: true });
     await openForm(link, form);
+    if ((await loginForm.count()) > 0) {
+      return {
+        ok: false,
+        detail: 'the recover form opens next to the login form, not in its place',
+      };
+    }
     await fillFields(form, { email });
     await submitInPlace(page, form);
     const message = page.getByText(PASSWORD_RESET_SENT, { exact: true }).filter({ visible: true });
     const outcome = await pollPage(
       page,
-      async () => ({ shown: (await message.count()) > 0, closed: !(await form.isVisible()) }),
-      { shown: false, closed: false },
-      (read) => read.shown && read.closed,
+      async () => ({
+        shown: (await message.count()) > 0,
+        loginBack: !(await form.isVisible()) && (await loginForm.count()) > 0,
+      }),
+      { shown: false, loginBack: false },
+      (read) => read.shown && read.loginBack,
     );
     const detail = !outcome.shown
       ? `does not show "${PASSWORD_RESET_SENT}"`
-      : outcome.closed
+      : outcome.loginBack
         ? `shows "${PASSWORD_RESET_SENT}"`
-        : 'shows the message but keeps the recover form open';
+        : 'shows the message but not the login form in place of the recover form';
     return {
-      ok: outcome.shown && outcome.closed,
+      ok: outcome.shown && outcome.loginBack,
       detail: `submitting ${email} ${detail}`,
       url: pathOf(page.url()),
     };
