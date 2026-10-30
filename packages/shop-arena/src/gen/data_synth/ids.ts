@@ -2,6 +2,8 @@
 
 import { createHash } from 'node:crypto';
 
+const MINUTE_MS = 60_000;
+
 /** First 48 bits of sha256(`<scope>\0<key>`) as a safe integer. */
 export function stableId(scope: string, key: string): number {
   return Number.parseInt(
@@ -30,4 +32,13 @@ export function pick<T>(rng: () => number, items: readonly T[]): T {
 /** Removes a uniformly random element from `items` and returns it; `undefined` when empty. */
 export function takeRandom<T>(rng: () => number, items: T[]): T | undefined {
   return items.splice(Math.floor(rng() * items.length), 1)[0];
+}
+
+/**
+ * A random whole minute in the `minutes` before `end`, as an ISO 8601
+ * string. It is never `end` itself.
+ */
+export function randomMinuteBefore(rng: () => number, end: string, minutes: number): string {
+  const start = Date.parse(end) - minutes * MINUTE_MS;
+  return new Date(start + Math.floor(rng() * minutes) * MINUTE_MS).toISOString();
 }

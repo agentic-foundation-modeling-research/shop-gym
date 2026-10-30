@@ -28,7 +28,13 @@ import { synthNavigation } from './navigation.js';
 import { synthReviews } from './reviews.js';
 import { synthStore } from './store.js';
 
-export { assembleDataset, type Dataset, type Drafts, writeDataset } from './assemble.js';
+export {
+  assembleDataset,
+  buildProducts,
+  type Dataset,
+  type Drafts,
+  writeDataset,
+} from './assemble.js';
 export {
   IDENTITY_FILE,
   STAGE_CACHE_DIR,

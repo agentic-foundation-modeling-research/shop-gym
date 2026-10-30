@@ -17,7 +17,7 @@ import {
   type datasetSchema,
 } from '@shop-gym/shop-backend';
 
-import { pick, seededRandom, takeRandom } from './ids.js';
+import { pick, randomMinuteBefore, seededRandom, takeRandom } from './ids.js';
 
 type Customer = z.infer<typeof datasetSchema.customerSchema>;
 type Product = z.infer<typeof datasetSchema.productSchema>;
@@ -32,7 +32,6 @@ const MAX_LINES_PER_ORDER = 3;
 const MAX_QUANTITY = 2;
 const FIRST_ORDER_ID = 1001;
 const DISCOUNTED_ORDER_COUNT = 4;
-const MINUTE_MS = 60_000;
 const HISTORY_MINUTES = 365 * 24 * 60;
 
 const SHIPPED: Status = { financial_status: 'PAID', fulfillment_status: 'FULFILLED' };
@@ -118,7 +117,6 @@ export function synthOrders(
   const rng = seededRandom(SEED);
   const buyers = customers.slice(0, -1);
   const counts = orderCounts(rng, buyers.length);
-  const historyStart = Date.parse(DEFAULT_EPISODE_START) - HISTORY_MINUTES * MINUTE_MS;
   const drafts: UnpricedOrder[] = buyers.flatMap((customer, c) =>
     Array.from({ length: counts[c] ?? 0 }, () => {
       const lineCount = 1 + Math.floor(rng() * MAX_LINES_PER_ORDER);
@@ -137,14 +135,13 @@ export function synthOrders(
       const payment =
         commerce.payment_methods.length === 0 ? null : pick(rng, commerce.payment_methods);
       const address = customer.addresses.length === 0 ? null : pick(rng, customer.addresses);
-      const minute = Math.floor(rng() * HISTORY_MINUTES);
       return {
         customer,
         lineItems,
         method,
         payment,
         address,
-        processedAt: new Date(historyStart + minute * MINUTE_MS).toISOString(),
+        processedAt: randomMinuteBefore(rng, DEFAULT_EPISODE_START, HISTORY_MINUTES),
       };
     }),
   );

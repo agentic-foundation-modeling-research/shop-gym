@@ -14,6 +14,7 @@ import type { CompleteRequest, Completion, LlmClient } from '@shop-gym/agent';
 
 import { capabilitiesSchema } from '../explore/capabilities.js';
 import type { StorefrontLaunch } from './build/storefront_sidecar.js';
+import type { ReviewText } from './data_synth/schemas.js';
 
 const JUDGE_USAGE = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 };
 
@@ -37,24 +38,14 @@ export interface ScriptedSynthOptions {
    */
   readonly discountCodeReplies?: readonly (readonly unknown[])[];
   /** Changes the first reviews reply before it is sent; later replies are not changed. */
-  readonly editFirstReviewsReply?: (texts: readonly ScriptedReviewText[]) => readonly unknown[];
-}
-
-/** One entry of a scripted reviews reply. */
-export interface ScriptedReviewText {
-  readonly id: number;
-  readonly title: string;
-  readonly body: string;
+  readonly editFirstReviewsReply?: (texts: readonly ReviewText[]) => readonly unknown[];
 }
 
 /**
  * The title and text that `ScriptedSynthLlm` writes for a Review, from its
  * product title and planned rating.
  */
-export function scriptedReviewText(
-  productTitle: string,
-  rating: number,
-): Omit<ScriptedReviewText, 'id'> {
+export function scriptedReviewText(productTitle: string, rating: number): Omit<ReviewText, 'id'> {
   return {
     title: `${rating} stars for this bowl`,
     body: `I give the ${productTitle.toLowerCase()} ${rating} out of 5 after a month of use.`,

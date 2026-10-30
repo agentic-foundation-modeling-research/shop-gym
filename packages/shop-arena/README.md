@@ -105,7 +105,7 @@ pipeline runner; `GEN_STEPS` lists them in order:
 | --- | --- | --- |
 | `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json`; the checked-in Standard sub-manual `src/gen/manual_merge/standard_sub_manual.md` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section); `parts/` holds the six Sub-manuals cut from `manual.md` and the shop's copy of the Standard sub-manual as `parts/standard.md`. Fusion: for each observed `## Account` or `## Checkout` section in `manual.md`, one LLM call fuses the notes into the copy. Observed labels and layout win. Unsupported behavior and the labels that the browser steps check keep the standard text. With no observed notes, the copy is unchanged and there is no LLM call |
 | `data_synth` | `manual/` | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce`, `reviews` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
-| `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity (including the product and variant of each Review), valid Discount codes, seeded order totals and discounts that follow the backend pricing rules, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
+| `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity, including the product and variant of each Review; valid Discount codes, seeded order totals and discounts that follow the backend pricing rules, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
 | `build` | `data/`, `manual/`, `data_validation.json` | `runs/build/` via `build.runBuildLoop` (seed staged in `.shop_gen/build_seed/`); a final status other than `completed` fails the step so the next run resumes it |
 | `final_eval` | `runs/build/run.json`, `runs/build/build.json` | `final_eval/` via `finalEval.runFinalEval` against the build artifacts booted on the recorded backend port (sidecar logs in `final_eval/{backend,storefront}.log`); advisory, never fails the step |
 | `publish` | `runs/build/run.json`, `runs/build/build.json` | `storefront/`, `backend/`, `shop.json` via `publish.publishShop` |
@@ -116,13 +116,13 @@ collection, `alt_text`, `images`, `navigation`, `customers`, `reviews`,
 then assembly with deterministic ids, inventory, and orders). `commerce`
 also makes three to five Discount codes, at least one of each kind and
 one percent or fixed code with no minimum, and four seeded orders use
-one. `reviews` plans every Review by code from a fixed seed (none for
-15% of the products and one to eight for each other product, an
-average rating of 4.3, the reviewer's first name and last initial, a
-date before the Episode clock start, the variant bought, the Verified
-Buyer flag and the helpful count), and the LLM writes only the title
-and text, given the product facts and the rating, in batches of whole
-products with at most 20 Reviews. `navigation`
+one. `reviews` plans every Review by code from a fixed seed. 15% of
+the products get no Reviews and each other product gets one to eight.
+The ratings average 4.3. Each Review gets a reviewer (first name and
+last initial), a date before the Episode clock starts, the variant
+bought, a Verified Buyer flag and a helpful count. The LLM writes only
+the title and text. It gets the product facts and the rating, in
+batches of whole products with at most 20 Reviews. `navigation`
 reads the manual's `parts/navigation.md` so the footer mirrors the manual's
 footer link list and the in-loop judges agree on it. Every LLM call
 asks for one JSON value against a zod-derived JSON Schema and retries

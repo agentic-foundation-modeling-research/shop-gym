@@ -1,12 +1,12 @@
 /**
  * `synth_reviews`: read-only product Reviews. Code plans every Review from
- * a fixed seed, so no LLM call decides its shape: about 15% of products
- * get none and every other product gets one to eight, ratings average
- * about 4.3, and each Review has a reviewer's first name and last
- * initial, a date in the two years before the Episode clock starts, a
- * variant of its product, a Verified Buyer flag and a helpful count. The
- * LLM writes only the title and text, in batches of whole products, given
- * the product facts and the planned rating.
+ * a fixed seed, so no LLM call decides its shape. About 15% of the
+ * products get no Reviews. Each other product gets one to eight. The
+ * ratings average about 4.3. Each Review gets a reviewer (first name and
+ * last initial), a date in the two years before the Episode clock starts,
+ * a variant of its product, a Verified Buyer flag and a helpful count.
+ * The LLM writes only the title and text of each Review. It gets the
+ * product facts and the planned rating, in batches of whole products.
  */
 
 import { DEFAULT_EPISODE_START, datasetSchema } from '@shop-gym/shop-backend';
@@ -16,7 +16,7 @@ import { findAllowlistedToken } from '../brands/allowlist.js';
 import { mapLimit } from '../io.js';
 import { completeStructured } from '../llm.js';
 import { type SynthContext, cached, pretty, synthPrompt } from './context.js';
-import { pick, seededRandom, takeRandom } from './ids.js';
+import { pick, randomMinuteBefore, seededRandom, takeRandom } from './ids.js';
 import { type ReviewText, reviewTextsSchema } from './schemas.js';
 
 type Product = z.infer<typeof datasetSchema.productSchema>;
@@ -40,7 +40,6 @@ const RATINGS = [2, 2, 5, 11, 30].flatMap((weight, i) =>
 const VERIFIED_BUYER_SHARE = 0.8;
 /** Helpful counts stay below this; most are small and about a third are 0. */
 const MAX_HELPFUL_COUNT = 30;
-const MINUTE_MS = 60_000;
 const HISTORY_MINUTES = 2 * 365 * 24 * 60;
 /** Most Reviews one LLM call writes; the Reviews of one product always share a call. */
 const BATCH_SIZE = 20;
@@ -103,14 +102,13 @@ function ratingDraws(rng: () => number): () => number {
 function planReviews(products: readonly Product[]): ProductPlan[] {
   const rng = seededRandom(SEED);
   const reviewable = products.filter((p) => p.variants.length > 0);
-  const open = reviewable.map((p) => p.handle);
+  const candidates = reviewable.map((p) => p.handle);
   const withoutReviews = new Set<string>();
   for (let i = 0; i < Math.round(NO_REVIEW_SHARE * reviewable.length); i += 1) {
-    const handle = takeRandom(rng, open);
+    const handle = takeRandom(rng, candidates);
     if (handle !== undefined) withoutReviews.add(handle);
   }
-  const clockStart = Date.parse(DEFAULT_EPISODE_START);
-  const rating = ratingDraws(rng);
+  const drawRating = ratingDraws(rng);
   let id = 0;
   return reviewable
     .filter((product) => !withoutReviews.has(product.handle))
@@ -118,14 +116,13 @@ function planReviews(products: readonly Product[]): ProductPlan[] {
       product,
       reviews: Array.from({ length: 1 + Math.floor(rng() * MAX_REVIEWS_PER_PRODUCT) }, () => {
         id += 1;
-        const minutesBefore = 1 + Math.floor(rng() * HISTORY_MINUTES);
         return {
           id,
           product_handle: product.handle,
           variant_id: pick(rng, product.variants).id,
-          rating: rating(),
+          rating: drawRating(),
           reviewer_name: `${pick(rng, FIRST_NAMES)} ${pick(rng, LAST_INITIALS)}.`,
-          created_at: new Date(clockStart - minutesBefore * MINUTE_MS).toISOString(),
+          created_at: randomMinuteBefore(rng, DEFAULT_EPISODE_START, HISTORY_MINUTES),
           verified_buyer: rng() < VERIFIED_BUYER_SHARE,
           helpful_count: Math.floor(MAX_HELPFUL_COUNT * rng() ** 3),
         };
@@ -202,6 +199,8 @@ async function writeBatch(sc: SynthContext, batch: readonly ProductPlan[]): Prom
     (reply) => textsProblem(sc, planned, reply),
   );
   const byId = new Map(texts.map((t) => [t.id, t]));
+  // The keys follow the order of the backend Review schema, so a run that
+  // reads the stage cache writes the same bytes as the run that wrote it.
   return planned.map(({ id, product_handle, variant_id, rating, ...rest }) => {
     // `textsProblem` accepted the reply, so it has a text for every planned id.
     const { title, body } = byId.get(id) as ReviewText;

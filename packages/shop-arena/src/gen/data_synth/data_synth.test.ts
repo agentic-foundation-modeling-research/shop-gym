@@ -19,6 +19,7 @@ import {
 } from '../testing.js';
 import { runDataSynth } from './index.js';
 import { synthOrders } from './orders.js';
+import type { Review } from './reviews.js';
 
 let root: string;
 let shopDir: string;
@@ -281,7 +282,6 @@ describe('runDataSynth', () => {
 });
 
 describe('Review synthesis', () => {
-  type Review = (typeof datasetSchema.reviewsFileSchema)['_output'][number];
   // 200 products, enough for the share without Reviews and the average rating to show.
   const LARGE_CATALOG = { collections: 4, productsPerCollection: 50, imagesPerProduct: 0 };
 
