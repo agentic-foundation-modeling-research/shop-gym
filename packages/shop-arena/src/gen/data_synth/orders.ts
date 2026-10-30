@@ -4,7 +4,8 @@
  * no orders and every other Persona has one to six. Orders fall in the
  * twelve months before the Episode clock starts, ship to one of the
  * Persona's saved addresses with a random shipping and payment method,
- * and cost what the backend charges at checkout.
+ * and cost what the backend charges at checkout. Four orders use a
+ * Discount code that lowers their total.
  */
 
 import type { z } from 'zod';
@@ -29,6 +30,7 @@ const MAX_ORDERS_PER_CUSTOMER = 6;
 const MAX_LINES_PER_ORDER = 3;
 const MAX_QUANTITY = 2;
 const FIRST_ORDER_ID = 1001;
+const DISCOUNTED_ORDER_COUNT = 4;
 const MINUTE_MS = 60_000;
 const HISTORY_MINUTES = 365 * 24 * 60;
 
@@ -48,6 +50,16 @@ interface Sellable {
   readonly variantId: number;
   readonly title: string;
   readonly price: string;
+}
+
+/** An order before it is numbered, given a status and priced. */
+interface Draft {
+  readonly customer: Customer;
+  readonly lineItems: Order['line_items'];
+  readonly method: Commerce['shipping_methods'][number];
+  readonly payment: Commerce['payment_methods'][number] | null;
+  readonly address: Customer['addresses'][number] | null;
+  readonly processedAt: string;
 }
 
 function sellables(products: readonly Product[]): Sellable[] {
@@ -76,6 +88,33 @@ function orderCounts(rng: () => number, buyers: number): number[] {
   return counts;
 }
 
+/**
+ * Discount codes, by draft index, for up to `DISCOUNTED_ORDER_COUNT`
+ * random drafts. Each picked draft gets a random code that lowers its
+ * total; a draft that no code lowers is never picked.
+ */
+function pickDiscountCodes(
+  rng: () => number,
+  drafts: readonly Draft[],
+  commerce: Commerce,
+): Map<number, string> {
+  const open = drafts.flatMap((d, index) => {
+    const codes = commerce.discount_codes
+      .filter(
+        (c) =>
+          Number(computeOrderTotals(d.lineItems, d.method, commerce, c.code).discountAmount) > 0,
+      )
+      .map((c) => c.code);
+    return codes.length > 0 ? [{ index, codes }] : [];
+  });
+  const picked = new Map<number, string>();
+  while (picked.size < DISCOUNTED_ORDER_COUNT && open.length > 0) {
+    const [draft] = open.splice(Math.floor(rng() * open.length), 1);
+    if (draft !== undefined) picked.set(draft.index, pick(rng, draft.codes));
+  }
+  return picked;
+}
+
 export function synthOrders(
   customers: readonly Customer[],
   products: readonly Product[],
@@ -88,7 +127,7 @@ export function synthOrders(
   const buyers = customers.slice(0, -1);
   const counts = orderCounts(rng, buyers.length);
   const historyStart = Date.parse(DEFAULT_EPISODE_START) - HISTORY_MINUTES * MINUTE_MS;
-  const drafts = buyers.flatMap((customer, c) =>
+  const drafts: Draft[] = buyers.flatMap((customer, c) =>
     Array.from({ length: counts[c] ?? 0 }, () => {
       const lineCount = 1 + Math.floor(rng() * MAX_LINES_PER_ORDER);
       const picked = new Map<number, Sellable>();
@@ -107,26 +146,17 @@ export function synthOrders(
         commerce.payment_methods.length === 0 ? null : pick(rng, commerce.payment_methods);
       const address = customer.addresses.length === 0 ? null : pick(rng, customer.addresses);
       const minute = Math.floor(rng() * HISTORY_MINUTES);
-      const totals = computeOrderTotals(lineItems, method, commerce, null);
       return {
-        customer_id: customer.id,
-        email: customer.email,
-        processed_at: new Date(historyStart + minute * MINUTE_MS).toISOString(),
-        currency_code: currencyCode,
-        line_items: lineItems,
-        shipping_address: address,
-        shipping_method: method.handle,
-        payment_method: payment?.handle ?? null,
-        subtotal_price: totals.subtotalPrice,
-        total_shipping_price: totals.totalShippingPrice,
-        total_tax: totals.totalTax,
-        total_price: totals.totalPrice,
-        discount_code: null,
-        discount_amount: totals.discountAmount,
+        customer,
+        lineItems,
+        method,
+        payment,
+        address,
+        processedAt: new Date(historyStart + minute * MINUTE_MS).toISOString(),
       };
     }),
   );
-  drafts.sort((a, b) => a.processed_at.localeCompare(b.processed_at));
+  drafts.sort((a, b) => a.processedAt.localeCompare(b.processedAt));
   // The newest order is not shipped yet. Three random older orders are
   // refunded, partly refunded and partly shipped; the rest are shipped.
   const statuses = new Map<number, Status>([[drafts.length - 1, NOT_SHIPPED]]);
@@ -135,9 +165,31 @@ export function synthOrders(
     const [i] = older.splice(Math.floor(rng() * older.length), 1);
     if (i !== undefined) statuses.set(i, status);
   }
-  return drafts.map((draft, i) => ({
-    id: FIRST_ORDER_ID + i,
-    ...(statuses.get(i) ?? SHIPPED),
-    ...draft,
-  }));
+  const codes = pickDiscountCodes(rng, drafts, commerce);
+  return drafts.map((draft, i) => {
+    const totals = computeOrderTotals(
+      draft.lineItems,
+      draft.method,
+      commerce,
+      codes.get(i) ?? null,
+    );
+    return {
+      id: FIRST_ORDER_ID + i,
+      ...(statuses.get(i) ?? SHIPPED),
+      customer_id: draft.customer.id,
+      email: draft.customer.email,
+      processed_at: draft.processedAt,
+      currency_code: currencyCode,
+      line_items: draft.lineItems,
+      shipping_address: draft.address,
+      shipping_method: draft.method.handle,
+      payment_method: draft.payment?.handle ?? null,
+      subtotal_price: totals.subtotalPrice,
+      total_shipping_price: totals.totalShippingPrice,
+      total_tax: totals.totalTax,
+      total_price: totals.totalPrice,
+      discount_code: totals.discountCode,
+      discount_amount: totals.discountAmount,
+    };
+  });
 }

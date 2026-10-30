@@ -167,8 +167,6 @@ export function assembleDataset(d: Drafts): Dataset {
     }
   }
   const customers = d.personas.map((p) => buildCustomer(p, d.identity.country));
-  // Discount codes are not synthesized yet; the Dataset has none.
-  const commerce = { ...d.commerce, discount_codes: [] };
   const store = {
     shop_id: stableId('shop', d.identity.name),
     name: d.identity.name,
@@ -188,8 +186,8 @@ export function assembleDataset(d: Drafts): Dataset {
     policies: d.policies,
     inventory,
     customers,
-    orders: synthOrders(customers, products, commerce, d.identity.currency),
-    commerce,
+    orders: synthOrders(customers, products, d.commerce, d.identity.currency),
+    commerce: d.commerce,
   };
   const checks = {
     store: datasetSchema.storeSchema.safeParse(dataset.store),

@@ -150,7 +150,7 @@ describe('generateShop', () => {
     expect(finalEval.visual.pages).toHaveLength(13);
     expect(finalEval.visual.pages.filter((page) => page.status === 'skipped')).toEqual([]);
     expect(finalEval.visual.failed).toBe(1); // the scripted judge fails `/search`
-    // The synthesized Dataset has no Discount code, so that step is skipped.
+    // The sweep applies a synthesized Discount code that has no minimum.
     expect(finalEval.functional.steps.map((step) => [step.name, step.status])).toEqual([
       ['signUp', 'pass'],
       ['logOut', 'pass'],
@@ -158,7 +158,7 @@ describe('generateShop', () => {
       ['addAddress', 'pass'],
       ['editAddress', 'pass'],
       ['addToCart', 'pass'],
-      ['applyDiscountCode', 'skipped'],
+      ['applyDiscountCode', 'pass'],
       ['checkout', 'pass'],
       ['viewOrder', 'pass'],
       ['requestReturn', 'skipped'],

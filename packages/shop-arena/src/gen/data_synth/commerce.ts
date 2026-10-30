@@ -1,9 +1,15 @@
-/** `synth_commerce`: checkout rules consistent with the shipping and refund policies. */
+/**
+ * `synth_commerce`: checkout rules consistent with the shipping and refund
+ * policies, with three to five Discount codes and at least one of each
+ * kind. The LLM picks the codes, amounts and hint texts; code checks them.
+ */
 
 import * as path from 'node:path';
 
+import { datasetSchema } from '@shop-gym/shop-backend';
 import { z } from 'zod';
 
+import { checkDiscountCodes } from '../data_validation/schema_check.js';
 import { readJsonFile } from '../io.js';
 import { completeStructured } from '../llm.js';
 import { type SynthContext, cached, duplicates, pretty, synthPrompt } from './context.js';
@@ -40,7 +46,13 @@ export function synthCommerce(
           ...commerce.shipping_methods.map((m) => m.handle),
           ...commerce.payment_methods.map((m) => m.handle),
         ]);
-        return dupes.length > 0 ? `duplicate method handles: ${dupes.join(', ')}` : undefined;
+        if (dupes.length > 0) return `duplicate method handles: ${dupes.join(', ')}`;
+        const missing = datasetSchema.discountCodeKindSchema.options.filter(
+          (kind) => !commerce.discount_codes.some((c) => c.kind === kind),
+        );
+        if (missing.length > 0) return `no Discount code of kind ${missing.join(', ')}`;
+        const problems = checkDiscountCodes(commerce.discount_codes);
+        return problems.length > 0 ? problems.join('; ') : undefined;
       },
     );
   });
