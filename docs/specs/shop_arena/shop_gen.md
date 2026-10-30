@@ -168,8 +168,13 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   `synth_commerce`, `synth_customers`, and deterministic
   `synth_orders` / inventory so the dataset exercises the stateful
   backend (`commerce.json`, `customers.json`, `orders.json`).
-  `synth_customers` makes five Personas. The LLM writes the names and
-  one to three addresses for each Persona, and at least two Personas
+  `synth_commerce` derives the checkout rules from the shipping and
+  refund policies, with three to five Discount codes and at least one
+  of each kind. The LLM picks the codes, amounts and hint texts. Code
+  checks that the codes are unique when case is ignored, that amounts
+  are positive, that percents are below 100 and that minimums are not
+  negative. `synth_customers` makes five Personas. The LLM writes the
+  names and one to three addresses for each Persona, and at least two Personas
   have two or more addresses. Code assigns the emails, passwords and
   ids. `synth_orders` makes fifteen orders by code from a fixed seed.
   The last Persona has no orders, and each other Persona has one to
@@ -178,7 +183,8 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   twelve months before the Episode clock starts, and its totals follow
   the backend pricing rules. The newest order is not shipped. Three
   older orders are refunded, partly refunded and partly shipped. The
-  other orders are paid and shipped. Every
+  other orders are paid and shipped. Four random orders use a random
+  Discount code that lowers their total. Every
   LLM step goes through `completeJson` with a zod-derived JSON Schema
   and one validation-feedback retry; drafts cache under
   `<shopDir>/.shop_gen/stage_cache/` (v1 file names kept; details per
@@ -187,8 +193,9 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   or `openai` (content-hash cache in `.shop_gen/image_cache/`).
 - `data_validation/` validates `data/` with the backend zod schema,
   checks referential integrity (variant ids in inventory and orders,
-  collection membership, navigation targets, image files) and that
-  every seeded order's totals match the backend pricing rules, then boots
+  collection membership, navigation targets, image files), that the
+  Discount codes follow the rules above, and that every seeded order's
+  totals and discount match the backend pricing rules, then boots
   the pristine `packages/shop_backend` template on the dataset and
   runs a fixed Storefront query set ending in `checkoutComplete` as
   the first seeded customer; the report is `data_validation.json`.
