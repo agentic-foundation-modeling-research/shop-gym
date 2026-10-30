@@ -3,8 +3,8 @@
  * Shopify standard, the pages Storefront exploration cannot observe
  * (account, checkout, order confirmation), the announcement bar and product
  * review rules, and the behavior the backend supports. Manual merge copies it
- * unchanged into every shop as `parts/standard.md`, next to the six cut
- * Sub-manuals.
+ * into every shop as `parts/standard.md`, next to the six cut Sub-manuals,
+ * and fuses the shop's observed Account and Checkout notes into the copy.
  */
 
 import { fileURLToPath } from 'node:url';

@@ -3,6 +3,7 @@
  * agent reads (`manual/parts/<part>.md`). Sections route by exact H2 name.
  */
 
+import { FUSED_SECTIONS } from './fusion.js';
 import { CANONICAL_SECTIONS, parseManualSections } from './prose.js';
 
 export const MANUAL_PARTS = [
@@ -37,6 +38,8 @@ const SECTION_TO_PART: Readonly<Record<string, readonly ManualPart[]>> = {
   'Floating UX': ['homepage'],
   'Policy & info pages': ['info_pages'],
   'UX Patterns Summary': [],
+  // Fusion consumes these: they go into the Standard sub-manual, not into a cut part.
+  ...Object.fromEntries(FUSED_SECTIONS.map((name) => [name, []])),
 };
 
 const REQUIRED_ANY_OF = [

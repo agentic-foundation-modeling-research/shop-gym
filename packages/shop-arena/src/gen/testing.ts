@@ -1,7 +1,7 @@
 /**
  * Test doubles for the gen pipeline: a scripted `LlmClient` that answers
  * every synthesis prompt with a deterministic, schema-valid reply, a
- * scripted visual judge, a stub storefront server for the HTTP verifiers
+ * scripted `LlmClient` for the fusion prompts, a scripted visual judge, a stub storefront server for the HTTP verifiers
  * and the final eval, and a writer for a minimal Shop Manual fixture. No
  * real merchant data.
  */
@@ -249,6 +249,41 @@ export class ScriptedSynthLlm implements LlmClient {
       }));
     }
     throw new Error(`ScriptedSynthLlm: unrecognised prompt: ${first}`);
+  }
+}
+
+/**
+ * Answers the fusion prompts of `manual_merge`. For each section it gives
+ * the queued replies first, in order, and then the prompt's standard text
+ * unchanged.
+ */
+export class ScriptedFusionLlm implements LlmClient {
+  readonly requests: CompleteRequest[] = [];
+  private readonly calls = new Map<string, number>();
+
+  /** @param replies Fused section bodies by section name, for example `{ Account: [body] }`. */
+  constructor(private readonly replies: Readonly<Record<string, readonly string[]>> = {}) {}
+
+  async complete(request: CompleteRequest): Promise<Completion> {
+    this.requests.push(request);
+    const match =
+      typeof request.prompt === 'string'
+        ? /## Standard text of `## (.+?)`\n\n([\s\S]*?)\n\n## Observed notes for /.exec(
+            request.prompt,
+          )
+        : null;
+    if (match?.[1] === undefined || match[2] === undefined) {
+      throw new Error('ScriptedFusionLlm: expected a fusion prompt');
+    }
+    const [, section, standard] = match;
+    const count = this.calls.get(section) ?? 0;
+    this.calls.set(section, count + 1);
+    return {
+      text: this.replies[section]?.[count] ?? standard,
+      model: request.model.id,
+      stopReason: 'end_turn',
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
+    };
   }
 }
 

@@ -86,16 +86,34 @@ export async function completeStructured<T>(
   throw new SynthError(`LLM reply rejected after retry: ${error ?? 'unknown error'}`);
 }
 
-/** One plain text completion; the trimmed reply must be non-empty. */
-export async function completeText(call: LlmCall, prompt: string): Promise<string> {
-  const completion = await call.llm.complete({
-    model: call.model,
-    prompt,
-    signal: callSignal(call),
-  });
-  const text = completion.text.trim();
-  if (text === '') {
-    throw new SynthError('LLM returned an empty reply');
+const TEXT_RETRY_PREFIX =
+  'Your previous reply failed validation with this error:\n  {{error}}\n' +
+  'Write the reply again from scratch, fixing the specific problem above.\n\n';
+
+/**
+ * One plain text completion; the trimmed reply must be non-empty. When
+ * `validate` returns a problem, retries once with the problem prepended.
+ */
+export async function completeText(
+  call: LlmCall,
+  prompt: string,
+  validate: (text: string) => string | undefined = () => undefined,
+): Promise<string> {
+  let error: string | undefined;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const completion = await call.llm.complete({
+      model: call.model,
+      prompt: error === undefined ? prompt : TEXT_RETRY_PREFIX.replace('{{error}}', error) + prompt,
+      signal: callSignal(call),
+    });
+    const text = completion.text.trim();
+    if (text === '') {
+      throw new SynthError('LLM returned an empty reply');
+    }
+    error = validate(text);
+    if (error === undefined) {
+      return text;
+    }
   }
-  return text;
+  throw new SynthError(`LLM reply rejected after retry: ${error ?? 'unknown error'}`);
 }
