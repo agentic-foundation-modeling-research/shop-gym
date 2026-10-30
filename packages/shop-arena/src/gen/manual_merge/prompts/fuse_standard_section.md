@@ -10,10 +10,10 @@ storefront shows the same area.
 
 Rules:
 
-1. Observed notes win on labels, layout and wording. When the notes and
-   the standard text do not agree on a heading, a button or link label, a
-   field label, the order of the fields, the columns, or the text of a
-   message, use the observed version and remove the standard version.
+1. Observed notes win on labels, layout and wording. The notes and the
+   standard text can disagree on a heading, a label, the order of the
+   fields, the columns, or the text of a message. Then use the observed
+   version, and remove the standard version.
 2. The shop's backend supports only the behavior in "Supported behavior"
    below. When the notes describe behavior that is not in that list (for
    example passwordless login with a one-time code, social login, or

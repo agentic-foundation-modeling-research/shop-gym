@@ -3,8 +3,8 @@
  * agent reads (`manual/parts/<part>.md`). Sections route by exact H2 name.
  */
 
-import { FUSED_SECTIONS } from './fusion.js';
 import { CANONICAL_SECTIONS, parseManualSections } from './prose.js';
+import { FUSED_SECTIONS } from './standard_sub_manual.js';
 
 export const MANUAL_PARTS = [
   'homepage',

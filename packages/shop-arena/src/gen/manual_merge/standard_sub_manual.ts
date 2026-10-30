@@ -16,3 +16,10 @@ export const STANDARD_SUB_MANUAL_PATH = fileURLToPath(
 
 /** File name of the Standard sub-manual under `manual/parts/`. */
 export const STANDARD_SUB_MANUAL_FILE = 'standard.md';
+
+/**
+ * H2 sections that a Merged manual and the Standard sub-manual share.
+ * Manual merge fuses a Merged manual's observed notes for them into the
+ * shop's copy, instead of cutting them into a Sub-manual.
+ */
+export const FUSED_SECTIONS = ['Account', 'Checkout'] as const;

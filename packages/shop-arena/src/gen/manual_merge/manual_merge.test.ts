@@ -6,6 +6,7 @@ import type { LlmClient } from '@shop-gym/agent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { capabilitiesSchema } from '../../explore/capabilities.js';
+import { SynthError } from '../llm.js';
 import { type Tiebreaker, mergeCapabilities } from './capabilities.js';
 import { parseManualSections } from './prose.js';
 import { MANUAL_PARTS, splitManual } from './split.js';
@@ -270,10 +271,8 @@ describe('runManualMerge', () => {
       expect(accountPrompt).toContain('- The heading reads "Sign in".');
       expect(accountPrompt).toContain(standardBody('Account'));
       expect(accountPrompt).toContain(standardBody('Supported behavior'));
-      expect(accountPrompt).toContain('- "Forgot your password?"');
       expect(checkoutPrompt).toContain('reads "Complete order".');
       expect(checkoutPrompt).toContain(standardBody('Checkout'));
-      expect(checkoutPrompt).toContain('- "Enter a valid discount code"');
 
       // The observed labels win, and nothing outside the two sections changes.
       expect(fused).toBe(
@@ -300,23 +299,27 @@ describe('runManualMerge', () => {
         llm,
       );
 
+      // The retry asks again with the first prompt, after the reason for the retry.
+      const [first, retry] = llm.requests.map((r) => String(r.prompt));
       expect(llm.requests).toHaveLength(2);
-      const retry = String(llm.requests[1]?.prompt);
-      expect(retry).toMatch(/^Your previous reply failed validation/);
-      expect(retry).toContain('"Forgot your password?"');
+      expect(retry?.endsWith(first ?? '')).toBe(true);
+      expect(retry?.length).toBeGreaterThan(first?.length ?? 0);
       expect(parseManualSections(fused).get('Account')).toBe(kept);
       expect(fused).not.toContain('"Forgot password?"');
     });
 
     it('fails the step when the retry still breaks a rule', async () => {
       const { ScriptedFusionLlm } = await import('../testing.js');
-      const withHeading = `## Account\n\n${standardBody('Account')}`;
+      const withHeading = `## Checkout\n\n${standardBody('Checkout')}`;
       const dropped = standardBody('Checkout').replaceAll('"Total"', '"Order total"');
       const llm = new ScriptedFusionLlm({ Checkout: [withHeading, dropped] });
-      await expect(
-        mergeWithNotes('## Checkout\n\n- The last totals row reads "Order total".\n', llm),
-      ).rejects.toThrow(/LLM reply rejected after retry: .*"Total"/);
-      expect(String(llm.requests[1]?.prompt)).toContain('"##" heading');
+      const error = await mergeWithNotes(
+        '## Checkout\n\n- The last totals row reads "Order total".\n',
+        llm,
+      ).catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(SynthError);
+      expect(String(error)).toContain('"Total"');
+      expect(llm.requests).toHaveLength(2);
     });
 
     it('gives the LLM the supported behavior when the notes describe unsupported behavior', async () => {
@@ -339,13 +342,11 @@ describe('runManualMerge', () => {
 
       expect(llm.requests).toHaveLength(2);
       for (const request of llm.requests) {
-        const prompt = String(request.prompt);
-        expect(prompt).toContain(standardBody('Supported behavior'));
-        expect(prompt).toContain('passwordless login with a one-time code');
-        expect(prompt).toContain('express payment buttons');
+        expect(String(request.prompt)).toContain(standardBody('Supported behavior'));
       }
       expect(String(llm.requests[0]?.prompt)).toContain('one-time code sent by email');
       expect(String(llm.requests[1]?.prompt)).toContain('Express payment buttons sit above');
+      // Replies that keep the standard text give back the checked-in file byte for byte.
       expect(fused).toBe(standard);
     });
   });

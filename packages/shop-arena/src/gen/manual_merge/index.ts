@@ -38,9 +38,10 @@ export {
   type Tiebreaker,
   mergeCapabilities,
 } from './capabilities.js';
-export { FUSED_SECTIONS, fuseStandardSubManual } from './fusion.js';
+export { fuseStandardSubManual } from './fusion.js';
 export { CANONICAL_SECTIONS, mergeManualProse, parseManualSections } from './prose.js';
 export { MANUAL_PARTS, type ManualPart, splitManual } from './split.js';
+export { FUSED_SECTIONS } from './standard_sub_manual.js';
 export { mergeStats, statsSchema } from './stats.js';
 
 export const MANUAL_DIR = 'manual';

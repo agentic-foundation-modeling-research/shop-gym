@@ -1,8 +1,8 @@
 /**
  * LLM plumbing for the gen steps: prompt loading with `{{name}}`
- * placeholders, structured (JSON) completions with one validation retry,
- * and plain text completions. Every call carries the pipeline abort signal
- * and the configured per-call timeout.
+ * placeholders, and structured (JSON) and plain text completions, each with
+ * one validation retry. Every call carries the pipeline abort signal and the
+ * configured per-call timeout.
  */
 
 import { readFileSync } from 'node:fs';
@@ -49,6 +49,35 @@ const RETRY_PREFIX =
   'Re-emit the JSON value from scratch, fixing the specific problem above. ' +
   'Output JSON only - no commentary, no code fences, no trailing prose.\n\n';
 
+const TEXT_RETRY_PREFIX =
+  'Your previous reply failed validation with this error:\n  {{error}}\n' +
+  'Write the reply again from scratch, fixing the specific problem above.\n\n';
+
+/** One attempt's accepted value, or the problem that rejects it. */
+type Attempt<T> = { readonly value: T } | { readonly problem: string };
+
+/**
+ * Runs `attempt` on `prompt`. When it reports a problem, runs it once more
+ * on `prompt` with the problem put before it by `retryPrefix`.
+ */
+async function withOneRetry<T>(
+  prompt: string,
+  retryPrefix: string,
+  attempt: (text: string) => Promise<Attempt<T>>,
+): Promise<T> {
+  let problem: string | undefined;
+  for (let i = 0; i < 2; i += 1) {
+    const result = await attempt(
+      problem === undefined ? prompt : retryPrefix.replace('{{error}}', problem) + prompt,
+    );
+    if ('value' in result) {
+      return result.value;
+    }
+    problem = result.problem;
+  }
+  throw new SynthError(`LLM reply rejected after retry: ${problem ?? 'unknown error'}`);
+}
+
 /**
  * Asks for one JSON value matching `schema`, retrying once with the error
  * message prepended when the reply does not parse, does not match the
@@ -60,9 +89,7 @@ export async function completeStructured<T>(
   schema: z.ZodType<T>,
   validate: (value: T) => string | undefined = () => undefined,
 ): Promise<T> {
-  let error: string | undefined;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const text = error === undefined ? prompt : RETRY_PREFIX.replace('{{error}}', error) + prompt;
+  return withOneRetry(prompt, RETRY_PREFIX, async (text) => {
     let value: T;
     try {
       ({ value } = await completeJson(
@@ -74,21 +101,12 @@ export async function completeStructured<T>(
       if (!(err instanceof LlmJsonError)) {
         throw err;
       }
-      error = err.message;
-      continue;
+      return { problem: err.message };
     }
     const problem = validate(value);
-    if (problem === undefined) {
-      return value;
-    }
-    error = problem;
-  }
-  throw new SynthError(`LLM reply rejected after retry: ${error ?? 'unknown error'}`);
+    return problem === undefined ? { value } : { problem };
+  });
 }
-
-const TEXT_RETRY_PREFIX =
-  'Your previous reply failed validation with this error:\n  {{error}}\n' +
-  'Write the reply again from scratch, fixing the specific problem above.\n\n';
 
 /**
  * One plain text completion; the trimmed reply must be non-empty. When
@@ -99,21 +117,17 @@ export async function completeText(
   prompt: string,
   validate: (text: string) => string | undefined = () => undefined,
 ): Promise<string> {
-  let error: string | undefined;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  return withOneRetry(prompt, TEXT_RETRY_PREFIX, async (text) => {
     const completion = await call.llm.complete({
       model: call.model,
-      prompt: error === undefined ? prompt : TEXT_RETRY_PREFIX.replace('{{error}}', error) + prompt,
+      prompt: text,
       signal: callSignal(call),
     });
-    const text = completion.text.trim();
-    if (text === '') {
+    const reply = completion.text.trim();
+    if (reply === '') {
       throw new SynthError('LLM returned an empty reply');
     }
-    error = validate(text);
-    if (error === undefined) {
-      return text;
-    }
-  }
-  throw new SynthError(`LLM reply rejected after retry: ${error ?? 'unknown error'}`);
+    const problem = validate(reply);
+    return problem === undefined ? { value: reply } : { problem };
+  });
 }

@@ -64,8 +64,11 @@ One of the area files in a SandboxShop's `manual/parts/`, so that each build tas
 _Avoid_: manual part, part
 
 **Standard sub-manual**:
-The one checked-in Sub-manual that Shop generation adds to every SandboxShop as `manual/parts/standard.md`. It describes, by the Shopify standard, the pages that Storefront exploration cannot observe (account, checkout, and order confirmation), the rules for the announcement bar and for product reviews, and the behavior that the backend supports.
+The one checked-in Sub-manual that Shop generation adds to every SandboxShop as `manual/parts/standard.md`. It describes, by the Shopify standard, the pages that Storefront exploration cannot observe (account, checkout, and order confirmation), the rules for the announcement bar and for product reviews, and the behavior that the backend supports. Each SandboxShop gets its own copy, and Fusion fits that copy to the shop's observed notes.
 _Avoid_: standard manual, account manual
+
+**Fusion**:
+The part of manual merge that writes the observed Account and Checkout sections of the Merged manual into the same sections of the shop's copy of the Standard sub-manual. Observed labels, layout and wording win. Behavior that the backend does not support, and the labels and messages that the Verifiers check, keep the standard text. Without observed notes, the copy is the checked-in file.
 
 **Storefront template**:
 The React Router SSR storefront app that every SandboxShop starts from. The build agent edits a copy of it, never the template itself.

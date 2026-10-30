@@ -15,10 +15,8 @@
 import { fileURLToPath } from 'node:url';
 
 import { type LlmCall, completeText, loadPrompt } from '../llm.js';
-import { parseManualSections } from './prose.js';
-
-/** H2 sections of the Merged manual that fusion consumes, instead of a cut Sub-manual. */
-export const FUSED_SECTIONS = ['Account', 'Checkout'] as const;
+import { parseManualSections, replaceManualSection } from './prose.js';
+import { FUSED_SECTIONS } from './standard_sub_manual.js';
 
 type FusedSection = (typeof FUSED_SECTIONS)[number];
 
@@ -27,7 +25,7 @@ type FusedSection = (typeof FUSED_SECTIONS)[number];
  * the Verifiers and the Final eval) look up on the storefront. A fused
  * section must keep each one, in double quotes, as the standard text has it.
  */
-export const CHECKED_LABELS: Readonly<Record<FusedSection, readonly string[]>> = {
+const CHECKED_LABELS: Readonly<Record<FusedSection, readonly string[]>> = {
   Account: [
     'Forgot your password?',
     "We've sent you an email with a link to update your password.",
@@ -56,6 +54,7 @@ const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
  * @param manual The Merged `manual.md`.
  * @param log Receives one line for each fused section.
  * @returns `standard` unchanged when `manual` has no observed notes.
+ * @throws Error when `standard` lacks a section that fusion reads.
  * @throws SynthError when a fused section still breaks a rule after one retry.
  */
 export async function fuseStandardSubManual(
@@ -66,7 +65,13 @@ export async function fuseStandardSubManual(
 ): Promise<string> {
   const observed = parseManualSections(manual);
   const standardSections = parseManualSections(standard);
-  const supported = standardSections.get(SUPPORTED_BEHAVIOR_SECTION) ?? '';
+  const standardSection = (name: string): string => {
+    const body = standardSections.get(name);
+    if (body === undefined) {
+      throw new Error(`the Standard sub-manual has no "## ${name}" section`);
+    }
+    return body;
+  };
   let fused = standard;
   for (const section of FUSED_SECTIONS) {
     const notes = observed.get(section)?.trim() ?? '';
@@ -75,13 +80,13 @@ export async function fuseStandardSubManual(
     }
     const prompt = loadPrompt(PROMPTS_DIR, 'fuse_standard_section', {
       section,
-      standard_section: standardSections.get(section) ?? '',
+      standard_section: standardSection(section),
       observed_section: notes,
-      supported_behavior: supported,
+      supported_behavior: standardSection(SUPPORTED_BEHAVIOR_SECTION),
       checked_labels: CHECKED_LABELS[section].map((label) => `- "${label}"`).join('\n'),
     });
     const body = await completeText(call, prompt, (reply) => fusedSectionProblem(section, reply));
-    fused = replaceSection(fused, section, body);
+    fused = replaceManualSection(fused, section, body);
     log(`[manual_merge] fused the observed ${section} notes into the Standard sub-manual`);
   }
   return fused;
@@ -97,19 +102,4 @@ function fusedSectionProblem(section: FusedSection, body: string): string | unde
     return `the reply drops the checked label(s) ${missing.map((label) => `"${label}"`).join(', ')}; keep each one word for word, in double quotes`;
   }
   return undefined;
-}
-
-/** `markdown` with the body of its `## <section>` replaced by `body`. */
-function replaceSection(markdown: string, section: string, body: string): string {
-  const headings = [...markdown.matchAll(/^##\s+(.+?)\s*$/gm)];
-  const index = headings.findIndex((match) => match[1]?.trim() === section);
-  const heading = headings[index];
-  if (heading === undefined) {
-    throw new Error(`the Standard sub-manual has no "## ${section}" section`);
-  }
-  // The match can end with the newline after the heading line; the body starts after the line.
-  const start = heading.index + heading[0].trimEnd().length;
-  const next = headings[index + 1];
-  const tail = next === undefined ? '\n' : `\n\n${markdown.slice(next.index)}`;
-  return `${markdown.slice(0, start)}\n\n${body}${tail}`;
 }

@@ -1,9 +1,9 @@
 /**
  * Test doubles for the gen pipeline: a scripted `LlmClient` that answers
  * every synthesis prompt with a deterministic, schema-valid reply, a
- * scripted `LlmClient` for the fusion prompts, a scripted visual judge, a stub storefront server for the HTTP verifiers
- * and the final eval, and a writer for a minimal Shop Manual fixture. No
- * real merchant data.
+ * scripted `LlmClient` for the fusion prompts, a scripted visual judge, a
+ * stub storefront server for the HTTP verifiers and the final eval, and a
+ * writer for a minimal Shop Manual fixture. No real merchant data.
  */
 
 import * as fs from 'node:fs/promises';
