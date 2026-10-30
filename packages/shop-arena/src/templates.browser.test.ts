@@ -443,6 +443,46 @@ describe('storefront template in a browser', () => {
     expect(carts.map((cart) => cart.appliedDiscountCode)).toEqual(['WELCOME10']);
   }, 60_000);
 
+  it('serves the cart with its Discount code at /cart.js, in its own episode only', async () => {
+    const response = await session.page.request.get(`${sidecar.url}/cart.js`);
+    expect(response.status()).toBe(200);
+    const { carts } = await snapshot();
+    const variantId = Number(carts[0]?.lines[0]?.merchandiseId.split('/').at(-1));
+    // 19.99 less 10% (2.00).
+    expect(await response.json()).toEqual({
+      item_count: 1,
+      items: [
+        {
+          id: variantId,
+          variant_id: variantId,
+          product_title: PRODUCT.title,
+          variant_title: 'Red Mushroom',
+          quantity: 1,
+          price: 1999,
+          original_line_price: 1999,
+        },
+      ],
+      total_price: 1799,
+      total_discount: 200,
+      discount_codes: [{ code: 'WELCOME10', applicable: true }],
+    });
+
+    // The same session cookie in another episode finds no cart.
+    const cookie = (await session.context.cookies())
+      .map((entry) => `${entry.name}=${entry.value}`)
+      .join('; ');
+    const elsewhere = await fetch(`${sidecar.url}/cart.js`, {
+      headers: { cookie, 'x-shopgym-episode': `${EPISODE_ID}-other` },
+    });
+    expect(await elsewhere.json()).toEqual({
+      item_count: 0,
+      items: [],
+      total_price: 0,
+      total_discount: 0,
+      discount_codes: [],
+    });
+  }, 60_000);
+
   it('places the order and lands on its thank-you page', async () => {
     const outcome = await placeOrder(session.page, sidecar.url, SHOPPER.email);
     expect(outcome.ok, outcome.detail).toBe(true);

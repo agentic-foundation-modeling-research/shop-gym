@@ -20,6 +20,7 @@ import { ADDRESS_FIELDS } from '~/lib/addresses';
 import { clearCartId, getAppContext, getCartId, getCustomerAccessToken } from '~/lib/context';
 import { loadCustomer } from '~/lib/customer';
 import { applyDiscountCode, removeDiscountCode } from '~/lib/discount';
+import { toCents } from '~/lib/money';
 import {
   CART_BUYER_IDENTITY_UPDATE_MUTATION,
   CART_QUERY,
@@ -431,8 +432,4 @@ function isShippingWaived(cart: Cart, settings: CommerceSettings): boolean {
     (threshold !== null && toCents(cart.cost.subtotalAmount.amount) >= toCents(threshold.amount)) ||
     appliedCartDiscount(cart)?.targetType === 'SHIPPING_LINE'
   );
-}
-
-function toCents(amount: string): number {
-  return Math.round(Number.parseFloat(amount) * 100);
 }

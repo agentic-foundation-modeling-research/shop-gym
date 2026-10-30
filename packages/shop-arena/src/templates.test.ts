@@ -2,8 +2,8 @@
  * Slow end-to-end smoke of the storefront template against the backend
  * template: copies the template to a temp dir, installs and builds it, boots
  * `shop-backend` on the template fixture plus the built storefront, and
- * drives the shopping, account, checkout, and episode-isolation flows over
- * HTTP. Gated by `SHOPGYM_SLOW_TESTS=1`; requires `pnpm` on PATH and a built
+ * drives the shopping, account, checkout, `/cart.js`, and episode-isolation
+ * flows over HTTP. Gated by `SHOPGYM_SLOW_TESTS=1`; requires `pnpm` on PATH and a built
  * `packages/shop_backend/dist`.
  */
 
@@ -19,6 +19,15 @@ import { STOREFRONT_TEMPLATE_DIR } from './templates.js';
 const BACKEND_CLI = fileURLToPath(new URL('../../shop_backend/dist/cli.js', import.meta.url));
 const FIXTURE_DIR = join(STOREFRONT_TEMPLATE_DIR, 'fixtures', 'sandbox_shop_v0');
 const BOOT_TIMEOUT_MS = 30_000;
+
+/** What `/cart.js` returns when the session has no cart in the episode. */
+const EMPTY_CART_JS = {
+  item_count: 0,
+  items: [],
+  total_price: 0,
+  total_discount: 0,
+  discount_codes: [],
+};
 
 const GUEST_ADDRESS = {
   firstName: 'Guest',
@@ -172,6 +181,73 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     expect((await member.get('/account/orders/999999')).status).toBe(404);
   });
 
+  it("serves the episode's cart at /cart.js in the fields of Shopify's AJAX cart", async () => {
+    const shopper = new HttpClient(storefrontUrl, 'cart-js');
+    const none = await shopper.get('/cart.js');
+    expect(none.status).toBe(200);
+    expect(JSON.parse(none.body)).toEqual(EMPTY_CART_JS);
+
+    const toy = availableMerchandiseId(
+      (await shopper.get('/products/shopliseum-mushroom-dog-toys')).body,
+    );
+    const toyItem = {
+      id: numericId(toy),
+      variant_id: numericId(toy),
+      product_title: 'Shopliseum Mushroom Dog Toys',
+      variant_title: 'Red Mushroom',
+      price: 1999,
+    };
+    await shopper.post('/cart', { intent: 'add', merchandiseId: toy, quantity: '2' });
+    await shopper.post('/cart', { intent: 'discount', discountCode: 'save5' });
+    // Two toys reach the 30.00 minimum of SAVE5, which takes 5.00 off.
+    expect(JSON.parse((await shopper.get('/cart.js')).body)).toEqual({
+      item_count: 2,
+      items: [{ ...toyItem, quantity: 2, original_line_price: 3998 }],
+      total_price: 3498,
+      total_discount: 500,
+      discount_codes: [{ code: 'SAVE5', applicable: true }],
+    });
+
+    // One toy is below the minimum: the code stays on the cart and does not apply.
+    const lineId = /name="lineId" value="([^"]+)"/.exec((await shopper.get('/cart')).body)?.[1];
+    expect(lineId).toBeDefined();
+    await shopper.post('/cart', { intent: 'update', lineId: lineId ?? '', quantity: '1' });
+    expect(JSON.parse((await shopper.get('/cart.js')).body)).toEqual({
+      item_count: 1,
+      items: [{ ...toyItem, quantity: 1, original_line_price: 1999 }],
+      total_price: 1999,
+      total_discount: 0,
+      discount_codes: [{ code: 'SAVE5', applicable: false }],
+    });
+
+    // A product with one variant has no variant title; 32.98 applies SAVE5 again.
+    const brush = availableMerchandiseId(
+      (await shopper.get('/products/carthaeum-toothbrush')).body,
+    );
+    await shopper.post('/cart', { intent: 'add', merchandiseId: brush, quantity: '1' });
+    expect(JSON.parse((await shopper.get('/cart.js')).body)).toEqual({
+      item_count: 2,
+      items: [
+        { ...toyItem, quantity: 1, original_line_price: 1999 },
+        {
+          id: numericId(brush),
+          variant_id: numericId(brush),
+          product_title: 'Carthaeum Toothbrush',
+          variant_title: null,
+          quantity: 1,
+          price: 1299,
+          original_line_price: 1299,
+        },
+      ],
+      total_price: 2798,
+      total_discount: 500,
+      discount_codes: [{ code: 'SAVE5', applicable: true }],
+    });
+
+    // Read only: the route has no action.
+    expect((await shopper.post('/cart.js', {})).status).toBe(405);
+  });
+
   it('keeps x-shopgym-episode requests out of the default episode', async () => {
     const shopper = new HttpClient(storefrontUrl);
     const product = await shopper.get('/products/aislearena-anti-tick-collar');
@@ -182,6 +258,11 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     // Same cookies, different episode: the default-episode cart is invisible.
     const episode = new HttpClient(storefrontUrl, 'ep1', shopper.cookies);
     expect((await episode.get('/cart')).body).toContain('Your cart is empty');
+    expect(JSON.parse((await shopper.get('/cart.js')).body)).toMatchObject({
+      item_count: 1,
+      items: [{ product_title: 'AisleArena Anti Tick Collar' }],
+    });
+    expect(JSON.parse((await episode.get('/cart.js')).body)).toEqual(EMPTY_CART_JS);
 
     // Seeded customers exist in every episode, but default-episode orders do not leak.
     await episode.post('/account/login', {
@@ -283,6 +364,11 @@ async function waitForHealth(url: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error(`Timed out waiting for ${url}`);
+}
+
+/** The number at the end of a gid, e.g. 123 for `gid://shopify/ProductVariant/123`. */
+function numericId(gid: string): number {
+  return Number(gid.split('/').at(-1));
 }
 
 /** `value` of the first enabled variant radio on a product page. */

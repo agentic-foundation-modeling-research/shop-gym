@@ -3,12 +3,17 @@
  * drive the backend correctly. Over HTTP, in a fresh episode: add a variant,
  * update its quantity, check the cart page shows the backend's totals,
  * remove the line, then place a guest order and confirm the confirmation
- * page shows the order the backend recorded. Backend state is read from the
- * sandbox control API, so the check sees what the backend stored rather
- * than what the page claims.
+ * page shows the order the backend recorded. After the add, the update and
+ * the remove, `GET /cart.js` must return the backend's cart in the fields
+ * of Shopify's AJAX cart. Backend state is read from the sandbox control
+ * API and GraphQL, so the check sees what the backend stored rather than
+ * what the page claims.
  */
 
+import { isDeepStrictEqual } from 'node:util';
+
 import type { Verifier, VerifierContext, VerifierResult } from '@shop-gym/harness';
+import { z } from 'zod';
 
 import { StorefrontClient, bodyExcerpt, firstAvailableMerchandiseId } from './http.js';
 import {
@@ -30,6 +35,68 @@ const CART_COST_QUERY = `query CartCost($id: ID!) {
     }
   }
 }`;
+const CART_JS_QUERY = `query CartJs($id: ID!) {
+  cart(id: $id) {
+    totalQuantity
+    cost { subtotalAmount { amount } }
+    lines(first: 100) {
+      nodes {
+        ... on CartLine {
+          quantity
+          cost { totalAmount { amount } }
+          merchandise { ... on ProductVariant { id title price { amount } product { title } } }
+        }
+      }
+    }
+    discountCodes { code applicable }
+    discountAllocations { targetType discountedAmount { amount } }
+  }
+}`;
+
+/** The `/cart.js` fields of Shopify's AJAX cart that the template serves; others are ignored. */
+const ajaxCartSchema = z.object({
+  item_count: z.number(),
+  items: z.array(
+    z.object({
+      id: z.number(),
+      variant_id: z.number(),
+      product_title: z.string(),
+      variant_title: z.string().nullable(),
+      quantity: z.number(),
+      price: z.number(),
+      original_line_price: z.number(),
+    }),
+  ),
+  total_price: z.number(),
+  total_discount: z.number(),
+  discount_codes: z.array(z.object({ code: z.string(), applicable: z.boolean() })),
+});
+
+type AjaxCart = z.infer<typeof ajaxCartSchema>;
+
+interface CartJsQueryData {
+  readonly cart: {
+    readonly totalQuantity: number;
+    readonly cost: { readonly subtotalAmount: { readonly amount: string } };
+    readonly lines: {
+      readonly nodes: readonly {
+        readonly quantity: number;
+        readonly cost: { readonly totalAmount: { readonly amount: string } };
+        readonly merchandise: {
+          readonly id: string;
+          readonly title: string;
+          readonly price: { readonly amount: string };
+          readonly product: { readonly title: string };
+        };
+      }[];
+    };
+    readonly discountCodes: readonly { readonly code: string; readonly applicable: boolean }[];
+    readonly discountAllocations: readonly {
+      readonly targetType: string;
+      readonly discountedAmount: { readonly amount: string };
+    }[];
+  } | null;
+}
 
 export interface CartStep {
   readonly name: string;
@@ -105,7 +172,10 @@ export function cartConformanceVerifier(options: CartConformanceOptions): Verifi
   };
 }
 
-/** Drive add, update, totals, remove and guest checkout; each step records into `log`. */
+/**
+ * Drive add, update, totals, remove and guest checkout, with `/cart.js` read
+ * after each cart change; each step records into `log`.
+ */
 async function runCartFlow(
   options: CartConformanceOptions,
   episodeId: string,
@@ -153,6 +223,10 @@ async function runCartFlow(
   ) {
     return;
   }
+  const cartId = cart.id;
+  if (!(await recordCartJs(log, '/cart.js after add', client, backend, cartId))) {
+    return;
+  }
 
   const updated = await client.post('/cart', {
     intent: 'update',
@@ -167,7 +241,8 @@ async function runCartFlow(
       updated.status < 400 && updatedLine?.quantity === 2,
       `POST /cart intent=update quantity=2 returned ${updated.status}; backend quantity is ${updatedLine?.quantity ?? 'missing'}`,
     ) ||
-    cart === undefined
+    cart === undefined ||
+    !(await recordCartJs(log, '/cart.js after update', client, backend, cartId))
   ) {
     return;
   }
@@ -198,7 +273,8 @@ async function runCartFlow(
         (cart?.lines.length ?? 0) === 0 &&
         emptyPage.body.includes('Your cart is empty'),
       `POST /cart intent=remove returned ${removed.status}; backend has ${cart?.lines.length ?? 0} line(s); /cart ${emptyPage.body.includes('Your cart is empty') ? 'shows' : 'does not show'} "Your cart is empty"`,
-    )
+    ) ||
+    !(await recordCartJs(log, '/cart.js after remove', client, backend, cartId))
   ) {
     return;
   }
@@ -231,6 +307,59 @@ async function runCartFlow(
   );
 }
 
+/**
+ * Record step `name`: `GET /cart.js` returns 200 with the AJAX cart fields
+ * of the backend's cart `cartId`, read in the same episode.
+ */
+async function recordCartJs(
+  log: StepLog,
+  name: string,
+  client: StorefrontClient,
+  backend: BackendProbe,
+  cartId: string,
+): Promise<boolean> {
+  const response = await client.get('/cart.js');
+  const backendCart = await backend.ajaxCart(cartId);
+  const expected = JSON.stringify(backendCart);
+  if (response.status !== 200) {
+    return log.record(
+      name,
+      false,
+      `GET /cart.js returned ${response.status} (${bodyExcerpt(response.body)}); the backend cart is ${expected}`,
+    );
+  }
+  const body = parseJson(response.body);
+  const parsed = ajaxCartSchema.safeParse(body);
+  if (!parsed.success) {
+    const reason =
+      body === undefined
+        ? 'the body is not JSON'
+        : parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    return log.record(
+      name,
+      false,
+      `GET /cart.js is not an AJAX cart (${reason}): ${bodyExcerpt(response.body)}; the backend cart is ${expected}`,
+    );
+  }
+  const ok = isDeepStrictEqual(parsed.data, backendCart);
+  return log.record(
+    name,
+    ok,
+    ok
+      ? `GET /cart.js shows the backend cart: ${expected}`
+      : `GET /cart.js returned ${JSON.stringify(parsed.data)}; the backend cart is ${expected}`,
+  );
+}
+
+/** `body` parsed as JSON, or `undefined` when it is not JSON. */
+function parseJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Reads backend state for one episode through the control API and GraphQL. */
 class BackendProbe {
   constructor(
@@ -251,20 +380,70 @@ class BackendProbe {
   }
 
   async cartCost(id: string): Promise<{ subtotal: Money; total: Money }> {
-    const response = await fetch(`${this.backendUrl}/graphql`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-shopgym-episode': this.episodeId },
-      body: JSON.stringify({ query: CART_COST_QUERY, variables: { id } }),
-    });
-    const payload = (await response.json()) as {
-      data?: { cart?: { cost: { subtotalAmount: Money; totalAmount: Money } } | null };
-    };
+    const payload = await this.graphql<{
+      cart?: { cost: { subtotalAmount: Money; totalAmount: Money } } | null;
+    }>(CART_COST_QUERY, { id });
     const cost = payload.data?.cart?.cost;
     if (cost === undefined) {
       throw new Error(`backend returned no cart cost for ${id}`);
     }
     return { subtotal: cost.subtotalAmount, total: cost.totalAmount };
   }
+
+  /**
+   * The `/cart.js` fields for cart `id`, from the backend's cart: amounts in
+   * cents, `total_price` less the merchandise discount and before tax, and
+   * no `variant_title` for a "Default Title" variant. A cart the backend
+   * does not know is the empty cart.
+   */
+  async ajaxCart(id: string): Promise<AjaxCart> {
+    const payload = await this.graphql<CartJsQueryData>(CART_JS_QUERY, { id });
+    const cart = payload.data?.cart;
+    if (cart === undefined) {
+      throw new Error(`backend returned no cart for ${id}: ${JSON.stringify(payload.errors)}`);
+    }
+    if (cart === null) {
+      return { item_count: 0, items: [], total_price: 0, total_discount: 0, discount_codes: [] };
+    }
+    const totalDiscount = cart.discountAllocations
+      .filter((allocation) => allocation.targetType === 'LINE_ITEM')
+      .reduce((sum, allocation) => sum + toCents(allocation.discountedAmount.amount), 0);
+    return {
+      item_count: cart.totalQuantity,
+      items: cart.lines.nodes.map((line) => {
+        const variantId = Number(line.merchandise.id.split('/').at(-1));
+        return {
+          id: variantId,
+          variant_id: variantId,
+          product_title: line.merchandise.product.title,
+          variant_title: line.merchandise.title === 'Default Title' ? null : line.merchandise.title,
+          quantity: line.quantity,
+          price: toCents(line.merchandise.price.amount),
+          original_line_price: toCents(line.cost.totalAmount.amount),
+        };
+      }),
+      total_price: toCents(cart.cost.subtotalAmount.amount) - totalDiscount,
+      total_discount: totalDiscount,
+      discount_codes: cart.discountCodes.map(({ code, applicable }) => ({ code, applicable })),
+    };
+  }
+
+  /** POSTs `query` to the backend's GraphQL endpoint in this episode. */
+  private async graphql<T>(
+    query: string,
+    variables: Readonly<Record<string, unknown>>,
+  ): Promise<{ data?: T; errors?: unknown }> {
+    const response = await fetch(`${this.backendUrl}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopgym-episode': this.episodeId },
+      body: JSON.stringify({ query, variables }),
+    });
+    return (await response.json()) as { data?: T; errors?: unknown };
+  }
+}
+
+function toCents(amount: string): number {
+  return Math.round(Number.parseFloat(amount) * 100);
 }
 
 /** Format like the template's `Price` component: `Intl.NumberFormat('en-US', currency)`. */

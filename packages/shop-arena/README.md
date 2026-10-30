@@ -27,16 +27,17 @@ dir, serves it over the in-process backend on the template fixture, and
 walks one shopper in Chromium through sign up, log out, a taken email on
 the register page, "Forgot your password?", log in, add to cart,
 every Discount code in the announcement bar (on a fake clock it does not
-move by itself), an unknown and a valid Discount code, check out, the
+move by itself), an unknown and a valid Discount code, `/cart.js` with
+that code (and the empty cart from another episode), check out, the
 thank-you page, the account order page and the address book (add, edit,
 set the default, see it prefilled at checkout, delete), with the browser
 steps that the final eval uses (`src/gen/build/verifiers/browser_steps.ts`).
 It checks the pages and the episode's StateSnapshot. It also serves the
 same build over backends with one Discount code and with none, for the
 plain announcement and the missing bar. `SHOPGYM_SLOW_TESTS=1
-pnpm test` also runs `src/templates.test.ts`, which drives the account and
-checkout flows over HTTP against `packages/shop_backend/dist/cli.js`. Build
-the backend first for both.
+pnpm test` also runs `src/templates.test.ts`, which drives the account,
+checkout and `/cart.js` flows over HTTP against
+`packages/shop_backend/dist/cli.js`. Build the backend first for both.
 
 ## Explore
 
@@ -243,9 +244,9 @@ manual directory and `{ llm, model }` for the judge) the order becomes
 | Verifier | Applies to | Checks |
 | --- | --- | --- |
 | `typecheck`, `build` | storefront tasks | `pnpm typecheck` in `artifact/storefront`; `build` asks the storefront sidecar for its `pnpm build`, so the HTTP verifiers that follow serve that build |
-| `routes_200` | storefront tasks | static routes and the routes of every page bucket return 200, whatever the task; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` returns 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
+| `routes_200` | storefront tasks | static routes and the routes of every page bucket return 200, whatever the task; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` and `/cart.js` return 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
 | `nav_coverage` | `gen_navigation`, `gen_theme`, `visual_fix` | every `navigation.json` target returns 200 and is linked from the rendered header or footer |
-| `cart_conformance` | `gen_cart_search`, `gen_product`, `gen_checkout`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order |
+| `cart_conformance` | `gen_cart_search`, `gen_product`, `gen_checkout`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order; after the add, the update and the remove, `GET /cart.js` returns the backend cart in the AJAX cart fields |
 | `account_flow` | `gen_account`, `visual_fix` | in one `BrowserSession` episode with the browser steps of the Final eval: sign up, log out, "Forgot your password?" shows the sent message, log in, add an address, edit it; stops at the first failed step and names it |
 | `discount_flow` | `gen_checkout`, `visual_fix` | in one `BrowserSession` episode: add the first sampled product, apply the Discount code from the Dataset that `readApplicableDiscountCode` picks (the checkout "Total" changes; skipped when no code surely applies), then an unknown code shows "Enter a valid discount code" and the "Total" stays |
 | `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` and `checkout` routes and the first seeded customer logged in before `/account` (`gen_account` gets the `account` bucket, `gen_checkout` the `checkout` bucket with `/checkout`); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |

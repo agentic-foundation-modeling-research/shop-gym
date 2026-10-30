@@ -4,8 +4,8 @@
  * page it does not work on through a shared file). Static routes and the
  * dataset routes of every page bucket return 200; account pages redirect to the login page when logged
  * out and return 200 after logging in as the seeded customer; `/checkout`
- * returns 200 with a non-empty cart; internal links found in the rendered
- * pages do not 4xx/5xx.
+ * and the `/cart.js` JSON return 200 with a non-empty cart; internal links
+ * found in the rendered pages do not 4xx/5xx.
  */
 
 import type { Verifier, VerifierContext, VerifierResult } from '@shop-gym/harness';
@@ -124,6 +124,7 @@ export function routes200Verifier(options: Routes200Options): Verifier {
   };
 }
 
+/** Probes of the routes that need a line in the cart: `/checkout` and `/cart.js`. */
 async function checkoutProbes(
   guest: StorefrontClient,
   handles: Awaited<ReturnType<typeof readDatasetHandles>>,
@@ -140,8 +141,10 @@ async function checkoutProbes(
   }
   await guest.post('/cart', { intent: 'add', merchandiseId, quantity: '1' });
   const checkout = await guest.get('/checkout');
+  const cartJs = await guest.get('/cart.js');
   return [
     probe('/checkout', 'status 200 with a non-empty cart', checkout.status === 200, checkout),
+    probe('/cart.js', 'status 200 with a non-empty cart', cartJs.status === 200, cartJs),
   ];
 }
 
