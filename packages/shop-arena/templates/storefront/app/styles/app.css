@@ -119,6 +119,53 @@ label {
   grid-template-rows: auto 1fr auto;
 }
 
+.page-shell:has(> .announcement-bar) {
+  grid-template-rows: auto auto 1fr auto;
+}
+
+.announcement-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.25rem clamp(1rem, 4vw, 3rem);
+  background: var(--color-text);
+  color: white;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.announcement-slider {
+  min-width: 0;
+  flex: 0 1 36rem;
+}
+
+.announcement-message {
+  margin: 0.5rem 0;
+}
+
+.announcement-arrow {
+  height: 2.5rem;
+  min-height: 2.5rem;
+  width: 2.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.announcement-arrow:hover {
+  background: transparent;
+}
+
+.announcement-caret-previous {
+  transform: rotate(90deg);
+}
+
+.announcement-caret-next {
+  transform: rotate(-90deg);
+}
+
 .site-header,
 .site-footer {
   display: flex;

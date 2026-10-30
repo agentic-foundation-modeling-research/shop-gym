@@ -41,6 +41,7 @@ import {
   rejectDiscountCode,
   showMoreReviews,
   sortReviews,
+  stepThroughAnnouncements,
   viewOrder,
   viewOrderHistory,
   viewProduct,
@@ -88,9 +89,15 @@ const WORK_ADDRESS = {
 const WORK_ADDRESS_CHANGES = { address2: 'Floor 25', zip: 'H3B 4W8' };
 
 let workDir: string;
+let storefrontDir: string;
 let backend: ReturnType<typeof createSandboxServer>;
 let backendUrl: string;
 let sidecar: StorefrontSidecar;
+/** Backends and sidecars that serve the built copy over other Datasets; stopped in `afterAll`. */
+const otherServers: {
+  readonly backend: ReturnType<typeof createSandboxServer>;
+  readonly sidecar: StorefrontSidecar;
+}[] = [];
 let session: BrowserSession;
 let orderNumber: number | undefined;
 
@@ -149,6 +156,33 @@ async function reviewTitles(): Promise<string[]> {
   return reviewsSection().locator('article h3').allInnerTexts();
 }
 
+/**
+ * Serve the copy that `beforeAll` built over a new backend on the test
+ * Dataset cut to its first `count` Discount codes; resolves to its URL. The
+ * new sidecar's runner does nothing, so the copy is not built again.
+ */
+async function serveWithDiscountCodes(count: number): Promise<string> {
+  const data = loadShopData(FIXTURE_DIR);
+  const discountCodes = data.commerce.discount_codes.slice(0, count);
+  const backendPort = await freePort();
+  const otherBackend = createSandboxServer({
+    data: { ...data, commerce: { ...data.commerce, discount_codes: discountCodes } },
+    dataDir: FIXTURE_DIR,
+    port: backendPort,
+  });
+  await otherBackend.listen();
+  const otherSidecar = new StorefrontSidecar({
+    storefrontDir,
+    backendUrl: `http://127.0.0.1:${backendPort}`,
+    port: await freePort(),
+    logPath: path.join(workDir, `storefront-${count}-codes.log`),
+    runner: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+  });
+  otherServers.push({ backend: otherBackend, sidecar: otherSidecar });
+  await otherSidecar.start();
+  return otherSidecar.url;
+}
+
 /** Text of each order history row, in page order. */
 async function orderHistoryRows(): Promise<string[]> {
   return (await session.page.locator('table tbody tr').allInnerTexts()).map(normalized);
@@ -157,7 +191,7 @@ async function orderHistoryRows(): Promise<string[]> {
 describe('storefront template in a browser', () => {
   beforeAll(async () => {
     workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'storefront-browser-'));
-    const storefrontDir = path.join(workDir, 'storefront');
+    storefrontDir = path.join(workDir, 'storefront');
     await seedTemplate({ templateDir: STOREFRONT_TEMPLATE_DIR, destDir: storefrontDir });
     const backendPort = await freePort();
     backend = createSandboxServer({
@@ -179,6 +213,10 @@ describe('storefront template in a browser', () => {
 
   afterAll(async () => {
     await session?.close();
+    for (const other of otherServers) {
+      await other.sidecar.stop();
+      await other.backend.close();
+    }
     await sidecar?.stop();
     await backend?.close();
     if (workDir) await fs.rm(workDir, { recursive: true, force: true });
@@ -311,6 +349,17 @@ describe('storefront template in a browser', () => {
     expect(outcome.ok, outcome.detail).toBe(true);
     const { carts } = await snapshot();
     expect(carts.map((cart) => cart.lines.map((line) => line.quantity))).toEqual([[1]]);
+  }, 60_000);
+
+  it('steps through every Discount code in the announcement bar', async () => {
+    const outcome = await stepThroughAnnouncements(session.page, sidecar.url);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    // The codes of the test Dataset with their hints, in commerce.json order.
+    expect(outcome.slides).toEqual([
+      'WELCOME10 - 10% off your order',
+      'SAVE5 - $5 off orders over $30',
+      'FREESHIP - Free shipping on any order',
+    ]);
   }, 60_000);
 
   it('turns down an unknown Discount code and keeps the price', async () => {
@@ -519,5 +568,20 @@ describe('storefront template in a browser', () => {
     expect(text).toContain('Payment Status: Paid');
     expect(text).toContain('Fulfillment Status: Fulfilled');
     expect(text).toContain('88 Harbord Street');
+  }, 60_000);
+  it('shows one Discount code as a plain announcement with no arrows', async () => {
+    const url = await serveWithDiscountCodes(1);
+    await session.page.goto(url, { waitUntil: 'load' });
+    expect(await session.page.getByRole('region', { name: 'Announcement bar' }).count()).toBe(0);
+    const announcement = session.page.getByRole('region', { name: 'Announcement', exact: true });
+    expect(normalized(await announcement.innerText())).toBe('WELCOME10 - 10% off your order');
+    expect(await announcement.getByRole('button').count()).toBe(0);
+  }, 60_000);
+
+  it('shows no announcement bar for a Dataset with no Discount codes', async () => {
+    const url = await serveWithDiscountCodes(0);
+    await session.page.goto(url, { waitUntil: 'load' });
+    expect(await session.page.getByRole('region', { name: /^Announcement/ }).count()).toBe(0);
+    expect(await pageText()).not.toContain('WELCOME10');
   }, 60_000);
 });

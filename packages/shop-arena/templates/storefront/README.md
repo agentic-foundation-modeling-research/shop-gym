@@ -54,6 +54,15 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 | `/account/orders`, `/account/orders/:orderNumber` | Order history and detail |
 | `/pages/:handle`, `/policies/:handle` | Static content |
 
+Every page has the announcement bar above the header when the backend
+lists Discount codes (`discountCodeHints`): one slide for each code,
+`<code> - <hint>`, in backend order. With two or more codes it is the
+"Announcement bar" carousel, which shows one slide (named `<n> of <total>`)
+and has "Previous announcement" and "Next announcement" arrows that go round
+the slides. It starts at the first code and never moves by itself. One code
+is a plain "Announcement" region with no arrows; with no codes there is no
+bar.
+
 Account loaders redirect to `/account/login?redirectTo=<path>` when there is
 no valid session. Checkout works for guests; logged-in customers get the
 form prefilled from their default address. Both land on the thank-you page
@@ -82,6 +91,8 @@ the cart, and the form shows "Enter a valid discount code".
   size, and the product rating read from its rating metafields.
 - `app/components/storefront.tsx`: header, footer, grids, cart drawer, cart
   summary and the "Discount code" form.
+- `app/components/announcement-bar.tsx`: the announcement bar with the
+  Discount codes and their hints.
 - `app/components/checkout.tsx`: the order summary of checkout and the
   thank-you page.
 - `app/components/account.tsx`: the logout link, form errors, address and

@@ -93,6 +93,7 @@ packages/shop-arena/
     app/components/account.tsx   LogoutLink, FormErrors, AddressBlock, OrderHistory, OrderDetails
     app/components/addresses.tsx AddressBook, DELETE_ADDRESS_CONFIRM
     app/components/reviews.tsx   RatingBlock, ReviewsSection
+    app/components/announcement-bar.tsx AnnouncementBar
     app/routes/account/*.tsx  login, register, logout, profile, addresses, orders, order
     app/routes/checkout.tsx   real checkout
     app/routes/checkout-confirmation.tsx
@@ -122,7 +123,19 @@ Nothing in v1.1 reads the Python copy.
 Protected loaders go through `requireCustomer`, which redirects to
 `/account/login?redirectTo=<path>` and clears a stale token cookie when the
 backend no longer recognises it. The root loader adds `customer` so the
-header can render Login / Account.
+header can render Login / Account, and `discountCodeHints` for the
+announcement bar.
+
+The announcement bar follows the Standard sub-manual. It is a full-width
+strip above the header on every page, with one slide for each Discount
+code, `<code> - <hint>`, in backend order. With two or more codes it is a
+region named "Announcement bar" that shows only the current slide, a group
+named "<n> of <total>", between the "Previous announcement" and "Next
+announcement" arrow buttons; Next on the last slide goes to the first, and
+Previous on the first goes to the last. It starts at the first code and has
+no auto-rotate. One code shows as a region named "Announcement" with no
+arrows, and with no codes there is no bar. No code or hint is in the
+template code.
 
 Checkout and the thank-you page follow the Standard sub-manual. Checkout
 redirects every shopper to the thank-you page `/checkout/confirmation/<n>`.
@@ -214,13 +227,17 @@ and in CI. It seeds and builds the template, serves it through
 `StorefrontSidecar` over the in-process backend on the template fixture, and
 walks one shopper in Chromium with the shared browser steps of the final eval:
 sign up, log out, log in, the Reviews of a product page (show more, sort, a
-half star, left-out fields, and a product with none), add to cart, an
+half star, left-out fields, and a product with none), add to cart, every
+Discount code in the announcement bar with its arrows, an
 unknown and a valid Discount code,
 check out, the thank-you page, the new order in the order history and its
 account order page, the address book (the errors of a blank address,
 add an address, add and edit a second one, make it the default, see it
 prefilled at checkout, delete the first after the confirm dialog), then a
-seeded Persona's order history and one past order.
+seeded Persona's order history and one past order. Last, it serves the
+same build over two more backends, on the fixture with only its first
+Discount code and with none, and checks the plain announcement and the
+missing bar.
 Each test is one step; it asserts on the page and, where
 the step changes state, on the episode's StateSnapshot from the Control API.
 New template features add a test that calls one more shared step.
@@ -258,6 +275,7 @@ template has no UI for them.
 | 12 | Account page, order history and order page per the Standard sub-manual; fixture Personas with seeded orders | done |
 | 13 | Reviews on the product page per the Standard sub-manual; fixture `reviews.json` | done |
 | 14 | Address book on `/account/addresses` per the Standard sub-manual; checkout prefilled from the default address | done |
+| 15 | Announcement bar with the Discount codes per the Standard sub-manual, fed by `discountCodeHints` | done |
 
 ## 8. Appendix
 
