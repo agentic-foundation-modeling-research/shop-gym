@@ -1,4 +1,4 @@
-/** Deterministic numeric ids and random numbers shared by assembly and `synth_reviews`. */
+/** Deterministic numeric ids, random numbers and dates shared by assembly and `synth_reviews`. */
 
 import { createHash } from 'node:crypto';
 
