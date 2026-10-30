@@ -2,8 +2,9 @@
  * Test doubles for the gen pipeline: a scripted `LlmClient` that answers
  * every synthesis prompt with a deterministic, schema-valid reply, a
  * scripted `LlmClient` for the fusion prompts, a scripted visual judge, a
- * stub storefront server for the HTTP verifiers and the final eval, and a
- * writer for a minimal Shop Manual fixture. No real merchant data.
+ * stub storefront server for the HTTP verifiers and the final eval, and
+ * writers for a minimal Shop Manual fixture and a minimal source Dataset
+ * fixture. No real merchant data.
  */
 
 import * as fs from 'node:fs/promises';
@@ -39,6 +40,8 @@ export interface ScriptedSynthOptions {
   readonly discountCodeReplies?: readonly (readonly unknown[])[];
   /** Changes the first reviews reply before it is sent; later replies are not changed. */
   readonly editFirstReviewsReply?: (texts: readonly ReviewText[]) => readonly unknown[];
+  /** A collection handle that the main menu of the first navigation reply also links. */
+  readonly extraFirstMenuCollection?: string;
 }
 
 /**
@@ -88,6 +91,7 @@ export class ScriptedSynthLlm implements LlmClient {
   private personaCalls = 0;
   private commerceCalls = 0;
   private reviewsCalls = 0;
+  private navigationCalls = 0;
 
   constructor(private readonly options: ScriptedSynthOptions = {}) {}
 
@@ -214,7 +218,12 @@ export class ScriptedSynthLlm implements LlmClient {
       }));
     }
     if (first.includes('navigation menus')) {
-      const collections = blocks[0] as { title: string; handle: string }[];
+      this.navigationCalls += 1;
+      const extra = this.navigationCalls === 1 ? this.options.extraFirstMenuCollection : undefined;
+      const collections = [
+        ...(blocks[0] as { title: string; handle: string }[]),
+        ...(extra === undefined ? [] : [{ title: 'Extra', handle: extra }]),
+      ];
       const pages = blocks[1] as { title: string; handle: string }[];
       const policies = blocks[2] as { title: string; handle: string }[];
       return {
@@ -379,6 +388,100 @@ export async function writeManualFixture(
       feature_count: 4,
     }),
   );
+  return dir;
+}
+
+/** A source Dataset product with fields that the backend schema does not name. */
+function sourceProduct(id: number, handle: string, title: string, productType: string) {
+  return {
+    id,
+    title,
+    handle,
+    description_html: `<p>The ${title.toLowerCase()} for long days.</p>`,
+    vendor: 'AisleArena',
+    product_type: productType,
+    tags: [productType.toLowerCase(), 'cotton'],
+    published_at: '2025-01-01T00:00:00Z',
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
+    status: 'active',
+    options: [{ name: 'Size', position: 1, values: ['S', 'M'] }],
+    variants: ['S', 'M'].map((size, i) => ({
+      id: id * 10 + i,
+      title: size,
+      sku: `${handle}-${size.toLowerCase()}`,
+      price: `${30 + i * 4}.00`,
+      compare_at_price: null,
+      available: true,
+      option1: size,
+      option2: null,
+      option3: null,
+      position: i + 1,
+      requires_shipping: true,
+      barcode: null,
+    })),
+    images: [
+      {
+        id: id * 10,
+        src: `${handle}-1.png`,
+        alt: `${title} on a hanger`,
+        width: 800,
+        height: 800,
+        position: 1,
+        variant_ids: null,
+      },
+    ],
+  };
+}
+
+function sourceCollection(id: number, handle: string, title: string, products: readonly string[]) {
+  return {
+    id,
+    title,
+    handle,
+    description: null,
+    description_html: null,
+    image: null,
+    published_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
+    sort_order: 'manual',
+    product_handles: products,
+  };
+}
+
+/** Products of `writeSourceDatasetFixture`. */
+export const SOURCE_PRODUCTS = [
+  sourceProduct(901, 'trail-hoodie', 'Trail Hoodie', 'Hoodies'),
+  sourceProduct(902, 'studio-legging', 'Studio Legging', 'Leggings'),
+  sourceProduct(903, 'rib-sock', 'Rib Sock', 'Socks'),
+];
+
+/** Collections of `writeSourceDatasetFixture`; `wide-leg-pairings` and `gift-ideas` have no products. */
+export const SOURCE_COLLECTIONS = [
+  sourceCollection(801, 'hoodies', 'Hoodies', ['trail-hoodie']),
+  sourceCollection(802, 'wide-leg-pairings', 'Wide Leg Pairings', []),
+  sourceCollection(803, 'bottoms', 'Bottoms', ['studio-legging', 'rib-sock']),
+  sourceCollection(804, 'gift-ideas', 'Gift Ideas', []),
+];
+
+/**
+ * Writes a small source Dataset for `sourceDataDir` into `dir`:
+ * `products.json`, `collections.json` and `images/` (one file for each
+ * product and one that no product uses), and other Dataset files that are
+ * not copied.
+ */
+export async function writeSourceDatasetFixture(dir: string): Promise<string> {
+  await fs.mkdir(path.join(dir, 'images'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'products.json'), JSON.stringify(SOURCE_PRODUCTS, null, 2));
+  await fs.writeFile(
+    path.join(dir, 'collections.json'),
+    JSON.stringify(SOURCE_COLLECTIONS, null, 2),
+  );
+  for (const name of [...SOURCE_PRODUCTS.map((p) => `${p.handle}-1.png`), 'unused-1.png']) {
+    await fs.writeFile(path.join(dir, 'images', name), `image ${name}`);
+  }
+  await fs.writeFile(path.join(dir, 'navigation.json'), JSON.stringify({ 'main-menu': [] }));
+  await fs.writeFile(path.join(dir, '_stage_b_products.json'), '[]');
   return dir;
 }
 

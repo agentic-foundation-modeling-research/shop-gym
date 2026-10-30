@@ -98,7 +98,12 @@ placeholder|openai` (`openai` needs `OPENAI_API_KEY`), catalog sizing
 `--build-model <ref>` for the build loop (default `openai/gpt-6-sol`, even
 if `--model` is set), and `--from manual_merge|data_synth|
 data_validation|build|final_eval|publish` to force a step and everything after
-it. Output layout:
+it. `--data <dataset dir>` copies the catalog of an existing SandboxShop
+Dataset, for example `outputs/shops/<old shop>/data`. It keeps the products,
+the collections and the images without change. It drops the collections that
+have no products. All other data comes from the manual
+([ADR 0017](docs/adr/0017-gen-may-copy-a-sandboxshop-catalog.md)). The catalog
+sizing and `--image-backend` do not apply with `--data`. Output layout:
 
 ```
 outputs/shops/mock_shop/
@@ -108,7 +113,7 @@ outputs/shops/mock_shop/
   final_eval/    visual + functional sweep report (advisory)
   storefront/    published storefront source
   backend/       published backend source (serves data/)
-  shop.json      publish manifest (templates, genBackend, finalStatus)
+  shop.json      Shop manifest (sourceManuals, templates, genBackend, finalStatus)
 ```
 
 The build agent runs shell commands on your machine, without a sandbox

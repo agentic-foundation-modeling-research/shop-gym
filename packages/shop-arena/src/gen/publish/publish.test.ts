@@ -9,6 +9,8 @@ import { PublishError, publishShop, readShopManifest } from './publish.js';
 let runDir: string;
 let shopDir: string;
 
+const SOURCE_MANUALS = ['/manuals/minimal-homeware'];
+
 const FINGERPRINT = (name: string) => ({
   name,
   commit: 'abc123',
@@ -74,7 +76,7 @@ async function listFiles(dir: string): Promise<string[]> {
 
 describe('publishShop', () => {
   it('copies storefront and backend sources, skipping build output, deps, logs and .env', async () => {
-    const result = await publishShop({ runDir, shopDir });
+    const result = await publishShop({ runDir, shopDir, sourceManuals: SOURCE_MANUALS });
     expect(await listFiles(shopDir)).toEqual([
       'backend/data/products.json',
       'backend/src/index.ts',
@@ -86,6 +88,7 @@ describe('publishShop', () => {
     ]);
     expect(result.manifest).toMatchObject({
       name: 'sample-shop',
+      sourceManuals: ['/manuals/minimal-homeware'],
       genBackend: true,
       finalStatus: 'completed',
       templates: {
@@ -98,10 +101,10 @@ describe('publishShop', () => {
   });
 
   it('is idempotent and drops files that no longer exist in the artifact', async () => {
-    await publishShop({ runDir, shopDir });
+    await publishShop({ runDir, shopDir, sourceManuals: SOURCE_MANUALS });
     await write(path.join(shopDir, 'storefront', 'app', 'stale.tsx'));
     await fs.rm(path.join(runDir, 'artifact', 'storefront', 'app', 'routes', 'home.tsx'));
-    await publishShop({ runDir, shopDir });
+    await publishShop({ runDir, shopDir, sourceManuals: SOURCE_MANUALS });
     const files = await listFiles(shopDir);
     expect(files).not.toContain('storefront/app/stale.tsx');
     expect(files).not.toContain('storefront/app/routes/home.tsx');
@@ -110,12 +113,12 @@ describe('publishShop', () => {
 
   it('records an unknown final status when run.json is missing', async () => {
     await fs.rm(path.join(runDir, 'run.json'));
-    const result = await publishShop({ runDir, shopDir });
+    const result = await publishShop({ runDir, shopDir, sourceManuals: SOURCE_MANUALS });
     expect(result.manifest.finalStatus).toBe('unknown');
   });
 
   it('reads a manifest whose fingerprints predate the dirty flag', async () => {
-    await publishShop({ runDir, shopDir });
+    await publishShop({ runDir, shopDir, sourceManuals: SOURCE_MANUALS });
     const file = path.join(shopDir, 'shop.json');
     const raw: unknown = JSON.parse(await fs.readFile(file, 'utf-8'));
     await fs.writeFile(
@@ -126,10 +129,27 @@ describe('publishShop', () => {
     expect(manifest.templates.storefront.dirty).toBeUndefined();
   });
 
+  it('reads a manifest written before the source Shop Manuals were recorded', async () => {
+    await publishShop({ runDir, shopDir, sourceManuals: SOURCE_MANUALS });
+    const file = path.join(shopDir, 'shop.json');
+    const raw: unknown = JSON.parse(await fs.readFile(file, 'utf-8'));
+    await fs.writeFile(
+      file,
+      JSON.stringify(raw, (key, value: unknown) => (key === 'sourceManuals' ? undefined : value)),
+    );
+    const manifest = await readShopManifest(shopDir);
+    expect(manifest.name).toBe('sample-shop');
+    expect(manifest.sourceManuals).toBeUndefined();
+  });
+
   it('refuses a run directory without build.json or template.json', async () => {
     await fs.rm(path.join(runDir, 'artifact', 'backend', 'template.json'));
-    await expect(publishShop({ runDir, shopDir })).rejects.toBeInstanceOf(PublishError);
+    await expect(
+      publishShop({ runDir, shopDir, sourceManuals: SOURCE_MANUALS }),
+    ).rejects.toBeInstanceOf(PublishError);
     await fs.rm(path.join(runDir, 'build.json'));
-    await expect(publishShop({ runDir, shopDir })).rejects.toThrow(/build\.json/);
+    await expect(publishShop({ runDir, shopDir, sourceManuals: SOURCE_MANUALS })).rejects.toThrow(
+      /build\.json/,
+    );
   });
 });
