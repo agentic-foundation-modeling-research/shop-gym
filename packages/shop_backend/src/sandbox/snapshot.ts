@@ -46,6 +46,13 @@ export const snapshotSessionSchema = z.object({
   expiresAt: z.string(),
 });
 
+export const snapshotPasswordResetRequestSchema = z.object({
+  /** The email as requested; it need not belong to a customer. */
+  email: z.string(),
+  /** Episode clock time of the request. */
+  requestedAt: z.string(),
+});
+
 export const snapshotCartLineSchema = z.object({
   id: z.string(),
   merchandiseId: z.string(),
@@ -107,6 +114,8 @@ export const stateSnapshotSchema = z.object({
   now: z.string(),
   customers: z.array(snapshotCustomerSchema),
   sessions: z.array(snapshotSessionSchema),
+  /** "Forgot your password?" requests of the episode, in request order. */
+  passwordResetRequests: z.array(snapshotPasswordResetRequestSchema),
   carts: z.array(snapshotCartSchema),
   orders: z.array(snapshotOrderSchema),
   /** Only variants whose quantity differs from the loaded dataset. */
@@ -144,6 +153,7 @@ export function exportSnapshot(state: ShopState): StateSnapshot {
       customerId: `${GID}/Customer/${session.customerId}`,
       expiresAt: session.expiresAt,
     })),
+    passwordResetRequests: state.listPasswordResetRequests().map((request) => ({ ...request })),
     carts: state.carts.list().map((cart) => ({
       id: cart.id,
       customerId:
