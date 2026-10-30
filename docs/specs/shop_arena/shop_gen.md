@@ -186,9 +186,9 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   totals follow the backend pricing rules. The newest order is not
   shipped. Three older orders are refunded, partly refunded and partly
   shipped. The other orders are paid and shipped. Four random orders use
-  a random Discount code that lowers their total. The code with no
-  minimum lowers every order, so all four get one. Every LLM step goes
-  through `completeJson` with a zod-derived JSON Schema and one
+  a random Discount code that lowers their total. The Discount code with
+  no minimum lowers every order, so all four get one. Every LLM step
+  goes through `completeJson` with a zod-derived JSON Schema and one
   validation-feedback retry; drafts cache under
   `<shopDir>/.shop_gen/stage_cache/` (v1 file names kept; details per
   collection), `identity.json` at the shop root. Images come from one
@@ -200,9 +200,10 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   Discount codes are unique when case is ignored and have positive
   amounts, percents below 100 and minimums that are not negative, and
   that every seeded order's totals and discount match the backend
-  pricing rules, then boots the pristine `packages/shop_backend` template on the dataset and
-  runs a fixed Storefront query set ending in `checkoutComplete` as
-  the first seeded customer; the report is `data_validation.json`.
+  pricing rules, then boots the pristine `packages/shop_backend`
+  template on the dataset and runs a fixed Storefront query set ending
+  in `checkoutComplete` as the first seeded customer; the report is
+  `data_validation.json`.
 - `build` stages `data/` + `manual/` as the seed and calls
   `runBuildLoop` (§5.5); a non-`completed` final status fails the step
   so a rerun resumes the same run directory.
