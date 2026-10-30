@@ -43,7 +43,8 @@ Output one JSON object with exactly these fields and nothing else:
   `{"handle": "card", "title": "Credit card"}`). Use generic method
   names only; never a real payment company or wallet brand.
 - `discount_codes`: 3-5 Discount codes a shopper can type at
-  checkout, with at least one of each kind. Each is an object
+  checkout, with at least one of each kind, and at least one
+  `percentage` or `fixed_amount` code with no minimum. Each is an object
   `{"code", "kind", "amount", "minimum_subtotal", "hint"}`:
   - `code`: 3-20 uppercase letters and digits (e.g. `"WELCOME10"`).
   - `kind`: `"percentage"` (a percent off the merchandise subtotal),

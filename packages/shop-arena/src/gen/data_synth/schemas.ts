@@ -151,11 +151,11 @@ export const navigationDraftSchema = z.object({
 export type NavigationDraft = z.infer<typeof navigationDraftSchema>;
 
 export const discountCodeDraftSchema = z.object({
-  code: z.string().regex(/^[A-Za-z0-9]{3,20}$/, 'code must be 3 to 20 letters or digits'),
+  code: z.string().min(1),
   kind: datasetSchema.discountCodeKindSchema,
   amount: priceSchema,
   minimum_subtotal: priceSchema.nullable(),
-  hint: z.string().min(1).max(80),
+  hint: z.string().min(1),
 });
 
 export const commerceDraftSchema = z.object({

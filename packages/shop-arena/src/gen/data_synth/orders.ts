@@ -5,7 +5,8 @@
  * twelve months before the Episode clock starts, ship to one of the
  * Persona's saved addresses with a random shipping and payment method,
  * and cost what the backend charges at checkout. Four orders use a
- * Discount code that lowers their total.
+ * Discount code that lowers their total, or fewer when no code lowers
+ * that many orders.
  */
 
 import type { z } from 'zod';
@@ -53,7 +54,7 @@ interface Sellable {
 }
 
 /** An order before it is numbered, given a status and priced. */
-interface Draft {
+interface UnpricedOrder {
   readonly customer: Customer;
   readonly lineItems: Order['line_items'];
   readonly method: Commerce['shipping_methods'][number];
@@ -76,6 +77,11 @@ function pick<T>(rng: () => number, items: readonly T[]): T {
   return items[Math.floor(rng() * items.length)] as T;
 }
 
+/** Removes a uniformly random element from `items` and returns it; `undefined` when empty. */
+function takeRandom<T>(rng: () => number, items: T[]): T | undefined {
+  return items.splice(Math.floor(rng() * items.length), 1)[0];
+}
+
 /** How many orders each customer but the last gets: one each, then the rest at random. */
 function orderCounts(rng: () => number, buyers: number): number[] {
   const counts = Array.from({ length: buyers }, () => 1);
@@ -89,28 +95,25 @@ function orderCounts(rng: () => number, buyers: number): number[] {
 }
 
 /**
- * Discount codes, by draft index, for up to `DISCOUNTED_ORDER_COUNT`
- * random drafts. Each picked draft gets a random code that lowers its
- * total; a draft that no code lowers is never picked.
+ * Discount codes, by order index, for up to `DISCOUNTED_ORDER_COUNT`
+ * random orders. Each picked order gets a random code that lowers its
+ * total; an order that no code lowers is never picked.
  */
 function pickDiscountCodes(
   rng: () => number,
-  drafts: readonly Draft[],
+  orders: readonly UnpricedOrder[],
   commerce: Commerce,
 ): Map<number, string> {
-  const open = drafts.flatMap((d, index) => {
-    const codes = commerce.discount_codes
-      .filter(
-        (c) =>
-          Number(computeOrderTotals(d.lineItems, d.method, commerce, c.code).discountAmount) > 0,
-      )
-      .map((c) => c.code);
+  const open = orders.flatMap((order, index) => {
+    const lowers = (code: string): boolean =>
+      Number(computeOrderTotals(order.lineItems, order.method, commerce, code).discountAmount) > 0;
+    const codes = commerce.discount_codes.map((c) => c.code).filter(lowers);
     return codes.length > 0 ? [{ index, codes }] : [];
   });
   const picked = new Map<number, string>();
   while (picked.size < DISCOUNTED_ORDER_COUNT && open.length > 0) {
-    const [draft] = open.splice(Math.floor(rng() * open.length), 1);
-    if (draft !== undefined) picked.set(draft.index, pick(rng, draft.codes));
+    const candidate = takeRandom(rng, open);
+    if (candidate !== undefined) picked.set(candidate.index, pick(rng, candidate.codes));
   }
   return picked;
 }
@@ -127,7 +130,7 @@ export function synthOrders(
   const buyers = customers.slice(0, -1);
   const counts = orderCounts(rng, buyers.length);
   const historyStart = Date.parse(DEFAULT_EPISODE_START) - HISTORY_MINUTES * MINUTE_MS;
-  const drafts: Draft[] = buyers.flatMap((customer, c) =>
+  const drafts: UnpricedOrder[] = buyers.flatMap((customer, c) =>
     Array.from({ length: counts[c] ?? 0 }, () => {
       const lineCount = 1 + Math.floor(rng() * MAX_LINES_PER_ORDER);
       const picked = new Map<number, Sellable>();
@@ -162,7 +165,7 @@ export function synthOrders(
   const statuses = new Map<number, Status>([[drafts.length - 1, NOT_SHIPPED]]);
   const older = drafts.slice(0, -1).map((_, i) => i);
   for (const status of [REFUNDED, PARTLY_REFUNDED, PARTLY_SHIPPED]) {
-    const [i] = older.splice(Math.floor(rng() * older.length), 1);
+    const i = takeRandom(rng, older);
     if (i !== undefined) statuses.set(i, status);
   }
   const codes = pickDiscountCodes(rng, drafts, commerce);

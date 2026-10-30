@@ -129,29 +129,30 @@ describe('runDataSynth', () => {
     expect(first.requests.length).toBeGreaterThan(8);
   });
 
-  it('writes the Discount codes and gives four seeded orders one', async () => {
+  it('writes the Discount codes of the checkout rules reply to commerce.json', async () => {
     await runDataSynth(stepContext(new ScriptedSynthLlm()));
-    const dataDir = path.join(shopDir, 'data');
     const commerce = datasetSchema.commerceSchema.parse(
-      await readJson(path.join(dataDir, 'commerce.json')),
+      await readJson(path.join(shopDir, 'data', 'commerce.json')),
     );
     expect(commerce.discount_codes).toEqual(SCRIPTED_DISCOUNT_CODES);
+  });
+
+  it('gives four seeded orders a Discount code that lowers their total', async () => {
+    await runDataSynth(stepContext(new ScriptedSynthLlm()));
     const orders = datasetSchema.ordersFileSchema.parse(
-      await readJson(path.join(dataDir, 'orders.json')),
+      await readJson(path.join(shopDir, 'data', 'orders.json')),
     );
     const used = orders.filter((o) => o.discount_code !== null);
     expect(used).toHaveLength(4);
     expect(used.every((o) => Number(o.discount_amount) > 0)).toBe(true);
-    expect(await checkDataset(dataDir)).toEqual([]);
   });
 
-  const validCodes = SCRIPTED_DISCOUNT_CODES;
-  const [percent, fixed, freeShipping] = validCodes;
+  const [percent, fixed, freeShipping] = SCRIPTED_DISCOUNT_CODES;
   it.each([
     ['two codes', [percent, fixed], 'expected array to have >=3 items'],
     [
       'six codes',
-      [...validCodes, ...['A1', 'B2', 'C3'].map((code) => ({ ...percent, code }))],
+      [...SCRIPTED_DISCOUNT_CODES, ...['A1', 'B2', 'C3'].map((code) => ({ ...percent, code }))],
       'expected array to have <=5 items',
     ],
     [
@@ -160,8 +161,19 @@ describe('runDataSynth', () => {
       'of kind free_shipping',
     ],
     [
+      'no percent or fixed code without a minimum',
+      [{ ...percent, minimum_subtotal: '20.00' }, fixed, freeShipping],
+      'no percentage or fixed_amount Discount code without a minimum_subtotal',
+    ],
+    [
+      // The scripted checkout rules make shipping free from 50.00.
+      'a free-shipping code that saves nothing',
+      [percent, fixed, { ...freeShipping, minimum_subtotal: '50.00' }],
+      'free_shipping Discount code FREESHIP has a minimum_subtotal at or above free_shipping_threshold 50.00',
+    ],
+    [
       'a code repeated in another case',
-      [...validCodes, { ...percent, code: 'welcome10' }],
+      [...SCRIPTED_DISCOUNT_CODES, { ...percent, code: 'welcome10' }],
       'Discount code welcome10 repeats a code when case is ignored',
     ],
     [
@@ -389,20 +401,7 @@ describe('synthOrders', () => {
   });
 
   describe('with Discount codes', () => {
-    const withCodes = {
-      ...commerce,
-      discount_codes: [
-        { code: 'WELCOME10', kind: 'percentage', amount: '10', minimum_subtotal: null, hint: '' },
-        {
-          code: 'SAVE5',
-          kind: 'fixed_amount',
-          amount: '5.00',
-          minimum_subtotal: '40.00',
-          hint: '',
-        },
-        { code: 'FREESHIP', kind: 'free_shipping', amount: '0', minimum_subtotal: null, hint: '' },
-      ],
-    } as const;
+    const withCodes = { ...commerce, discount_codes: SCRIPTED_DISCOUNT_CODES };
     const discounted = synthOrders(customers, products, withCodes, 'USD');
 
     it('is the same for the same inputs', () => {

@@ -169,24 +169,27 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   `synth_orders` / inventory so the dataset exercises the stateful
   backend (`commerce.json`, `customers.json`, `orders.json`).
   `synth_commerce` derives the checkout rules from the shipping and
-  refund policies, with three to five Discount codes and at least one
-  of each kind. The LLM picks the codes, amounts and hint texts. Code
-  checks that the codes are unique when case is ignored, that amounts
-  are positive, that percents are below 100 and that minimums are not
-  negative. `synth_customers` makes five Personas. The LLM writes the
-  names and one to three addresses for each Persona, and at least two Personas
-  have two or more addresses. Code assigns the emails, passwords and
-  ids. `synth_orders` makes fifteen orders by code from a fixed seed.
-  The last Persona has no orders, and each other Persona has one to
-  six. Each order has random lines, a random shipping and payment
-  method and one of the Persona's saved addresses. Its date is in the
-  twelve months before the Episode clock starts, and its totals follow
-  the backend pricing rules. The newest order is not shipped. Three
-  older orders are refunded, partly refunded and partly shipped. The
-  other orders are paid and shipped. Four random orders use a random
-  Discount code that lowers their total. Every
-  LLM step goes through `completeJson` with a zod-derived JSON Schema
-  and one validation-feedback retry; drafts cache under
+  refund policies, with three to five Discount codes. The LLM picks the
+  codes, amounts and hint texts. Deterministic checks make sure that
+  there is at least one code of each kind and one percent or fixed code
+  with no minimum, that no free-shipping minimum is at or above the
+  free-shipping threshold, that the codes are unique when case is
+  ignored, that amounts are positive, that percents are below 100 and
+  that minimums are not negative. `synth_customers` makes five Personas.
+  The LLM writes the names and one to three addresses for each Persona,
+  and at least two Personas have two or more addresses. Code assigns the
+  emails, passwords and ids. `synth_orders` makes fifteen orders by code
+  from a fixed seed. The last Persona has no orders, and each other
+  Persona has one to six. Each order has random lines, a random shipping
+  and payment method and one of the Persona's saved addresses. Its date
+  is in the twelve months before the Episode clock starts, and its
+  totals follow the backend pricing rules. The newest order is not
+  shipped. Three older orders are refunded, partly refunded and partly
+  shipped. The other orders are paid and shipped. Four random orders use
+  a random Discount code that lowers their total. The code with no
+  minimum lowers every order, so all four get one. Every LLM step goes
+  through `completeJson` with a zod-derived JSON Schema and one
+  validation-feedback retry; drafts cache under
   `<shopDir>/.shop_gen/stage_cache/` (v1 file names kept; details per
   collection), `identity.json` at the shop root. Images come from one
   `ImageBackend` interface: `placeholder` (deterministic PNG, offline)
@@ -194,9 +197,10 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
 - `data_validation/` validates `data/` with the backend zod schema,
   checks referential integrity (variant ids in inventory and orders,
   collection membership, navigation targets, image files), that the
-  Discount codes follow the rules above, and that every seeded order's
-  totals and discount match the backend pricing rules, then boots
-  the pristine `packages/shop_backend` template on the dataset and
+  Discount codes are unique when case is ignored and have positive
+  amounts, percents below 100 and minimums that are not negative, and
+  that every seeded order's totals and discount match the backend
+  pricing rules, then boots the pristine `packages/shop_backend` template on the dataset and
   runs a fixed Storefront query set ending in `checkoutComplete` as
   the first seeded customer; the report is `data_validation.json`.
 - `build` stages `data/` + `manual/` as the seed and calls

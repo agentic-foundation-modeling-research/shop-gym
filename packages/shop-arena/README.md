@@ -113,8 +113,9 @@ pipeline runner; `GEN_STEPS` lists them in order:
 `policies`, `commerce`, `collections`, `skeletons`, `details` per
 collection, `alt_text`, `images`, `navigation`, `customers`, then
 assembly with deterministic ids, inventory, and orders). `commerce`
-also makes three to five Discount codes, at least one of each kind, and
-four seeded orders use one. `navigation`
+also makes three to five Discount codes, at least one of each kind and
+one percent or fixed code with no minimum, and four seeded orders use
+one. `navigation`
 reads the manual's `parts/navigation.md` so the footer mirrors the manual's
 footer link list and the in-loop judges agree on it. Every LLM call
 asks for one JSON value against a zod-derived JSON Schema and retries
