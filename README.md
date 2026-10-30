@@ -107,7 +107,7 @@ sizing and `--image-backend` do not apply with `--data`. Output layout:
 
 ```
 outputs/shops/mock_shop/
-  manual/        merged shop manual (manual.md, capabilities.json, parts/)
+  manual/        merged shop manual (manual.md, capabilities.json, parts/ with standard.md)
   data/          SandboxShop dataset (store, products, collections, ..., images/)
   runs/build/    harness run of the build loop (plan.md, iters/, artifact/)
   final_eval/    visual + functional sweep report (advisory)
@@ -115,6 +115,22 @@ outputs/shops/mock_shop/
   backend/       published backend source (serves data/)
   shop.json      Shop manifest (sourceManuals, templates, genBackend, finalStatus)
 ```
+
+Every SandboxShop has customer accounts (register, log in and out, "Forgot
+your password?", order history and order detail, and an address book), a
+one-page checkout with a "Discount code" field, a thank-you page, an
+announcement bar that shows each Discount code with its hint, and product
+Reviews with stars, sorting and paging. These pages follow the Standard
+sub-manual, `manual/parts/standard.md`, which every shop gets and which
+manual merge fits to the shop's observed account and checkout notes
+([ADR 0016](docs/adr/0016-standard-sub-manual-for-account-and-checkout.md)).
+The Storefront template already builds them. The `gen_account` and
+`gen_checkout` build tasks only restyle them, and the `account_flow` and
+`discount_flow` Verifiers drive their forms in a browser. Data synthesis
+makes three to five Discount codes, five Personas, fifteen seeded orders
+with mixed statuses, and Reviews. See the
+[ShopArena](docs/specs/shop_arena/standard_account_checkout.md) and
+[ShopBackend](docs/specs/shop_backend/account_discount_reviews.md) specs.
 
 The build agent runs shell commands on your machine, without a sandbox
 ([ADR 0015](docs/adr/0015-build-loop-runs-on-the-host.md)). It can read

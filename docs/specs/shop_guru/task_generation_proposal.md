@@ -16,17 +16,17 @@ The [ten seed skills](../../../packages/shop-guru/src/seed/index.ts) mostly bind
 
 The [explorer](../../../packages/shop-guru/src/explore/verify.ts) checks reachable pages and locators, not complete solutions. The [grader](../../../packages/shop-guru/src/grade/grade.ts) supports text, URL, locator, snapshot, and LLM checks, but lacks general constraint predicates, state differences, and event-order checks. A plausible task can therefore be unsolvable or incorrectly graded.
 
-**Backend support, visible UI, and verifier readiness are separate gates.** Sandbox support below must be checked per generated shop; [Appendix A](#a-capability-evidence) links the implementation.
+**Backend support, visible UI, and verifier readiness are separate gates.** Sandbox support below must be checked per generated shop; [Appendix A](#a-capability-evidence) links the implementation. The table was updated on 2026-10-29 for the Standard account and checkout work ([ShopArena spec](../shop_arena/standard_account_checkout.md), [ShopBackend spec](../shop_backend/account_discount_reviews.md)).
 
 | Task category | Sandbox support and boundary |
 | --- | --- |
 | Find, filter, compare, substitute | Catalog/search/variants exist; attributes must be visible. Grounded comparison and constraint grading need work. |
-| Recommend, assess compatibility, summarize reviews | Catalog evidence supports bounded factual decisions; subjective suitability needs calibration. Reviews have no shared data/workflow. |
+| Recommend, assess compatibility, summarize reviews | Catalog evidence supports bounded factual decisions; subjective suitability needs calibration. Read-only Reviews (rating, title, text, variant, Verified Buyer, helpful count) are Dataset records shown on product pages; summaries need explicit answer criteria. |
 | Policy and order questions | Policy content and order reads exist; reasoning/aggregation need explicit answer criteria. Policy text does not implement after-sales actions. |
 | Cart editing and basket planning | Line/quantity mutations exist; multi-item feasibility and budget checks need generators/verifiers. |
-| Checkout, discounts, delivery | Simulated checkout and stock changes exist. Coupons have no price effect; delivery dates/pickup are absent. |
-| Accounts and repeat shopping | Registration/login/logout and profile/address/order reads exist. Profile edits, saved payments, and wishlists are absent; reordering needs composition. |
-| After-sales, reviews, subscriptions | Cancellation, returns/exchanges/refunds, review workflows, and recurring orders need domain state, mutations, and UI. |
+| Checkout, discounts, delivery | Simulated checkout and stock changes exist. Discount codes (percent, fixed amount, or free shipping; one per cart; optional minimum) change the price, and orders and the state snapshot record them; delivery dates/pickup are absent. |
+| Accounts and repeat shopping | Registration/login/logout, password-reset requests, profile/order reads, and address add/edit/delete/set-default exist. Profile edits, saved payments, and wishlists are absent; reordering needs composition. |
+| After-sales, reviews, subscriptions | Cancellation, returns/exchanges/refunds, writing reviews, and recurring orders need domain state, mutations, and UI. |
 | Memory, clarification, recovery, cross-shop | Variations on the above; dialogue, controlled events, or coordinated episodes need runner support. |
 
 ## Desired Status
@@ -69,6 +69,8 @@ Label interaction difficulty from an efficient reviewed replay: **Easy ≤3, Med
 
 **Add zero commerce features.** First add a validation agent, capability/graph replay, constraint/state-difference grading, task provenance/difficulty metadata, and a real-shop runner/grader adapter that needs no sandbox control API. Existing operations already cover untested goals; adding coupons or returns now would confound generator quality with new environment behavior.
 
+**Note (2026-10-29): this rule is knowingly broken.** The Standard account and checkout work ([ADR 0016](../../adr/0016-standard-sub-manual-for-account-and-checkout.md)) adds address edits, Discount codes with a price effect, and read-only Reviews to every SandboxShop, so that apparel sandboxes such as `mock_clothing_v2` support account, order, and checkout tasks. The pilot analysis must account for this new environment behavior.
+
 Use **apparel, home, and outdoors**, each with **two SandboxShops and one real shop**. Target 100 products across five collections per sandbox. Keep source-manual lineages, catalogs, and task instances separate across RL and held-out evaluation. Allocate one sandbox per domain to RL/development and one to held-out evaluation: **300 RL tasks + 300 sandbox evaluation tasks + 300 real-shop evaluation tasks**. Freeze generators before constructing held-out tasks; no real-shop data enters RL. These are pilot budgets, not power claims.
 
 ## Execution Table
@@ -95,7 +97,7 @@ Proposed gates: ≥98% replay stability after freezing; audited verifier false a
 
 ### A. Capability evidence
 
-These are code-inspection findings at the baseline commit, not a runtime certification of generated shops. No benchmark results are claimed.
+These are code-inspection findings at the baseline commit, not a runtime certification of generated shops. No benchmark results are claimed. The account and checkout rows predate the 2026-10-29 address book and Discount codes; the specs linked in [Current Status](#current-status) describe the current behavior.
 
 | Claim | Implementation evidence |
 | --- | --- |
