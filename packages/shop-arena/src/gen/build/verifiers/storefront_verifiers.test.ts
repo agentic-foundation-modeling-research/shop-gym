@@ -33,6 +33,8 @@ const OK: CommandResult = { exitCode: 0, stdout: '', stderr: '', timedOut: false
 interface StubOptions {
   /** Route prefixes answered with 500 instead of their normal response. */
   readonly broken?: readonly string[];
+  /** Route prefixes answered with 500 only when the session has a cart (`cart=1`). */
+  readonly brokenWithCart?: readonly string[];
   /** Drop the footer link to this URL. */
   readonly unlinked?: string;
 }
@@ -59,7 +61,11 @@ function stubStorefront(options: StubOptions = {}): http.Server {
       res.writeHead(302, { location, ...(cookie ? { 'set-cookie': cookie } : {}) });
       res.end();
     };
-    if (options.broken?.some((prefix) => url.pathname.startsWith(prefix))) {
+    const broken = [
+      ...(options.broken ?? []),
+      ...(cookies.includes('cart=1') ? (options.brokenWithCart ?? []) : []),
+    ];
+    if (broken.some((prefix) => url.pathname.startsWith(prefix))) {
       res.writeHead(500, { 'content-type': 'text/html' });
       res.end('<html><body><pre>TypeError: cannot read products of undefined</pre></body></html>');
       return;
@@ -312,6 +318,16 @@ describe('routes_200', () => {
     expect(result.feedback).toContain('/collections/dog-essentials');
     expect(result.feedback).toContain('500');
     expect(result.feedback).toContain('cannot read products of undefined');
+  });
+
+  it('fails when /cart.js breaks for a session with a cart line', async () => {
+    const url = await serve({ brokenWithCart: ['/cart.js'] });
+    const verifier = routes200Verifier({ target: { url }, dataDir: FIXTURE_DIR });
+    const result = await verifier.run(await ctx('gen_theme'));
+    expect(result.verdict).toBe('fail');
+    expect(result.feedback).toContain(
+      '`/cart.js`: expected status 200 with a non-empty cart; got 500',
+    );
   });
 
   it('fails when the storefront cannot be prepared', async () => {
