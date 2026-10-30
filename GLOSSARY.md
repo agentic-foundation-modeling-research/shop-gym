@@ -52,7 +52,7 @@ A self-contained, deterministic, hostable shop: a Dataset, a storefront, its own
 _Avoid_: sandbox shop, generated shop, published shop, mock shop
 
 **Shop manifest**:
-The `shop.json` file that marks a directory as a SandboxShop that is ready to host. It records the templates used, whether the backend was generated, and the final status of the Build loop.
+The `shop.json` file that marks a directory as a SandboxShop that is ready to host. It records the source Shop Manuals, the templates used, whether the backend was generated, and the final status of the Build loop.
 _Avoid_: publish manifest
 
 **Merged manual**:

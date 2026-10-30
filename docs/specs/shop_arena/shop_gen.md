@@ -208,6 +208,22 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   collection), `identity.json` at the shop root. Images come from one
   `ImageBackend` interface: `placeholder` (deterministic PNG, offline)
   or `openai` (content-hash cache in `.shop_gen/image_cache/`).
+- With `--data <dir>` (`sourceDataDir`), `data_synth` copies the
+  catalog of an existing SandboxShop Dataset instead of synthesizing
+  one (`source_catalog.ts`). It keeps `products.json` and
+  `collections.json` as they are written, also the fields that the
+  backend schema does not name, and copies `images/` as it is. It drops
+  each collection with no products and logs its handle. The
+  `collections` through `images` sub-steps do not run, so the catalog
+  sizing and the image backend do not apply. Everything else (identity,
+  store, pages, policies, checkout rules with Discount codes, menus,
+  Personas, stock, seeded orders and Reviews) is synthesized from the
+  manual. `synth_identity` gets a summary of the copied catalog (the
+  product count, each collection with its product count, the 10 most
+  common product types, the price range and the first 10 titles), so
+  the descriptor and tone fit the products. Menus can link only to the
+  kept collections. The three source paths are inputs of `data_synth`,
+  so a change to them reruns it (ADR 0017).
 - `data_validation/` validates `data/` with the backend zod schema,
   checks referential integrity (variant ids in inventory and orders,
   the product and variant of each Review, collection membership,
@@ -276,13 +292,15 @@ underlying functions stay plain and testable on their own:
   screenshots/}` in camelCase and returns pass/fail/skipped counts.
   Pages whose setup the dataset cannot provide are `skipped` with a
   reason; the eval never blocks the pipeline.
-- `publish/publishShop({ runDir, shopDir })` copies
+- `publish/publishShop({ runDir, shopDir, sourceManuals })` copies
   `<runDir>/artifact/{storefront,backend}` into
   `<shopDir>/{storefront,backend}` (excluding `node_modules`, `dist`,
   `build`, `.react-router`, `.vite`, `.cache`, `*.log` and the
   storefront's sidecar-specific `.env`), copies nothing from
   `artifact/data`, and writes `<shopDir>/shop.json` with `name`,
-  `templates.{storefront,backend}` (each copy's `template.json`
+  `sourceManuals` (the absolute Shop Manual directories given to `gen`,
+  with or without `--data`; absent in older manifests, which still
+  load), `templates.{storefront,backend}` (each copy's `template.json`
   fingerprint), `genBackend` (from `build.json`), `publishedAt` and
   `finalStatus` (from the run's `run.json`, else `unknown`). It is
   idempotent: the component directories are replaced on every call.
