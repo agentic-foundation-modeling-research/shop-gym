@@ -32,12 +32,14 @@ em dash character U+2014; the parser rejects any other separator.
 
 ```
 - [ ] gen_theme — write design tokens, palette, and typography per the manual's tone; wire them through the storefront theme entry [priority: 9]
-- [ ] gen_navigation — implement header, footer, mega menu, mobile nav, and announcement bar from the navigation data and `artifact/manual/parts/navigation.md`; every collection handle reachable [priority: 8]
+- [ ] gen_navigation — implement header, footer, mega menu and mobile nav from the navigation data and `artifact/manual/parts/navigation.md`; announcement bar per `parts/standard.md`; every collection handle reachable [priority: 8]
 - [ ] gen_homepage — render hero, featured collections, and any promo banner per `artifact/manual/parts/homepage.md`; bind to live GraphQL queries [priority: 7]
 - [ ] gen_collections — collection list and detail with the filter / sort affordances `capabilities.collection` and `artifact/manual/parts/collections.md` declare [priority: 6]
-- [ ] gen_product — product detail with variant pickers, gallery, and the option / quantity / availability rules `capabilities.product` and `artifact/manual/parts/product.md` declare [priority: 5]
+- [ ] gen_product — product detail with variant pickers, gallery, and the rules `capabilities.product` and `artifact/manual/parts/product.md` declare; Reviews per the Reviews section of `parts/standard.md` [priority: 5]
 - [ ] gen_cart_search — cart surfaces exactly as `capabilities.cart` and `artifact/manual/parts/cart_and_search.md` declare; predictive search per `capabilities.search` [priority: 4]
 - [ ] gen_info_pages — every page in `info_pages_present` per `artifact/manual/parts/info_pages.md`; wire into routes and the footer [priority: 3]
+- [ ] gen_account — restyle the prebuilt account pages to the theme and the Account section of `artifact/manual/parts/standard.md`; keep their behavior and form selectors [priority: 3]
+- [ ] gen_checkout — restyle the prebuilt checkout and thank-you pages to the theme and the Checkout and Order confirmation sections of `artifact/manual/parts/standard.md`; keep behavior and form selectors [priority: 3]
 - [ ] visual_fix — REQUIRED final task; fix leftover `[!]` task issues and cross-page seams (shared-component drift, token drift, broken links, deferred verifier feedback) [priority: 2]
 ```
 
@@ -58,7 +60,7 @@ must work with the backend schema as seeded.
 ### 2b. Shop-specific tasks
 
 If the manual surfaces a feature none of the canonical ids cover, append
-additional snake_case task ids **between `gen_info_pages` and
+additional snake_case task ids **between `gen_checkout` and
 `visual_fix`**, each with a one-line evidence reference to the manual.
 `visual_fix` is always the last bullet and the lowest priority.
 

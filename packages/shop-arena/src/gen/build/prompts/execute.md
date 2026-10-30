@@ -48,6 +48,14 @@ Feedback shapes you should know how to react to:
 - `cart_conformance`: a cart or checkout step (add, update, remove, guest
   order, confirmation page) did not match what the backend recorded. The
   body names the step. Keep the template's form fields and actions.
+- `account_flow`: a step of the account flow in a real browser (sign up,
+  log out, "Forgot your password?", log in, add an address, edit it) did
+  not end where a shopper expects. The body names the step. Restore the
+  template's forms, field names and labels on that page.
+- `discount_flow`: at checkout, a Dataset Discount code did not change the
+  "Total", or an unknown code did not show "Enter a valid discount code"
+  with the "Total" unchanged. The body names the step. Restore the
+  template's "Discount code" form and its error.
 - `visual_judge`: a page scored below the bar. Fix the listed issues in
   order, then confirm with `screenshot_page` on the same route before you
   mark the task done.
@@ -75,6 +83,17 @@ separator is your spec. Do not edit any other task's line.
    read `artifact/manual/manual.md`; every other `gen_*` task reads
    `artifact/manual/parts/<area>.md` (`navigation`, `homepage`,
    `collections`, `product`, `cart_and_search`, `info_pages`).
+   Some tasks also read sections of the Standard sub-manual,
+   `artifact/manual/parts/standard.md`. It gives the standard account and
+   checkout pages, the announcement bar and Reviews, with the shop's
+   observed notes fused in. Its quoted labels and messages are exact: use
+   them word for word.
+   - `gen_navigation`: "Announcement bar". The codes and hints come from
+     the backend; never type them into the storefront code.
+   - `gen_product`: "Reviews". Every Review element comes from backend
+     data, and an element with no data is left out.
+   - `gen_account`: "Account".
+   - `gen_checkout`: "Checkout" and "Order confirmation".
 2. **`artifact/manual/capabilities.json`** is ground truth when prose is
    ambiguous; a `false` capability means leave the template default.
 3. **The template copy you are editing.** Read the existing files before you
@@ -115,14 +134,36 @@ Rules:
    `pnpm typecheck && pnpm build` and `cwd: artifact/storefront`.
 5. Look at what you built: `screenshot_page` on each route your task works on
    (`/` for the homepage, `/collections/<handle>`, `/products/<handle>`,
-   `/cart`, `/search?q=<word>`, `/pages/<handle>`). The judge sees these
-   captures; fix clipped headers, empty media slots, overflowing tables and
-   unreflowed mobile layouts before you exit.
+   `/cart`, `/search?q=<word>`, `/pages/<handle>`, `/account/login`,
+   `/account/register`). The judge sees these captures; fix clipped
+   headers, empty media slots, overflowing tables and unreflowed mobile
+   layouts before you exit. `screenshot_page` has no login and no cart,
+   so it cannot show `/account` or a filled `/checkout`; the judge
+   captures those pages logged in and with a cart line.
 6. Nothing may overflow the 375px mobile viewport: rows of filter chips,
    sort controls and tags wrap (`flex-wrap: wrap`), and below 750px a
    table shows each row as a block of label and value lines (the
    template's `.responsive-table`, with a `data-label` on each cell)
    instead of pushing the page sideways.
+
+#### `gen_account` and `gen_checkout`: restyle the prebuilt pages
+
+The template already has working account pages (`app/routes/account/*.tsx`,
+`app/components/account.tsx`, `app/components/addresses.tsx`) and checkout
+pages (`checkout.tsx`, `checkout-confirmation.tsx`,
+`app/components/checkout.tsx`). These tasks **restyle** them; they do not
+build them again.
+
+1. Restyle to the `gen_theme` tokens and to the layout and labels of your
+   sections of `artifact/manual/parts/standard.md`.
+2. Do not change behavior: keep the routes, loaders, actions, GraphQL
+   operations, redirects and messages.
+3. Do not change form selectors: keep each form's `method` and `action`,
+   each input `name` and `intent` value, and the labels and accessible
+   names of fields and buttons ("Forgot your password?", "Add a new
+   address", "Edit address <n>", "Discount code", ...). `account_flow`,
+   `discount_flow`, `cart_conformance` and the Final eval drive these
+   forms in a browser.
 
 ### 3b. `gen_backend` and `backend_*` tasks
 

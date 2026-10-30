@@ -1,14 +1,16 @@
 /**
  * What the HTTP-level storefront verifiers share: the served storefront
  * (URL plus a hook that brings the server up to date with the iteration's
- * edits), the seeded customer used for logged-in checks, and the fixed
- * checkout form used by the functional checks.
+ * edits), the seeded customer used for logged-in checks, the Discount code
+ * that the functional checks apply, and the fixed checkout form used by
+ * the functional checks.
  */
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import type { VerifierResult } from '@shop-gym/harness';
+import { datasetSchema } from '@shop-gym/shop-backend';
 
 export interface StorefrontTarget {
   readonly url: string;
@@ -98,6 +100,36 @@ function firstHandle(methods: unknown): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * The Discount code in `<dataDir>/commerce.json` that applies to a cart
+ * with one product. Only a code with no minimum subtotal surely applies.
+ * A percent or fixed-amount code comes first, because it always changes
+ * the total; a free-shipping code changes it while the cart pays for
+ * shipping. `undefined` when there is no `commerce.json` or no such code.
+ *
+ * @throws Error when `commerce.json` is not valid JSON or not a valid
+ *   commerce settings file.
+ */
+export async function readApplicableDiscountCode(dataDir: string): Promise<string | undefined> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(path.join(dataDir, 'commerce.json'), 'utf-8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return undefined;
+    }
+    throw error;
+  }
+  const codes = datasetSchema.commerceSchema
+    .parse(JSON.parse(raw))
+    .discount_codes.filter((entry) => entry.minimum_subtotal === null);
+  return (codes.find((entry) => entry.kind !== 'free_shipping') ?? codes[0])?.code;
+}
+
+/** Why a check of `readApplicableDiscountCode`'s code is skipped when there is none. */
+export const NO_APPLICABLE_DISCOUNT_CODE =
+  'the dataset has no Discount code without a minimum subtotal';
 
 /** Shipping address used by every scripted checkout. */
 export const CHECKOUT_ADDRESS: Readonly<Record<string, string>> = {

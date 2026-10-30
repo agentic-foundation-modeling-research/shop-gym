@@ -219,15 +219,17 @@ above. With `storefront: { sidecar, dataDir, manualDir?, judge? }` (a
 manual directory and `{ llm, model }` for the judge) the order becomes
 `owned_files`, `typecheck`, `build`, `routes_200`, the backend verifiers
 (backend tasks), `data_in_use`, `nav_coverage`, `cart_conformance`,
-`visual_judge`:
+`account_flow`, `discount_flow`, `visual_judge`:
 
 | Verifier | Applies to | Checks |
 | --- | --- | --- |
 | `typecheck`, `build` | storefront tasks | `pnpm typecheck` in `artifact/storefront`; `build` asks the storefront sidecar for its `pnpm build`, so the HTTP verifiers that follow serve that build |
 | `routes_200` | storefront tasks | static routes and the routes of every page bucket return 200, whatever the task; `/account*` redirect to `/account/login` logged out and return 200 after logging in as the first seeded customer; `/checkout` returns 200 with a line in the cart; internal links from rendered pages resolve. Failures list status, redirect target and a body excerpt |
 | `nav_coverage` | `gen_navigation`, `gen_theme`, `visual_fix` | every `navigation.json` target returns 200 and is linked from the rendered header or footer |
-| `cart_conformance` | `gen_cart_search`, `gen_product`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order |
-| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` routes and the first seeded customer logged in before `/account` (the `account` bucket belongs to `visual_fix` only); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
+| `cart_conformance` | `gen_cart_search`, `gen_product`, `gen_checkout`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order |
+| `account_flow` | `gen_account`, `visual_fix` | in one `BrowserSession` episode with the browser steps of the Final eval: sign up, log out, "Forgot your password?" shows the sent message, log in, add an address, edit it; stops at the first failed step and names it |
+| `discount_flow` | `gen_checkout`, `visual_fix` | in one `BrowserSession` episode: add the first sampled product, apply the Discount code from the Dataset that `readApplicableDiscountCode` picks (the checkout "Total" changes; skipped when no code surely applies), then an unknown code shows "Enter a valid discount code" and the "Total" stays |
+| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` and `checkout` routes and the first seeded customer logged in before `/account` (`gen_account` gets the `account` bucket, `gen_checkout` the `checkout` bucket with `/checkout`); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
 
 `runBuildLoop` always passes `storefront` (its `judge` option supplies
 the visual judge; `generateShop` sets it to the synthesis model) and
