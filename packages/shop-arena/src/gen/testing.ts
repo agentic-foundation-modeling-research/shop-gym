@@ -31,7 +31,37 @@ export interface ScriptedSynthOptions {
   readonly firstVendor?: string;
   /** When true, the first personas reply gives every persona one address. */
   readonly singleAddressFirst?: boolean;
+  /**
+   * `discount_codes` of the first checkout rules replies, in order; later
+   * replies use `SCRIPTED_DISCOUNT_CODES`.
+   */
+  readonly discountCodeReplies?: readonly (readonly unknown[])[];
 }
+
+/** The Discount codes of a checkout rules reply: one of each kind. */
+export const SCRIPTED_DISCOUNT_CODES = [
+  {
+    code: 'WELCOME10',
+    kind: 'percentage',
+    amount: '10',
+    minimum_subtotal: null,
+    hint: '10% off your order',
+  },
+  {
+    code: 'SAVE5',
+    kind: 'fixed_amount',
+    amount: '5.00',
+    minimum_subtotal: '40.00',
+    hint: '$5 off orders over $40',
+  },
+  {
+    code: 'FREESHIP',
+    kind: 'free_shipping',
+    amount: '0',
+    minimum_subtotal: null,
+    hint: 'Free shipping on any order',
+  },
+] as const;
 
 /**
  * Answers each `data_synth` prompt from its first line. Replies are derived
@@ -42,6 +72,7 @@ export class ScriptedSynthLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
   private detailsCalls = 0;
   private personaCalls = 0;
+  private commerceCalls = 0;
 
   constructor(private readonly options: ScriptedSynthOptions = {}) {}
 
@@ -94,6 +125,7 @@ export class ScriptedSynthLlm implements LlmClient {
       );
     }
     if (first.includes('checkout rules')) {
+      this.commerceCalls += 1;
       return {
         tax_rate: 0.08,
         free_shipping_threshold: '50.00',
@@ -102,6 +134,8 @@ export class ScriptedSynthLlm implements LlmClient {
           { handle: 'express', title: 'Express', price: '12.00' },
         ],
         payment_methods: [{ handle: 'card', title: 'Credit card' }],
+        discount_codes:
+          this.options.discountCodeReplies?.[this.commerceCalls - 1] ?? SCRIPTED_DISCOUNT_CODES,
       };
     }
     if (first.includes('collections (categories)')) {

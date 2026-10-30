@@ -4,6 +4,7 @@
  * backend schema (`@shop-gym/shop-backend`) instead.
  */
 
+import { datasetSchema } from '@shop-gym/shop-backend';
 import { z } from 'zod';
 
 const HANDLE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -149,6 +150,14 @@ export const navigationDraftSchema = z.object({
 });
 export type NavigationDraft = z.infer<typeof navigationDraftSchema>;
 
+export const discountCodeDraftSchema = z.object({
+  code: z.string().min(1),
+  kind: datasetSchema.discountCodeKindSchema,
+  amount: priceSchema,
+  minimum_subtotal: priceSchema.nullable(),
+  hint: z.string().min(1),
+});
+
 export const commerceDraftSchema = z.object({
   tax_rate: z.number().min(0).max(0.3),
   free_shipping_threshold: priceSchema.nullable(),
@@ -160,6 +169,7 @@ export const commerceDraftSchema = z.object({
     .array(z.object({ handle: handleSchema, title: z.string().min(1) }))
     .min(1)
     .max(4),
+  discount_codes: z.array(discountCodeDraftSchema).min(3).max(5),
 });
 export type CommerceDraft = z.infer<typeof commerceDraftSchema>;
 

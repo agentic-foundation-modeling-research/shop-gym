@@ -111,7 +111,7 @@ describe('checkDataset', () => {
         // #1002 clears the 75.00 free-shipping threshold, so shipping is waived.
         if (o.id === 1002) return { ...o, total_shipping_price: '9.99', total_price: '115.96' };
         // #1004 takes SAVE5 off a 32.98 subtotal: 32.98 - 5.00 + 9.99 = 37.97.
-        if (o.id === 1004) return { ...o, total_price: '42.97' };
+        if (o.id === 1004) return { ...o, total_price: '42.97', discount_amount: '4.00' };
         if (o.id === 1005) return { ...o, shipping_method: 'overnight' };
         // NOPE is not a Discount code of the Dataset, so it takes nothing off.
         if (o.id === 1003) return { ...o, discount_code: 'NOPE' };
@@ -123,7 +123,32 @@ describe('checkDataset', () => {
       'orders.json: order 1002 total_price is 115.96, the pricing rules give 105.97',
       'orders.json: order 1003 discount_code is NOPE, the pricing rules give null',
       'orders.json: order 1004 total_price is 42.97, the pricing rules give 37.97',
+      'orders.json: order 1004 discount_amount is 4.00, the pricing rules give 5.00',
       'orders.json: order 1005 shipping method overnight is not in commerce.json',
+    ]);
+  });
+
+  it('reports Discount codes that break the rules', async () => {
+    type EditableCode = { code: string; amount: string; minimum_subtotal: string | null };
+    await editJson('commerce.json', (commerce: { discount_codes: EditableCode[] }) => {
+      const [welcome, save, freeShip] = commerce.discount_codes;
+      return {
+        ...commerce,
+        discount_codes: [
+          { ...welcome, amount: '100' },
+          save,
+          // A free-shipping code does not use its amount.
+          { ...freeShip, amount: '-3' },
+          { ...save, code: 'NOTHING', amount: '0.00', minimum_subtotal: '-1.00' },
+          { ...welcome, code: 'welcome10' },
+        ],
+      };
+    });
+    expect(await checkDataset(dataDir)).toEqual([
+      'commerce.json: Discount code WELCOME10 percent 100 is not below 100',
+      'commerce.json: Discount code NOTHING amount 0.00 is not positive',
+      'commerce.json: Discount code NOTHING minimum_subtotal -1.00 is not zero or more',
+      'commerce.json: Discount code welcome10 repeats a code when case is ignored',
     ]);
   });
 

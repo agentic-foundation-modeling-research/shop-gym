@@ -1,7 +1,8 @@
 /**
  * Dataset invariants the backend zod schema cannot express: referential
- * integrity between files, the presence of referenced image files, and
- * seeded order totals that follow the backend pricing rules.
+ * integrity between files, the presence of referenced image files, valid
+ * Discount codes, and seeded order totals that follow the backend pricing
+ * rules.
  */
 
 import * as fs from 'node:fs/promises';
@@ -16,6 +17,7 @@ import {
 } from '@shop-gym/shop-backend';
 import type { z } from 'zod';
 
+import { checkDiscountCodes } from '../discount_codes.js';
 import { readJsonFile, readJsonIfExists } from '../io.js';
 
 type Navigation = z.infer<typeof datasetSchema.navigationSchema>;
@@ -166,6 +168,8 @@ export async function checkDataset(dataDir: string): Promise<string[]> {
   for (const key of Object.keys(inventory ?? {})) {
     if (!variantIds.has(Number(key))) problems.push(`inventory.json: unknown variant id ${key}`);
   }
+
+  problems.push(...checkDiscountCodes(commerce.discount_codes).map((p) => `commerce.json: ${p}`));
 
   const customerIds = new Set<number>();
   for (const c of customers ?? []) {

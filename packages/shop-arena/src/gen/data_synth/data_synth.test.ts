@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseGenConfig } from '../config.js';
 import { createGenContext } from '../context.js';
 import { checkDataset } from '../data_validation/schema_check.js';
-import { ScriptedSynthLlm, writeManualFixture } from '../testing.js';
+import { SynthError } from '../llm.js';
+import { SCRIPTED_DISCOUNT_CODES, ScriptedSynthLlm, writeManualFixture } from '../testing.js';
 import { runDataSynth } from './index.js';
 import { synthOrders } from './orders.js';
 
@@ -128,10 +129,93 @@ describe('runDataSynth', () => {
     expect(first.requests.length).toBeGreaterThan(8);
   });
 
-  it('gives the same Personas and orders on a fresh run', async () => {
+  it('writes the Discount codes of the checkout rules reply to commerce.json', async () => {
+    await runDataSynth(stepContext(new ScriptedSynthLlm()));
+    const commerce = datasetSchema.commerceSchema.parse(
+      await readJson(path.join(shopDir, 'data', 'commerce.json')),
+    );
+    expect(commerce.discount_codes).toEqual(SCRIPTED_DISCOUNT_CODES);
+  });
+
+  it('gives four seeded orders a Discount code that lowers their total', async () => {
+    await runDataSynth(stepContext(new ScriptedSynthLlm()));
+    const orders = datasetSchema.ordersFileSchema.parse(
+      await readJson(path.join(shopDir, 'data', 'orders.json')),
+    );
+    const used = orders.filter((o) => o.discount_code !== null);
+    expect(used).toHaveLength(4);
+    expect(used.every((o) => Number(o.discount_amount) > 0)).toBe(true);
+  });
+
+  const [percent, fixed, freeShipping] = SCRIPTED_DISCOUNT_CODES;
+  it.each([
+    ['two codes', [percent, fixed], 'expected array to have >=3 items'],
+    [
+      'six codes',
+      [...SCRIPTED_DISCOUNT_CODES, ...['A1', 'B2', 'C3'].map((code) => ({ ...percent, code }))],
+      'expected array to have <=5 items',
+    ],
+    [
+      'no free-shipping code',
+      [percent, fixed, { ...fixed, code: 'SAVE10' }],
+      'of kind free_shipping',
+    ],
+    [
+      'no percent or fixed code without a minimum',
+      [{ ...percent, minimum_subtotal: '20.00' }, fixed, freeShipping],
+      'no percentage or fixed_amount Discount code without a minimum_subtotal',
+    ],
+    [
+      // The scripted checkout rules make shipping free from 50.00.
+      'a free-shipping code that saves nothing',
+      [percent, fixed, { ...freeShipping, minimum_subtotal: '50.00' }],
+      'free_shipping Discount code FREESHIP has a minimum_subtotal at or above free_shipping_threshold 50.00',
+    ],
+    [
+      'a code repeated in another case',
+      [...SCRIPTED_DISCOUNT_CODES, { ...percent, code: 'welcome10' }],
+      'Discount code welcome10 repeats a code when case is ignored',
+    ],
+    [
+      'a 100 percent code',
+      [{ ...percent, amount: '100' }, fixed, freeShipping],
+      'Discount code WELCOME10 percent 100 is not below 100',
+    ],
+    [
+      'a zero fixed amount',
+      [percent, { ...fixed, amount: '0.00' }, freeShipping],
+      'Discount code SAVE5 amount 0.00 is not positive',
+    ],
+    [
+      'a negative minimum',
+      [percent, { ...fixed, minimum_subtotal: '-1.00' }, freeShipping],
+      '"minimum_subtotal"',
+    ],
+  ])('retries checkout rules with %s', async (_, codes, error) => {
+    const llm = new ScriptedSynthLlm({ discountCodeReplies: [codes] });
+    await runDataSynth(stepContext(llm));
+    const commercePrompts = llm.requests.filter((r) =>
+      String(r.prompt).includes('deriving the checkout rules'),
+    );
+    expect(commercePrompts).toHaveLength(2);
+    expect(String(commercePrompts[1]?.prompt)).toContain(error);
+    const commerce = datasetSchema.commerceSchema.parse(
+      await readJson(path.join(shopDir, 'data', 'commerce.json')),
+    );
+    expect(commerce.discount_codes).toEqual(SCRIPTED_DISCOUNT_CODES);
+  });
+
+  it('fails when the checkout rules retry is invalid too', async () => {
+    const bad = [percent, fixed, { ...fixed, code: 'SAVE10' }];
+    const llm = new ScriptedSynthLlm({ discountCodeReplies: [bad, bad] });
+    await expect(runDataSynth(stepContext(llm))).rejects.toThrow(SynthError);
+    await expect(fs.access(path.join(shopDir, 'data'))).rejects.toThrow();
+  });
+
+  it('gives the same Personas, orders and Discount codes on a fresh run', async () => {
     const dataFiles = () =>
       Promise.all(
-        ['customers.json', 'orders.json'].map((f) =>
+        ['customers.json', 'orders.json', 'commerce.json'].map((f) =>
           fs.readFile(path.join(shopDir, 'data', f), 'utf-8'),
         ),
       );
@@ -314,5 +398,67 @@ describe('synthOrders', () => {
       expect(o.discount_code).toBeNull();
       expect(datasetSchema.orderSchema.safeParse(o).success).toBe(true);
     }
+  });
+
+  describe('with Discount codes', () => {
+    const withCodes = { ...commerce, discount_codes: SCRIPTED_DISCOUNT_CODES };
+    const discounted = synthOrders(customers, products, withCodes, 'USD');
+
+    it('is the same for the same inputs', () => {
+      expect(synthOrders(customers, products, withCodes, 'USD')).toEqual(discounted);
+    });
+
+    it('gives four orders a code that lowers the total by the pricing rules', () => {
+      const used = discounted.filter((o) => o.discount_code !== null);
+      expect(used).toHaveLength(4);
+      for (const o of used) {
+        const subtotal = o.line_items.reduce(
+          (s, li) => s + Math.round(Number(li.price) * 100) * li.quantity,
+          0,
+        );
+        const methodShipping = subtotal >= 10000 ? 0 : o.shipping_method === 'express' ? 1500 : 500;
+        const off =
+          o.discount_code === 'WELCOME10'
+            ? Math.round(subtotal * 0.1)
+            : o.discount_code === 'SAVE5'
+              ? 500
+              : 0;
+        const shipping = o.discount_code === 'FREESHIP' ? 0 : methodShipping;
+        const tax = Math.round((subtotal - off) * 0.1);
+        const saved = o.discount_code === 'FREESHIP' ? methodShipping : off;
+        expect(saved).toBeGreaterThan(0);
+        if (o.discount_code === 'SAVE5') expect(subtotal).toBeGreaterThanOrEqual(4000);
+        expect([
+          o.subtotal_price,
+          o.total_shipping_price,
+          o.total_tax,
+          o.total_price,
+          o.discount_amount,
+        ]).toEqual(
+          [subtotal, shipping, tax, subtotal - off + shipping + tax, saved].map((c) =>
+            (c / 100).toFixed(2),
+          ),
+        );
+      }
+    });
+
+    it('gives no order a code that would not lower its total', () => {
+      const unreachable = {
+        ...commerce,
+        discount_codes: [
+          {
+            code: 'BIG',
+            kind: 'fixed_amount',
+            amount: '5.00',
+            minimum_subtotal: '1000.00',
+            hint: '',
+          },
+        ],
+      } as const;
+      const orders = synthOrders(customers, products, unreachable, 'USD');
+      expect(orders.every((o) => o.discount_code === null && o.discount_amount === '0.00')).toBe(
+        true,
+      );
+    });
   });
 });
