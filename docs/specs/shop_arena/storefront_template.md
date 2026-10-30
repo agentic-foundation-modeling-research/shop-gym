@@ -68,7 +68,7 @@ Before M6:
 - `/checkout` completes orders through `checkoutComplete`, prices the summary
   exactly as the backend does, renders `CheckoutUserError`s inline, and works
   for guests.
-- Header shows Login / Account; cart links to checkout; v1.0 routes are
+- Header shows Log in / Account; cart links to checkout; v1.0 routes are
   unchanged.
 - A gated vitest proves the whole flow against the real backend.
 
@@ -109,7 +109,7 @@ Nothing in v1.1 reads the Python copy.
 
 | Path | Loader | Action | Backend operations |
 | --- | --- | --- | --- |
-| `/account/login` | redirect to `redirectTo` when already logged in | `customerAccessTokenCreate`, then `cartBuyerIdentityUpdate` when a cart exists; sets the cookie | `CustomerAccessTokenCreate`, `CartBuyerIdentityUpdate`, `Customer` |
+| `/account/login` | redirect to `redirectTo` when already logged in | intent `recover`: `customerRecover`, then the login form with the sent message; else `customerAccessTokenCreate`, then `cartBuyerIdentityUpdate` when a cart exists; sets the cookie | `CustomerRecover`, `CustomerAccessTokenCreate`, `CartBuyerIdentityUpdate`, `Customer` |
 | `/account/register` | same redirect | `customerCreate`, then the login action's steps | `CustomerCreate`, plus login |
 | `/account/logout` | redirect to `/account` | `customerAccessTokenDelete`, clears the token, redirects to `/` | `CustomerAccessTokenDelete` |
 | `/account` | H1 "Account" with "Log out"; the "Order history" table and "Account details" (default address with phone, "View addresses (<n>)") | - | `Customer`, `CustomerOrders(first: 100)`, `CustomerAddresses` |
@@ -123,7 +123,7 @@ Nothing in v1.1 reads the Python copy.
 Protected loaders go through `requireCustomer`, which redirects to
 `/account/login?redirectTo=<path>` and clears a stale token cookie when the
 backend no longer recognises it. The root loader adds `customer` so the
-header can render Login / Account, and `discountCodeHints` for the
+header can render Log in / Account, and `discountCodeHints` for the
 announcement bar.
 
 The announcement bar follows the Standard sub-manual. It is a full-width
@@ -161,6 +161,18 @@ form opens again with the submitted fields under "Please adjust the
 following:" and the backend's errors. The page renders the address book
 with a new key after each action, so the forms close when the new list
 shows. Checkout fills its form from the default address.
+
+The login and register pages follow the Standard sub-manual: a narrow
+centered column, centered headings and buttons, and floating labels. Login
+has "Email", "Password", the link "Forgot your password?", "Sign in" and
+"Create account". The link opens "Reset your password" in place of the
+login form (a CSS `:target` toggle); its "Submit" sends `customerRecover`,
+and the page then shows the login form with "We've sent you an email with
+a link to update your password." above it, for any email. "Cancel" goes
+back to the login form. Register has "First name", "Last name", "Email",
+"Password" and "Create"; a backend error on a field shows under that field
+and in the list under "Please adjust the following:". The form field names
+(`email`, `password`, `firstName`, `lastName`) are the same as before.
 
 The product page shows Reviews per the Standard sub-manual. Near the title,
 the stars (half stars for a decimal part from 0.3 to 0.7), "3.8 / 5.0" and
@@ -227,7 +239,8 @@ customer's order, and episode isolation under `x-shopgym-episode: ep1`.
 and in CI. It seeds and builds the template, serves it through
 `StorefrontSidecar` over the in-process backend on the template fixture, and
 walks one shopper in Chromium with the shared browser steps of the final eval:
-sign up, log out, log in, the Reviews of a product page (show more, sort, a
+sign up, log out, a taken email on the register page, "Forgot your
+password?", log in, the Reviews of a product page (show more, sort, a
 half star, left-out fields, and a product with none), add to cart, every
 Discount code in the announcement bar with its arrows (and, on a fake
 clock, no move by itself), an unknown and a valid Discount code,
@@ -277,6 +290,7 @@ template has no UI for them.
 | 13 | Reviews on the product page per the Standard sub-manual; fixture `reviews.json` | done |
 | 14 | Address book on `/account/addresses` per the Standard sub-manual; checkout prefilled from the default address | done |
 | 15 | Announcement bar with the Discount codes per the Standard sub-manual, fed by `discountCodeHints` | done |
+| 16 | Login and register per the Standard sub-manual, with the "Forgot your password?" mock on `customerRecover` | done |
 
 ## 8. Appendix
 

@@ -32,7 +32,7 @@ The current GraphQL contract is the per-domain SDL under `src/schema/`
 | Search | `search(...)`, `predictiveSearch(...)`, `productRecommendations(productId)` |
 | Localization | `localization`, plus validation for literal `@inContext(country:, language:)` values |
 | Cart | `cart(id)` and cart mutations for create, line add/update/remove, Discount codes (one per cart, priced into `cost` and `discountAllocations`), buyer identity (including `customerAccessToken`), note, attributes, and gift-card codes |
-| Customer | `customerCreate`, `customerAccessTokenCreate`, `customerAccessTokenDelete`, the address book (`customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`, `customerDefaultAddressUpdate`), `customer(customerAccessToken)` with profile, addresses, and `orders` |
+| Customer | `customerCreate`, `customerAccessTokenCreate`, `customerAccessTokenDelete`, `customerRecover` (a mock that sends nothing), the address book (`customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`, `customerDefaultAddressUpdate`), `customer(customerAccessToken)` with profile, addresses, and `orders` |
 | Checkout | `commerceSettings`, `discountCodeHints` and `checkoutComplete(cartId, input)` (sandbox-only) converting a cart into an order |
 | Order | `order(id)` (sandbox-only) plus `Order`, `OrderLineItem`, and `MailingAddress` types |
 
@@ -40,9 +40,9 @@ Fields and operations with no Storefront API equivalent carry the `@sandbox`
 directive in the SDL.
 
 Read paths are deterministic for a given dataset. Mutable state (carts,
-customers, sessions, orders, inventory) lives in a per-episode `ShopState`;
-see "Episodes" below. There is no Admin API, real payment processing, webhook
-support, or Storefront access-token validation.
+customers, sessions, password reset requests, orders, inventory) lives in a
+per-episode `ShopState`; see "Episodes" below. There is no Admin API, real
+payment processing, webhook support, or Storefront access-token validation.
 
 ## Install (dev)
 
@@ -97,7 +97,8 @@ The control API manages episodes outside GraphQL:
 | `DELETE /__shopgym/episodes/<id>` | Forget the episode; `204`, or `404` if it was never materialised. |
 
 `StateSnapshot` (`stateSnapshotSchema`, exported) is the grader-facing view:
-`{ episodeId, now, customers, sessions, carts, orders, inventory }`, where
+`{ episodeId, now, customers, sessions, passwordResetRequests, carts, orders,
+inventory }`, where
 `inventory` lists only variants whose quantity differs from the dataset.
 Carts show `discountCodes` and the `appliedDiscountCode` (the stored code
 when it applies now, else `null`); orders show `discountCode` and
@@ -171,6 +172,15 @@ is `NOT_FOUND`. The first address becomes the default, and when the default
 is deleted the first remaining address takes its place. The country code is
 the store's, and a changed province clears the province code. Each change
 moves the Episode clock and shows in the StateSnapshot customers.
+
+### Password recovery
+
+`customerRecover(email)` is a mock of "Forgot your password?". It always
+answers with no user errors, for a known or an unknown email, so the answer
+does not tell which emails have an account. It sends no email and changes
+no password. It records the trimmed email and the Episode clock time, and
+the StateSnapshot lists these requests in `passwordResetRequests`, in
+request order.
 
 ### Reviews
 
