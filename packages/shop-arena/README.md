@@ -135,7 +135,8 @@ and descriptions may not mention it.
 With `sourceDataDir` (`shopgym gen --data <dir>`), `data_synth` copies
 the catalog of an existing SandboxShop Dataset. It does not run
 `collections` through `images`. The products and collections keep the
-same JSON values, also the fields that the backend schema does not name.
+same JSON values. This includes the fields that the backend schema does
+not name.
 `images/` is copied as it is. `data_synth` drops each collection with no
 products and logs its handle. `identity` gets a summary of the copied
 catalog: the product count, the collections, the most common product

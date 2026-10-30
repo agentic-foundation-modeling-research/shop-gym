@@ -1,7 +1,8 @@
 /**
  * The catalog of an existing source Dataset, used in place of a
  * synthesized one. Its products and collections keep the same JSON
- * values, also the fields that the backend schema does not name. Only
+ * values. This includes the fields that the backend schema does not
+ * name. Only
  * the collections with no products are dropped. Its `images/` directory
  * is copied as it is. Everything else in the Dataset is synthesized from
  * the Shop Manual.
@@ -25,8 +26,8 @@ const COLLECTIONS_FILE = 'collections.json';
 export const SOURCE_CATALOG_PATHS = [PRODUCTS_FILE, COLLECTIONS_FILE, IMAGES_DIR] as const;
 
 /**
- * Reads `file`, checks it against `schema`, and returns its JSON value,
- * also the fields that `schema` does not name.
+ * Reads `file`, checks it against `schema`, and returns its JSON value.
+ * This includes the fields that `schema` does not name.
  */
 async function readAsWritten<T>(file: string, schema: z.ZodType<T>): Promise<T> {
   await readJsonFile(file, schema);

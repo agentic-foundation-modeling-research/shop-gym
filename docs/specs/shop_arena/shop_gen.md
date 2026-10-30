@@ -210,8 +210,9 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   or `openai` (content-hash cache in `.shop_gen/image_cache/`).
 - With `--data <dir>` (`sourceDataDir`), `data_synth` copies the
   catalog of an existing SandboxShop Dataset (`source_catalog.ts`). The
-  products and collections keep the same JSON values, also the fields
-  that the backend schema does not name. `images/` is copied as it is.
+  products and collections keep the same JSON values. This includes the
+  fields that the backend schema does not name. `images/` is copied as
+  it is.
   `data_synth` drops each collection with no products and logs its
   handle. The `collections` through `images` sub-steps do not run, so
   the catalog sizing and the image backend do not apply. The manual
