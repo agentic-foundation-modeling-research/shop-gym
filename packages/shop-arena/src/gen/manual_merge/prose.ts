@@ -21,17 +21,39 @@ export const CANONICAL_SECTIONS = [
 ] as const;
 
 const FALLBACK_DESCRIPTOR = 'Generic Storefront';
+/** An H2 heading line; group 1 is the section name. */
+const H2_HEADING = /^##\s+(.+?)\s*$/gm;
 
 /** `## heading` -> body (without the heading), in document order. Preamble and the H1 are dropped. */
 export function parseManualSections(markdown: string): Map<string, string> {
   const sections = new Map<string, string>();
-  const headings = [...markdown.matchAll(/^##\s+(.+?)\s*$/gm)];
+  const headings = [...markdown.matchAll(H2_HEADING)];
   headings.forEach((match, i) => {
     const start = match.index + match[0].length;
     const end = headings[i + 1]?.index ?? markdown.length;
     sections.set((match[1] as string).trim(), markdown.slice(start, end).replace(/^\n+|\s+$/g, ''));
   });
   return sections;
+}
+
+/**
+ * `markdown` with the body of its `## <name>` section replaced by `body`;
+ * every other byte stays the same.
+ *
+ * @throws Error when `markdown` has no `## <name>` section.
+ */
+export function replaceManualSection(markdown: string, name: string, body: string): string {
+  const headings = [...markdown.matchAll(H2_HEADING)];
+  const index = headings.findIndex((match) => (match[1] as string).trim() === name);
+  const heading = headings[index];
+  if (heading === undefined) {
+    throw new Error(`no "## ${name}" section`);
+  }
+  // The match can end with the newline after the heading line; the body starts after the line.
+  const start = heading.index + heading[0].trimEnd().length;
+  const next = headings[index + 1];
+  const tail = next === undefined ? '\n' : `\n\n${markdown.slice(next.index)}`;
+  return `${markdown.slice(0, start)}\n\n${body}${tail}`;
 }
 
 /** Canonical sections present in any seed first, then the rest in first-seen order. */

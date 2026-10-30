@@ -6,7 +6,9 @@
  * A single manual is copied byte for byte and split; several manuals are
  * merged (deterministic capability rules with LLM tiebreaks, LLM prose
  * merge per shared section, numeric stats merge). Every shop also gets the
- * checked-in Standard sub-manual as `parts/standard.md`, unchanged.
+ * checked-in Standard sub-manual as `parts/standard.md`, with the Merged
+ * manual's observed Account and Checkout notes fused into it (no LLM call
+ * and no change when there are none).
  */
 
 import * as fs from 'node:fs/promises';
@@ -22,6 +24,7 @@ import type { GenContext } from '../context.js';
 import { readJsonFile, writeJsonFile, writeTextFile } from '../io.js';
 import { type LlmCall, completeText, loadPrompt } from '../llm.js';
 import { type MergeConflict, type Tiebreaker, mergeCapabilities } from './capabilities.js';
+import { fuseStandardSubManual } from './fusion.js';
 import { mergeManualProse, seedBlocks } from './prose.js';
 import { MANUAL_PARTS, splitManual } from './split.js';
 import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from './standard_sub_manual.js';
@@ -35,8 +38,10 @@ export {
   type Tiebreaker,
   mergeCapabilities,
 } from './capabilities.js';
+export { fuseStandardSubManual } from './fusion.js';
 export { CANONICAL_SECTIONS, mergeManualProse, parseManualSections } from './prose.js';
 export { MANUAL_PARTS, type ManualPart, splitManual } from './split.js';
+export { FUSED_SECTIONS } from './standard_sub_manual.js';
 export { mergeStats, statsSchema } from './stats.js';
 
 export const MANUAL_DIR = 'manual';
@@ -76,15 +81,10 @@ function llmTiebreaker(call: LlmCall): Tiebreaker {
 
 async function mergeManuals(
   ctx: StepContext<GenContext>,
+  call: LlmCall,
   manualDir: string,
 ): Promise<readonly MergeConflict[]> {
   const dirs = ctx.context.manualDirs;
-  const call: LlmCall = {
-    llm: ctx.context.llm,
-    model: ctx.context.model,
-    timeoutMs: ctx.context.config.llmTimeoutMs,
-    signal: ctx.signal,
-  };
   const rawCapabilities = await Promise.all(
     dirs.map((dir) => readJsonFile(path.join(dir, 'capabilities.json'), z.unknown())),
   );
@@ -130,21 +130,32 @@ async function copyManual(seedDir: string, manualDir: string): Promise<void> {
 export async function runManualMerge(ctx: StepContext<GenContext>): Promise<void> {
   const manualDir = path.join(ctx.outDir, MANUAL_DIR);
   await fs.rm(manualDir, { recursive: true, force: true });
+  const call: LlmCall = {
+    llm: ctx.context.llm,
+    model: ctx.context.model,
+    timeoutMs: ctx.context.config.llmTimeoutMs,
+    signal: ctx.signal,
+  };
   let conflicts: readonly MergeConflict[] = [];
   const [single] = ctx.context.manualDirs;
   if (ctx.context.manualDirs.length === 1 && single !== undefined) {
     await copyManual(single, manualDir);
   } else {
-    conflicts = await mergeManuals(ctx, manualDir);
+    conflicts = await mergeManuals(ctx, call, manualDir);
   }
   const manual = await fs.readFile(path.join(manualDir, 'manual.md'), 'utf-8');
   const parts = splitManual(manual, ctx.log);
   for (const part of MANUAL_PARTS) {
     await writeTextFile(path.join(manualDir, 'parts', `${part}.md`), parts[part]);
   }
-  await fs.copyFile(
-    STANDARD_SUB_MANUAL_PATH,
+  await writeTextFile(
     path.join(manualDir, 'parts', STANDARD_SUB_MANUAL_FILE),
+    await fuseStandardSubManual(
+      call,
+      await fs.readFile(STANDARD_SUB_MANUAL_PATH, 'utf-8'),
+      manual,
+      ctx.log,
+    ),
   );
   const manifest: ManualManifest = {
     schemaVersion: 1,
