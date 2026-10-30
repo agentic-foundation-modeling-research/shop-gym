@@ -7,6 +7,7 @@ export default [
   route('products/:handle', 'routes/product.tsx'),
   route('search', 'routes/search.tsx'),
   route('cart', 'routes/cart.tsx'),
+  route('cart.js', 'routes/cart-json.ts'),
   route('checkout', 'routes/checkout.tsx'),
   route('checkout/confirmation/:orderNumber', 'routes/checkout-confirmation.tsx'),
   route('account', 'routes/account/profile.tsx'),

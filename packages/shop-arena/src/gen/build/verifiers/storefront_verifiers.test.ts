@@ -2,7 +2,8 @@
  * Storefront verifiers against a tiny `node:http` storefront stub that
  * mimics the template's routes, redirects and cart forms well enough for
  * `routes_200`, `nav_coverage` and the failure paths of
- * `cart_conformance`. The real template is exercised by the slow test.
+ * `cart_conformance`; for its `/cart.js` steps, a second stub adds to a
+ * real in-process backend. The real template is exercised by the slow test.
  */
 
 import * as fs from 'node:fs/promises';
@@ -11,10 +12,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { VerifierContext } from '@shop-gym/harness';
+import { createSandboxServer, loadShopData } from '@shop-gym/shop-backend';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { defaultBackendTemplateDir } from '../seed.js';
-import { BackendSidecar } from '../sidecar.js';
+import { BackendSidecar, freePort } from '../sidecar.js';
 import { StorefrontSidecar } from '../storefront_sidecar.js';
 import { cartConformanceVerifier } from './cart_conformance.js';
 import { buildVerifiers } from './index.js';
@@ -106,6 +108,69 @@ function stubStorefront(options: StubOptions = {}): http.Server {
       return;
     }
     page(`<h1>${url.pathname}</h1><a href="/collections">All</a>`);
+  });
+}
+
+/** What the `/cart.js` stub serves: no route, or the empty cart whatever the session holds. */
+type BrokenCartJs = 'missing' | 'empty';
+
+/**
+ * Stub whose product pages and add-to-cart form drive the real backend at
+ * `backendUrl` in the request's episode, with a broken `/cart.js`.
+ */
+function cartJsStub(backendUrl: string, cartJs: BrokenCartJs): http.Server {
+  const products = loadShopData(FIXTURE_DIR).products;
+  const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    if (url.pathname.startsWith('/products/')) {
+      const product = products.find((p) => url.pathname === `/products/${p.handle}`);
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(
+        `<input type="radio" name="merchandiseId" value="gid://shopify/ProductVariant/${product?.variants[0]?.id}">`,
+      );
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/cart') {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      const merchandiseId = new URLSearchParams(raw).get('merchandiseId');
+      await fetch(`${backendUrl}/graphql`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-shopgym-episode': String(req.headers['x-shopgym-episode']),
+        },
+        body: JSON.stringify({
+          query:
+            'mutation Add($id: ID!) { cartCreate(input: { lines: [{ merchandiseId: $id, quantity: 1 }] }) { cart { id } } }',
+          variables: { id: merchandiseId },
+        }),
+      });
+      res.writeHead(302, { location: '/cart' });
+      res.end();
+      return;
+    }
+    if (url.pathname === '/cart.js' && cartJs === 'empty') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          item_count: 0,
+          items: [],
+          total_price: 0,
+          total_discount: 0,
+          discount_codes: [],
+        }),
+      );
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'text/html' });
+    res.end('<html><body><h1>404</h1><p>Not Found</p></body></html>');
+  };
+  return http.createServer((req, res) => {
+    handle(req, res).catch((error: unknown) => {
+      res.writeHead(500);
+      res.end(String(error));
+    });
   });
 }
 
@@ -296,6 +361,43 @@ describe('cart_conformance', () => {
     const steps = (result.details as { steps: { name: string; ok: boolean }[] }).steps;
     expect(steps.at(-1)?.ok).toBe(false);
     expect(result.feedback).toContain(steps.at(-1)?.name ?? '');
+  });
+
+  it.each<[BrokenCartJs, string]>([
+    ['missing', 'GET /cart.js returned 404'],
+    ['empty', '"item_count":0,"items":[]'],
+  ])('fails at /cart.js after the add when the route is %s', async (cartJs, detail) => {
+    const backendPort = await freePort();
+    const backendUrl = `http://127.0.0.1:${backendPort}`;
+    const backend = createSandboxServer({
+      data: loadShopData(FIXTURE_DIR),
+      dataDir: FIXTURE_DIR,
+      port: backendPort,
+    });
+    await backend.listen();
+    try {
+      server = cartJsStub(backendUrl, cartJs);
+      await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
+      const address = server.address();
+      if (address === null || typeof address === 'string') throw new Error('no port');
+      const verifier = cartConformanceVerifier({
+        target: { url: `http://127.0.0.1:${address.port}` },
+        backendUrl,
+        dataDir: FIXTURE_DIR,
+      });
+      const result = await verifier.run(await ctx('gen_cart_search'));
+      expect(result.verdict).toBe('fail');
+      const steps = (result.details as { steps: { name: string; ok: boolean }[] }).steps;
+      expect(steps.map((step) => [step.name, step.ok])).toEqual([
+        ['product page', true],
+        ['add to cart', true],
+        ['/cart.js after add', false],
+      ]);
+      expect(result.feedback).toContain(detail);
+      expect(result.feedback).toContain('the backend cart is {"item_count":1');
+    } finally {
+      await backend.close();
+    }
   });
 });
 

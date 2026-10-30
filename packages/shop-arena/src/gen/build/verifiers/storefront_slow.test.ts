@@ -114,6 +114,12 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)(
         dataDir: FIXTURE_DIR,
       }).run(ctx('gen_cart_search'));
       expect(result.verdict, result.feedback).toBe('pass');
+      const steps = (result.details as { steps: { name: string }[] }).steps;
+      expect(steps.map((step) => step.name).filter((name) => name.startsWith('/cart.js'))).toEqual([
+        '/cart.js after add',
+        '/cart.js after update',
+        '/cart.js after remove',
+      ]);
     }, 120_000);
 
     it('final_eval captures every canonical page and passes the functional sweep', async () => {

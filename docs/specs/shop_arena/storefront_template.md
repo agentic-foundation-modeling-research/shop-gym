@@ -96,6 +96,7 @@ packages/shop-arena/
     app/components/announcement-bar.tsx AnnouncementBar
     app/routes/account/*.tsx  login, register, logout, profile, addresses, orders, order
     app/routes/checkout.tsx   real checkout
+    app/routes/cart-json.ts   `/cart.js`, the cart as Shopify's AJAX cart JSON
     app/routes/checkout-confirmation.tsx
     fixtures/sandbox_shop_v0/ catalog fixture + customers.json, orders.json, commerce.json, reviews.json
 ```
@@ -118,6 +119,7 @@ Nothing in v1.1 reads the Python copy.
 | `/account/orders/:orderNumber` | "Order #<n>": lines (product, SKU, price, quantity, total), totals, billing and shipping address with the statuses; 404 unless `order.email` matches the customer | - | `Customer`, `Order`, `CommerceSettings` |
 | `/checkout` | cart, `commerceSettings`, customer (prefill) | intent `discount` / `discount-remove`: `cartDiscountCodesUpdate`; else `cartBuyerIdentityUpdate` when logged in, then `checkoutComplete`; clears `cartId`; redirects | `Cart`, `CommerceSettings`, `Customer`, `CartDiscountCodesUpdate`, `CartBuyerIdentityUpdate`, `CheckoutComplete` |
 | `/checkout/confirmation/:orderNumber` | the thank-you page: order detail, `commerceSettings` for method titles | - | `Order`, `CommerceSettings` |
+| `/cart.js` | the session's cart as Shopify's AJAX cart JSON (below); read only, no login | - | `Cart` |
 | `/products/:handle` | product detail with the Reviews: `?reviews_sort=<order>` picks the order, `?reviews_pages=<n>` shows the first `5 * n` Reviews | - | `Product` (with `reviews(first, sortKey)` and the `reviews.rating` / `reviews.rating_count` metafields) |
 
 Protected loaders go through `requireCustomer`, which redirects to
@@ -125,6 +127,24 @@ Protected loaders go through `requireCustomer`, which redirects to
 backend no longer recognises it. The root loader adds `customer` so the
 header can render Log in / Account, and `discountCodeHints` for the
 announcement bar.
+
+`/cart.js` returns the session's cart in the request's episode with the
+field names of Shopify's AJAX Cart API (`GET /{locale}/cart.js`), so Task
+generation reads the cart the same way on a SandboxShop and on a Live
+storefront. Every amount is an integer in cents. `items` has, per line,
+`id` and `variant_id` (the numeric variant id), `product_title`,
+`variant_title` (null for "Default Title"), `quantity`, `price` (the unit
+price) and `line_price` (price times quantity). `item_count` is the sum of
+the quantities. `total_discount` is what the Discount code takes off the
+merchandise (0 for a free-shipping code), and `total_price` is the
+merchandise subtotal less `total_discount`, before tax and shipping.
+`discount_codes` lists each code on the cart with `code` and `applicable`,
+so a code that stopped applying below its minimum shows as not
+applicable. Shopify's reference documents every field but
+`discount_codes`, which Shopify's `/cart.js` returns with the fields of
+the Storefront API's `CartDiscountCode`. The other Shopify fields are left
+out. With no cart, or a cart id that the episode does not know, the route
+returns the empty cart. It has no action and sets no cookie.
 
 The announcement bar follows the Standard sub-manual. It is a full-width
 strip above the header on every page, with one slide for each Discount
@@ -234,7 +254,10 @@ drives: home and product 200, add to cart, guest checkout to confirmation,
 inline `CheckoutUserError`, register, profile, logout, login with cart
 attach, Discount codes on the cart page, prefilled checkout to the
 thank-you page and `/account/orders/<n>`, 404 on another
-customer's order, and episode isolation under `x-shopgym-episode: ep1`.
+customer's order, `/cart.js` with no cart, with a Discount code that
+applies, after a quantity change that leaves the code not applicable and
+with a one-variant product, and episode isolation under
+`x-shopgym-episode: ep1`, also for `/cart.js`.
 
 `src/templates.browser.test.ts` is not gated, so it runs in every `pnpm test`
 and in CI. It seeds and builds the template, serves it through
@@ -245,6 +268,7 @@ password?", log in, the Reviews of a product page (show more, sort, a
 half star, left-out fields, and a product with none), add to cart, every
 Discount code in the announcement bar with its arrows (and, on a fake
 clock, no move by itself), an unknown and a valid Discount code,
+`/cart.js` with that code (and the empty cart from another episode),
 check out, the thank-you page, the new order in the order history and its
 account order page, the address book (the errors of a blank address,
 add an address, add and edit a second one, make it the default, see it
@@ -292,6 +316,7 @@ template has no UI for them.
 | 14 | Address book on `/account/addresses` per the Standard sub-manual; checkout prefilled from the default address | done |
 | 15 | Announcement bar with the Discount codes per the Standard sub-manual, fed by `discountCodeHints` | done |
 | 16 | Login and register per the Standard sub-manual, with the "Forgot your password?" mock on `customerRecover` | done |
+| 17 | Read-only `/cart.js` in the fields of Shopify's AJAX cart, checked by `cart_conformance` | done |
 
 ## 8. Appendix
 
