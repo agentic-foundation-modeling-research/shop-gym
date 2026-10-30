@@ -24,9 +24,18 @@ interface LoginLoaderData {
   readonly redirectTo: string;
 }
 
-type LoginActionData =
-  | { readonly errors: readonly CustomerUserError[]; readonly email: string }
-  | { readonly recovered: true };
+/** A "Sign in" that failed: the errors and the submitted email. */
+interface LoginRejectedData {
+  readonly intent: 'login';
+  readonly errors: readonly CustomerUserError[];
+  readonly email: string;
+}
+
+/** A "Forgot your password?" submission: the backend's errors, none when it was sent. */
+interface RecoverActionData {
+  readonly intent: typeof RECOVER_INTENT;
+  readonly errors: readonly CustomerUserError[];
+}
 
 interface CustomerRecoverData {
   readonly customerRecover: { readonly customerUserErrors: readonly CustomerUserError[] };
@@ -50,15 +59,19 @@ export async function action({ context, request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const email = stringField(formData, 'email');
   if (formData.get('intent') === RECOVER_INTENT) {
-    // The backend answers every email the same, so there is no error to show.
-    await storefrontQuery<CustomerRecoverData>(appContext, CUSTOMER_RECOVER_MUTATION, { email });
-    return { recovered: true } satisfies LoginActionData;
+    const data = await storefrontQuery<CustomerRecoverData>(appContext, CUSTOMER_RECOVER_MUTATION, {
+      email,
+    });
+    return {
+      intent: RECOVER_INTENT,
+      errors: data.customerRecover.customerUserErrors,
+    } satisfies RecoverActionData;
   }
   const password = stringField(formData, 'password');
   const redirectTo = safeAccountRedirect(optionalStringField(formData, 'redirectTo'));
   const result = await loginCustomer(appContext, email, password);
   if ('errors' in result) {
-    return { errors: result.errors, email } satisfies LoginActionData;
+    return { intent: 'login', errors: result.errors, email } satisfies LoginRejectedData;
   }
   return redirect(redirectTo, { headers: result.headers });
 }
@@ -69,19 +82,20 @@ export async function action({ context, request }: ActionFunctionArgs) {
  * targets `#recover`, which shows the recover form, and "Cancel" targets
  * `#login` again (see `.customer-login` in `app.css`). The recover form
  * reloads the document, so the page that answers it has no `#recover` and
- * shows the login form with the message.
+ * shows the login form with the message, or with the backend's errors if
+ * there are any.
  */
 export default function LoginRoute() {
   const { redirectTo } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
-  const failed = actionData !== undefined && 'errors' in actionData ? actionData : undefined;
-  const recovered = actionData !== undefined && 'recovered' in actionData;
+  const failedEmail = actionData?.intent === 'login' ? actionData.email : '';
+  const recovered = actionData?.intent === RECOVER_INTENT && actionData.errors.length === 0;
   return (
     <div className="page-width account-form customer-login">
       <div id="login" className="stack login-panel">
         <h1>Login</h1>
         {recovered ? <p>{RECOVER_SUCCESS}</p> : null}
-        <FormErrors heading={FORM_ERRORS_HEADING} errors={failed?.errors} />
+        <FormErrors heading={FORM_ERRORS_HEADING} errors={actionData?.errors} />
         <Form method="post" className="stack">
           <input type="hidden" name="redirectTo" value={redirectTo} />
           <FloatingField
@@ -91,7 +105,7 @@ export default function LoginRoute() {
             name="email"
             autoComplete="email"
             required
-            defaultValue={failed?.email ?? ''}
+            defaultValue={failedEmail}
           />
           <FloatingField
             id="CustomerPassword"

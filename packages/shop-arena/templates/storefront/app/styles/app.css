@@ -901,13 +901,15 @@ html:has(.cart-popup) {
   white-space: nowrap;
 }
 
-/* Login and register: a narrow, centered column with centered headings and buttons. */
-.account-form {
+/* Login, register and the address book: a narrow, centered column. */
+.account-form,
+.addresses-page {
   max-width: 330px;
 }
 
 @media (min-width: 750px) {
-  .account-form {
+  .account-form,
+  .addresses-page {
     max-width: 480px;
   }
 }
@@ -926,7 +928,8 @@ html:has(.cart-popup) {
   gap: 1rem;
 }
 
-.account-form-actions button {
+.account-form-actions button,
+.address-book-actions button {
   min-width: 120px;
 }
 
@@ -1090,18 +1093,8 @@ html:has(.cart-popup) {
   padding: 0;
   list-style: none;
 }
-
+/* Address book: the headings are centered; the form headings and fields are left-aligned. */
 /* Address book: a narrow, centered column; the form headings and fields are left-aligned. */
-.addresses-page {
-  max-width: 330px;
-}
-
-@media (min-width: 750px) {
-  .addresses-page {
-    max-width: 480px;
-  }
-}
-
 .addresses-heading,
 .address-default {
   text-align: center;
@@ -1183,8 +1176,4 @@ html:has(.cart-popup) {
   flex-wrap: wrap;
   gap: 0.75rem;
   justify-content: center;
-}
-
-.address-book-actions button {
-  min-width: 120px;
 }
