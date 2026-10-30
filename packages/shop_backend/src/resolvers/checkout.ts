@@ -1,7 +1,8 @@
 /**
  * Checkout domain resolvers (sandbox-only): `Query.commerceSettings` exposes
- * the `commerce.json` rules; `Mutation.checkoutComplete` converts a cart into
- * an order through `ShopState.placeOrder`.
+ * the `commerce.json` rules; `Query.discountCodeHints` lists its Discount
+ * codes with their hint texts; `Mutation.checkoutComplete` converts a cart
+ * into an order through `ShopState.placeOrder`.
  *
  * Validation order: cart exists and is non-empty, shipping / payment handles
  * resolve, the address has the required lines, an email is known; then the
@@ -29,6 +30,11 @@ export interface CommerceSettingsNode {
   readonly paymentMethods: readonly PaymentMethod[];
 }
 
+export interface DiscountCodeHintNode {
+  readonly code: string;
+  readonly hint: string;
+}
+
 export interface CheckoutUserErrorNode {
   readonly code: string | null;
   readonly field: readonly string[] | null;
@@ -50,6 +56,13 @@ export const checkoutResolvers = {
       ctx: ResolverContext,
     ): CommerceSettingsNode =>
       buildCommerceSettings(ctx.data.commerce, ctx.data.store.currency_code),
+
+    discountCodeHints: (
+      _parent: unknown,
+      _args: unknown,
+      ctx: ResolverContext,
+    ): readonly DiscountCodeHintNode[] =>
+      ctx.data.commerce.discount_codes.map(({ code, hint }) => ({ code, hint })),
   },
 
   Mutation: {

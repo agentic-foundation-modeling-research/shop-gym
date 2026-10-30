@@ -209,6 +209,7 @@ New SDL modules and operations (names follow the Storefront API):
 | order | `Order { id name orderNumber email processedAt financialStatus fulfillmentStatus currencyCode subtotalPrice totalShippingPrice totalTax totalPrice shippingAddress lineItems(first) shippingMethod paymentMethod discountCode }`, `OrderDiscountCode { code targetType amount }` | `shippingMethod`, `paymentMethod`, `discountCode` |
 | order | `OrderLineItem { title quantity variant originalTotalPrice }`, `OrderSortKeys`, status enums | no |
 | checkout | `Query.commerceSettings: CommerceSettings!` | yes |
+| checkout | `Query.discountCodeHints: [DiscountCodeHint!]!`, `DiscountCodeHint { code hint }` | yes |
 | checkout | `Mutation.checkoutComplete(cartId: ID!, input: CheckoutCompleteInput!): CheckoutCompletePayload!` | yes |
 | checkout | `CommerceSettings`, `ShippingMethod`, `PaymentMethod`, `CheckoutCompleteInput`, `CheckoutCompletePayload`, `CheckoutUserError` | yes |
 | catalog | `Product.reviews(first, after, sortKey: ReviewSortKeys = MOST_RECENT): ReviewConnection!` | yes |
@@ -248,7 +249,10 @@ never below zero, and a free-shipping code waives the shipping. Cart cost,
 `discountCodes.applicable` and `discountAllocations` show it on every read.
 `checkoutComplete` records the applied code and the discount amount (the
 waived shipping for a free-shipping code) on the order, exposed as the
-sandbox field `Order.discountCode`.
+sandbox field `Order.discountCode`. `discountCodeHints` lists every code
+with its hint text in `commerce.json` order, for the storefront's
+announcement bar; the Storefront API has no such query, because a merchant
+types announcement text into the theme.
 
 Address book: the first address of a customer becomes the default, and
 deleting the default makes the first remaining address the default, so a
@@ -322,6 +326,7 @@ city, province, province_code, country, country_code, zip, phone`.
 | 9 | Discount codes: `commerce.json` codes, cart pricing and allocations, codes on orders and in the StateSnapshot | done |
 | 10 | Reviews: `reviews.json`, `Product.reviews` paging and sorting, computed rating metafields | done |
 | 11 | Address book: `customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`, `customerDefaultAddressUpdate` | done |
+| 12 | `discountCodeHints`: every Discount code with its hint text, for the storefront's announcement bar | done |
 
 ---
 

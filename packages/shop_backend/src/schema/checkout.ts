@@ -1,15 +1,22 @@
 /**
- * Checkout domain (sandbox-only). Shopify completes checkout outside the
- * Storefront API, so `checkoutComplete` and `commerceSettings` carry
- * `@sandbox`. `checkoutComplete` turns a cart into an `Order` in one step:
- * it validates stock, prices the order from `commerce.json`, decrements
- * episode inventory, and removes the cart.
+ * Checkout domain (sandbox-only): the `commerce.json` rules and checkout.
+ * Shopify completes checkout outside the Storefront API, so
+ * `checkoutComplete` and `commerceSettings` carry `@sandbox`.
+ * `checkoutComplete` turns a cart into an `Order` in one step: it validates
+ * stock, prices the order from `commerce.json`, decrements episode
+ * inventory, and removes the cart. `discountCodeHints` lists the Discount
+ * codes of `commerce.json` with their hint texts for the storefront's
+ * announcement bar; it carries `@sandbox` because a Shopify merchant types
+ * announcement text into the theme.
  */
 
 export const checkoutTypeDefs = /* GraphQL */ `
   type Query {
     """Shipping and payment options plus tax rules from commerce.json."""
     commerceSettings: CommerceSettings! @sandbox
+    """Every Discount code with its hint text, in commerce.json order."""
+    discountCodeHints: [DiscountCodeHint!]!
+      @sandbox(reason: "Shopify merchants type announcement text into the theme")
   }
 
   type Mutation {
@@ -35,6 +42,13 @@ export const checkoutTypeDefs = /* GraphQL */ `
   type PaymentMethod @sandbox {
     handle: String!
     title: String!
+  }
+
+  type DiscountCodeHint @sandbox {
+    """The code in its commerce.json spelling."""
+    code: String!
+    """Short shopper-facing text that tells what the code does."""
+    hint: String!
   }
 
   input CheckoutCompleteInput @sandbox {
