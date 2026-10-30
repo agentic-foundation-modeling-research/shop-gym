@@ -268,7 +268,8 @@ store's (the sandbox ships to one country), and a changed province clears
 `provinceCode`. Each success ticks the clock once and sets the customer's
 `updatedAt`; a user error changes nothing. The address book and
 `checkoutComplete` save a `MailingAddressInput` the same way: each line is
-trimmed and a blank optional line is `null`.
+trimmed and a blank optional line is `null`. `account_discount_reviews.md`
+§5.2 and §5.3 own the address book and the password-recovery mock.
 
 Password recovery: `customerRecover` is a mock of "Forgot your password?".
 It sends no email and changes no password. It trims the email, records it

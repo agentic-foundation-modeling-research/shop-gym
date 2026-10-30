@@ -72,7 +72,7 @@ Backend template per shop).
 
 ## 3. Current Status
 
-Before this work (`stateful_commerce.md` v0.1):
+Before this work:
 
 - `Customer.addresses` and `defaultAddress` were read-only.
 - No password recovery mutation.

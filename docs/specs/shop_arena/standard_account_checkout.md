@@ -13,13 +13,13 @@ Owners: ShopArena
 
 ## 1. Overview
 
-Storefront exploration sees a Live storefront only as a logged-out buyer.
-A Shop Manual therefore never describes the account pages, a completed
+Storefront exploration sees a Live storefront only as a logged-out buyer. A
+Shop Manual therefore never describes the account pages, a completed
 checkout or the order confirmation. Before this work, no Sub-manual and no
-build task owned these pages, so their labels and flows depended only on
-the build agent, with no manual text to follow. Account, order and checkout Tasks need
-these pages to be the same in every shop, and the browser steps of the
-Verifiers and the Final eval need fixed selectors and messages.
+build task owned these pages, so their labels and flows depended only on the
+build agent, with no manual text to follow. Account, order and checkout
+Tasks need these pages to be the same in every shop, and the browser steps
+of the Verifiers and the Final eval need fixed selectors and messages.
 
 Shop generation also always made a new catalog. An old shop on the removed
 Hydrogen layout, such as `mock_clothing`, could not move onto the current
@@ -236,8 +236,8 @@ before `visual_fix`, both at priority 3:
 | `gen_account` | restyle the prebuilt account pages to the theme and the Account section of `parts/standard.md`; keep their behavior and form selectors |
 | `gen_checkout` | restyle the prebuilt checkout and thank-you pages to the theme and the Checkout and Order confirmation sections of `parts/standard.md`; keep behavior and form selectors |
 
-The executor prompt tells each task which Standard sub-manual sections it
-reads, and that its quoted labels are exact:
+The executor prompt tells each build task which Standard sub-manual
+sections it reads, and that its quoted labels are exact:
 
 | Build task | Sections | Extra rule |
 | --- | --- | --- |
@@ -263,12 +263,12 @@ is when the form carries its variant in a hidden input.
 | `account_flow` | `gen_account`, `visual_fix` | sign up, log out, "Forgot your password?" (the login page shows the sent message), log in, add an address, edit it |
 | `discount_flow` | `gen_checkout`, `visual_fix` | add a sampled product to the cart; apply a Dataset Discount code with no minimum subtotal, a percent or fixed-amount code first (the "Total" changes); enter `NOT-A-SHOPGYM-CODE` ("Enter a valid discount code" shows, and the "Total" stays) |
 
-`discount_flow` skips its first check when the Dataset has no code
-without a minimum subtotal. `routes_200`, `cart_conformance` and `visual_judge` keep
+`discount_flow` skips its first check when the Dataset has no code without a
+minimum subtotal. `routes_200`, `cart_conformance` and `visual_judge` keep
 gating these pages. The visual judge gets the Account section for the
-account page bucket and the Checkout and Order confirmation sections for
-the checkout bucket, from the shop's `parts/standard.md`, with their own
-budget of 12,000 characters.
+account page bucket and the Checkout and Order confirmation sections for the
+checkout bucket, from the shop's `parts/standard.md`, with their own budget
+of 12,000 characters.
 
 ### 5.5 Final eval
 
