@@ -57,6 +57,8 @@ import { CHECKOUT_ADDRESS } from './gen/build/verifiers/storefront_target.js';
 import { STOREFRONT_TEMPLATE_DIR } from './templates.js';
 
 const FIXTURE_DIR = path.join(STOREFRONT_TEMPLATE_DIR, 'fixtures', 'sandbox_shop_v0');
+/** The Discount codes of the test Dataset, in Dataset order. */
+const DISCOUNT_CODES = loadShopData(FIXTURE_DIR).commerce.discount_codes;
 const EPISODE_ID = 'storefront-template-browser';
 const PRODUCT = { handle: 'shopliseum-mushroom-dog-toys', title: 'Shopliseum Mushroom Dog Toys' };
 const PRODUCT_PATH = `/products/${PRODUCT.handle}`;
@@ -362,7 +364,7 @@ describe('storefront template in a browser', () => {
   }, 60_000);
 
   it('steps through every Discount code in the announcement bar', async () => {
-    const outcome = await stepThroughAnnouncements(session.page, sidecar.url);
+    const outcome = await stepThroughAnnouncements(session.page, sidecar.url, DISCOUNT_CODES);
     expect(outcome.ok, outcome.detail).toBe(true);
     // The codes of the test Dataset with their hints, in commerce.json order.
     expect(outcome.slides).toEqual([
@@ -377,11 +379,12 @@ describe('storefront template in a browser', () => {
     const page = await session.context.newPage();
     try {
       await page.clock.install();
-      const outcome = await stepThroughAnnouncements(page, sidecar.url);
+      const outcome = await stepThroughAnnouncements(page, sidecar.url, DISCOUNT_CODES);
       expect(outcome.ok, outcome.detail).toBe(true);
       const shown = page
         .getByRole('region', { name: 'Announcement bar', exact: true })
         .getByRole('group', { name: /^\d+ of \d+$/ });
+      // The step ends with Previous on "1 of 3", so the bar shows "3 of 3".
       // Dawn rotates every 3 to 10 seconds; read after each second of 10.
       for (let second = 1; second <= 10; second++) {
         await page.clock.runFor(1000);
@@ -601,14 +604,19 @@ describe('storefront template in a browser', () => {
   }, 60_000);
 
   it('shows one Discount code as a plain announcement with no arrows', async () => {
-    const outcome = await stepThroughAnnouncements(session.page, await serveWithDiscountCodes(1));
+    const url = await serveWithDiscountCodes(1);
+    const outcome = await stepThroughAnnouncements(session.page, url, DISCOUNT_CODES.slice(0, 1));
     expect(outcome.ok, outcome.detail).toBe(true);
     expect(outcome.slides).toEqual(['WELCOME10 - 10% off your order']);
   }, 60_000);
 
   it('shows no announcement bar for a Dataset with no Discount codes', async () => {
-    const outcome = await stepThroughAnnouncements(session.page, await serveWithDiscountCodes(0));
-    expect(outcome).toMatchObject({ ok: true, slides: [] });
+    const outcome = await stepThroughAnnouncements(
+      session.page,
+      await serveWithDiscountCodes(0),
+      [],
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
     expect(await pageText()).not.toContain('WELCOME10');
   }, 60_000);
 });

@@ -15,6 +15,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import type { BrowserSession } from '@shop-gym/browser';
+import type { DiscountCode } from '@shop-gym/shop-backend';
 
 import { CHECKOUT_ADDRESS } from './storefront_target.js';
 
@@ -304,35 +305,55 @@ interface Slide {
 }
 
 /**
- * Open `/` and read every slide of the announcement bar. With no bar, ok
- * with no slides. A plain "Announcement" region is one slide, ok when it
- * has no buttons. An "Announcement bar" carousel is stepped through: read
- * the slide it starts on, press "Next announcement" until the bar is back
- * on the first slide, then press "Previous announcement" once. ok when the
- * bar starts on "1 of <n>", Next shows "2 of <n>" to "<n> of <n>" and then
- * "1 of <n>" again, and Previous on the first slide shows "<n> of <n>".
+ * Open `/` and read every slide of the announcement bar; ok when the bar
+ * is well formed and its slides are `codes` as "<code> - <hint>", in
+ * order. With no codes, ok when there is no bar. One code must show as a
+ * plain "Announcement" region with no buttons. Two or more must show as
+ * an "Announcement bar" carousel, which the step goes through: read the
+ * slide it starts on, press "Next announcement" until the bar is back on
+ * the first slide, then press "Previous announcement" once. The carousel
+ * is well formed when it starts on "1 of <n>", Next shows "2 of <n>" to
+ * "<n> of <n>" and then "1 of <n>" again, and Previous on the first slide
+ * shows "<n> of <n>".
  */
 export async function stepThroughAnnouncements(
   page: Page,
   baseUrl: string,
+  codes: readonly Pick<DiscountCode, 'code' | 'hint'>[],
 ): Promise<AnnouncementOutcome> {
+  const expected = codes.map(({ code, hint }) => `${code} - ${hint}`);
   return attempt(async () => {
     await open(page, `${baseUrl}/`);
-    const carousel = page.getByRole('region', { name: 'Announcement bar', exact: true });
-    if ((await carousel.count()) > 0) return stepThroughCarousel(page, carousel);
-    const plain = page.getByRole('region', { name: 'Announcement', exact: true });
-    if ((await plain.count()) === 0) {
-      return { ok: true, detail: 'no announcement bar on /', url: '/', slides: [] };
-    }
-    const buttons = await plain.getByRole('button').count();
-    const text = normalizedText(await plain.innerText());
+    const outcome = await readAnnouncementBar(page);
+    const shown = outcome.slides ?? [];
+    const same =
+      shown.length === expected.length && shown.every((text, index) => text === expected[index]);
     return {
-      ok: buttons === 0,
-      detail: `the "Announcement" region shows "${text}" with ${buttons} buttons`,
-      url: '/',
-      slides: [text],
+      ...outcome,
+      ok: outcome.ok && same,
+      detail: same
+        ? outcome.detail
+        : `${outcome.detail}; slides [${quoted(shown)}], want [${quoted(expected)}]`,
     };
   });
+}
+
+/** Read the announcement bar of the open page as `stepThroughAnnouncements` says. */
+async function readAnnouncementBar(page: Page): Promise<AnnouncementOutcome> {
+  const carousel = page.getByRole('region', { name: 'Announcement bar', exact: true });
+  if ((await carousel.count()) > 0) return stepThroughCarousel(page, carousel);
+  const plain = page.getByRole('region', { name: 'Announcement', exact: true });
+  if ((await plain.count()) === 0) {
+    return { ok: true, detail: 'no announcement bar on /', url: '/', slides: [] };
+  }
+  const buttons = await plain.getByRole('button').count();
+  const text = normalizedText(await plain.innerText());
+  return {
+    ok: buttons === 0,
+    detail: `the "Announcement" region shows "${text}" with ${buttons} buttons`,
+    url: '/',
+    slides: [text],
+  };
 }
 
 /** Step through the "Announcement bar" carousel `bar` as `stepThroughAnnouncements` says. */
@@ -368,7 +389,7 @@ async function stepThroughCarousel(page: Page, bar: Locator): Promise<Announceme
       labels.every((label, index) => label === `${index + 1} of ${total}`) &&
       wrapped.label === `1 of ${total}` &&
       back.label === `${total} of ${total}`,
-    detail: `the bar showed ${labels.map((label) => `"${label}"`).join(', ')}, then Next showed "${wrapped.label}" and Previous "${back.label}"`,
+    detail: `the bar showed ${quoted(labels)}, then Next showed "${wrapped.label}" and Previous "${back.label}"`,
     url: '/',
     slides: slides.map((slide) => slide.text),
   };
@@ -767,6 +788,11 @@ async function heading(page: Page): Promise<string> {
 function pathOf(url: string): string {
   const parsed = new URL(url);
   return parsed.pathname + parsed.search;
+}
+
+/** `texts` in double quotes, joined by commas, for a step's detail. */
+function quoted(texts: readonly string[]): string {
+  return texts.map((text) => `"${text}"`).join(', ');
 }
 
 function normalizedText(text: string): string {
