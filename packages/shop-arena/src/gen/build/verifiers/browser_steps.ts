@@ -1,7 +1,7 @@
 /**
  * Fixed browser scripts over the storefront template's forms and pages:
- * register, log in, log out, add, edit and delete an address in the address
- * book, step through the announcement bar, open a product page, sort its
+ * register, log in, log out, request a password reset with "Forgot your
+ * password?", add, edit and delete an address in the address book, step through the announcement bar, open a product page, sort its
  * Reviews and show more of them, add a product to the cart, apply or have a
  * Discount code turned down at checkout, place an order, and open that
  * order's thank-you page, the account order history and an account order
@@ -38,6 +38,8 @@ const SUBMIT_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 200;
 /** Checkout's error under the "Discount code" field for a code that does not apply. */
 const INVALID_DISCOUNT_CODE = 'Enter a valid discount code';
+/** The login page's message after a "Forgot your password?" request, for every email. */
+const PASSWORD_RESET_SENT = "We've sent you an email with a link to update your password.";
 const ADDRESSES_PATH = '/account/addresses';
 /** Address form fields whose values show in the postal lines of a saved address. */
 const POSTAL_LINE_FIELDS = [
@@ -77,6 +79,44 @@ export async function logOut(page: Page, baseUrl: string): Promise<StepOutcome> 
     }
     const path = await submit(page, form);
     return { ok: path === '/', detail: `logout landed on ${path}`, url: path };
+  });
+}
+
+/**
+ * Open `/account/login`, follow "Forgot your password?", enter `email` in
+ * the form that opens and press "Submit"; ok when the page then shows
+ * "We've sent you an email with a link to update your password.". The
+ * customer must be logged out, as the login page sends a logged-in
+ * customer away.
+ */
+export async function requestPasswordReset(
+  page: Page,
+  baseUrl: string,
+  email: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}/account/login`);
+    const link = page.getByRole('link', { name: 'Forgot your password?', exact: true }).first();
+    if ((await link.count()) === 0) {
+      return { ok: false, detail: `no "Forgot your password?" link on ${pathOf(page.url())}` };
+    }
+    const form = formWithButton(page.locator('form'), page, 'Submit');
+    await link.evaluate((element) => (element as unknown as { click(): void }).click());
+    await form.waitFor({ state: 'visible', timeout: SUBMIT_TIMEOUT_MS });
+    await fillFields(form, { email });
+    await submitInPlace(page, form);
+    const message = page.getByText(PASSWORD_RESET_SENT, { exact: true }).filter({ visible: true });
+    const shown = await pollPage(
+      page,
+      async () => (await message.count()) > 0,
+      false,
+      (visible) => visible,
+    );
+    return {
+      ok: shown,
+      detail: `submitting ${email} ${shown ? 'shows' : 'does not show'} "${PASSWORD_RESET_SENT}"`,
+      url: pathOf(page.url()),
+    };
   });
 }
 

@@ -7,18 +7,29 @@ import {
   useActionData,
   useLoaderData,
 } from 'react-router';
-import { FormErrors } from '~/components/account';
+import { FORM_ERRORS_HEADING, FloatingField, FormErrors } from '~/components/account';
 import { getAppContext } from '~/lib/context';
 import { loadCustomer, loginCustomer, safeAccountRedirect } from '~/lib/customer';
+import { CUSTOMER_RECOVER_MUTATION } from '~/lib/queries';
+import { storefrontQuery } from '~/lib/storefront';
 import type { CustomerUserError } from '~/lib/types';
+
+/** The `intent` of the "Forgot your password?" form; the login form sends none. */
+const RECOVER_INTENT = 'recover';
+
+/** Shown above the login form after every password reset request, for any email. */
+const RECOVER_SUCCESS = "We've sent you an email with a link to update your password.";
 
 interface LoginLoaderData {
   readonly redirectTo: string;
 }
 
-interface LoginActionData {
-  readonly errors: readonly CustomerUserError[];
-  readonly email: string;
+type LoginActionData =
+  | { readonly errors: readonly CustomerUserError[]; readonly email: string }
+  | { readonly recovered: true };
+
+interface CustomerRecoverData {
+  readonly customerRecover: { readonly customerUserErrors: readonly CustomerUserError[] };
 }
 
 export function meta() {
@@ -38,6 +49,11 @@ export async function action({ context, request }: ActionFunctionArgs) {
   const appContext = getAppContext(context);
   const formData = await request.formData();
   const email = stringField(formData, 'email');
+  if (formData.get('intent') === RECOVER_INTENT) {
+    // The backend answers every email the same, so there is no error to show.
+    await storefrontQuery<CustomerRecoverData>(appContext, CUSTOMER_RECOVER_MUTATION, { email });
+    return { recovered: true } satisfies LoginActionData;
+  }
   const password = stringField(formData, 'password');
   const redirectTo = safeAccountRedirect(optionalStringField(formData, 'redirectTo'));
   const result = await loginCustomer(appContext, email, password);
@@ -47,37 +63,72 @@ export async function action({ context, request }: ActionFunctionArgs) {
   return redirect(redirectTo, { headers: result.headers });
 }
 
+/**
+ * Dawn's login page: the login form, and the "Forgot your password?" form
+ * in its place. Both are in the page; the link "Forgot your password?"
+ * targets `#recover`, which shows the recover form, and "Cancel" targets
+ * `#login` again (see `.customer-login` in `app.css`). The recover form
+ * reloads the document, so the page that answers it has no `#recover` and
+ * shows the login form with the message.
+ */
 export default function LoginRoute() {
   const { redirectTo } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  const failed = actionData !== undefined && 'errors' in actionData ? actionData : undefined;
+  const recovered = actionData !== undefined && 'recovered' in actionData;
   return (
-    <div className="page-width stack account-form">
-      <h1>Log in</h1>
-      <FormErrors errors={actionData?.errors} />
-      <Form method="post" className="form-grid">
-        <input type="hidden" name="redirectTo" value={redirectTo} />
-        <label>
-          Email
-          <input
+    <div className="page-width account-form customer-login">
+      <div id="login" className="stack login-panel">
+        <h1>Login</h1>
+        {recovered ? <p>{RECOVER_SUCCESS}</p> : null}
+        <FormErrors heading={FORM_ERRORS_HEADING} errors={failed?.errors} />
+        <Form method="post" className="stack">
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <FloatingField
+            id="CustomerEmail"
+            label="Email"
             type="email"
             name="email"
             autoComplete="email"
             required
-            defaultValue={actionData?.email ?? ''}
+            defaultValue={failed?.email ?? ''}
           />
-        </label>
-        <label>
-          Password
-          <input type="password" name="password" autoComplete="current-password" required />
-        </label>
-        <button type="submit">Log in</button>
-      </Form>
-      <p>
-        New here?{' '}
-        <Link to={`/account/register?redirectTo=${encodeURIComponent(redirectTo)}`}>
-          Create an account
-        </Link>
-      </p>
+          <FloatingField
+            id="CustomerPassword"
+            label="Password"
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            required
+          />
+          <a href="#recover">Forgot your password?</a>
+          <div className="account-form-actions">
+            <button type="submit">Sign in</button>
+            <Link to={`/account/register?redirectTo=${encodeURIComponent(redirectTo)}`}>
+              Create account
+            </Link>
+          </div>
+        </Form>
+      </div>
+      <div id="recover" className="stack recover-panel">
+        <h1>Reset your password</h1>
+        <p>We will send you an email to reset your password</p>
+        <Form method="post" reloadDocument className="stack">
+          <input type="hidden" name="intent" value={RECOVER_INTENT} />
+          <FloatingField
+            id="RecoverEmail"
+            label="Email"
+            type="email"
+            name="email"
+            autoComplete="email"
+            required
+          />
+          <div className="account-form-actions">
+            <button type="submit">Submit</button>
+            <a href="#login">Cancel</a>
+          </div>
+        </Form>
+      </div>
     </div>
   );
 }

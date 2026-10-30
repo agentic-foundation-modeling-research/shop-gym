@@ -901,8 +901,46 @@ html:has(.cart-popup) {
   white-space: nowrap;
 }
 
+/* Login and register: a narrow, centered column with centered headings and buttons. */
 .account-form {
-  max-width: 28rem;
+  max-width: 330px;
+}
+
+@media (min-width: 750px) {
+  .account-form {
+    max-width: 480px;
+  }
+}
+
+.account-form h1 {
+  text-align: center;
+}
+
+.account-form input {
+  width: 100%;
+}
+
+.account-form-actions {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+}
+
+.account-form-actions button {
+  min-width: 120px;
+}
+
+.account-form .field-error {
+  margin: 0.25rem 0 0;
+}
+
+/*
+ * "Forgot your password?" targets #recover: the recover form shows in place
+ * of the login form until "Cancel" targets #login.
+ */
+.customer-login .recover-panel:not(:target),
+.customer-login:has(.recover-panel:target) .login-panel {
+  display: none;
 }
 
 .form-grid {

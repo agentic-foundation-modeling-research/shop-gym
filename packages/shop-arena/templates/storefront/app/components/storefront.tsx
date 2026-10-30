@@ -42,7 +42,7 @@ export function Header({
         <MenuList items={menu?.items ?? []} />
       </nav>
       <Link className="account-link" to={customer ? '/account' : '/account/login'}>
-        {customer ? 'Account' : 'Login'}
+        {customer ? 'Account' : 'Log in'}
       </Link>
       <button
         type="button"

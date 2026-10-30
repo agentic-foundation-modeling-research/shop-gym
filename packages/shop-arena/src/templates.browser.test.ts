@@ -45,6 +45,7 @@ import {
   placeOrder,
   register,
   rejectDiscountCode,
+  requestPasswordReset,
   showMoreReviews,
   sortReviews,
   stepThroughAnnouncements,
@@ -248,6 +249,39 @@ describe('storefront template in a browser', () => {
     const outcome = await logOut(session.page, sidecar.url);
     expect(outcome.ok, outcome.detail).toBe(true);
     expect(await shopperSessionCount()).toBe(0);
+  }, 60_000);
+
+  it('shows a taken email under the field and in the list above the form', async () => {
+    // Not the `register` step: it waits for a new URL, and a failed sign-up stays on the page.
+    const { page } = session;
+    await page.goto(`${sidecar.url}/account/register`, { waitUntil: 'load' });
+    await page.getByLabel('First name', { exact: true }).fill(SHOPPER.firstName);
+    await page.getByLabel('Last name', { exact: true }).fill(SHOPPER.lastName);
+    const email = page.getByLabel('Email', { exact: true });
+    await email.fill(SHOPPER.email);
+    const password = page.getByLabel('Password', { exact: true });
+    await password.fill(SHOPPER.password);
+    await password.press('Enter');
+    const errors = page.getByRole('alert');
+    await errors.waitFor();
+    expect(normalized(await errors.innerText())).toBe(
+      'Please adjust the following: Email has already been taken',
+    );
+    const describedBy = await email.getAttribute('aria-describedby');
+    expect(await page.locator(`[id="${describedBy}"]`).innerText()).toBe(
+      'Email has already been taken',
+    );
+    const { customers } = await snapshot();
+    expect(customers.filter((customer) => customer.email === SHOPPER.email)).toHaveLength(1);
+  }, 60_000);
+
+  it('asks for a password reset and records the request', async () => {
+    const outcome = await requestPasswordReset(session.page, sidecar.url, SHOPPER.email);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const { passwordResetRequests } = await snapshot();
+    expect(passwordResetRequests).toEqual([
+      { email: SHOPPER.email, requestedAt: expect.any(String) },
+    ]);
   }, 60_000);
 
   it('logs back in', async () => {

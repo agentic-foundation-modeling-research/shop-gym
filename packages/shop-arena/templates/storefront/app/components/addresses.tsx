@@ -1,14 +1,11 @@
 import { type FormEvent, useId, useState } from 'react';
 import { Form } from 'react-router';
-import { AddressBlock, FormErrors } from '~/components/account';
+import { AddressBlock, FORM_ERRORS_HEADING, FloatingField, FormErrors } from '~/components/account';
 import type { AddressField } from '~/lib/addresses';
 import type { Country, CustomerUserError, MailingAddress } from '~/lib/types';
 
 /** The text of the browser's confirm dialog before an address is deleted. */
 export const DELETE_ADDRESS_CONFIRM = 'Are you sure you wish to delete this address?';
-
-/** The heading of the errors of a form that failed. */
-const FORM_ERRORS_HEADING = 'Please adjust the following:';
 
 /** `openForm` of the "Add a new address" form; an edit form is the id of its address. */
 const NEW_ADDRESS_FORM = 'new';
@@ -159,7 +156,7 @@ function AddressForm({
   const idPrefix = useId();
   const value = (field: AddressField) => failed?.values[field] ?? address?.[field] ?? '';
   const field = (name: AddressField, label: string, autoComplete: string, type = 'text') => (
-    <TextField
+    <FloatingField
       id={`${idPrefix}-${name}`}
       name={name}
       label={label}
@@ -210,26 +207,5 @@ function AddressForm({
         </button>
       </div>
     </Form>
-  );
-}
-
-/** A text field with a floating label: the label shows in the field until it has a value. */
-function TextField({
-  id,
-  label,
-  ...inputProps
-}: {
-  readonly id: string;
-  readonly name: AddressField;
-  readonly label: string;
-  readonly type: string;
-  readonly autoComplete: string;
-  readonly defaultValue: string;
-}) {
-  return (
-    <div className="floating-field">
-      <input id={id} placeholder={label} {...inputProps} />
-      <label htmlFor={id}>{label}</label>
-    </div>
   );
 }
