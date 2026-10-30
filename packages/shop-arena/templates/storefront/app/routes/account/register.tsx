@@ -1,13 +1,13 @@
+import type { ComponentProps } from 'react';
 import {
   type ActionFunctionArgs,
   Form,
-  Link,
   type LoaderFunctionArgs,
   redirect,
   useActionData,
   useLoaderData,
 } from 'react-router';
-import { FormErrors } from '~/components/account';
+import { FORM_ERRORS_HEADING, FloatingField, FormErrors } from '~/components/account';
 import { getAppContext } from '~/lib/context';
 import { loadCustomer, loginCustomer, safeAccountRedirect } from '~/lib/customer';
 import { CUSTOMER_CREATE_MUTATION } from '~/lib/queries';
@@ -67,59 +67,77 @@ export async function action({ context, request }: ActionFunctionArgs) {
   return redirect(redirectTo, { headers: result.headers });
 }
 
+/**
+ * Dawn's register page. A backend error on a field shows under that field
+ * and in the list above the form.
+ */
 export default function RegisterRoute() {
   const { redirectTo } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const values = actionData?.values;
+  const errorOf = (field: string) =>
+    actionData?.errors.find((error) => error.field?.at(-1) === field)?.message;
   return (
     <div className="page-width stack account-form">
       <h1>Create account</h1>
-      <FormErrors errors={actionData?.errors} />
-      <Form method="post" className="form-grid">
+      <FormErrors heading={FORM_ERRORS_HEADING} errors={actionData?.errors} />
+      <Form method="post" className="stack">
         <input type="hidden" name="redirectTo" value={redirectTo} />
-        <label>
-          First name
-          <input
-            name="firstName"
-            autoComplete="given-name"
-            required
-            defaultValue={values?.firstName ?? ''}
-          />
-        </label>
-        <label>
-          Last name
-          <input
-            name="lastName"
-            autoComplete="family-name"
-            required
-            defaultValue={values?.lastName ?? ''}
-          />
-        </label>
-        <label>
-          Email
-          <input
-            type="email"
-            name="email"
-            autoComplete="email"
-            required
-            defaultValue={values?.email ?? ''}
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            name="password"
-            autoComplete="new-password"
-            minLength={5}
-            required
-          />
-        </label>
-        <button type="submit">Create account</button>
+        <FloatingField
+          id="RegisterForm-FirstName"
+          label="First name"
+          name="firstName"
+          autoComplete="given-name"
+          required
+          defaultValue={values?.firstName ?? ''}
+        />
+        <FloatingField
+          id="RegisterForm-LastName"
+          label="Last name"
+          name="lastName"
+          autoComplete="family-name"
+          required
+          defaultValue={values?.lastName ?? ''}
+        />
+        <FieldWithError
+          id="RegisterForm-email"
+          label="Email"
+          type="email"
+          name="email"
+          autoComplete="email"
+          required
+          defaultValue={values?.email ?? ''}
+          error={errorOf('email')}
+        />
+        <FieldWithError
+          id="RegisterForm-password"
+          label="Password"
+          type="password"
+          name="password"
+          autoComplete="new-password"
+          required
+          error={errorOf('password')}
+        />
+        <div className="account-form-actions">
+          <button type="submit">Create</button>
+        </div>
       </Form>
-      <p>
-        Already registered?{' '}
-        <Link to={`/account/login?redirectTo=${encodeURIComponent(redirectTo)}`}>Log in</Link>
+    </div>
+  );
+}
+
+/** A floating field with the backend's `error` for it, when there is one, under it. */
+function FieldWithError({
+  error,
+  ...fieldProps
+}: ComponentProps<typeof FloatingField> & { readonly error: string | undefined }) {
+  const errorId = `${fieldProps.id}-error`;
+  if (error === undefined) return <FloatingField {...fieldProps} />;
+  return (
+    <div>
+      <FloatingField {...fieldProps} aria-invalid aria-describedby={errorId} />
+      <p id={errorId} className="field-error">
+        {error}
       </p>
     </div>
   );

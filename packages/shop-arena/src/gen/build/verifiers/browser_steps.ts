@@ -1,12 +1,13 @@
 /**
  * Fixed browser scripts over the storefront template's forms and pages:
- * register, log in, log out, add, edit and delete an address in the address
- * book, step through the announcement bar, open a product page, sort its
- * Reviews and show more of them, add a product to the cart, apply or have a
- * Discount code turned down at checkout, place an order, and open that
- * order's thank-you page, the account order history and an account order
- * page. Each step drives one Playwright page, never throws, and reports
- * what it observed so the callers can record it.
+ * register, log in, log out, request a password reset with "Forgot your
+ * password?", add, edit and delete an address in the address book, step
+ * through the announcement bar, open a product page, sort its Reviews and
+ * show more of them, add a product to the cart, apply or have a Discount
+ * code turned down at checkout, place an order, and open that order's
+ * thank-you page, the account order history and an account order page.
+ * Each step drives one Playwright page, never throws, and reports what it
+ * observed so the callers can record it.
  *
  * Forms are submitted with `requestSubmit()` rather than a pointer click so
  * consent or newsletter popups layered over the page cannot intercept them.
@@ -38,6 +39,8 @@ const SUBMIT_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 200;
 /** Checkout's error under the "Discount code" field for a code that does not apply. */
 const INVALID_DISCOUNT_CODE = 'Enter a valid discount code';
+/** The login page's message after a "Forgot your password?" request, for every email. */
+const PASSWORD_RESET_SENT = "We've sent you an email with a link to update your password.";
 const ADDRESSES_PATH = '/account/addresses';
 /** Address form fields whose values show in the postal lines of a saved address. */
 const POSTAL_LINE_FIELDS = [
@@ -64,7 +67,8 @@ export async function logIn(
   baseUrl: string,
   account: Credentials,
 ): Promise<StepOutcome> {
-  return submitForm(page, `${baseUrl}/account/login`, 'email', { ...account }, '/account');
+  // Keyed on the password: the "Forgot your password?" form also has an email field.
+  return submitForm(page, `${baseUrl}/account/login`, 'password', { ...account }, '/account');
 }
 
 /** Submit the logout form on the account page; expects to land on `/`. */
@@ -77,6 +81,60 @@ export async function logOut(page: Page, baseUrl: string): Promise<StepOutcome> 
     }
     const path = await submit(page, form);
     return { ok: path === '/', detail: `logout landed on ${path}`, url: path };
+  });
+}
+
+/**
+ * Open `/account/login`, follow "Forgot your password?", enter `email` in
+ * the form that opens in place of the login form and press "Submit"; ok
+ * when the page then shows "We've sent you an email with a link to update
+ * your password." and the login form in place of the recover form. The
+ * customer must be logged out, as the login page sends a logged-in
+ * customer away.
+ */
+export async function requestPasswordReset(
+  page: Page,
+  baseUrl: string,
+  email: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}/account/login`);
+    const link = page.getByRole('link', { name: 'Forgot your password?', exact: true }).first();
+    if ((await link.count()) === 0) {
+      return { ok: false, detail: `no "Forgot your password?" link on ${pathOf(page.url())}` };
+    }
+    const emailForms = page.locator('form:has(input[name="email"])');
+    const form = formWithButton(emailForms, page, 'Submit').first();
+    const loginForm = page.locator('form:has(input[name="password"])').filter({ visible: true });
+    await openForm(link, form);
+    if ((await loginForm.count()) > 0) {
+      return {
+        ok: false,
+        detail: 'the recover form opens next to the login form, not in its place',
+      };
+    }
+    await fillFields(form, { email });
+    await submitInPlace(page, form);
+    const message = page.getByText(PASSWORD_RESET_SENT, { exact: true }).filter({ visible: true });
+    const outcome = await pollPage(
+      page,
+      async () => ({
+        shown: (await message.count()) > 0,
+        loginBack: !(await form.isVisible()) && (await loginForm.count()) > 0,
+      }),
+      { shown: false, loginBack: false },
+      (read) => read.shown && read.loginBack,
+    );
+    const detail = !outcome.shown
+      ? `does not show "${PASSWORD_RESET_SENT}"`
+      : outcome.loginBack
+        ? `shows "${PASSWORD_RESET_SENT}"`
+        : 'shows the message but not the login form in place of the recover form';
+    return {
+      ok: outcome.shown && outcome.loginBack,
+      detail: `submitting ${email} ${detail}`,
+      url: pathOf(page.url()),
+    };
   });
 }
 
@@ -102,7 +160,7 @@ export async function addAddress(
     }
     const before = await addressEntries(page).count();
     const form = formWithButton(page.locator('form'), page, 'Add address');
-    await openAddressForm(toggle, form);
+    await openForm(toggle, form);
     await fillFields(form, address);
     await submitInPlace(page, form);
     const { settled, error } = await waitForAddressBook(page, async () => {
@@ -139,7 +197,7 @@ export async function editAddress(
     }
     const entry = page.locator('li').filter({ has: toggle });
     const form = formWithButton(entry.locator('form'), page, 'Update address');
-    await openAddressForm(toggle, form);
+    await openForm(toggle, form);
     await fillFields(form, changes);
     if (options.setDefault === true) {
       await form.getByLabel('Set as default address', { exact: true }).evaluate((element) => {
@@ -218,7 +276,7 @@ function formWithButton(forms: Locator, page: Page, name: string): Locator {
 }
 
 /** Press `toggle` unless `form` already shows, then wait until it shows. */
-async function openAddressForm(toggle: Locator, form: Locator): Promise<void> {
+async function openForm(toggle: Locator, form: Locator): Promise<void> {
   if (await form.isVisible()) return;
   await toggle.evaluate((element) => (element as unknown as { click(): void }).click());
   await form.waitFor({ state: 'visible', timeout: SUBMIT_TIMEOUT_MS });
@@ -234,8 +292,9 @@ function showsPostalLines(text: string, fields: AddressFields): boolean {
 }
 
 /**
- * Submit `form` and wait for the answer to its POST. The address book posts
- * back to its own URL, so there is no new URL to wait for.
+ * Submit `form` and wait for the answer to its POST. The address book and
+ * the recover form post back to their own URL, so there is no new URL to
+ * wait for.
  */
 async function submitInPlace(page: Page, form: Locator): Promise<void> {
   const posted = page

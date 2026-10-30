@@ -147,13 +147,14 @@ describe('generateShop', () => {
     const finalEval = JSON.parse(
       await fs.readFile(path.join(result.finalEvalDir, 'report.json'), 'utf-8'),
     ) as FinalEvalReport;
-    expect(finalEval.visual.pages).toHaveLength(13);
+    expect(finalEval.visual.pages).toHaveLength(14);
     expect(finalEval.visual.pages.filter((page) => page.status === 'skipped')).toEqual([]);
     expect(finalEval.visual.failed).toBe(1); // the scripted judge fails `/search`
     // The sweep applies a synthesized Discount code that has no minimum.
     expect(finalEval.functional.steps.map((step) => [step.name, step.status])).toEqual([
       ['signUp', 'pass'],
       ['logOut', 'pass'],
+      ['requestPasswordReset', 'pass'],
       ['logIn', 'pass'],
       ['addAddress', 'pass'],
       ['editAddress', 'pass'],

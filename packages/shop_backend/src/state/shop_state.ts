@@ -2,10 +2,11 @@
  * Mutable per-episode shop state layered over the immutable loaded dataset.
  *
  * One `ShopState` holds everything a shopping session can change: carts,
- * customer accounts and their access-token sessions, orders, and per-variant
- * inventory. It is seeded from `customers.json`, `orders.json`, and
- * `inventory.json` and never touches the dataset it was built from, so any
- * number of episodes can be forked from one `SandboxShopData`.
+ * customer accounts and their access-token sessions, password reset
+ * requests, orders, and per-variant inventory. It is seeded from
+ * `customers.json`, `orders.json`, and `inventory.json` and never touches
+ * the dataset it was built from, so any number of episodes can be forked
+ * from one `SandboxShopData`.
  *
  * Determinism: ids come from sequential counters and timestamps from an
  * `EpisodeClock` that advances one second per mutation, so the same action
@@ -91,6 +92,17 @@ export interface SessionRecord {
   readonly expiresAt: string;
 }
 
+/**
+ * A password reset request ("Forgot your password?"). The sandbox sends no
+ * email and changes no password.
+ */
+export interface PasswordResetRequestRecord {
+  /** The email as requested; it need not belong to a customer. */
+  readonly email: string;
+  /** Episode clock time of the request. */
+  readonly requestedAt: string;
+}
+
 export interface OrderLineItemRecord {
   readonly variantId: number;
   readonly title: string;
@@ -174,6 +186,7 @@ export class ShopState {
   private readonly options: ShopStateOptions;
   private readonly customers = new Map<number, CustomerRecord>();
   private readonly sessions = new Map<string, SessionRecord>();
+  private readonly passwordResetRequests: PasswordResetRequestRecord[] = [];
   private readonly orders = new Map<number, OrderRecord>();
   private readonly inventory = new Map<number, InventoryEntry>();
   private readonly counters = { customer: 0, order: 0, address: 0, token: 0 };
@@ -350,6 +363,20 @@ export class ShopState {
 
   listSessions(): readonly SessionRecord[] {
     return [...this.sessions.values()];
+  }
+
+  // ── Password recovery ──────────────────────────────────────────────────
+
+  /** Record a password reset request for `email`, known or not. */
+  requestPasswordReset(email: string): PasswordResetRequestRecord {
+    const request: PasswordResetRequestRecord = { email, requestedAt: this.clock.tick() };
+    this.passwordResetRequests.push(request);
+    return request;
+  }
+
+  /** Password reset requests of the episode, in request order. */
+  listPasswordResetRequests(): readonly PasswordResetRequestRecord[] {
+    return [...this.passwordResetRequests];
   }
 
   // ── Orders ─────────────────────────────────────────────────────────────

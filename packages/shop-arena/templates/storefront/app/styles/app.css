@@ -901,8 +901,49 @@ html:has(.cart-popup) {
   white-space: nowrap;
 }
 
-.account-form {
-  max-width: 28rem;
+/* Login, register and the address book: a narrow, centered column. */
+.account-form,
+.addresses-page {
+  max-width: 330px;
+}
+
+@media (min-width: 750px) {
+  .account-form,
+  .addresses-page {
+    max-width: 480px;
+  }
+}
+
+.account-form h1 {
+  text-align: center;
+}
+
+.account-form input {
+  width: 100%;
+}
+
+.account-form-actions {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+}
+
+.account-form-actions button,
+.address-book-actions button {
+  min-width: 120px;
+}
+
+.account-form .field-error {
+  margin: 0.25rem 0 0;
+}
+
+/*
+ * "Forgot your password?" targets #recover: the recover form shows in place
+ * of the login form until "Cancel" targets #login.
+ */
+.customer-login .recover-panel:not(:target),
+.customer-login:has(.recover-panel:target) .login-panel {
+  display: none;
 }
 
 .form-grid {
@@ -1053,17 +1094,7 @@ html:has(.cart-popup) {
   list-style: none;
 }
 
-/* Address book: a narrow, centered column; the form headings and fields are left-aligned. */
-.addresses-page {
-  max-width: 330px;
-}
-
-@media (min-width: 750px) {
-  .addresses-page {
-    max-width: 480px;
-  }
-}
-
+/* Address book: the headings are centered; the form headings and fields are left-aligned. */
 .addresses-heading,
 .address-default {
   text-align: center;
@@ -1145,8 +1176,4 @@ html:has(.cart-popup) {
   flex-wrap: wrap;
   gap: 0.75rem;
   justify-content: center;
-}
-
-.address-book-actions button {
-  min-width: 120px;
 }

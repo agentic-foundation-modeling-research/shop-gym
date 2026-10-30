@@ -580,6 +580,11 @@ export type CustomerErrorCode =
   | 'TOO_SHORT'
   | 'UNIDENTIFIED_CUSTOMER';
 
+export type CustomerRecoverPayload = {
+  readonly __typename?: 'CustomerRecoverPayload';
+  readonly customerUserErrors: ReadonlyArray<CustomerUserError>;
+};
+
 export type CustomerUserError = {
   readonly __typename?: 'CustomerUserError';
   readonly code: Maybe<CustomerErrorCode>;
@@ -764,6 +769,7 @@ export type Mutation = {
   readonly customerAddressUpdate: CustomerAddressUpdatePayload;
   readonly customerCreate: CustomerCreatePayload;
   readonly customerDefaultAddressUpdate: CustomerDefaultAddressUpdatePayload;
+  readonly customerRecover: CustomerRecoverPayload;
 };
 
 
@@ -875,6 +881,11 @@ export type MutationCustomerCreateArgs = {
 export type MutationCustomerDefaultAddressUpdateArgs = {
   addressId: Scalars['ID']['input'];
   customerAccessToken: Scalars['String']['input'];
+};
+
+
+export type MutationCustomerRecoverArgs = {
+  email: Scalars['String']['input'];
 };
 
 export type Order = {
@@ -1644,6 +1655,7 @@ export type ResolversTypes = {
   CustomerCreatePayload: ResolverTypeWrapper<Omit<CustomerCreatePayload, 'customer'> & { customer?: Maybe<ResolversTypes['Customer']> }>;
   CustomerDefaultAddressUpdatePayload: ResolverTypeWrapper<Omit<CustomerDefaultAddressUpdatePayload, 'customer'> & { customer?: Maybe<ResolversTypes['Customer']> }>;
   CustomerErrorCode: CustomerErrorCode;
+  CustomerRecoverPayload: ResolverTypeWrapper<CustomerRecoverPayload>;
   CustomerUserError: ResolverTypeWrapper<CustomerUserError>;
   DiscountApplicationTargetType: DiscountApplicationTargetType;
   DiscountCodeHint: ResolverTypeWrapper<DiscountCodeHint>;
@@ -1795,6 +1807,7 @@ export type ResolversParentTypes = {
   CustomerCreateInput: CustomerCreateInput;
   CustomerCreatePayload: Omit<CustomerCreatePayload, 'customer'> & { customer?: Maybe<ResolversParentTypes['Customer']> };
   CustomerDefaultAddressUpdatePayload: Omit<CustomerDefaultAddressUpdatePayload, 'customer'> & { customer?: Maybe<ResolversParentTypes['Customer']> };
+  CustomerRecoverPayload: CustomerRecoverPayload;
   CustomerUserError: CustomerUserError;
   DiscountCodeHint: DiscountCodeHint;
   Float: Scalars['Float']['output'];
@@ -2310,6 +2323,11 @@ export type CustomerDefaultAddressUpdatePayloadResolvers<ContextType = ResolverC
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type CustomerRecoverPayloadResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerRecoverPayload'] = ResolversParentTypes['CustomerRecoverPayload']> = {
+  customerUserErrors?: Resolver<ReadonlyArray<ResolversTypes['CustomerUserError']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type CustomerUserErrorResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CustomerUserError'] = ResolversParentTypes['CustomerUserError']> = {
   code?: Resolver<Maybe<ResolversTypes['CustomerErrorCode']>, ParentType, ContextType>;
   field?: Resolver<Maybe<ReadonlyArray<ResolversTypes['String']>>, ParentType, ContextType>;
@@ -2468,6 +2486,7 @@ export type MutationResolvers<ContextType = ResolverContext, ParentType extends 
   customerAddressUpdate?: Resolver<ResolversTypes['CustomerAddressUpdatePayload'], ParentType, ContextType, RequireFields<MutationCustomerAddressUpdateArgs, 'address' | 'customerAccessToken' | 'id'>>;
   customerCreate?: Resolver<ResolversTypes['CustomerCreatePayload'], ParentType, ContextType, RequireFields<MutationCustomerCreateArgs, 'input'>>;
   customerDefaultAddressUpdate?: Resolver<ResolversTypes['CustomerDefaultAddressUpdatePayload'], ParentType, ContextType, RequireFields<MutationCustomerDefaultAddressUpdateArgs, 'addressId' | 'customerAccessToken'>>;
+  customerRecover?: Resolver<ResolversTypes['CustomerRecoverPayload'], ParentType, ContextType, RequireFields<MutationCustomerRecoverArgs, 'email'>>;
 };
 
 export type OrderResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Order'] = ResolversParentTypes['Order']> = {
@@ -2871,6 +2890,7 @@ export type Resolvers<ContextType = ResolverContext> = {
   CustomerAddressUpdatePayload?: CustomerAddressUpdatePayloadResolvers<ContextType>;
   CustomerCreatePayload?: CustomerCreatePayloadResolvers<ContextType>;
   CustomerDefaultAddressUpdatePayload?: CustomerDefaultAddressUpdatePayloadResolvers<ContextType>;
+  CustomerRecoverPayload?: CustomerRecoverPayloadResolvers<ContextType>;
   CustomerUserError?: CustomerUserErrorResolvers<ContextType>;
   DiscountCodeHint?: DiscountCodeHintResolvers<ContextType>;
   Image?: ImageResolvers<ContextType>;

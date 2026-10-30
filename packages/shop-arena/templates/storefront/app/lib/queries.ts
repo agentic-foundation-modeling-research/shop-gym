@@ -712,6 +712,18 @@ export const COMMERCE_SETTINGS_QUERY = `#graphql
   ${MONEY_FRAGMENT}
 `;
 
+export const CUSTOMER_RECOVER_MUTATION = `#graphql
+  mutation CustomerRecover($email: String!) {
+    customerRecover(email: $email) {
+      customerUserErrors {
+        code
+        field
+        message
+      }
+    }
+  }
+`;
+
 export const CUSTOMER_CREATE_MUTATION = `#graphql
   mutation CustomerCreate($input: CustomerCreateInput!) {
     customerCreate(input: $input) {

@@ -105,6 +105,10 @@ _Avoid_: seeded customer
 The saved addresses of one customer in an Episode. A logged-in customer adds, edits and deletes them and picks one as the default, which checkout fills in. A customer with addresses always has a default. A Persona's addresses from the Dataset are where its address book starts.
 _Avoid_: address list
 
+**Password reset request**:
+A request that an agent sends with the "Forgot your password?" form in an Episode: the email and the Episode clock time. The sandbox sends no email and changes no password, and it answers every email the same, known or not. The StateSnapshot lists the requests, so a Check can see that the agent asked for a reset.
+_Avoid_: password recovery email
+
 **Review**:
 A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read and sort Reviews; they cannot write or vote on them.
 _Avoid_: rating (one field of a Review), testimonial
@@ -114,7 +118,7 @@ One attempt by one agent at one Task on one SandboxShop. The backend keeps the s
 _Avoid_: session, run
 
 **StateSnapshot**:
-The grader-facing JSON view of the backend state of one Episode: customers, sessions, carts, orders, and inventory.
+The grader-facing JSON view of the backend state of one Episode: customers, sessions, password reset requests, carts, orders, and inventory.
 
 **Control API**:
 The plain HTTP routes under `/__shopgym/episodes/<id>` that reset, read, and delete the backend state of one Episode.
