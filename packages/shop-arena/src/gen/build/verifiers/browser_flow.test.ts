@@ -147,6 +147,19 @@ describe('discount_flow', () => {
     ]);
   }, 60_000);
 
+  it('adds to cart when the product form carries its variant in a hidden input', async () => {
+    const url = await serve({
+      relabel: { 'type="radio" name="merchandiseId"': 'type="hidden" name="merchandiseId"' },
+    });
+    const productPage = await (await fetch(`${url}/products/any`)).text();
+    expect(productPage).toContain('type="hidden" name="merchandiseId"');
+    const result = await discountFlowVerifier({ target: { url }, dataDir: FIXTURE_DIR }).run(
+      await ctx('gen_checkout'),
+    );
+    expect(result.verdict).toBe('pass');
+    expect(steps(result)[0]).toEqual(['addToCart', 'pass']);
+  }, 60_000);
+
   it('fails when checkout is broken and names the step', async () => {
     const url = await serve({ broken: ['/checkout'] });
     const result = await discountFlowVerifier({ target: { url }, dataDir: FIXTURE_DIR }).run(
