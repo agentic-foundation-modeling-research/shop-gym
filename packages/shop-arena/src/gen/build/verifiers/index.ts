@@ -4,8 +4,9 @@
  * first, then the storefront verifiers (`typecheck`, `build`,
  * `routes_200`), the backend verifiers when `genBackend`, `data_in_use`,
  * and the storefront checks that need a served tree (`nav_coverage`,
- * `cart_conformance`, `account_flow`, `discount_flow`, `visual_judge`). Each verifier decides per task
- * whether it applies, so the order only matters within one task's set.
+ * `cart_conformance`, `account_flow`, `discount_flow`, `visual_judge`).
+ * Each verifier decides per task whether it applies, so the order only
+ * matters within one task's set.
  */
 
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
@@ -132,12 +133,7 @@ export {
   backendTestVerifier,
   backendTypecheckVerifier,
 } from './backend_commands.js';
-export {
-  type BrowserFlowOptions,
-  type FlowStep,
-  type FlowStepRecord,
-  browserFlowVerifier,
-} from './browser_flow.js';
+export { type BrowserFlowOptions, type FlowStep, browserFlowVerifier } from './browser_flow.js';
 export {
   CART_CONFORMANCE_NAME,
   type CartConformanceOptions,

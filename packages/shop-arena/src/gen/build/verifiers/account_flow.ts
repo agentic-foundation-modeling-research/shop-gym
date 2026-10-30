@@ -38,7 +38,6 @@ export function accountFlowVerifier(options: AccountFlowOptions): Verifier {
   const url = options.target.url;
   return browserFlowVerifier({
     name: ACCOUNT_FLOW_NAME,
-    flow: 'account flow',
     tasks: ACCOUNT_TASKS,
     target: options.target,
     steps: async () => [

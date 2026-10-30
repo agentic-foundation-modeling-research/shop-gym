@@ -446,6 +446,10 @@ function escapeHtml(text: string): string {
 export interface StubStorefrontOptions {
   /** Path prefixes answered with 500 instead of their normal page or redirect. */
   readonly broken?: readonly string[];
+  /** Text replaced in every page, as a restyle that renames a label or a selector would. */
+  readonly relabel?: Readonly<Record<string, string>>;
+  /** Checkout applies every code, as a restyle that dropped the code check would. */
+  readonly acceptAnyDiscountCode?: boolean;
 }
 
 /** The stub's codes: `SCRIPTED_DISCOUNT_CODES`, which the gen fixture data also holds. */
@@ -481,8 +485,12 @@ export function stubStorefront(options: StubStorefrontOptions = {}): http.Server
         ? undefined
         : (JSON.parse(decodeURIComponent(savedAddress)) as Record<string, string>);
     const page = (body: string): void => {
+      let html = stubHtml(body, loggedIn);
+      for (const [from, to] of Object.entries(options.relabel ?? {})) {
+        html = html.replaceAll(from, to);
+      }
       res.writeHead(200, { 'content-type': 'text/html' });
-      res.end(stubHtml(body, loggedIn));
+      res.end(html);
     };
     const redirect = (location: string, cookie?: string): void => {
       res.writeHead(302, { location, ...(cookie ? { 'set-cookie': cookie } : {}) });
@@ -529,7 +537,7 @@ export function stubStorefront(options: StubStorefrontOptions = {}): http.Server
           case '/checkout':
             if (form.get('intent') === 'discount') {
               const code = (form.get('discountCode') ?? '').trim().toUpperCase();
-              if (STUB_DISCOUNT_CODES.has(code)) {
+              if (options.acceptAnyDiscountCode === true || STUB_DISCOUNT_CODES.has(code)) {
                 redirect('/checkout', 'discount=1; Path=/');
               } else {
                 page(stubCheckout(hasDiscount, true));

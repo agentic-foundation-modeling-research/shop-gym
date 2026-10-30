@@ -9,11 +9,10 @@
  * Cart and checkout routes are judged with a line in the cart: the
  * verifier adds the first sampled product before capturing, so the model
  * sees the populated state the shopper sees rather than the empty-cart
- * message. Account routes
- * other than the login page are captured after logging in as the first
- * seeded customer, so the profile shows the orders table. Screenshots of
- * the failing pages are returned as `images` so the harness can show them
- * to the next executor iteration.
+ * message. Account routes other than the login page are captured after
+ * logging in as the first seeded customer, so the profile shows the orders
+ * table. Screenshots of the failing pages are returned as `images` so the
+ * harness can show them to the next executor iteration.
  */
 
 import * as fs from 'node:fs/promises';

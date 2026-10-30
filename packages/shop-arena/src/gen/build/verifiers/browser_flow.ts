@@ -10,7 +10,7 @@
 import { BrowserSession } from '@shop-gym/browser';
 import type { Verifier, VerifierContext, VerifierResult } from '@shop-gym/harness';
 
-import type { StepOutcome } from './browser_steps.js';
+import { type StepOutcome, type StepRecord, recordStep } from './browser_steps.js';
 import { type StorefrontTarget, prepareTarget } from './storefront_target.js';
 
 type Page = BrowserSession['page'];
@@ -20,19 +20,9 @@ export type FlowStep =
   | { readonly name: string; readonly run: (page: Page) => Promise<StepOutcome> }
   | { readonly name: string; readonly skip: string };
 
-export interface FlowStepRecord {
-  readonly name: string;
-  readonly status: 'pass' | 'fail' | 'skipped';
-  readonly detail: string;
-  /** Final page path and query, when the step navigated. */
-  readonly url?: string;
-}
-
 export interface BrowserFlowOptions {
-  /** Verifier name; also names the episode and the feedback. */
+  /** Verifier name, such as `account_flow`; also names the episode and the feedback. */
   readonly name: string;
-  /** What the flow covers, for the feedback, e.g. `account flow`. */
-  readonly flow: string;
   readonly tasks: ReadonlySet<string>;
   readonly target: StorefrontTarget;
   /** The steps of one run, in order. */
@@ -57,7 +47,7 @@ export function browserFlowVerifier(options: BrowserFlowOptions): Verifier {
         return { verdict: 'pass', details };
       }
       const lines = [
-        `\`${options.name}\`: the ${options.flow} broke at step \`${failed.name}\`.`,
+        `\`${options.name}\`: the ${options.name.replaceAll('_', ' ')} broke at step \`${failed.name}\`.`,
         '',
       ];
       for (const record of records) {
@@ -71,9 +61,9 @@ export function browserFlowVerifier(options: BrowserFlowOptions): Verifier {
 }
 
 /** Run `steps` in a fresh episode until one fails. */
-async function runSteps(episodeId: string, steps: readonly FlowStep[]): Promise<FlowStepRecord[]> {
+async function runSteps(episodeId: string, steps: readonly FlowStep[]): Promise<StepRecord[]> {
   const session = await BrowserSession.launch({ episodeId });
-  const records: FlowStepRecord[] = [];
+  const records: StepRecord[] = [];
   try {
     for (const step of steps) {
       if ('skip' in step) {
@@ -81,12 +71,7 @@ async function runSteps(episodeId: string, steps: readonly FlowStep[]): Promise<
         continue;
       }
       const outcome = await step.run(session.page);
-      records.push({
-        name: step.name,
-        status: outcome.ok ? 'pass' : 'fail',
-        detail: outcome.detail,
-        ...(outcome.url === undefined ? {} : { url: outcome.url }),
-      });
+      records.push(recordStep(step.name, outcome));
       if (!outcome.ok) {
         break;
       }

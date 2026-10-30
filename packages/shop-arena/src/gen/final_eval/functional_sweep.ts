@@ -10,6 +10,7 @@
 import type { BrowserSession } from '@shop-gym/browser';
 
 import {
+  type StepRecord,
   addAddress,
   addToCart,
   applyDiscountCode,
@@ -17,20 +18,19 @@ import {
   logIn,
   logOut,
   placeOrder,
+  recordStep,
   register,
   requestPasswordReset,
   viewOrder,
 } from '../build/verifiers/browser_steps.js';
-import { CHECKOUT_ADDRESS } from '../build/verifiers/storefront_target.js';
+import {
+  CHECKOUT_ADDRESS,
+  NO_APPLICABLE_DISCOUNT_CODE,
+} from '../build/verifiers/storefront_target.js';
 
-export type StepStatus = 'pass' | 'fail' | 'skipped';
+export type StepStatus = StepRecord['status'];
 
-export interface FunctionalStep {
-  readonly name: string;
-  readonly status: StepStatus;
-  readonly detail: string;
-  readonly url?: string;
-}
+export type FunctionalStep = StepRecord;
 
 export interface FunctionalSweepOptions {
   readonly session: BrowserSession;
@@ -69,40 +69,42 @@ export async function runFunctionalSweep(
   const steps: FunctionalStep[] = [];
   let orderNumber: number | undefined;
   const scripted: Record<(typeof FUNCTIONAL_STEP_NAMES)[number], () => Promise<FunctionalStep>> = {
-    signUp: async () => step('signUp', await register(page, storefrontUrl, account)),
-    logOut: async () => step('logOut', await logOut(page, storefrontUrl)),
+    signUp: async () => recordStep('signUp', await register(page, storefrontUrl, account)),
+    logOut: async () => recordStep('logOut', await logOut(page, storefrontUrl)),
     requestPasswordReset: async () =>
-      step('requestPasswordReset', await requestPasswordReset(page, storefrontUrl, account.email)),
+      recordStep(
+        'requestPasswordReset',
+        await requestPasswordReset(page, storefrontUrl, account.email),
+      ),
     logIn: async () =>
-      step(
+      recordStep(
         'logIn',
         await logIn(page, storefrontUrl, { email: account.email, password: account.password }),
       ),
     addAddress: async () =>
-      step('addAddress', await addAddress(page, storefrontUrl, CHECKOUT_ADDRESS)),
+      recordStep('addAddress', await addAddress(page, storefrontUrl, CHECKOUT_ADDRESS)),
     editAddress: async () =>
-      step('editAddress', await editAddress(page, storefrontUrl, 1, { address2: 'Unit 2' })),
+      recordStep('editAddress', await editAddress(page, storefrontUrl, 1, { address2: 'Unit 2' })),
     addToCart: async () =>
       productHandle === undefined
         ? { name: 'addToCart', status: 'skipped', detail: 'the dataset has no product' }
-        : step('addToCart', await addToCart(page, storefrontUrl, productHandle)),
+        : recordStep('addToCart', await addToCart(page, storefrontUrl, productHandle)),
     applyDiscountCode: async () =>
       discountCode === undefined
-        ? {
-            name: 'applyDiscountCode',
-            status: 'skipped',
-            detail: 'the dataset has no Discount code without a minimum subtotal',
-          }
-        : step('applyDiscountCode', await applyDiscountCode(page, storefrontUrl, discountCode)),
+        ? { name: 'applyDiscountCode', status: 'skipped', detail: NO_APPLICABLE_DISCOUNT_CODE }
+        : recordStep(
+            'applyDiscountCode',
+            await applyDiscountCode(page, storefrontUrl, discountCode),
+          ),
     checkout: async () => {
       const outcome = await placeOrder(page, storefrontUrl, account.email);
       orderNumber = outcome.orderNumber;
-      return step('checkout', outcome);
+      return recordStep('checkout', outcome);
     },
     viewOrder: async () =>
       orderNumber === undefined
         ? { name: 'viewOrder', status: 'skipped', detail: 'no order was placed' }
-        : step('viewOrder', await viewOrder(page, storefrontUrl, orderNumber)),
+        : recordStep('viewOrder', await viewOrder(page, storefrontUrl, orderNumber)),
     requestReturn: async () => ({
       name: 'requestReturn',
       status: 'skipped',
@@ -120,16 +122,4 @@ export async function runFunctionalSweep(
     failed ||= result.status === 'fail';
   }
   return steps;
-}
-
-function step(
-  name: string,
-  outcome: { ok: boolean; detail: string; url?: string },
-): FunctionalStep {
-  return {
-    name,
-    status: outcome.ok ? 'pass' : 'fail',
-    detail: outcome.detail,
-    ...(outcome.url !== undefined ? { url: outcome.url } : {}),
-  };
 }

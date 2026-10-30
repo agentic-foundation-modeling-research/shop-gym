@@ -127,6 +127,10 @@ export async function readApplicableDiscountCode(dataDir: string): Promise<strin
   return (codes.find((entry) => entry.kind !== 'free_shipping') ?? codes[0])?.code;
 }
 
+/** Why a check of `readApplicableDiscountCode`'s code is skipped when there is none. */
+export const NO_APPLICABLE_DISCOUNT_CODE =
+  'the dataset has no Discount code without a minimum subtotal';
+
 /** Shipping address used by every scripted checkout. */
 export const CHECKOUT_ADDRESS: Readonly<Record<string, string>> = {
   firstName: 'Sample',

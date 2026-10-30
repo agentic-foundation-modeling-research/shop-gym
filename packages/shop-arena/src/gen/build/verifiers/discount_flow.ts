@@ -1,18 +1,22 @@
 /**
  * `discount_flow` verifier: the checkout "Discount code" field still works
  * after a task restyles checkout. In a real browser, in a fresh episode:
- * add the first sampled product to the cart, apply a Dataset code that
- * applies to that cart (the "Total" must change), then enter a code the
- * Dataset does not have (the field must show "Enter a valid discount code"
- * and the "Total" must stay). A Dataset with no code that surely applies
- * skips the first check.
+ * add the first sampled product to the cart, apply a Discount code from the
+ * Dataset that applies to that cart (the "Total" must change), then enter a
+ * code the Dataset does not have (the field must show "Enter a valid
+ * discount code" and the "Total" must stay). A Dataset with no Discount
+ * code that surely applies skips the first check.
  */
 
 import type { Verifier } from '@shop-gym/harness';
 
 import { type FlowStep, browserFlowVerifier } from './browser_flow.js';
 import { addToCart, applyDiscountCode, rejectDiscountCode } from './browser_steps.js';
-import { type StorefrontTarget, readApplicableDiscountCode } from './storefront_target.js';
+import {
+  NO_APPLICABLE_DISCOUNT_CODE,
+  type StorefrontTarget,
+  readApplicableDiscountCode,
+} from './storefront_target.js';
 import { SWEEP_CAPS, readDatasetHandles, sampleProductHandles } from './task_routes.js';
 
 export const DISCOUNT_FLOW_NAME = 'discount_flow';
@@ -29,7 +33,6 @@ export function discountFlowVerifier(options: DiscountFlowOptions): Verifier {
   const url = options.target.url;
   return browserFlowVerifier({
     name: DISCOUNT_FLOW_NAME,
-    flow: 'discount flow',
     tasks: DISCOUNT_TASKS,
     target: options.target,
     steps: async () => {
@@ -38,10 +41,7 @@ export function discountFlowVerifier(options: DiscountFlowOptions): Verifier {
       const code = await readApplicableDiscountCode(options.dataDir);
       const apply: FlowStep =
         code === undefined
-          ? {
-              name: 'applyDiscountCode',
-              skip: 'the dataset has no Discount code without a minimum subtotal',
-            }
+          ? { name: 'applyDiscountCode', skip: NO_APPLICABLE_DISCOUNT_CODE }
           : { name: 'applyDiscountCode', run: (page) => applyDiscountCode(page, url, code) };
       return [
         {
