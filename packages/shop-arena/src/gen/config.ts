@@ -49,7 +49,7 @@ export const genConfigSchema = z.object({
   manualDirs: z.array(z.string().min(1)).min(1),
   /**
    * Dataset directory whose products, collections and images the shop
-   * copies instead of synthesizing a catalog (`--data`). `catalog` and
+   * copies instead of synthesizing a catalog. `catalog` and
    * `imageBackend` do not apply when it is set.
    */
   sourceDataDir: z.string().min(1).optional(),

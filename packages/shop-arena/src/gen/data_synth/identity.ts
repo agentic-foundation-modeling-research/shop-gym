@@ -1,6 +1,6 @@
 /**
  * `synth_identity`: descriptor, tone, currency, country from the manual,
- * and from a summary of the copied catalog with `--data`; name from the
+ * and from a summary of the catalog copied from a source Dataset; name from the
  * allowlist.
  */
 
@@ -24,7 +24,7 @@ const SUMMARY_LIMIT = 10;
  * its most common product types, its price range and its first product
  * titles.
  */
-function summarizeCatalog(catalog: Catalog): unknown {
+function summarizeCatalog(catalog: Catalog) {
   const typeCounts = new Map<string, number>();
   for (const p of catalog.products) {
     typeCounts.set(p.product_type, (typeCounts.get(p.product_type) ?? 0) + 1);
@@ -39,7 +39,10 @@ function summarizeCatalog(catalog: Catalog): unknown {
       product_count: c.product_handles.length,
     })),
     product_types: [...typeCounts]
-      .sort(([a, m], [b, n]) => n - m || (a < b ? -1 : a > b ? 1 : 0))
+      .sort(
+        ([typeA, countA], [typeB, countB]) =>
+          countB - countA || (typeA < typeB ? -1 : typeA > typeB ? 1 : 0),
+      )
       .slice(0, SUMMARY_LIMIT)
       .map(([productType, count]) => ({ product_type: productType, product_count: count })),
     price_range: { min: prices[0] ?? null, max: prices.at(-1) ?? null },
@@ -47,7 +50,7 @@ function summarizeCatalog(catalog: Catalog): unknown {
   };
 }
 
-/** @param catalog The copied catalog of `--data`, or `undefined` when the catalog is synthesized. */
+/** @param catalog The catalog copied from a source Dataset, or `undefined` when the catalog is synthesized. */
 export async function synthIdentity(sc: SynthContext, catalog?: Catalog): Promise<Identity> {
   const file = path.join(sc.shopDir, IDENTITY_FILE);
   const existing = await readJsonIfExists(file, identitySchema);

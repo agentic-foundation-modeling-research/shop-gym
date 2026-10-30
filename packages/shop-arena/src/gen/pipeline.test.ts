@@ -4,25 +4,28 @@ import * as path from 'node:path';
 
 import type { CompleteRequest, Completion, LlmClient } from '@shop-gym/agent';
 import { FakeRuntime } from '@shop-gym/agent/testing';
+import { runPipeline } from '@shop-gym/core';
 import { createSandboxServer, loadShopData } from '@shop-gym/shop-backend';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { STOREFRONT_TEMPLATE_DIR } from '../templates.js';
 import type { SidecarLaunch } from './build/sidecar.js';
 import type { CommandRunner } from './build/verifiers/subprocess.js';
-import { GEN_STEPS } from './config.js';
+import { GEN_STEPS, parseGenConfig } from './config.js';
+import { createGenContext } from './context.js';
 import type { FinalEvalReport } from './final_eval/final_eval.js';
 import {
   STANDARD_SUB_MANUAL_FILE,
   STANDARD_SUB_MANUAL_PATH,
 } from './manual_merge/standard_sub_manual.js';
-import { generateShop } from './pipeline.js';
+import { genSteps, generateShop } from './pipeline.js';
 import { readShopManifest } from './publish/publish.js';
 import {
   ScriptedJudge,
   ScriptedSynthLlm,
   stubStorefrontLaunch,
   writeManualFixture,
+  writeSourceDatasetFixture,
 } from './testing.js';
 
 const DASH = '\u2014'; // the harness plan grammar's task separator (U+2014)
@@ -187,4 +190,33 @@ describe('generateShop', () => {
     const again = await run();
     expect(again.reports.every((r) => r.status === 'skipped')).toBe(true);
   }, 180_000);
+});
+
+describe('genSteps', () => {
+  it('runs data_synth again when the catalog of the source Dataset changes', async () => {
+    const manualDir = await writeManualFixture(path.join(root, 'manual'));
+    const sourceDir = await writeSourceDatasetFixture(path.join(root, 'source'));
+    const outDir = path.join(root, 'shop');
+    const config = parseGenConfig({
+      name: 'tiny',
+      manualDirs: [manualDir],
+      outDir,
+      sourceDataDir: sourceDir,
+    });
+    const context = createGenContext(config, {
+      llm: new ScriptedSynthLlm(),
+      runtime: new FakeRuntime(),
+      credentials: {},
+    });
+    const steps = genSteps(context).filter((s) => s.id === 'manual_merge' || s.id === 'data_synth');
+    const run = async () =>
+      (await runPipeline(steps, { outDir, context })).map((r) => `${r.id}:${r.status}`);
+    expect(await run()).toEqual(['manual_merge:ran', 'data_synth:ran']);
+    expect(await run()).toEqual(['manual_merge:skipped', 'data_synth:skipped']);
+    await fs.writeFile(path.join(sourceDir, 'images', 'unused-1.png'), 'changed');
+    expect(await run()).toEqual(['manual_merge:skipped', 'data_synth:ran']);
+    expect(await fs.readFile(path.join(outDir, 'data', 'images', 'unused-1.png'), 'utf-8')).toBe(
+      'changed',
+    );
+  });
 });

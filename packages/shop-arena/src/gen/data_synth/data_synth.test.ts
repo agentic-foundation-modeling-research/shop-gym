@@ -3,7 +3,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { FakeRuntime } from '@shop-gym/agent/testing';
-import { runPipeline } from '@shop-gym/core';
 import { type NavigationItem, datasetSchema } from '@shop-gym/shop-backend';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -21,7 +20,7 @@ import {
   writeManualFixture,
   writeSourceDatasetFixture,
 } from '../testing.js';
-import { dataSynthStep, runDataSynth } from './index.js';
+import { runDataSynth } from './index.js';
 import { synthOrders } from './orders.js';
 import type { Review } from './reviews.js';
 
@@ -415,7 +414,7 @@ describe('Review synthesis', () => {
   });
 });
 
-describe('runDataSynth with --data', () => {
+describe('runDataSynth with sourceDataDir', () => {
   let sourceDir: string;
 
   beforeEach(async () => {
@@ -438,9 +437,8 @@ describe('runDataSynth with --data', () => {
     };
   }
 
-  it('copies the products, collections and images without change and drops the collections with no products', async () => {
-    const log: string[] = [];
-    await runDataSynth(sourceContext(new ScriptedSynthLlm(), log));
+  it('copies the products, the collections that have products and the images without change', async () => {
+    await runDataSynth(sourceContext(new ScriptedSynthLlm()));
     const dataDir = path.join(shopDir, 'data');
     expect(await readJson(path.join(dataDir, 'products.json'))).toEqual(SOURCE_PRODUCTS);
     expect(await readJson(path.join(dataDir, 'collections.json'))).toEqual([
@@ -457,12 +455,15 @@ describe('runDataSynth with --data', () => {
     for (const name of images) {
       expect(await fs.readFile(path.join(dataDir, 'images', name), 'utf-8')).toBe(`image ${name}`);
     }
-    expect(log).toContain(
-      '[data_synth] --data: dropped collection wide-leg-pairings, which has no products',
-    );
-    expect(log).toContain(
-      '[data_synth] --data: dropped collection gift-ideas, which has no products',
-    );
+  });
+
+  it('logs the handle of each dropped collection', async () => {
+    const log: string[] = [];
+    await runDataSynth(sourceContext(new ScriptedSynthLlm(), log));
+    expect(log.filter((line) => line.includes('dropped collection'))).toEqual([
+      '[data_synth] source Dataset: dropped collection wide-leg-pairings, which has no products',
+      '[data_synth] source Dataset: dropped collection gift-ideas, which has no products',
+    ]);
   });
 
   it('makes everything else new from the Shop Manual, for the copied catalog', async () => {
@@ -585,21 +586,6 @@ describe('runDataSynth with --data', () => {
     const first = await files(shopDir);
     expect(first.map(([name]) => name)).toContain(path.join('data', 'images', 'unused-1.png'));
     expect(await files(otherDir)).toEqual(first);
-  });
-
-  it('runs again when the copied catalog of the source Dataset changes', async () => {
-    const { context } = sourceContext(new ScriptedSynthLlm());
-    const run = async () =>
-      (await runPipeline([dataSynthStep(sourceDir)], { outDir: shopDir, context }))[0]?.status;
-    expect(await run()).toBe('ran');
-    expect(await run()).toBe('skipped');
-    await fs.writeFile(path.join(sourceDir, 'images', 'unused-1.png'), 'changed');
-    expect(await run()).toBe('ran');
-    expect(await fs.readFile(path.join(shopDir, 'data', 'images', 'unused-1.png'), 'utf-8')).toBe(
-      'changed',
-    );
-    await fs.writeFile(path.join(sourceDir, 'store.json'), '{}');
-    expect(await run()).toBe('skipped');
   });
 });
 

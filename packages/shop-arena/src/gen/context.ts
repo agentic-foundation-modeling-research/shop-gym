@@ -50,7 +50,7 @@ export interface GenContext {
   readonly shopDir: string;
   /** Absolute Shop Manual input directories. */
   readonly manualDirs: readonly string[];
-  /** Absolute source Dataset directory of `--data`. */
+  /** Absolute directory of the source Dataset whose catalog the shop copies. */
   readonly sourceDataDir?: string;
   readonly credentials: Credentials;
   readonly llm: LlmClient;

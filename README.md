@@ -98,10 +98,10 @@ placeholder|openai` (`openai` needs `OPENAI_API_KEY`), catalog sizing
 `--build-model <ref>` for the build loop (default `openai/gpt-6-sol`, even
 if `--model` is set), and `--from manual_merge|data_synth|
 data_validation|build|final_eval|publish` to force a step and everything after
-it. `--data <dataset dir>` starts the shop from the catalog of an existing
-SandboxShop Dataset, for example `outputs/shops/<old shop>/data`: it copies the
-products, collections and images without change, drops the collections with no
-products, and makes everything else from the manual
+it. `--data <dataset dir>` copies the catalog of an existing SandboxShop
+Dataset, for example `outputs/shops/<old shop>/data`. It keeps the products,
+the collections and the images without change. It drops the collections that
+have no products. All other data comes from the manual
 ([ADR 0017](docs/adr/0017-gen-may-copy-a-sandboxshop-catalog.md)). The catalog
 sizing and `--image-backend` do not apply with `--data`. Output layout:
 

@@ -133,17 +133,16 @@ prompt carries the fake-brand allowlist from
 and descriptions may not mention it.
 
 With `sourceDataDir` (`shopgym gen --data <dir>`), `data_synth` copies
-the catalog of an existing SandboxShop Dataset instead of running
-`collections` through `images`. `products.json` and `collections.json`
-are kept as they are written, also the fields that the backend schema
-does not name, and `images/` is copied as it is. Each collection with no
-products is dropped and its handle is logged. `identity` gets a summary
-of the copied catalog (product count, collections, the most common
-product types, the price range and some titles), so the descriptor and
-tone fit the products. Menus link only to the kept collections. All
-other files are synthesized from the manual as usual, so `catalog` and
-`imageBackend` do not apply. A change to the three source paths reruns
-`data_synth`.
+the catalog of an existing SandboxShop Dataset. It does not run
+`collections` through `images`. The products and collections keep the
+same JSON values, also the fields that the backend schema does not name.
+`images/` is copied as it is. `data_synth` drops each collection with no
+products and logs its handle. `identity` gets a summary of the copied
+catalog: the product count, the collections, the most common product
+types, the price range and some titles. The descriptor and tone must fit
+these products. Menus link only to the kept collections. All other files
+come from the manual as usual, so `catalog` and `imageBackend` do not
+apply. A change to the three source paths runs `data_synth` again.
 
 ```ts
 import { PiLlmClient, PiRuntime } from '@shop-gym/agent';

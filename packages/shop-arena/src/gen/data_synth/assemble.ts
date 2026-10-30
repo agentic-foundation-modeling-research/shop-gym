@@ -2,7 +2,7 @@
  * `assemble`: turns the cached drafts into the dataset files under
  * `<shopDir>/data/`, each validated against the backend schema before it
  * is written. Ids are stable hashes of handles so re-assembly never
- * changes them (a catalog copied by `--data` keeps its own ids);
+ * changes them (a copied catalog keeps its own ids);
  * timestamps are a fixed epoch so the dataset is reproducible byte for
  * byte.
  */
@@ -50,7 +50,7 @@ export interface Catalog {
 
 /**
  * The cached drafts, with the catalog (built by `buildProducts` and
- * `buildCollections`, or copied by `--data`) and the Reviews of its
+ * `buildCollections`, or copied from a source Dataset) and the Reviews of its
  * products.
  */
 export interface Drafts extends Catalog {

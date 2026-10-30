@@ -93,6 +93,10 @@ The advisory check of a built shop after the Build loop: a visual sweep that scr
 The read-only JSON files and images under a SandboxShop's `data/` directory: store, catalog, Reviews, content, policies, customers, orders, and commerce settings (shipping methods, payment methods, tax, the free-shipping threshold, and Discount codes). The backend loads it and never changes it.
 _Avoid_: shop data, catalog (the catalog is only one part of it)
 
+**Catalog**:
+The products, collections and product images of a Dataset. Data synthesis makes it from the Shop Manual, or `shopgym gen --data` copies it from an existing Dataset.
+_Avoid_: inventory (the stock levels are a separate Dataset file)
+
 **Discount code**:
 A code in the Dataset's commerce settings that lowers the price of a cart: a percent or a fixed amount off the merchandise subtotal, or free shipping, with an optional minimum merchandise subtotal. Each code has a short hint text that the storefront's announcement bar shows with it. A cart holds at most one code, matched in any case; the code applies only while the cart meets the minimum, and the order records the code and the discount amount.
 _Avoid_: coupon, promo code

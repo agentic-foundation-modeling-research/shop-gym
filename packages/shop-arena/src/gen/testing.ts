@@ -434,7 +434,7 @@ function sourceProduct(id: number, handle: string, title: string, productType: s
   };
 }
 
-function sourceCollection(id: number, handle: string, title: string, products: string[]) {
+function sourceCollection(id: number, handle: string, title: string, products: readonly string[]) {
   return {
     id,
     title,
@@ -465,9 +465,10 @@ export const SOURCE_COLLECTIONS = [
 ];
 
 /**
- * Writes a small source Dataset for `--data` into `dir`: `products.json`,
- * `collections.json` and `images/` (one file for each product and one that
- * no product uses), and other Dataset files that `--data` does not copy.
+ * Writes a small source Dataset for `sourceDataDir` into `dir`:
+ * `products.json`, `collections.json` and `images/` (one file for each
+ * product and one that no product uses), and other Dataset files that are
+ * not copied.
  */
 export async function writeSourceDatasetFixture(dir: string): Promise<string> {
   await fs.mkdir(path.join(dir, 'images'), { recursive: true });

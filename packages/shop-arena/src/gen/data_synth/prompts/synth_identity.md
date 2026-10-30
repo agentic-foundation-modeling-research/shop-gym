@@ -35,8 +35,8 @@ nothing else:
 Rules:
 
 - When the copied catalog is not `null`, the descriptor and tone must
-  fit its collections, product types and prices, also where the manual
-  describes a different category.
+  fit its collections, product types and prices. This rule wins when
+  the manual describes a different category.
 - Do NOT include a `name` field. The orchestrator picks the brand
   name from a curated allowlist; any `name` you emit is discarded.
 - The descriptor must be brand-free: no real-company proper nouns,

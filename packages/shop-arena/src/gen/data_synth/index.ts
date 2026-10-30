@@ -10,8 +10,8 @@
  *   -> navigation -> customers -> reviews -> assemble (incl. orders,
  *   inventory)
  *
- * With `--data`, the catalog of a source Dataset is copied first, and it
- * takes the place of `collections` through `images`.
+ * With `sourceDataDir`, the catalog of that source Dataset is copied
+ * first. It takes the place of `collections` through `images`.
  */
 
 import * as path from 'node:path';
@@ -48,9 +48,7 @@ import { synthStore } from './store.js';
 
 export {
   assembleDataset,
-  buildCollections,
   buildProducts,
-  type Catalog,
   type Dataset,
   type Drafts,
   writeDataset,
@@ -82,14 +80,14 @@ async function synthCatalog(sc: SynthContext, identity: Identity): Promise<Catal
 export async function runDataSynth(ctx: StepContext<GenContext>): Promise<void> {
   const sc = createSynthContext(ctx);
   const { sourceDataDir } = ctx.context;
-  const source =
+  const copiedCatalog =
     sourceDataDir === undefined ? undefined : await copySourceCatalog(sc, sourceDataDir);
-  const identity = await synthIdentity(sc, source);
+  const identity = await synthIdentity(sc, copiedCatalog);
   const store = await synthStore(sc, identity);
   const pages = await synthPages(sc, identity);
   const policies = await synthPolicies(sc, identity);
   const commerce = await synthCommerce(sc, identity, policies);
-  const catalog = source ?? (await synthCatalog(sc, identity));
+  const catalog = copiedCatalog ?? (await synthCatalog(sc, identity));
   const navigation = await synthNavigation(sc, catalog.collections, pages, policies);
   const personas = await synthCustomers(sc, identity);
   const reviews = await synthReviews(sc, catalog.products);
@@ -110,7 +108,7 @@ export async function runDataSynth(ctx: StepContext<GenContext>): Promise<void> 
   );
 }
 
-/** @param sourceDataDir The source Dataset of `--data`, whose catalog files are inputs too. */
+/** @param sourceDataDir The source Dataset whose catalog is copied; its catalog files are inputs too. */
 export function dataSynthStep(sourceDataDir?: string): Step<GenContext> {
   return {
     id: 'data_synth',

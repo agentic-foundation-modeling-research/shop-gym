@@ -50,8 +50,8 @@ shopgym gen <manual_dir>... --name <name> [--out <dir>] [--data <dir>]
 `build`, `final_eval`, `publish`. `--model` drives data synthesis, manual merge
 and the judges. The build agent runs on `--build-model`, default
 `openai/gpt-6-sol`, even if `--model` is set. `--data` copies the products,
-collections and images of an existing SandboxShop Dataset instead of
-synthesizing a catalog, so `--collections`, `--products-per-collection`,
+collections and images of an existing SandboxShop Dataset. Data synthesis then
+makes no catalog, so `--collections`, `--products-per-collection`,
 `--images-per-product` and `--image-backend` do not apply. Prints the published
 shop directory on stdout.
 

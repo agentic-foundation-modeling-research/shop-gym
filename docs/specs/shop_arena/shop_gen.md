@@ -209,21 +209,20 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   `ImageBackend` interface: `placeholder` (deterministic PNG, offline)
   or `openai` (content-hash cache in `.shop_gen/image_cache/`).
 - With `--data <dir>` (`sourceDataDir`), `data_synth` copies the
-  catalog of an existing SandboxShop Dataset instead of synthesizing
-  one (`source_catalog.ts`). It keeps `products.json` and
-  `collections.json` as they are written, also the fields that the
-  backend schema does not name, and copies `images/` as it is. It drops
-  each collection with no products and logs its handle. The
-  `collections` through `images` sub-steps do not run, so the catalog
-  sizing and the image backend do not apply. Everything else (identity,
-  store, pages, policies, checkout rules with Discount codes, menus,
-  Personas, stock, seeded orders and Reviews) is synthesized from the
-  manual. `synth_identity` gets a summary of the copied catalog (the
+  catalog of an existing SandboxShop Dataset (`source_catalog.ts`). The
+  products and collections keep the same JSON values, also the fields
+  that the backend schema does not name. `images/` is copied as it is.
+  `data_synth` drops each collection with no products and logs its
+  handle. The `collections` through `images` sub-steps do not run, so
+  the catalog sizing and the image backend do not apply. The manual
+  gives all other data: identity, store, pages, policies, checkout
+  rules with Discount codes, menus, Personas, stock, seeded orders and
+  Reviews. `synth_identity` gets a summary of the copied catalog: the
   product count, each collection with its product count, the 10 most
-  common product types, the price range and the first 10 titles), so
-  the descriptor and tone fit the products. Menus can link only to the
-  kept collections. The three source paths are inputs of `data_synth`,
-  so a change to them reruns it (ADR 0017).
+  common product types, the price range and the first 10 titles. The
+  descriptor and tone must fit these products. Menus can link only to
+  the kept collections. The three source paths are inputs of
+  `data_synth`, so a change to them runs it again (ADR 0017).
 - `data_validation/` validates `data/` with the backend zod schema,
   checks referential integrity (variant ids in inventory and orders,
   the product and variant of each Review, collection membership,
@@ -331,6 +330,7 @@ passing build verifier suite.
 | `catalog`         | `{"collections": 10, "products_per_collection": 20, "images_per_product": 2}` — defaults; configurable. v0.1 ships small (200 products / 400 images); scaling is a v0.2 concern. |
 | `max_iters`       | Executor budget for the build loop. Default 30.                                                        |
 | `image_backend`   | `placeholder` (default v0.1) or `ai` (later). Alt-text is generated regardless.                        |
+| `source_data_dir` | Optional (`--data`). A SandboxShop Dataset whose products, collections and images are copied in place of a synthesized catalog (§3.1). |
 
 **Outputs** under `<out_dir>/`:
 

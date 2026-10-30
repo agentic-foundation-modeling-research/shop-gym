@@ -8,6 +8,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+import type { Collection } from '@shop-gym/shop-backend';
 import { z } from 'zod';
 
 import { readJsonFile } from '../io.js';
@@ -26,7 +27,7 @@ function walk(items: readonly NavigationItem[]): { url: string; type: string }[]
 
 export function synthNavigation(
   sc: SynthContext,
-  collections: readonly { readonly title: string; readonly handle: string }[],
+  collections: readonly Pick<Collection, 'title' | 'handle'>[],
   pages: readonly PageDraft[],
   policies: readonly PageDraft[],
 ): Promise<NavigationDraft> {
