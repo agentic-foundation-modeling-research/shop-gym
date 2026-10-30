@@ -152,6 +152,32 @@ describe('checkDataset', () => {
     ]);
   });
 
+  it('reports Reviews of an unknown product or of a variant from another product', async () => {
+    type EditableReview = { id: number; product_handle: string; variant_id: number };
+    const products = JSON.parse(
+      await fs.readFile(path.join(dataDir, 'products.json'), 'utf-8'),
+    ) as { handle: string; variants: { id: number }[] }[];
+    const [first, second] = products;
+    if (first === undefined || second?.variants[0] === undefined) {
+      throw new Error('fixture needs two products');
+    }
+    await editJson('reviews.json', (reviews: EditableReview[]) =>
+      reviews.map((r) => {
+        if (r.id === 1) return { ...r, product_handle: 'ghost-product' };
+        if (r.id === 2) return { ...r, product_handle: first.handle, variant_id: 999999 };
+        if (r.id === 3) {
+          return { ...r, product_handle: first.handle, variant_id: second.variants[0]?.id };
+        }
+        return r;
+      }),
+    );
+    expect(await checkDataset(dataDir)).toEqual([
+      'reviews.json: review 1 references unknown product ghost-product',
+      `reviews.json: review 2 variant 999999 is not a variant of ${first.handle}`,
+      `reviews.json: review 3 variant ${second.variants[0].id} is not a variant of ${first.handle}`,
+    ]);
+  });
+
   it('reports a file that fails the backend schema', async () => {
     await fs.writeFile(path.join(dataDir, 'store.json'), JSON.stringify({ name: 'x' }));
     const problems = await checkDataset(dataDir);

@@ -10,9 +10,16 @@ import { parseGenConfig } from '../config.js';
 import { createGenContext } from '../context.js';
 import { checkDataset } from '../data_validation/schema_check.js';
 import { SynthError } from '../llm.js';
-import { SCRIPTED_DISCOUNT_CODES, ScriptedSynthLlm, writeManualFixture } from '../testing.js';
+import {
+  SCRIPTED_DISCOUNT_CODES,
+  ScriptedSynthLlm,
+  type ScriptedSynthOptions,
+  scriptedReviewText,
+  writeManualFixture,
+} from '../testing.js';
 import { runDataSynth } from './index.js';
 import { synthOrders } from './orders.js';
+import type { Review } from './reviews.js';
 
 let root: string;
 let shopDir: string;
@@ -27,12 +34,14 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
-function stepContext(llm: ScriptedSynthLlm, log: string[] = []) {
+const TINY_CATALOG = { collections: 2, productsPerCollection: 2, imagesPerProduct: 1 };
+
+function stepContext(llm: ScriptedSynthLlm, log: string[] = [], catalog = TINY_CATALOG) {
   const config = parseGenConfig({
     name: 'tiny',
     manualDirs: [path.join(shopDir, 'manual')],
     outDir: shopDir,
-    catalog: { collections: 2, productsPerCollection: 2, imagesPerProduct: 1 },
+    catalog,
   });
   const context = createGenContext(config, { llm, runtime: new FakeRuntime(), credentials: {} });
   return {
@@ -64,6 +73,7 @@ describe('runDataSynth', () => {
       'pages.json',
       'policies.json',
       'products.json',
+      'reviews.json',
       'store.json',
     ]);
     const products = datasetSchema.productsFileSchema.parse(
@@ -92,6 +102,10 @@ describe('runDataSynth', () => {
     );
     expect(orders).toHaveLength(15);
     expect(orders.some((o) => o.email === 'ana.silva@example.com')).toBe(false);
+    const reviews = datasetSchema.reviewsFileSchema.parse(
+      await readJson(path.join(dataDir, 'reviews.json')),
+    );
+    expect(reviews.length).toBeGreaterThan(0);
     const identity = (await readJson(path.join(shopDir, 'identity.json'))) as { name: string };
     const store = datasetSchema.storeSchema.parse(await readJson(path.join(dataDir, 'store.json')));
     expect(store.name).toBe(identity.name);
@@ -113,6 +127,7 @@ describe('runDataSynth', () => {
       'navigation.json',
       'pages.json',
       'policies.json',
+      'reviews.json',
       'skeletons.json',
       'store.json',
     ]);
@@ -212,10 +227,10 @@ describe('runDataSynth', () => {
     await expect(fs.access(path.join(shopDir, 'data'))).rejects.toThrow();
   });
 
-  it('gives the same Personas, orders and Discount codes on a fresh run', async () => {
+  it('gives the same Personas, orders, Discount codes and Reviews on a fresh run', async () => {
     const dataFiles = () =>
       Promise.all(
-        ['customers.json', 'orders.json', 'commerce.json'].map((f) =>
+        ['customers.json', 'orders.json', 'commerce.json', 'reviews.json'].map((f) =>
           fs.readFile(path.join(shopDir, 'data', f), 'utf-8'),
         ),
       );
@@ -263,6 +278,136 @@ describe('runDataSynth', () => {
     expect(String(personaPrompts[1]?.prompt)).toContain(
       'need at least 2 personas with 2 or more addresses, got 0',
     );
+  });
+});
+
+describe('Review synthesis', () => {
+  // 200 products, enough for the share without Reviews and the average rating to show.
+  const LARGE_CATALOG = { collections: 4, productsPerCollection: 50, imagesPerProduct: 0 };
+
+  async function synthLargeCatalog(options: ScriptedSynthOptions = {}) {
+    const llm = new ScriptedSynthLlm(options);
+    await runDataSynth(stepContext(llm, [], LARGE_CATALOG));
+    const dataDir = path.join(shopDir, 'data');
+    const products = datasetSchema.productsFileSchema.parse(
+      await readJson(path.join(dataDir, 'products.json')),
+    );
+    const reviews = datasetSchema.reviewsFileSchema.parse(
+      await readJson(path.join(dataDir, 'reviews.json')),
+    );
+    const reviewPrompts = llm.requests
+      .map((r) => String(r.prompt))
+      .filter((p) => p.includes('writing product reviews'));
+    return { dataDir, products, reviews, reviewPrompts };
+  }
+
+  function byProduct(reviews: readonly Review[], handle: string): Review[] {
+    return reviews.filter((r) => r.product_handle === handle);
+  }
+
+  it('plans one to eight Reviews for each product, and none for 15% of them', async () => {
+    const { dataDir, products, reviews } = await synthLargeCatalog();
+    expect(products).toHaveLength(200);
+    const counts = products.map((p) => byProduct(reviews, p.handle).length);
+    expect(counts.filter((n) => n === 0)).toHaveLength(30);
+    const reviewed = counts.filter((n) => n > 0);
+    expect(Math.min(...reviewed)).toBe(1);
+    expect(Math.max(...reviewed)).toBe(8);
+    expect(reviews.map((r) => r.id)).toEqual(reviews.map((_, i) => i + 1));
+    expect(await checkDataset(dataDir)).toEqual([]);
+  });
+
+  it('rates Reviews from 1 to 5 with an average of about 4.3', async () => {
+    const { reviews } = await synthLargeCatalog();
+    const mean = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+    expect(mean).toBeGreaterThan(4.28);
+    expect(mean).toBeLessThan(4.32);
+    expect(new Set(reviews.map((r) => r.rating))).toEqual(new Set([1, 2, 3, 4, 5]));
+  });
+
+  it('gives each Review a reviewer, a date before the clock start, the variant bought, a Verified Buyer flag and a helpful count', async () => {
+    const { products, reviews } = await synthLargeCatalog();
+    for (const review of reviews) {
+      expect(review.reviewer_name).toMatch(/^[A-Z][a-z]+ [A-Z]\.$/);
+      expect(review.created_at < '2026-01-01T00:00:00.000Z').toBe(true);
+      expect(review.created_at >= '2024-01-01T00:00:00.000Z').toBe(true);
+      const product = products.find((p) => p.handle === review.product_handle);
+      expect(product?.variants.map((v) => v.id)).toContain(review.variant_id);
+    }
+    expect(new Set(reviews.map((r) => r.reviewer_name)).size).toBeGreaterThan(50);
+    expect(new Set(reviews.map((r) => r.variant_id)).size).toBeGreaterThan(200);
+    const verified = reviews.filter((r) => r.verified_buyer).length / reviews.length;
+    expect(verified).toBeGreaterThan(0.7);
+    expect(verified).toBeLessThan(0.9);
+    const helpful = reviews.map((r) => r.helpful_count);
+    expect(helpful.filter((n) => n === 0).length).toBeGreaterThan(reviews.length / 5);
+    expect(Math.max(...helpful)).toBeGreaterThanOrEqual(20);
+  });
+
+  it('has the LLM write only the title and text, in batches of whole products, from the product facts and the rating', async () => {
+    const { products, reviews, reviewPrompts } = await synthLargeCatalog();
+    type PromptProduct = {
+      title: string;
+      product_type: string;
+      tags: string[];
+      description_html: string;
+      reviews: { id: number; rating: number; variant: string }[];
+    };
+    const batches = reviewPrompts.map(
+      (prompt) =>
+        JSON.parse(/```json\n([\s\S]*?)\n```/.exec(prompt)?.[1] ?? '[]') as PromptProduct[],
+    );
+    expect(batches.length).toBeGreaterThan(1);
+    for (const batch of batches) {
+      expect(batch.flatMap((p) => p.reviews).length).toBeLessThanOrEqual(20);
+    }
+    const asked = batches.flat();
+    expect(asked.map((p) => p.title)).toEqual(
+      products.filter((p) => byProduct(reviews, p.handle).length > 0).map((p) => p.title),
+    );
+    for (const facts of asked) {
+      const product = products.find((p) => p.title === facts.title);
+      expect(facts).toMatchObject({
+        product_type: product?.product_type,
+        tags: product?.tags,
+        description_html: product?.description_html,
+      });
+      for (const { id, rating, variant } of facts.reviews) {
+        const review = reviews.find((r) => r.id === id);
+        expect(review?.rating).toBe(rating);
+        expect(product?.variants.find((v) => v.id === review?.variant_id)?.title).toBe(variant);
+        expect({ title: review?.title, body: review?.body }).toEqual(
+          scriptedReviewText(facts.title, rating),
+        );
+      }
+    }
+  });
+
+  it.each([
+    [
+      'leaves out a Review',
+      (texts: readonly { id: number }[]) => texts.slice(1),
+      'expected one entry for each review id',
+    ],
+    [
+      'names a brand',
+      (texts: readonly { id: number }[]) =>
+        texts.map((t, i) =>
+          i === 0 ? { ...t, body: 'Better than anything from AisleArena.' } : t,
+        ),
+      'review 1 contains brand token AisleArena',
+    ],
+    [
+      'writes too short a text',
+      (texts: readonly { id: number }[]) =>
+        texts.map((t, i) => (i === 0 ? { ...t, body: 'Nice.' } : t)),
+      'body of review 1 must be 20-600 chars',
+    ],
+  ])('retries a reviews batch whose reply %s', async (_, edit, error) => {
+    const { reviews, reviewPrompts } = await synthLargeCatalog({ editFirstReviewsReply: edit });
+    const retried = reviewPrompts.filter((p) => p.includes(error));
+    expect(retried).toHaveLength(1);
+    expect(reviews.every((r) => !r.body.includes('AisleArena') && r.body.length >= 20)).toBe(true);
   });
 });
 

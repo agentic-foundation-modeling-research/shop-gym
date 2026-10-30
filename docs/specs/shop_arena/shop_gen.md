@@ -165,9 +165,10 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   byte-compatible with v1 (`manual.md`, `capabilities.json`,
   `stats.json`, `parts/*.md`, `manifest.json`).
 - `data_synth/` ports every v1 sub-step in registration order and adds
-  `synth_commerce`, `synth_customers`, and deterministic
-  `synth_orders` / inventory so the dataset exercises the stateful
-  backend (`commerce.json`, `customers.json`, `orders.json`).
+  `synth_commerce`, `synth_customers`, `synth_reviews`, and
+  deterministic `synth_orders` / inventory so the dataset exercises the
+  stateful backend (`commerce.json`, `customers.json`, `orders.json`,
+  `reviews.json`).
   `synth_commerce` derives the checkout rules from the shipping and
   refund policies, with three to five Discount codes. The LLM picks the
   codes, amounts and hint texts. Deterministic checks make sure that
@@ -187,7 +188,20 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   shipped. Three older orders are refunded, partly refunded and partly
   shipped. The other orders are paid and shipped. Four random orders use
   a random Discount code that lowers their total. The Discount code with
-  no minimum lowers every order, so all four get one. Every LLM step
+  no minimum lowers every order, so all four get one. `synth_reviews`
+  makes the Reviews. Code plans each Review from a fixed seed: 15% of
+  the products get none, and each other product gets one to eight. The
+  ratings come from refilled bags of 50 in the proportion 2:2:5:11:30
+  (1 to 5 stars), so they average 4.3. Each Review gets a reviewer
+  (first name and last initial), a date in the two years before the
+  Episode clock starts, a random variant of its product, a Verified
+  Buyer flag (about 80% are set) and a helpful count (0 to 29, about a
+  third are 0). The LLM writes only the title and text. It gets the
+  product facts (title, type, tags and description), the rating and
+  the variant of each Review, in batches of whole products with at
+  most 20 Reviews. A reply that leaves out or adds a Review, has a
+  title or text of the wrong length, or names an allowlisted brand is
+  retried once. Every LLM step
   goes through `completeJson` with a zod-derived JSON Schema and one
   validation-feedback retry; drafts cache under
   `<shopDir>/.shop_gen/stage_cache/` (v1 file names kept; details per
@@ -196,7 +210,8 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   or `openai` (content-hash cache in `.shop_gen/image_cache/`).
 - `data_validation/` validates `data/` with the backend zod schema,
   checks referential integrity (variant ids in inventory and orders,
-  collection membership, navigation targets, image files), that the
+  the product and variant of each Review, collection membership,
+  navigation targets, image files), that the
   Discount codes are unique when case is ignored and have positive
   amounts, percents below 100 and minimums that are not negative, and
   that every seeded order's totals and discount match the backend

@@ -1,8 +1,8 @@
 /**
  * Dataset invariants the backend zod schema cannot express: referential
- * integrity between files, the presence of referenced image files, valid
- * Discount codes, and seeded order totals that follow the backend pricing
- * rules.
+ * integrity between files (including the product and variant of each
+ * Review), the presence of referenced image files, valid Discount codes,
+ * and seeded order totals that follow the backend pricing rules.
  */
 
 import * as fs from 'node:fs/promises';
@@ -99,6 +99,7 @@ export async function checkDataset(dataDir: string): Promise<string[]> {
   const orders = await load('orders', datasetSchema.ordersFileSchema, false);
   const commerce =
     (await load('commerce', datasetSchema.commerceSchema, false)) ?? DEFAULT_COMMERCE;
+  const reviews = await load('reviews', datasetSchema.reviewsFileSchema, false);
   if (
     store === undefined ||
     products === undefined ||
@@ -110,9 +111,11 @@ export async function checkDataset(dataDir: string): Promise<string[]> {
 
   const productHandles = new Set<string>();
   const variantIds = new Set<number>();
+  const variantIdsByHandle = new Map<string, Set<number>>();
   for (const p of products) {
     if (productHandles.has(p.handle)) problems.push(`products.json: duplicate handle ${p.handle}`);
     productHandles.add(p.handle);
+    variantIdsByHandle.set(p.handle, new Set(p.variants.map((v) => v.id)));
     if (p.variants.length === 0) problems.push(`products.json: ${p.handle} has no variants`);
     for (const v of p.variants) {
       if (variantIds.has(v.id))
@@ -167,6 +170,17 @@ export async function checkDataset(dataDir: string): Promise<string[]> {
 
   for (const key of Object.keys(inventory ?? {})) {
     if (!variantIds.has(Number(key))) problems.push(`inventory.json: unknown variant id ${key}`);
+  }
+
+  for (const r of reviews ?? []) {
+    const variants = variantIdsByHandle.get(r.product_handle);
+    if (variants === undefined) {
+      problems.push(`reviews.json: review ${r.id} references unknown product ${r.product_handle}`);
+    } else if (!variants.has(r.variant_id)) {
+      problems.push(
+        `reviews.json: review ${r.id} variant ${r.variant_id} is not a variant of ${r.product_handle}`,
+      );
+    }
   }
 
   problems.push(...checkDiscountCodes(commerce.discount_codes).map((p) => `commerce.json: ${p}`));
