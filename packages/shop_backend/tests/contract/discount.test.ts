@@ -383,9 +383,9 @@ describe('a seeded order with a Discount code', () => {
   });
 });
 
-describe('Query.discountCodeHints', () => {
-  const HINTS_QUERY = '{ discountCodeHints { code hint } }';
+const HINTS_QUERY = /* GraphQL */ '{ discountCodeHints { code hint } }';
 
+describe('Query.discountCodeHints', () => {
   it('lists every Discount code with its hint text in commerce.json order', async () => {
     const result = await ctx.query<unknown>(HINTS_QUERY);
     expect(result).toEqual({

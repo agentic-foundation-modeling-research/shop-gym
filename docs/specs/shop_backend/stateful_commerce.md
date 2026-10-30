@@ -326,6 +326,7 @@ city, province, province_code, country, country_code, zip, phone`.
 | 9 | Discount codes: `commerce.json` codes, cart pricing and allocations, codes on orders and in the StateSnapshot | done |
 | 10 | Reviews: `reviews.json`, `Product.reviews` paging and sorting, computed rating metafields | done |
 | 11 | Address book: `customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`, `customerDefaultAddressUpdate` | done |
+| 12 | `discountCodeHints`: every Discount code with its hint text, for the storefront's announcement bar | done |
 
 ---
 

@@ -91,7 +91,7 @@ The read-only JSON files and images under a SandboxShop's `data/` directory: sto
 _Avoid_: shop data, catalog (the catalog is only one part of it)
 
 **Discount code**:
-A code in the Dataset's commerce settings that lowers the price of a cart: a percent or a fixed amount off the merchandise subtotal, or free shipping, with an optional minimum merchandise subtotal. A cart holds at most one code, matched in any case; the code applies only while the cart meets the minimum, and the order records the code and the discount amount.
+A code in the Dataset's commerce settings that lowers the price of a cart: a percent or a fixed amount off the merchandise subtotal, or free shipping, with an optional minimum merchandise subtotal. Each code has a short hint text that the storefront's announcement bar shows with it. A cart holds at most one code, matched in any case; the code applies only while the cart meets the minimum, and the order records the code and the discount amount.
 _Avoid_: coupon, promo code
 
 **Persona**:
