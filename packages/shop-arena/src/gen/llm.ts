@@ -63,7 +63,7 @@ type Attempt<T> = { readonly value: T } | { readonly problem: string };
 async function withOneRetry<T>(
   prompt: string,
   retryPrefix: string,
-  attempt: (text: string) => Promise<Attempt<T>>,
+  attempt: (attemptPrompt: string) => Promise<Attempt<T>>,
 ): Promise<T> {
   let problem: string | undefined;
   for (let i = 0; i < 2; i += 1) {
@@ -89,12 +89,12 @@ export async function completeStructured<T>(
   schema: z.ZodType<T>,
   validate: (value: T) => string | undefined = () => undefined,
 ): Promise<T> {
-  return withOneRetry(prompt, RETRY_PREFIX, async (text) => {
+  return withOneRetry(prompt, RETRY_PREFIX, async (attemptPrompt) => {
     let value: T;
     try {
       ({ value } = await completeJson(
         call.llm,
-        { model: call.model, prompt: text, signal: callSignal(call) },
+        { model: call.model, prompt: attemptPrompt, signal: callSignal(call) },
         schema,
       ));
     } catch (err) {
@@ -117,10 +117,10 @@ export async function completeText(
   prompt: string,
   validate: (text: string) => string | undefined = () => undefined,
 ): Promise<string> {
-  return withOneRetry(prompt, TEXT_RETRY_PREFIX, async (text) => {
+  return withOneRetry(prompt, TEXT_RETRY_PREFIX, async (attemptPrompt) => {
     const completion = await call.llm.complete({
       model: call.model,
-      prompt: text,
+      prompt: attemptPrompt,
       signal: callSignal(call),
     });
     const reply = completion.text.trim();

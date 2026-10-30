@@ -273,6 +273,9 @@ describe('runManualMerge', () => {
       expect(accountPrompt).toContain(standardBody('Supported behavior'));
       expect(checkoutPrompt).toContain('reads "Complete order".');
       expect(checkoutPrompt).toContain(standardBody('Checkout'));
+      // A section never gets the checked labels of the other section.
+      expect(accountPrompt).not.toContain('"Enter a valid discount code"');
+      expect(checkoutPrompt).not.toContain('"Add a new address"');
 
       // The observed labels win, and nothing outside the two sections changes.
       expect(fused).toBe(
@@ -303,7 +306,8 @@ describe('runManualMerge', () => {
       const [first, retry] = llm.requests.map((r) => String(r.prompt));
       expect(llm.requests).toHaveLength(2);
       expect(retry?.endsWith(first ?? '')).toBe(true);
-      expect(retry?.length).toBeGreaterThan(first?.length ?? 0);
+      const reason = retry?.slice(0, retry.length - (first?.length ?? 0));
+      expect(reason).toContain('"Forgot your password?"');
       expect(parseManualSections(fused).get('Account')).toBe(kept);
       expect(fused).not.toContain('"Forgot password?"');
     });
