@@ -1,18 +1,19 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { DiscountCodeHint } from '~/lib/types';
-
-const SLIDER_ID = 'AnnouncementSlider';
 
 /**
  * Dawn's announcement bar, a full-width strip above the header with one
- * slide for each Discount code, "<code> - <hint>", in backend order. With
+ * slide for each Discount code, "<code> - <hint>", in Dataset order. With
  * two or more codes it is the "Announcement bar" carousel: only the current
  * slide shows, named "<n> of <total>", and the "Previous announcement" and
  * "Next announcement" arrows go round the slides. It starts at the first
- * code and never moves by itself. One code shows as a plain "Announcement"
- * region with no arrows; with no codes there is no bar.
+ * code and never moves by itself. The root keys it by path, so each page
+ * starts again at the first code, as a full page load does in Dawn. One
+ * code shows as a plain "Announcement" region with no arrows; with no
+ * codes there is no bar.
  */
 export function AnnouncementBar({ hints }: { readonly hints: readonly DiscountCodeHint[] }) {
+  const sliderId = useId();
   const [current, setCurrent] = useState(0);
   const [first] = hints;
   if (first === undefined) return null;
@@ -36,12 +37,12 @@ export function AnnouncementBar({ hints }: { readonly hints: readonly DiscountCo
         type="button"
         className="announcement-arrow"
         aria-label="Previous announcement"
-        aria-controls={SLIDER_ID}
+        aria-controls={sliderId}
         onClick={() => move(-1)}
       >
         <CaretIcon className="announcement-caret-previous" />
       </button>
-      <div id={SLIDER_ID} className="announcement-slider" aria-live="polite" aria-atomic="true">
+      <div id={sliderId} className="announcement-slider" aria-live="polite" aria-atomic="true">
         {hints.map((hint, index) => (
           <div
             key={hint.code}
@@ -59,7 +60,7 @@ export function AnnouncementBar({ hints }: { readonly hints: readonly DiscountCo
         type="button"
         className="announcement-arrow"
         aria-label="Next announcement"
-        aria-controls={SLIDER_ID}
+        aria-controls={sliderId}
         onClick={() => move(1)}
       >
         <CaretIcon className="announcement-caret-next" />

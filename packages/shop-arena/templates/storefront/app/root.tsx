@@ -112,7 +112,7 @@ export default function App() {
 
   return (
     <div className="page-shell">
-      <AnnouncementBar hints={data.discountCodeHints} />
+      <AnnouncementBar key={location.pathname} hints={data.discountCodeHints} />
       <Header
         shop={data.shop}
         menu={data.headerMenu}

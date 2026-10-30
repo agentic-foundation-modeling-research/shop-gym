@@ -56,12 +56,12 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 
 Every page has the announcement bar above the header when the backend
 lists Discount codes (`discountCodeHints`): one slide for each code,
-`<code> - <hint>`, in backend order. With two or more codes it is the
+`<code> - <hint>`, in Dataset order. With two or more codes it is the
 "Announcement bar" carousel, which shows one slide (named `<n> of <total>`)
 and has "Previous announcement" and "Next announcement" arrows that go round
-the slides. It starts at the first code and never moves by itself. One code
-is a plain "Announcement" region with no arrows; with no codes there is no
-bar.
+the slides. It starts at the first code on each page and never moves by
+itself. One code is a plain "Announcement" region with no arrows; with no
+codes there is no bar.
 
 Account loaders redirect to `/account/login?redirectTo=<path>` when there is
 no valid session. Checkout works for guests; logged-in customers get the

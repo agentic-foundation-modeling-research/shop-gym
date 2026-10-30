@@ -128,14 +128,15 @@ announcement bar.
 
 The announcement bar follows the Standard sub-manual. It is a full-width
 strip above the header on every page, with one slide for each Discount
-code, `<code> - <hint>`, in backend order. With two or more codes it is a
+code, `<code> - <hint>`, in Dataset order. With two or more codes it is a
 region named "Announcement bar" that shows only the current slide, a group
 named "<n> of <total>", between the "Previous announcement" and "Next
 announcement" arrow buttons; Next on the last slide goes to the first, and
-Previous on the first goes to the last. It starts at the first code and has
-no auto-rotate. One code shows as a region named "Announcement" with no
-arrows, and with no codes there is no bar. No code or hint is in the
-template code.
+Previous on the first goes to the last. It has no auto-rotate, and it starts
+at the first code on each page: the root keys it by path, as a full page
+load resets Dawn's bar. One code shows as a region named "Announcement"
+with no arrows, and with no codes there is no bar. No code or hint is in
+the template code.
 
 Checkout and the thank-you page follow the Standard sub-manual. Checkout
 redirects every shopper to the thank-you page `/checkout/confirmation/<n>`.
@@ -228,8 +229,8 @@ and in CI. It seeds and builds the template, serves it through
 walks one shopper in Chromium with the shared browser steps of the final eval:
 sign up, log out, log in, the Reviews of a product page (show more, sort, a
 half star, left-out fields, and a product with none), add to cart, every
-Discount code in the announcement bar with its arrows, an
-unknown and a valid Discount code,
+Discount code in the announcement bar with its arrows (and, on a fake
+clock, no move by itself), an unknown and a valid Discount code,
 check out, the thank-you page, the new order in the order history and its
 account order page, the address book (the errors of a blank address,
 add an address, add and edit a second one, make it the default, see it
