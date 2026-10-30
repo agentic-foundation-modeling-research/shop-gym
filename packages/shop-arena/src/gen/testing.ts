@@ -388,6 +388,13 @@ function stubHtml(body: string, loggedIn: boolean): string {
   return `<!doctype html><html><head><title>Stub</title></head><body><header><nav><a href="/">Home</a><a href="/collections/dog-essentials">Dogs</a>${logout}</nav></header><main>${body}</main><footer><a href="/policies/privacy-policy">Privacy</a></footer></body></html>`;
 }
 
+/**
+ * The stub's login page: the login form, then the "Forgot your password?"
+ * form. Both show, because the stub has no style sheet to swap them.
+ */
+const STUB_LOGIN =
+  '<h1>Login</h1><form method="post"><input name="email"><input name="password" type="password"><a href="#recover">Forgot your password?</a><button type="submit">Sign in</button></form><form method="post" id="recover"><input type="hidden" name="intent" value="recover"><input name="email"><button type="submit">Submit</button></form>';
+
 /** Fields of the stub's address book forms, by input name. */
 const STUB_ADDRESS_FIELDS = [
   'firstName',
@@ -430,7 +437,8 @@ function escapeHtml(text: string): string {
 
 /**
  * A stand-in storefront that answers every route with a minimal page and
- * walks the account, cart and checkout flows with four cookies:
+ * walks the account, cart and checkout flows with four cookies (the
+ * "Forgot your password?" form needs none; its answer is the message):
  * `session=1` marks a logged-in customer, `cart=1` a non-empty cart,
  * `discount=1` a Discount code applied at checkout, and `address=<JSON>`
  * the one saved address.
@@ -465,6 +473,12 @@ export function stubStorefront(): http.Server {
         switch (url.pathname) {
           case '/account/register':
           case '/account/login':
+            if (form.get('intent') === 'recover') {
+              page(
+                `${STUB_LOGIN}<p>We've sent you an email with a link to update your password.</p>`,
+              );
+              return;
+            }
             redirect('/account', 'session=1; Path=/');
             return;
           case '/account/logout':
@@ -503,13 +517,11 @@ export function stubStorefront(): http.Server {
     }
     switch (true) {
       case url.pathname === '/account/login':
-        page(
-          '<h1>Log in</h1><form method="post"><input name="email"><input name="password" type="password"><button type="submit">Log in</button></form>',
-        );
+        page(STUB_LOGIN);
         return;
       case url.pathname === '/account/register':
         page(
-          '<h1>Create account</h1><form method="post"><input name="firstName"><input name="lastName"><input name="email"><input name="password" type="password"><button type="submit">Create account</button></form>',
+          '<h1>Create account</h1><form method="post"><input name="firstName"><input name="lastName"><input name="email"><input name="password" type="password"><button type="submit">Create</button></form>',
         );
         return;
       case url.pathname.startsWith('/account'):
