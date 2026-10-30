@@ -39,7 +39,7 @@ const MANUAL_EXCERPT_CHARS = 6000;
  * The Standard sub-manual sections have their own budget, so that the cut
  * Sub-manuals of a task with many buckets (`visual_fix`) never push them out.
  */
-const STANDARD_EXCERPT_CHARS = 8000;
+const STANDARD_EXCERPT_CHARS = 12_000;
 const CAPABILITIES_CHARS = 6000;
 
 export type ViewportName = 'desktop' | 'mobile';
@@ -243,9 +243,10 @@ const BUCKET_CAPABILITY_GLOBS: Readonly<Record<PageBucket, readonly string[]>> =
   navigation: ['site_shell', 'navigation', 'navigation.*', 'footer', 'intl'],
   collections: ['collection', 'collection.*'],
   product: ['product', 'product.*'],
-  cart_search: ['cart', 'cart.*', 'search', 'search.*', 'checkout', 'checkout.*'],
+  cart_search: ['cart', 'cart.*', 'search', 'search.*'],
   info_pages: ['info_pages_present', 'page', 'page.*', 'policies', 'policies.*'],
   account: ['account', 'account.*'],
+  checkout: ['checkout', 'checkout.*'],
 };
 
 /** Cut Sub-manual file names containing one of these words are shown to the judge. */
@@ -254,9 +255,10 @@ const BUCKET_MANUAL_WORDS: Readonly<Record<PageBucket, readonly string[]>> = {
   navigation: ['nav', 'header', 'footer', 'menu', 'theme'],
   collections: ['collection', 'catalog', 'category'],
   product: ['product', 'variant'],
-  cart_search: ['cart', 'search', 'checkout'],
+  cart_search: ['cart', 'search'],
   info_pages: ['page', 'policy', 'policies', 'faq', 'contact', 'about'],
   account: ['account', 'order', 'login'],
+  checkout: ['checkout'],
 };
 
 /** H2 sections of the Standard sub-manual (`parts/standard.md`) shown to the judge. */
@@ -268,6 +270,7 @@ const BUCKET_STANDARD_SECTIONS: Readonly<Record<PageBucket, readonly string[]>> 
   cart_search: [],
   info_pages: [],
   account: ['Account'],
+  checkout: ['Checkout', 'Order confirmation'],
 };
 
 /**

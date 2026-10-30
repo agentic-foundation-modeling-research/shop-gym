@@ -433,9 +433,25 @@ function stubAddressBook(address: Readonly<Record<string, string>> | undefined):
   return `<h1>Addresses</h1>${add}<ul><li><h2>Default</h2><address>${lines}</address><button type="button" aria-label="Edit address 1">Edit</button><form method="post" onsubmit="return confirm('Are you sure you wish to delete this address?')"><input type="hidden" name="intent" value="delete"><button type="submit" aria-label="Delete 1">Delete</button></form><form method="post"><input type="hidden" name="intent" value="update">${fields(address)}<button type="submit">Update address</button></form></li></ul>`;
 }
 
+/** The stub's checkout page; `rejected` shows the error under the "Discount code" field. */
+function stubCheckout(hasDiscount: boolean, rejected: boolean): string {
+  const error = rejected ? '<p>Enter a valid discount code</p>' : '';
+  return `<h1>Checkout</h1><form method="post"><input name="email"><input name="firstName"><input name="lastName"><input name="address1"><input name="city"><input name="province"><input name="country"><input name="zip"><input type="radio" name="shippingMethodHandle" value="standard"><input type="radio" name="paymentMethodHandle" value="card"><button type="submit">Pay now</button></form><form method="post"><input type="hidden" name="intent" value="discount"><input name="discountCode">${error}<button type="submit">Apply</button></form><div><span>Total</span> <span>${hasDiscount ? 'CAD $9.00' : 'CAD $10.00'}</span></div>`;
+}
+
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
+
+export interface StubStorefrontOptions {
+  /** Path prefixes answered with 500 instead of their normal page or redirect. */
+  readonly broken?: readonly string[];
+}
+
+/** The stub's codes: `SCRIPTED_DISCOUNT_CODES`, which the gen fixture data also holds. */
+const STUB_DISCOUNT_CODES: ReadonlySet<string> = new Set(
+  SCRIPTED_DISCOUNT_CODES.map((entry) => entry.code),
+);
 
 /**
  * A stand-in storefront that answers every route with a minimal page and
@@ -443,11 +459,18 @@ function escapeHtml(text: string): string {
  * "Forgot your password?" form needs none; its answer is the message):
  * `session=1` marks a logged-in customer, `cart=1` a non-empty cart,
  * `discount=1` a Discount code applied at checkout, and `address=<JSON>`
- * the one saved address.
+ * the one saved address. Checkout takes the codes of
+ * `SCRIPTED_DISCOUNT_CODES` in any case and turns down every other code
+ * with "Enter a valid discount code".
  */
-export function stubStorefront(): http.Server {
+export function stubStorefront(options: StubStorefrontOptions = {}): http.Server {
   return http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    if (options.broken?.some((prefix) => url.pathname.startsWith(prefix))) {
+      res.writeHead(500, { 'content-type': 'text/html' });
+      res.end('<html><body><pre>TypeError: cannot read cart of undefined</pre></body></html>');
+      return;
+    }
     const cookies = req.headers.cookie ?? '';
     const loggedIn = cookies.includes('session=1');
     const hasCart = cookies.includes('cart=1');
@@ -504,9 +527,13 @@ export function stubStorefront(): http.Server {
             redirect(form.get('redirectTo') ?? '/cart', 'cart=1; Path=/');
             return;
           case '/checkout':
-            // The stub takes any Discount code.
             if (form.get('intent') === 'discount') {
-              redirect('/checkout', 'discount=1; Path=/');
+              const code = (form.get('discountCode') ?? '').trim().toUpperCase();
+              if (STUB_DISCOUNT_CODES.has(code)) {
+                redirect('/checkout', 'discount=1; Path=/');
+              } else {
+                page(stubCheckout(hasDiscount, true));
+              }
               return;
             }
             redirect('/checkout/confirmation/1001', 'cart=; Path=/; Max-Age=0');
@@ -558,9 +585,7 @@ export function stubStorefront(): http.Server {
           redirect('/cart');
           return;
         }
-        page(
-          `<h1>Checkout</h1><form method="post"><input name="email"><input name="firstName"><input name="lastName"><input name="address1"><input name="city"><input name="province"><input name="country"><input name="zip"><input type="radio" name="shippingMethodHandle" value="standard"><input type="radio" name="paymentMethodHandle" value="card"><button type="submit">Pay now</button></form><form method="post"><input type="hidden" name="intent" value="discount"><input name="discountCode"><button type="submit">Apply</button></form><div><span>Total</span> <span>${hasDiscount ? 'CAD $9.00' : 'CAD $10.00'}</span></div>`,
-        );
+        page(stubCheckout(hasDiscount, false));
         return;
       case url.pathname.startsWith('/checkout/confirmation/'):
         page(`<p>Confirmation #${url.pathname.split('/').at(-1)}</p><h1>Thank you!</h1>`);

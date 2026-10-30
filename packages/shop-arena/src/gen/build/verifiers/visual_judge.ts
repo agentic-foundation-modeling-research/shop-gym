@@ -6,9 +6,10 @@
  * advisory once the task has failed this verifier `retryBudget` times, so a
  * stubborn page cannot consume the whole run.
  *
- * Cart routes are judged with a line in the cart: the verifier adds the
- * first sampled product before capturing, so the model sees the populated
- * state the shopper sees rather than the empty-cart message. Account routes
+ * Cart and checkout routes are judged with a line in the cart: the
+ * verifier adds the first sampled product before capturing, so the model
+ * sees the populated state the shopper sees rather than the empty-cart
+ * message. Account routes
  * other than the login page are captured after logging in as the first
  * seeded customer, so the profile shows the orders table. Screenshots of
  * the failing pages are returned as `images` so the harness can show them
@@ -82,7 +83,7 @@ export function visualJudgeVerifier(options: VisualJudgeOptions): Verifier {
       let cartSeed: string | undefined;
       let accountSeed: string | undefined;
       try {
-        if (buckets.includes('cart_search')) {
+        if (buckets.includes('cart_search') || buckets.includes('checkout')) {
           cartSeed = await seedCart(session, options.target.url, handles, caps);
         }
         for (const route of routes.filter((r) => !needsLogin(r))) {

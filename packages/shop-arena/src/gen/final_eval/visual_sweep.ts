@@ -135,12 +135,12 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
   const checkoutPage: CanonicalPage = {
     name: 'checkout',
     route: '/checkout',
-    bucket: 'cart_search',
+    bucket: 'checkout',
   };
   const thankYouPage = (orderNumber: number | undefined): CanonicalPage => ({
     name: 'thankYou',
     route: `/checkout/confirmation/${orderNumber ?? ''}`,
-    bucket: 'cart_search',
+    bucket: 'checkout',
   });
   const added =
     productHandle === undefined
