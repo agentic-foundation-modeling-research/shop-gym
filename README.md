@@ -228,6 +228,7 @@ shop-gym/
 ├── docs/
 │   ├── adr/                    # architecture decision records
 │   ├── agents/                 # agent skill config (issue tracker, labels, domain docs)
+│   ├── reports/                # point-in-time HTML review reports
 │   └── specs/                  # design specifications (intent, not reality)
 ├── packages/
 │   ├── core/                   # @shop-gym/core: schemas, pipeline runner, credentials

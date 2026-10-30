@@ -35,6 +35,7 @@ shop-gym/
 ├── docs/
 │   ├── adr/                    # architecture decision records (`NNNN-slug.md`)
 │   ├── agents/                 # agent skill config: issue tracker, triage labels, domain docs
+│   ├── reports/                # point-in-time HTML review reports (see `docs/reports/README.md`)
 │   └── specs/                  # design specifications (intent — see `docs/specs/README.md`)
 ├── scripts/                    # thin shell helpers
 ├── outputs/                    # generated artifacts (gitignored): shop_manuals, shops, shop_guru
