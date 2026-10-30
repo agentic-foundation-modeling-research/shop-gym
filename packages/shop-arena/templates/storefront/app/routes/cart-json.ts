@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from 'react-router';
 import { variantTitle } from '~/components/checkout';
 import { getAppContext, getCartId } from '~/lib/context';
+import { toCents } from '~/lib/money';
 import { CART_QUERY } from '~/lib/queries';
 import { storefrontQuery } from '~/lib/storefront';
 import type { Cart } from '~/lib/types';
@@ -16,7 +17,7 @@ interface AjaxCartItem {
   readonly variant_title: string | null;
   readonly quantity: number;
   readonly price: number;
-  readonly line_price: number;
+  readonly original_line_price: number;
 }
 
 interface AjaxCart {
@@ -37,11 +38,12 @@ const EMPTY_CART: AjaxCart = {
 
 /**
  * `GET /cart.js`: the session's cart in the request's episode, as the JSON
- * of Shopify's AJAX Cart API (`GET /{locale}/cart.js`). Task generation
- * reads the cart this way on SandboxShops and on Live storefronts, so keep
- * the path and the fields. The route is read only: it has no action and
- * sets no cookie. It needs no login. With no cart, or a cart id that the
- * episode does not know, it returns the empty cart, not an error.
+ * of Shopify's AJAX Cart API (`GET /{locale}/cart.js`). A client that reads
+ * the cart of a Shopify storefront this way reads the cart of a SandboxShop
+ * the same way, so keep the path and the fields. The route is read only: it
+ * has no action and sets no cookie. It needs no login. With no cart, or a
+ * cart id that the episode does not know, it returns the empty cart, not an
+ * error.
  *
  * The fields have Shopify's names and meanings. Every amount is an integer
  * in the currency's subunit (cents):
@@ -49,8 +51,9 @@ const EMPTY_CART: AjaxCart = {
  * - `items[].id` and `items[].variant_id`: the numeric variant id.
  * - `items[].product_title`; `items[].variant_title`, null for the
  *   "Default Title" variant of a product with one variant.
- * - `items[].quantity`; `items[].price`, the unit price; `items[].line_price`,
- *   the price times the quantity. Lines have no discounts of their own.
+ * - `items[].quantity`; `items[].price`, the unit price before discounts;
+ *   `items[].original_line_price`, the price times the quantity, before
+ *   discounts.
  * - `item_count`: the sum of the quantities.
  * - `total_discount`: what the cart's Discount code takes off the
  *   merchandise; 0 for a free-shipping code, as a cart has no shipping.
@@ -60,10 +63,13 @@ const EMPTY_CART: AjaxCart = {
  *   A code stays on the cart with `applicable: false` when the cart drops
  *   below the code's minimum.
  *
- * Shopify's AJAX Cart API reference documents each of these fields except
- * `discount_codes`. Shopify's `/cart.js` returns that field too, with the
- * `code` and `applicable` of the Storefront API's `CartDiscountCode`. The
- * other Shopify fields are left out.
+ * Shopify's `line_price` also takes off the line's share of a cart-level
+ * discount. The backend does not split a Discount code over the lines, so
+ * the route does not serve `line_price`. The example response of Shopify's
+ * AJAX Cart API reference shows each field above except `discount_codes`.
+ * Shopify's `/cart.js` returns that field too, with the `code` and
+ * `applicable` of the Storefront API's `CartDiscountCode`. The route leaves
+ * out the other Shopify fields.
  */
 export async function loader({ context }: LoaderFunctionArgs): Promise<Response> {
   const appContext = getAppContext(context);
@@ -88,7 +94,7 @@ function ajaxCart(cart: Cart): AjaxCart {
         variant_title: variantTitle(line.merchandise.title),
         quantity: line.quantity,
         price: toCents(line.merchandise.price.amount),
-        line_price: toCents(line.cost.totalAmount.amount),
+        original_line_price: toCents(line.cost.totalAmount.amount),
       };
     }),
     total_price: toCents(cart.cost.subtotalAmount.amount) - totalDiscount,
@@ -100,8 +106,4 @@ function ajaxCart(cart: Cart): AjaxCart {
 /** The number at the end of a gid, e.g. 123 for `gid://shopify/ProductVariant/123`. */
 function numericId(gid: string): number {
   return Number(gid.slice(gid.lastIndexOf('/') + 1));
-}
-
-function toCents(amount: string): number {
-  return Math.round(Number.parseFloat(amount) * 100);
 }

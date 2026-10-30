@@ -278,7 +278,14 @@ describe('routes_200', () => {
     const probes = (result.details as { probes: { route: string; ok: boolean }[] }).probes;
     expect(probes.every((p) => p.ok)).toBe(true);
     expect(probes.map((p) => p.route)).toEqual(
-      expect.arrayContaining(['/', '/account', '/account/orders', '/checkout', '/account/login']),
+      expect.arrayContaining([
+        '/',
+        '/cart.js',
+        '/account',
+        '/account/orders',
+        '/checkout',
+        '/account/login',
+      ]),
     );
   });
 

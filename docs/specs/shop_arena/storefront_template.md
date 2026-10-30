@@ -90,6 +90,7 @@ packages/shop-arena/
     app/lib/types.ts          hand-written response types
     app/lib/reviews.ts        Reviews URL parameters, sort options, page size, product rating
     app/lib/addresses.ts      ADDRESS_FIELDS, address book mutations
+    app/lib/money.ts          toCents
     app/components/account.tsx   LogoutLink, FormErrors, AddressBlock, OrderHistory, OrderDetails
     app/components/addresses.tsx AddressBook, DELETE_ADDRESS_CONFIRM
     app/components/reviews.tsx   RatingBlock, ReviewsSection
@@ -128,23 +129,32 @@ backend no longer recognises it. The root loader adds `customer` so the
 header can render Log in / Account, and `discountCodeHints` for the
 announcement bar.
 
-`/cart.js` returns the session's cart in the request's episode with the
-field names of Shopify's AJAX Cart API (`GET /{locale}/cart.js`), so Task
-generation reads the cart the same way on a SandboxShop and on a Live
-storefront. Every amount is an integer in cents. `items` has, per line,
-`id` and `variant_id` (the numeric variant id), `product_title`,
-`variant_title` (null for "Default Title"), `quantity`, `price` (the unit
-price) and `line_price` (price times quantity). `item_count` is the sum of
-the quantities. `total_discount` is what the Discount code takes off the
-merchandise (0 for a free-shipping code), and `total_price` is the
-merchandise subtotal less `total_discount`, before tax and shipping.
-`discount_codes` lists each code on the cart with `code` and `applicable`,
-so a code that stopped applying below its minimum shows as not
-applicable. Shopify's reference documents every field but
-`discount_codes`, which Shopify's `/cart.js` returns with the fields of
-the Storefront API's `CartDiscountCode`. The other Shopify fields are left
-out. With no cart, or a cart id that the episode does not know, the route
-returns the empty cart. It has no action and sets no cookie.
+`/cart.js` returns the session's cart in the request's episode. It uses
+the field names of Shopify's AJAX Cart API (`GET /{locale}/cart.js`). A
+client can thus read the cart of a SandboxShop and of a Shopify storefront
+in the same way. Every amount is an integer in cents. Each entry of
+`items` has these fields:
+
+- `id` and `variant_id`: the numeric variant id.
+- `product_title`, and `variant_title` (null for "Default Title").
+- `quantity`, and `price`: the unit price before discounts.
+- `original_line_price`: the price times the quantity, before discounts.
+
+`item_count` is the sum of the quantities. `total_discount` is the amount
+that the Discount code takes off the merchandise. It is 0 for a
+free-shipping code. `total_price` is the merchandise subtotal less
+`total_discount`, before tax and shipping. `discount_codes` has the
+`code` and `applicable` of each code on the cart. A code that stops
+applying below its minimum stays, with `applicable: false`.
+
+Shopify's `line_price` also takes off the line's share of a cart-level
+discount. The backend does not split a Discount code over the lines, so
+the route does not serve `line_price`. The example response in Shopify's
+reference shows each field above except `discount_codes`. Shopify's live
+`/cart.js` also returns `discount_codes`, with the fields of the
+Storefront API's `CartDiscountCode`. The route leaves out the other
+Shopify fields. With no cart, or a cart id that the episode does not know,
+the route returns the empty cart. It has no action and sets no cookie.
 
 The announcement bar follows the Standard sub-manual. It is a full-width
 strip above the header on every page, with one slide for each Discount
@@ -316,7 +326,7 @@ template has no UI for them.
 | 14 | Address book on `/account/addresses` per the Standard sub-manual; checkout prefilled from the default address | done |
 | 15 | Announcement bar with the Discount codes per the Standard sub-manual, fed by `discountCodeHints` | done |
 | 16 | Login and register per the Standard sub-manual, with the "Forgot your password?" mock on `customerRecover` | done |
-| 17 | Read-only `/cart.js` in the fields of Shopify's AJAX cart, checked by `cart_conformance` | done |
+| 17 | Read-only `/cart.js` in the fields of Shopify's AJAX cart, checked by `cart_conformance` and `routes_200` | done |
 
 ## 8. Appendix
 

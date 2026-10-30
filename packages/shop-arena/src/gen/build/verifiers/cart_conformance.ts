@@ -4,10 +4,10 @@
  * update its quantity, check the cart page shows the backend's totals,
  * remove the line, then place a guest order and confirm the confirmation
  * page shows the order the backend recorded. After the add, the update and
- * the remove, `GET /cart.js` must return the backend's cart in Shopify's
- * AJAX cart fields, as Task generation reads it. Backend state is read from
- * the sandbox control API and GraphQL, so the check sees what the backend
- * stored rather than what the page claims.
+ * the remove, `GET /cart.js` must return the backend's cart in the fields
+ * of Shopify's AJAX cart. Backend state is read from the sandbox control
+ * API and GraphQL, so the check sees what the backend stored rather than
+ * what the page claims.
  */
 
 import { isDeepStrictEqual } from 'node:util';
@@ -54,7 +54,7 @@ const CART_JS_QUERY = `query CartJs($id: ID!) {
 }`;
 
 /** The `/cart.js` fields of Shopify's AJAX cart that the template serves; others are ignored. */
-const cartJsSchema = z.object({
+const ajaxCartSchema = z.object({
   item_count: z.number(),
   items: z.array(
     z.object({
@@ -64,7 +64,7 @@ const cartJsSchema = z.object({
       variant_title: z.string().nullable(),
       quantity: z.number(),
       price: z.number(),
-      line_price: z.number(),
+      original_line_price: z.number(),
     }),
   ),
   total_price: z.number(),
@@ -72,9 +72,9 @@ const cartJsSchema = z.object({
   discount_codes: z.array(z.object({ code: z.string(), applicable: z.boolean() })),
 });
 
-type CartJs = z.infer<typeof cartJsSchema>;
+type AjaxCart = z.infer<typeof ajaxCartSchema>;
 
-interface CartJsData {
+interface CartJsQueryData {
   readonly cart: {
     readonly totalQuantity: number;
     readonly cost: { readonly subtotalAmount: { readonly amount: string } };
@@ -319,7 +319,7 @@ async function recordCartJs(
   cartId: string,
 ): Promise<boolean> {
   const response = await client.get('/cart.js');
-  const backendCart = await backend.cartJs(cartId);
+  const backendCart = await backend.ajaxCart(cartId);
   const expected = JSON.stringify(backendCart);
   if (response.status !== 200) {
     return log.record(
@@ -328,13 +328,17 @@ async function recordCartJs(
       `GET /cart.js returned ${response.status} (${bodyExcerpt(response.body)}); the backend cart is ${expected}`,
     );
   }
-  const parsed = cartJsSchema.safeParse(parseJson(response.body));
+  const body = parseJson(response.body);
+  const parsed = ajaxCartSchema.safeParse(body);
   if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+    const reason =
+      body === undefined
+        ? 'the body is not JSON'
+        : parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     return log.record(
       name,
       false,
-      `GET /cart.js is not an AJAX cart (${issues.join('; ')}); the backend cart is ${expected}`,
+      `GET /cart.js is not an AJAX cart (${reason}): ${bodyExcerpt(response.body)}; the backend cart is ${expected}`,
     );
   }
   const ok = isDeepStrictEqual(parsed.data, backendCart);
@@ -376,14 +380,9 @@ class BackendProbe {
   }
 
   async cartCost(id: string): Promise<{ subtotal: Money; total: Money }> {
-    const response = await fetch(`${this.backendUrl}/graphql`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-shopgym-episode': this.episodeId },
-      body: JSON.stringify({ query: CART_COST_QUERY, variables: { id } }),
-    });
-    const payload = (await response.json()) as {
-      data?: { cart?: { cost: { subtotalAmount: Money; totalAmount: Money } } | null };
-    };
+    const payload = await this.graphql<{
+      cart?: { cost: { subtotalAmount: Money; totalAmount: Money } } | null;
+    }>(CART_COST_QUERY, { id });
     const cost = payload.data?.cart?.cost;
     if (cost === undefined) {
       throw new Error(`backend returned no cart cost for ${id}`);
@@ -397,13 +396,8 @@ class BackendProbe {
    * no `variant_title` for a "Default Title" variant. A cart the backend
    * does not know is the empty cart.
    */
-  async cartJs(id: string): Promise<CartJs> {
-    const response = await fetch(`${this.backendUrl}/graphql`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-shopgym-episode': this.episodeId },
-      body: JSON.stringify({ query: CART_JS_QUERY, variables: { id } }),
-    });
-    const payload = (await response.json()) as { data?: CartJsData; errors?: unknown };
+  async ajaxCart(id: string): Promise<AjaxCart> {
+    const payload = await this.graphql<CartJsQueryData>(CART_JS_QUERY, { id });
     const cart = payload.data?.cart;
     if (cart === undefined) {
       throw new Error(`backend returned no cart for ${id}: ${JSON.stringify(payload.errors)}`);
@@ -425,13 +419,26 @@ class BackendProbe {
           variant_title: line.merchandise.title === 'Default Title' ? null : line.merchandise.title,
           quantity: line.quantity,
           price: toCents(line.merchandise.price.amount),
-          line_price: toCents(line.cost.totalAmount.amount),
+          original_line_price: toCents(line.cost.totalAmount.amount),
         };
       }),
       total_price: toCents(cart.cost.subtotalAmount.amount) - totalDiscount,
       total_discount: totalDiscount,
       discount_codes: cart.discountCodes.map(({ code, applicable }) => ({ code, applicable })),
     };
+  }
+
+  /** POSTs `query` to the backend's GraphQL endpoint in this episode. */
+  private async graphql<T>(
+    query: string,
+    variables: Readonly<Record<string, unknown>>,
+  ): Promise<{ data?: T; errors?: unknown }> {
+    const response = await fetch(`${this.backendUrl}/graphql`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-shopgym-episode': this.episodeId },
+      body: JSON.stringify({ query, variables }),
+    });
+    return (await response.json()) as { data?: T; errors?: unknown };
   }
 }
 

@@ -45,7 +45,7 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 | `/products/:handle` | Product detail with variant radios, add-to-cart, and the Reviews: stars and count near the title, a "Sort by" control (`?reviews_sort=most_recent\|highest_rating\|lowest_rating\|most_helpful`) and "Show more reviews" (`?reviews_pages=<n>`, five Reviews a page); no Reviews section when the product has none |
 | `/search?q=` | Products, pages, and articles |
 | `/cart` | Cart page; its action handles `add`, `update`, `remove`, `discount`, `discount-remove` intents |
-| `/cart.js` | Read-only JSON of the session's cart in the episode, with the field names of Shopify's AJAX cart: `items` (`id`, `variant_id`, `product_title`, `variant_title`, `quantity`, `price`, `line_price`), `item_count`, `total_price`, `total_discount` and `discount_codes` (`code`, `applicable`). Amounts are integer cents. It needs no login; with no cart it returns the empty cart. Task generation reads the cart here |
+| `/cart.js` | The session's cart as JSON in the fields of Shopify's AJAX cart: `items`, `item_count`, `total_price`, `total_discount`, `discount_codes`. Amounts are integer cents. Read only, no login; with no cart it returns the empty cart |
 | `/checkout` | Contact email, delivery address, shipping and payment method radios, and an order summary with the "Discount code" field and backend-matching totals; the action applies or removes a Discount code, or calls `checkoutComplete` |
 | `/checkout/confirmation/:orderNumber` | Thank-you page: confirmation number, order summary, addresses, shipping and payment method |
 | `/account/login`, `/account/register` | Credentials forms; on success the token is stored and attached to the cart. Login also has "Forgot your password?": its form posts intent `recover` to `customerRecover` and shows "We've sent you an email with a link to update your password." |
@@ -86,6 +86,7 @@ the cart, and the form shows "Enter a valid discount code".
 - `app/lib/types.ts`: hand-written response types for those documents.
 - `app/lib/customer.ts`: `loadCustomer`, `requireCustomer`, `loginCustomer`.
 - `app/lib/discount.ts`: `applyDiscountCode`, `removeDiscountCode`.
+- `app/lib/money.ts`: `toCents`, a money amount in integer cents.
 - `app/lib/addresses.ts`: the address fields shared with checkout, and
   `createAddress`, `updateAddress`, `deleteAddress`, `setDefaultAddress`.
 - `app/lib/reviews.ts`: the Reviews URL parameters, sort options and page

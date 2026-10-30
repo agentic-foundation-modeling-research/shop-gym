@@ -1,9 +1,10 @@
 /**
  * `routes_200` verifier: every storefront page answers, over HTTP, the way
  * a shopper would see it, after every storefront task (a task can break a
- * page it does not work on through a shared file). Static routes and the
- * dataset routes of every page bucket return 200; account pages redirect to the login page when logged
- * out and return 200 after logging in as the seeded customer; `/checkout`
+ * page it does not work on through a shared file). Static routes (with the
+ * `/cart.js` JSON) and the dataset routes of every page bucket return 200;
+ * account pages redirect to the login page when logged out and return 200
+ * after logging in as the seeded customer; `/checkout`
  * returns 200 with a non-empty cart; internal links found in the rendered
  * pages do not 4xx/5xx.
  */
@@ -38,6 +39,7 @@ const STATIC_ROUTES = [
   '/collections',
   '/search',
   '/cart',
+  '/cart.js',
   '/account/login',
   '/account/register',
 ];

@@ -202,7 +202,7 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     // Two toys reach the 30.00 minimum of SAVE5, which takes 5.00 off.
     expect(JSON.parse((await shopper.get('/cart.js')).body)).toEqual({
       item_count: 2,
-      items: [{ ...toyItem, quantity: 2, line_price: 3998 }],
+      items: [{ ...toyItem, quantity: 2, original_line_price: 3998 }],
       total_price: 3498,
       total_discount: 500,
       discount_codes: [{ code: 'SAVE5', applicable: true }],
@@ -214,7 +214,7 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     await shopper.post('/cart', { intent: 'update', lineId: lineId ?? '', quantity: '1' });
     expect(JSON.parse((await shopper.get('/cart.js')).body)).toEqual({
       item_count: 1,
-      items: [{ ...toyItem, quantity: 1, line_price: 1999 }],
+      items: [{ ...toyItem, quantity: 1, original_line_price: 1999 }],
       total_price: 1999,
       total_discount: 0,
       discount_codes: [{ code: 'SAVE5', applicable: false }],
@@ -228,7 +228,7 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     expect(JSON.parse((await shopper.get('/cart.js')).body)).toEqual({
       item_count: 2,
       items: [
-        { ...toyItem, quantity: 1, line_price: 1999 },
+        { ...toyItem, quantity: 1, original_line_price: 1999 },
         {
           id: numericId(brush),
           variant_id: numericId(brush),
@@ -236,7 +236,7 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
           variant_title: null,
           quantity: 1,
           price: 1299,
-          line_price: 1299,
+          original_line_price: 1299,
         },
       ],
       total_price: 2798,
@@ -258,10 +258,10 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     // Same cookies, different episode: the default-episode cart is invisible.
     const episode = new HttpClient(storefrontUrl, 'ep1', shopper.cookies);
     expect((await episode.get('/cart')).body).toContain('Your cart is empty');
-    const shopperCart = JSON.parse((await shopper.get('/cart.js')).body);
-    expect(shopperCart.items.map((item: { product_title: string }) => item.product_title)).toEqual([
-      'AisleArena Anti Tick Collar',
-    ]);
+    expect(JSON.parse((await shopper.get('/cart.js')).body)).toMatchObject({
+      item_count: 1,
+      items: [{ product_title: 'AisleArena Anti Tick Collar' }],
+    });
     expect(JSON.parse((await episode.get('/cart.js')).body)).toEqual(EMPTY_CART_JS);
 
     // Seeded customers exist in every episode, but default-episode orders do not leak.

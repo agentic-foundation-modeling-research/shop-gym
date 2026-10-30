@@ -459,7 +459,7 @@ describe('storefront template in a browser', () => {
           variant_title: 'Red Mushroom',
           quantity: 1,
           price: 1999,
-          line_price: 1999,
+          original_line_price: 1999,
         },
       ],
       total_price: 1799,
