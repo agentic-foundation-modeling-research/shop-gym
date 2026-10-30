@@ -17,7 +17,7 @@ import {
   type datasetSchema,
 } from '@shop-gym/shop-backend';
 
-import { seededRandom } from './ids.js';
+import { pick, seededRandom, takeRandom } from './ids.js';
 
 type Customer = z.infer<typeof datasetSchema.customerSchema>;
 type Product = z.infer<typeof datasetSchema.productSchema>;
@@ -69,17 +69,6 @@ function sellables(products: readonly Product[]): Sellable[] {
       .filter((v) => v.available)
       .map((v) => ({ variantId: v.id, title: `${p.title} - ${v.title}`, price: v.price })),
   );
-}
-
-/** A uniformly random element of `items`, which must not be empty. */
-function pick<T>(rng: () => number, items: readonly T[]): T {
-  // The index is below `items.length`, so it names an element of a non-empty array.
-  return items[Math.floor(rng() * items.length)] as T;
-}
-
-/** Removes a uniformly random element from `items` and returns it; `undefined` when empty. */
-function takeRandom<T>(rng: () => number, items: T[]): T | undefined {
-  return items.splice(Math.floor(rng() * items.length), 1)[0];
 }
 
 /** How many orders each customer but the last gets: one each, then the rest at random. */

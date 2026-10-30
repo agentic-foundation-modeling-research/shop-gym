@@ -7,14 +7,15 @@
  *
  *   identity -> store -> pages -> policies -> commerce -> collections
  *   -> skeletons -> details (per collection) -> alt_text -> images
- *   -> navigation -> customers -> assemble (incl. orders, inventory)
+ *   -> navigation -> customers -> reviews -> assemble (incl. orders,
+ *   inventory)
  */
 
 import type { Step, StepContext } from '@shop-gym/core';
 
 import type { GenContext } from '../context.js';
 import { synthAltText } from './alt_text.js';
-import { assembleDataset, writeDataset } from './assemble.js';
+import { assembleDataset, buildProducts, writeDataset } from './assemble.js';
 import { synthCollections, synthSkeletons } from './catalog.js';
 import { synthCommerce } from './commerce.js';
 import { synthPages, synthPolicies } from './content.js';
@@ -24,6 +25,7 @@ import { synthDetails } from './details.js';
 import { synthIdentity } from './identity.js';
 import { synthImages } from './images/step.js';
 import { synthNavigation } from './navigation.js';
+import { synthReviews } from './reviews.js';
 import { synthStore } from './store.js';
 
 export { assembleDataset, type Dataset, type Drafts, writeDataset } from './assemble.js';
@@ -54,6 +56,8 @@ export async function runDataSynth(ctx: StepContext<GenContext>): Promise<void> 
   const images = await synthImages(sc, collections, skeletons, details);
   const navigation = await synthNavigation(sc, collections, pages, policies);
   const personas = await synthCustomers(sc, identity);
+  const products = buildProducts(skeletons, details, altText, images);
+  const reviews = await synthReviews(sc, products);
   const dataset = assembleDataset({
     identity,
     store,
@@ -62,15 +66,14 @@ export async function runDataSynth(ctx: StepContext<GenContext>): Promise<void> 
     commerce,
     collections,
     skeletons,
-    details,
-    altText,
-    images,
+    products,
     navigation,
     personas,
+    reviews,
   });
   await writeDataset(sc, dataset);
   ctx.log(
-    `[data_synth] wrote ${dataset.products.length} products, ${dataset.collections.length} collections, ${dataset.customers.length} customers, ${dataset.orders.length} orders`,
+    `[data_synth] wrote ${dataset.products.length} products, ${dataset.collections.length} collections, ${dataset.customers.length} customers, ${dataset.orders.length} orders, ${dataset.reviews.length} reviews`,
   );
 }
 

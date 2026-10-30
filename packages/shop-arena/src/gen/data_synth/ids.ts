@@ -1,4 +1,4 @@
-/** Deterministic numeric ids and random numbers shared by assembly. */
+/** Deterministic numeric ids and random numbers shared by assembly and `synth_reviews`. */
 
 import { createHash } from 'node:crypto';
 
@@ -19,4 +19,15 @@ export function seededRandom(seed: string): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** A uniformly random element of `items`, which must not be empty. */
+export function pick<T>(rng: () => number, items: readonly T[]): T {
+  // The index is below `items.length`, so it names an element of a non-empty array.
+  return items[Math.floor(rng() * items.length)] as T;
+}
+
+/** Removes a uniformly random element from `items` and returns it; `undefined` when empty. */
+export function takeRandom<T>(rng: () => number, items: T[]): T | undefined {
+  return items.splice(Math.floor(rng() * items.length), 1)[0];
 }
