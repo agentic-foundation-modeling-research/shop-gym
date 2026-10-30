@@ -1,0 +1,1536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Task Generation Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Schibsted+Grotesk:wght@500;700&display=swap">
+<style>
+:root {
+  --bg: #edf1ee;
+  --surface: #ffffff;
+  --surface-2: #f5f7f5;
+  --ink: #15213a;
+  --muted: #546074;
+  --faint: #858e9e;
+  --line: #d3dad5;
+  --line-strong: #b5beb8;
+  --accent: #2646c4;
+  --accent-soft: #e5eafb;
+  --ok: #1b784a;
+  --ok-soft: #e0f1e7;
+  --warn: #985f05;
+  --warn-soft: #f9eed6;
+  --bad: #b2342b;
+  --bad-soft: #f8e2df;
+  --cand: #7b8494;
+  --code: #f4f6f8;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --head: "Schibsted Grotesk", "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e141d; --surface: #151d29; --surface-2: #1a2432; --ink: #e2e7ef; --muted: #9da8b9; --faint: #6f7a8c;
+    --line: #283343; --line-strong: #3a4659; --accent: #8ea7ff; --accent-soft: #1d2950; --ok: #57c28c; --ok-soft: #14301f;
+    --warn: #e3ab4a; --warn-soft: #33260e; --bad: #f27a70; --bad-soft: #391c1a; --cand: #8a94a6; --code: #111924;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e141d; --surface: #151d29; --surface-2: #1a2432; --ink: #e2e7ef; --muted: #9da8b9; --faint: #6f7a8c;
+  --line: #283343; --line-strong: #3a4659; --accent: #8ea7ff; --accent-soft: #1d2950; --ok: #57c28c; --ok-soft: #14301f;
+  --warn: #e3ab4a; --warn-soft: #33260e; --bad: #f27a70; --bad-soft: #391c1a; --cand: #8a94a6; --code: #111924;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 20px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15.5px/1.62 var(--sans); }
+[hidden] { display: none !important; }
+.shell {
+  display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 52px;
+  max-width: 1240px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 36px 96px;
+}
+@media (max-width: 1000px) { .shell { grid-template-columns: minmax(0, 1fr); gap: 0; } .toc { display: none; } }
+
+/* Table of contents */
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 28px); align-self: start; font-size: .86rem; }
+.toc .brand { font: 700 .95rem var(--head); margin-bottom: 14px; display: block; color: var(--ink); text-decoration: none; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc a { display: block; padding: 5px 10px; border-radius: 7px; color: var(--muted); text-decoration: none; border-left: 2px solid transparent; }
+.toc a.sub { padding-left: 22px; font-size: .82rem; }
+.toc a:hover { color: var(--ink); background: var(--surface); }
+.toc a.on { color: var(--accent); border-left-color: var(--accent); background: var(--surface); }
+
+/* Type */
+main { min-width: 0; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h1 { font: 700 clamp(2rem, 4.4vw, 2.75rem)/1.08 var(--head); letter-spacing: -.015em; }
+h2 { font: 700 1.6rem/1.2 var(--head); letter-spacing: -.01em; }
+h3 { font: 600 1.08rem/1.3 var(--head); }
+p { margin: 0; max-width: 70ch; }
+ul, ol { margin: 0; padding-left: 1.2em; }
+li { max-width: 70ch; }
+li + li { margin-top: 4px; }
+code, .mono { font-family: var(--mono); font-size: .88em; }
+:not(pre) > code { background: var(--code); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+a { color: var(--accent); }
+.kicker { font: 500 .73rem var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--accent); }
+.muted { color: var(--muted); }
+.small { font-size: .88rem; }
+.stack { display: grid; gap: 14px; }
+.stack-lg { display: grid; gap: 22px; }
+
+/* Header */
+.hero { display: grid; gap: 16px; padding-bottom: 36px; }
+.hero .lede { font-size: 1.1rem; color: var(--muted); max-width: 64ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Sections */
+section { padding-block: 52px 4px; border-top: 1px solid var(--line); display: grid; gap: 20px; }
+section.first { border-top: 0; padding-top: 8px; }
+.sec-head { display: grid; gap: 8px; }
+.sub-head { display: grid; gap: 6px; margin-top: 18px; }
+
+/* Components */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; min-width: 0; display: grid; gap: 10px; align-content: start; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.grid.wide { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 500 .72rem/1.5 var(--mono); padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.chip.llm { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.chip.code { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.chip.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.chip.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 2px; }
+.tile b { font: 700 1.7rem/1.1 var(--head); }
+.tile span { font-size: .84rem; color: var(--muted); }
+.asks { counter-reset: ask; list-style: none; padding: 0; display: grid; gap: 10px; }
+.asks li { counter-increment: ask; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; max-width: none; margin: 0; }
+.asks li::before { content: counter(ask, decimal-leading-zero); font: 500 .8rem/1.9 var(--mono); color: var(--accent); }
+.note { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: .9rem; max-width: 80ch; }
+.note.info { border-left-color: var(--accent); background: var(--accent-soft); }
+
+/* Figures */
+figure { margin: 0; display: grid; gap: 10px; }
+.fig { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; padding: 14px; }
+figcaption { font-size: .88rem; color: var(--muted); max-width: 80ch; }
+svg text { font-family: var(--sans); }
+.d-svg { display: block; width: 100%; height: auto; }
+.d-box { fill: var(--surface); stroke: var(--ink); stroke-width: 1.4; }
+.d-band { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.2; }
+.d-pill { fill: var(--accent-soft); stroke: none; }
+.d-t { font-size: 14px; font-weight: 600; fill: var(--ink); }
+.d-s { font-size: 11.5px; fill: var(--muted); }
+.d-m { font-size: 11px; font-family: var(--mono); fill: var(--accent); }
+.d-ln { stroke: var(--ink); stroke-width: 1.4; fill: none; }
+.d-ln.soft { stroke: var(--line-strong); stroke-dasharray: 4 4; }
+.d-ok { stroke: var(--ok); } .d-warn { stroke: var(--warn); } .d-bad { stroke: var(--bad); }
+.d-lbl { font-size: 11px; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.f-ink { fill: var(--ink); } .f-ok { fill: var(--ok); } .f-warn { fill: var(--warn); } .f-bad { fill: var(--bad); }
+.f-cand { fill: var(--cand); } .f-acc { fill: var(--accent); }
+
+/* Interaction graph */
+.g-svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.node { cursor: pointer; transition: opacity .3s; outline: none; }
+.node rect { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.3; transition: all .3s; }
+.node .t { font-size: 13px; font-weight: 600; fill: var(--ink); }
+.node .f { font-size: 10.5px; font-family: var(--mono); fill: var(--muted); }
+.node:hover rect, .node:focus-visible rect { stroke: var(--ink); }
+.node[data-s="hidden"] { opacity: 0; pointer-events: none; }
+.node[data-s="dim"] { opacity: .4; }
+.node[data-s="frontier"] rect { stroke: var(--accent); stroke-width: 2.2; stroke-dasharray: 5 3; }
+.node[data-s="new"] rect, .node[data-s="path"] rect { stroke: var(--accent); stroke-width: 2.2; fill: var(--accent-soft); }
+.node.picked rect { stroke: var(--ink); stroke-width: 2.6; }
+.edge { transition: opacity .3s; }
+.edge .eln { fill: none; stroke-width: 1.8; transition: stroke .3s, stroke-width .3s; }
+.edge .elbl { font-size: 11px; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.edge[data-s="hidden"] { opacity: 0; }
+.edge[data-s="cand"] .eln { stroke: var(--cand); stroke-dasharray: 6 5; marker-end: url(#mk-cand); }
+.edge[data-s="ok"] .eln, .edge[data-s="dim"] .eln { stroke: var(--ok); marker-end: url(#mk-ok); }
+.edge[data-s="dim"] { opacity: .3; }
+.edge[data-s="flaky"] .eln { stroke: var(--warn); stroke-dasharray: 2 4; stroke-width: 2.4; marker-end: url(#mk-warn); }
+.edge[data-s="flaky"] .elbl { fill: var(--warn); font-weight: 600; }
+.edge[data-s="new"] .eln { stroke: var(--accent); stroke-width: 2.4; marker-end: url(#mk-acc); }
+.edge[data-s="path"] .eln, .edge[data-s="task"] .eln { stroke: var(--accent); stroke-width: 3.4; marker-end: url(#mk-acc); }
+.edge[data-s="new"] .elbl, .edge[data-s="path"] .elbl, .edge[data-s="task"] .elbl { fill: var(--accent); font-weight: 600; }
+.mk-cand { fill: var(--cand); } .mk-ok { fill: var(--ok); } .mk-warn { fill: var(--warn); } .mk-acc { fill: var(--accent); }
+.badge { display: none; }
+.badge circle { fill: var(--accent); }
+.badge text { font-size: 10.5px; font-weight: 600; fill: var(--surface); text-anchor: middle; }
+.badge .tag { font-size: 11px; font-family: var(--mono); fill: var(--accent); font-weight: 500; }
+.g-svg[data-step="4"] .b4, .g-svg[data-step="6"] .b6, .g-svg[data-step="7"] .b6 { display: inline; }
+.zone rect { fill: none; stroke: var(--faint); stroke-dasharray: 4 4; }
+.zone text { font-size: 10.5px; font-family: var(--mono); fill: var(--faint); letter-spacing: .06em; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .82rem; color: var(--muted); padding: 2px 4px; }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.stepper { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 860px) { .stepper { grid-template-columns: minmax(0, 1fr); } }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dots { display: flex; gap: 5px; flex-wrap: wrap; }
+.btn { font: 500 .86rem var(--sans); padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:focus-visible, .dot:focus-visible, .tab:focus-visible, .tk:focus-visible, .flt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn.primary:hover { color: var(--surface); filter: brightness(1.08); }
+.btn:disabled { opacity: .4; cursor: default; }
+.dot { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); font: 500 .8rem var(--mono); cursor: pointer; }
+.dot[aria-current="step"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.step-title { font: 700 1.15rem/1.3 var(--head); }
+.who { display: flex; flex-wrap: wrap; gap: 6px; }
+.extra { border-top: 1px dashed var(--line); padding-top: 12px; display: grid; gap: 8px; font-size: .92rem; }
+.extra dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; }
+.extra dt { font: 500 .74rem/1.9 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.extra dd { margin: 0; min-width: 0; }
+.intent { font-style: italic; }
+.gates { list-style: none; padding: 0; display: grid; gap: 6px; }
+.gates li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; margin: 0; }
+.gates li::before { content: "\2713"; color: var(--ok); font-weight: 700; }
+.inspector h3 { font-size: 1rem; }
+
+/* JSON */
+pre.json { font: 12.3px/1.58 var(--mono); background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 12px 0; overflow-x: auto; margin: 0; white-space: pre; tab-size: 2; }
+pre.json .jc { display: inline-block; min-width: 100%; }
+pre.json .l { display: block; padding: 0 16px; min-height: 1.58em; }
+pre.json .l.ext { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.j-key { color: var(--ink); font-weight: 500; }
+.j-str { color: var(--ok); }
+.j-num { color: var(--warn); }
+.j-lit { color: var(--bad); }
+.j-cmt { color: var(--faint); font-style: italic; }
+mark.ph { background: var(--warn-soft); color: var(--warn); border-radius: 3px; padding: 0 2px; }
+
+/* Tables */
+.tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+.tw.minw table { min-width: 680px; }
+th, td { padding: 10px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font: 500 .72rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); background: var(--surface-2); }
+td.c { text-align: center; }
+.yes { color: var(--ok); font-weight: 600; }
+.no { color: var(--faint); }
+.pass { color: var(--ok); font-weight: 600; }
+.fail { color: var(--bad); font-weight: 600; }
+
+/* Tabs */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab { font: 500 .86rem var(--sans); padding: 8px 13px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; text-align: left; }
+.tab small { display: block; font: 400 .72rem var(--mono); color: var(--faint); }
+.tab[aria-selected="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.tab[aria-selected="true"] small { color: var(--accent); }
+.ex { display: grid; gap: 14px; }
+.ex .side { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); align-items: start; }
+@media (max-width: 860px) { .ex .side { grid-template-columns: minmax(0, 1fr); } }
+.ex .rec-label { font: 500 .73rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+td.mono { white-space: nowrap; }
+.ex-intent { font: italic 1.02rem/1.5 var(--sans); }
+
+/* Tickets */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.flt { font: 500 .82rem var(--sans); padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); cursor: pointer; }
+.flt[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.waves { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1100px) { .waves { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .waves { grid-template-columns: minmax(0, 1fr); } }
+.wave { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.wave h4 { margin: 0 0 2px; font: 500 .72rem var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.tk { text-align: left; font: .82rem/1.35 var(--sans); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: grid; gap: 3px; transition: opacity .2s; min-width: 0; }
+.tk b { font: 500 .72rem var(--mono); color: var(--muted); }
+.tk.sib { border-style: dashed; background: var(--surface-2); }
+.tk.up { border-color: var(--warn); background: var(--warn-soft); }
+.tk.down { border-color: var(--accent); background: var(--accent-soft); }
+.tk.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.tk.faded { opacity: .3; }
+.sibrow { display: grid; gap: 6px; }
+.sibs { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.tk-detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: .9rem; }
+.tk-detail dt { font: 500 .72rem/1.9 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.tk-detail dd { margin: 0; min-width: 0; }
+
+/* Questions */
+.q { display: grid; gap: 8px; }
+.q .top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.q h3 { font-size: 1rem; }
+.q .sugg { font-size: .9rem; border-top: 1px dashed var(--line); padding-top: 8px; }
+.q .sugg b { font-weight: 600; }
+.terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 22px; margin: 0; }
+.terms div { display: grid; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.terms dt { font-weight: 600; }
+.terms dd { margin: 0; color: var(--muted); font-size: .9rem; }
+.foot { margin-top: 48px; font-size: .84rem; color: var(--faint); }
+</style>
+</head>
+<body>
+<div class="shell">
+<nav class="toc" aria-label="Contents">
+  <a class="brand" href="#summary">Task generation review</a>
+  <ol>
+    <li><a href="#summary">Summary and review asks</a></li>
+    <li><a href="#pipeline">1. How it works</a></li>
+    <li><a class="sub" href="#graph">1.1 The graph, step by step</a></li>
+    <li><a class="sub" href="#verify">1.2 How we verify</a></li>
+    <li><a href="#schema">2. Task schema</a></li>
+    <li><a class="sub" href="#examples">2.1 Five examples</a></li>
+    <li><a href="#trial">3. Trial: 2 shops</a></li>
+    <li><a class="sub" href="#tickets">3.1 Implementation plan</a></li>
+    <li><a href="#questions">4. Open questions</a></li>
+    <li><a class="sub" href="#decisions">4.1 Decisions</a></li>
+    <li><a class="sub" href="#prior">4.2 Prior art</a></li>
+    <li><a class="sub" href="#scope">4.3 Scope and terms</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="kicker">ShopGym design review &middot; 2026-10-29</div>
+  <h1>Task generation: BFS + explore</h1>
+  <p class="lede">A plan to make shopping Tasks that are proven solvable and graded by code. The same method runs on a SandboxShop and on a real Shopify shop, so that we can compare an agent's results on both.</p>
+  <div class="meta">
+    <span class="chip">spec: ready-for-agent</span>
+    <span class="chip">parent: task-b1d2b014ab34</span>
+    <span class="chip">21 tickets</span>
+    <span class="chip">new package: @shop-gym/task-generation</span>
+    <span class="chip warn">ShopGuru: deprecated</span>
+  </div>
+</header>
+
+<section id="summary" class="first">
+  <div class="sec-head">
+    <div class="kicker">Summary</div>
+    <h2>In one minute</h2>
+  </div>
+  <div class="grid wide">
+    <div class="card"><h3>What we build</h3><p>A new package and command: <code>shopgym tasks --config &lt;path&gt; [--from &lt;step&gt;]</code>. It runs four Steps: explore, expand, compose, validate. ShopGuru keeps working, but it gets no new features.</p></div>
+    <div class="card"><h3>How it works</h3><p>An LLM Explorer agent proposes. Code replays and accepts. BFS grows the Interaction graph and tries what the agent skipped. An LLM writes the intent. Code writes the Checks from the state diff.</p></div>
+    <div class="card"><h3>Why we can trust a Task</h3><p>A Task is Accepted only after 4 gates: grounding, a Validation agent run from the intent alone, check tests, and 2 fresh replays. No LLM judge grades any Task.</p></div>
+    <div class="card"><h3>First trial</h3><p><code>mock_clothing_v2</code> plus 1 apparel Live storefront. Target: 30 Accepted tasks per shop. The report gives yield, cost and how often Page checks disagree with Backend checks.</p></div>
+  </div>
+  <div class="tiles">
+    <div class="tile"><b>4</b><span>Steps in the pipeline</span></div>
+    <div class="tile"><b>2 of 2</b><span>fresh replays to accept an Edge</span></div>
+    <div class="tile"><b>7</b><span>intent classes (2 on the Live storefront)</span></div>
+    <div class="tile"><b>&ge; 3</b><span>Accepted tasks per class per shop</span></div>
+    <div class="tile"><b>30</b><span>Accepted tasks per shop (target)</span></div>
+    <div class="tile"><b>21</b><span>tickets, 8 can start now</span></div>
+  </div>
+  <div class="card">
+    <h3>What we ask the team to review</h3>
+    <ol class="asks">
+      <li><span><b>Graph rules.</b> Are "2 of 2 fresh replays", "flaky after 2 failures" and "split only when outcomes repeat" the right strictness? (<a href="#verify">1.2</a>)</span></li>
+      <li><span><b>Task record.</b> Does WebArena's format plus <code>state_check</code> and <code>metadata</code> work for our RL environment? How should a Check say "exactly these lines, in any order"? (<a href="#schema">2</a>, <a href="#questions">4</a>)</span></li>
+      <li><span><b>Trial bar.</b> Is 30 per shop, with at least 3 per intent class, the right bar? Which Live storefront do we use? (<a href="#trial">3</a>)</span></li>
+      <li><span><b>Models.</b> Is it OK that claude-opus-5-5 both writes intents and validates them, and so can never be an evaluated model? (<a href="#questions">4</a>)</span></li>
+      <li><span><b>Cost.</b> What cost per Accepted task makes BFS + explore worth keeping? We suggest that we agree on a limit before the trial. (<a href="#questions">4</a>)</span></li>
+    </ol>
+  </div>
+</section>
+
+<section id="pipeline">
+  <div class="sec-head">
+    <div class="kicker">Focus 1 &middot; Algorithm</div>
+    <h2>1. How it works: four Steps</h2>
+    <p class="muted">Each Step writes files. <code>--from &lt;step&gt;</code> runs one Step again, and every Step after it, without the work before it. This is the same pattern as <code>shopgym explore</code> and <code>shopgym gen</code>.</p>
+  </div>
+  <figure>
+    <div class="fig">
+      <svg class="d-svg" viewBox="0 0 960 272" role="img" aria-label="Three of the four Steps use the shop through the browser. Compose is offline. Each Step hands a file set to the next one.">
+        <defs>
+          <marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+        </defs>
+        <rect class="d-band" x="20" y="12" width="920" height="46" rx="10"/>
+        <text class="d-t" x="480" y="34" text-anchor="middle">Shop under test</text>
+        <text class="d-s" x="480" y="50" text-anchor="middle">SandboxShop (mock_clothing_v2) or Live storefront (guest only). UI plus /cart.js. Sandbox only: read-only StateSnapshot.</text>
+        <line class="d-ln" x1="110" y1="60" x2="110" y2="102" marker-end="url(#pa)"/>
+        <text class="d-lbl" x="118" y="86">browse</text>
+        <line class="d-ln" x1="356" y1="60" x2="356" y2="102" marker-end="url(#pa)"/>
+        <text class="d-lbl" x="364" y="86">replay, try controls</text>
+        <text class="d-s" x="602" y="86" text-anchor="middle" font-style="italic">no browser</text>
+        <line class="d-ln" x1="848" y1="60" x2="848" y2="102" marker-end="url(#pa)"/>
+        <text class="d-lbl" x="856" y="86">solve, replay</text>
+        <g>
+          <rect class="d-box" x="20" y="104" width="180" height="84" rx="10"/>
+          <text class="d-m" x="36" y="128">STEP 1</text>
+          <text class="d-t" x="36" y="149">explore</text>
+          <text class="d-s" x="36" y="167">Explorer agent, area by area</text>
+          <rect class="d-box" x="266" y="104" width="180" height="84" rx="10"/>
+          <text class="d-m" x="282" y="128">STEP 2</text>
+          <text class="d-t" x="282" y="149">expand</text>
+          <text class="d-s" x="282" y="167">replay, BFS, Action chooser</text>
+          <rect class="d-box" x="512" y="104" width="180" height="84" rx="10"/>
+          <text class="d-m" x="528" y="128">STEP 3</text>
+          <text class="d-t" x="528" y="149">compose</text>
+          <text class="d-s" x="528" y="167">intent writer + Check builder</text>
+          <rect class="d-box" x="758" y="104" width="180" height="84" rx="10"/>
+          <text class="d-m" x="774" y="128">STEP 4</text>
+          <text class="d-t" x="774" y="149">validate</text>
+          <text class="d-s" x="774" y="167">4 gates + Validation agent</text>
+        </g>
+        <line class="d-ln" x1="200" y1="146" x2="264" y2="146" marker-end="url(#pa)"/>
+        <line class="d-ln" x1="446" y1="146" x2="510" y2="146" marker-end="url(#pa)"/>
+        <line class="d-ln" x1="692" y1="146" x2="756" y2="146" marker-end="url(#pa)"/>
+        <rect class="d-pill" x="30" y="202" width="160" height="28" rx="14"/>
+        <text class="d-m" x="110" y="220" text-anchor="middle">candidate Edges</text>
+        <rect class="d-pill" x="276" y="202" width="160" height="28" rx="14"/>
+        <text class="d-m" x="356" y="220" text-anchor="middle">Interaction graph</text>
+        <rect class="d-pill" x="522" y="202" width="160" height="28" rx="14"/>
+        <text class="d-m" x="602" y="220" text-anchor="middle">candidate Tasks</text>
+        <rect class="d-pill" x="768" y="202" width="160" height="28" rx="14"/>
+        <text class="d-m" x="848" y="220" text-anchor="middle">Accepted + rejected</text>
+        <text class="d-s" x="20" y="260">Output: Task files (WebArena format + state_check + metadata) and a per-shop report. Rejected candidates keep a failure class.</text>
+      </svg>
+    </div>
+    <figcaption>Three Steps use the shop through the browser. Compose works offline on the graph. Each Step writes files that the next Step reads.</figcaption>
+  </figure>
+
+  <div class="card">
+    <h3>Who decides: the LLMs propose, code decides</h3>
+    <p class="small muted">Four roles use an LLM. Every decision that lets something into the graph or into the benchmark is made by code, or by the Validation agent's real run in the browser.</p>
+    <div class="tw minw">
+      <table>
+        <thead><tr><th>Job</th><th>Done by</th><th>Default model</th></tr></thead>
+        <tbody>
+          <tr><td>Plan the areas to explore</td><td><span class="chip llm">LLM</span> Explorer agent planner, <span class="chip code">code</span> plan verifier fails a plan that misses a required area</td><td class="mono">claude-sonnet-5-5</td></tr>
+          <tr><td>Browse and propose Edges</td><td><span class="chip llm">LLM</span> Explorer agent executor, one Iteration per area</td><td class="mono">claude-sonnet-5-5</td></tr>
+          <tr><td>Accept or reject an Edge</td><td><span class="chip code">code</span> replayer: Fresh context, shortest checked path, 2 of 2</td><td class="no">none</td></tr>
+          <tr><td>List the controls on a page</td><td><span class="chip code">code</span> dedupe by role, masked name and page region</td><td class="no">none</td></tr>
+          <tr><td>Pick the controls to try, and the text to type</td><td><span class="chip llm">LLM</span> Action chooser, within a per-node cap</td><td class="mono">claude-sonnet-5-5</td></tr>
+          <tr><td>Split a node</td><td><span class="chip code">code</span> only when outcomes repeat</td><td class="no">none</td></tr>
+          <tr><td>Write the intent</td><td><span class="chip llm">LLM</span> intent writer, from the goal change</td><td class="mono">claude-opus-5-5</td></tr>
+          <tr><td>Build the Checks</td><td><span class="chip code">code</span> from the before/after diff</td><td class="no">none</td></tr>
+          <tr><td>Prove that the Task can be solved</td><td><span class="chip llm">LLM</span> Validation agent (pi), from the intent and the start URL only</td><td class="mono">claude-opus-5-5</td></tr>
+          <tr><td>Grounding, check tests, replays, difficulty</td><td><span class="chip code">code</span></td><td class="no">none</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">All four models are configurable. Each Task records the models that made it. The Validation agent must never be a model that we evaluate.</p>
+  </div>
+</section>
+
+<section id="graph">
+  <div class="sec-head">
+    <div class="kicker">Focus 1 &middot; Algorithm</div>
+    <h2>1.1 The Interaction graph, step by step</h2>
+    <p class="muted">A small example graph of a SandboxShop, seen as a guest. Product names come from today's <code>mock_clothing</code>. On a Live storefront the same graph stops at Cart. Use the step buttons. Select a node to see its keys.</p>
+  </div>
+
+  <figure>
+    <div class="fig">
+      <svg class="g-svg" id="gsvg" viewBox="0 0 960 470" role="img" aria-label="Example Interaction graph. Nodes are page types with cart and sign-in flags. Edges are single UI actions. The steps show candidate Edges, replay checks, BFS expansion, return to a state, a node split, a candidate Task and acceptance.">
+        <defs>
+          <marker id="mk-cand" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-cand"/></marker>
+          <marker id="mk-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-ok"/></marker>
+          <marker id="mk-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-warn"/></marker>
+          <marker id="mk-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-acc"/></marker>
+        </defs>
+
+        <g class="zone"><rect x="462" y="378" width="408" height="84" rx="12"/><text x="472" y="372">SANDBOXSHOP ONLY</text></g>
+
+        <g class="edge" data-id="e5"><path class="eln" d="M90 114 C90 44 550 44 550 112"/><text class="elbl" x="320" y="52" text-anchor="middle">Hero banner: Shop now</text></g>
+        <g class="edge" data-id="e1"><path class="eln" d="M165 140 H243"/><text class="elbl" x="204" y="131" text-anchor="middle">Menu link</text></g>
+        <g class="edge" data-id="e2"><path class="eln" d="M395 140 H473"/><text class="elbl" x="434" y="131" text-anchor="middle">Product card</text></g>
+        <g class="edge" data-id="e3"><path class="eln" d="M625 140 H703"/><text class="elbl" x="664" y="131" text-anchor="middle">Add to cart</text></g>
+        <g class="edge" data-id="e4"><path class="eln" d="M780 166 V262"/><text class="elbl" x="796" y="219">Cart icon</text></g>
+        <g class="edge" data-id="e6"><path class="eln" d="M855 279 C912 262 912 318 857 301"/><text class="elbl" x="900" y="336" text-anchor="middle">+ quantity</text><text class="elbl" x="900" y="351" text-anchor="middle">Joggers M: 1 &#8594; 2</text></g>
+        <g class="edge" data-id="e7"><path class="eln" d="M705 290 H627"/><text class="elbl" x="666" y="281" text-anchor="middle">Remove</text></g>
+        <g class="edge" data-id="e8"><path class="eln" d="M780 316 V392"/><text class="elbl" x="796" y="358">Check out</text></g>
+        <g class="edge" data-id="e9"><path class="eln" d="M705 420 H627"/><text class="elbl" x="666" y="411" text-anchor="middle">Pay</text></g>
+        <g class="edge" data-id="e10"><path class="eln" d="M320 166 V262"/><text class="elbl" x="336" y="219">Sold-out card</text></g>
+        <g class="edge" data-id="e11"><path class="eln" d="M245 279 C188 262 188 318 243 301"/><text class="elbl" x="196" y="336" text-anchor="middle">Add to cart:</text><text class="elbl" x="196" y="351" text-anchor="middle">no change</text></g>
+
+        <g class="node" data-id="H" tabindex="0" role="button" aria-label="Home node"><rect x="15" y="114" width="150" height="52" rx="9"/><text class="t" x="90" y="136" text-anchor="middle">Home</text><text class="f" x="90" y="154" text-anchor="middle">empty &#183; guest</text></g>
+        <g class="node" data-id="C" tabindex="0" role="button" aria-label="Collection node"><rect x="245" y="114" width="150" height="52" rx="9"/><text class="t" x="320" y="136" text-anchor="middle">Collection</text><text class="f" x="320" y="154" text-anchor="middle">empty &#183; guest</text></g>
+        <g class="node" data-id="P" tabindex="0" role="button" aria-label="Product node"><rect x="475" y="114" width="150" height="52" rx="9"/><text class="t" x="550" y="136" text-anchor="middle">Product</text><text class="f" x="550" y="154" text-anchor="middle">empty &#183; guest</text></g>
+        <g class="node" data-id="PI" tabindex="0" role="button" aria-label="Product with items in cart node"><rect x="705" y="114" width="150" height="52" rx="9"/><text class="t" x="780" y="136" text-anchor="middle">Product</text><text class="f" x="780" y="154" text-anchor="middle">items &#183; guest</text></g>
+        <g class="node" data-id="PS" tabindex="0" role="button" aria-label="Sold-out product node"><rect x="245" y="264" width="150" height="52" rx="9"/><text class="t" x="320" y="286" text-anchor="middle">Product &#183; sold out</text><text class="f" x="320" y="304" text-anchor="middle">empty &#183; guest</text></g>
+        <g class="node" data-id="CE" tabindex="0" role="button" aria-label="Empty cart node"><rect x="475" y="264" width="150" height="52" rx="9"/><text class="t" x="550" y="286" text-anchor="middle">Cart</text><text class="f" x="550" y="304" text-anchor="middle">empty &#183; guest</text></g>
+        <g class="node" data-id="CI" tabindex="0" role="button" aria-label="Cart with items node"><rect x="705" y="264" width="150" height="52" rx="9"/><text class="t" x="780" y="286" text-anchor="middle">Cart</text><text class="f" x="780" y="304" text-anchor="middle">items &#183; guest</text></g>
+        <g class="node" data-id="CF" tabindex="0" role="button" aria-label="Checkout confirmation node"><rect x="475" y="394" width="150" height="52" rx="9"/><text class="t" x="550" y="416" text-anchor="middle">Confirmation</text><text class="f" x="550" y="434" text-anchor="middle">empty &#183; guest</text></g>
+        <g class="node" data-id="CK" tabindex="0" role="button" aria-label="Checkout node"><rect x="705" y="394" width="150" height="52" rx="9"/><text class="t" x="780" y="416" text-anchor="middle">Checkout</text><text class="f" x="780" y="434" text-anchor="middle">items &#183; guest</text></g>
+
+        <g class="badge b4"><circle cx="204" cy="155" r="8"/><text x="204" y="159">1</text></g>
+        <g class="badge b4"><circle cx="434" cy="155" r="8"/><text x="434" y="159">2</text></g>
+        <g class="badge b4"><circle cx="664" cy="155" r="8"/><text x="664" y="159">3</text></g>
+        <g class="badge b4"><circle cx="766" cy="214" r="8"/><text x="766" y="218">4</text></g>
+        <g class="badge b6"><text class="tag" x="90" y="186" text-anchor="middle">start: cart empty</text></g>
+        <g class="badge b6"><text class="tag" x="770" y="338" text-anchor="end">goal: Joggers M &#215; 2</text></g>
+      </svg>
+    </div>
+    <div class="legend" aria-label="Legend">
+      <span><svg width="34" height="10" aria-hidden="true"><line x1="0" y1="5" x2="34" y2="5" stroke="var(--cand)" stroke-width="2" stroke-dasharray="6 5"/></svg>candidate Edge</span>
+      <span><svg width="34" height="10" aria-hidden="true"><line x1="0" y1="5" x2="34" y2="5" stroke="var(--ok)" stroke-width="2"/></svg>verified (2 of 2 replays)</span>
+      <span><svg width="34" height="10" aria-hidden="true"><line x1="0" y1="5" x2="34" y2="5" stroke="var(--warn)" stroke-width="2.4" stroke-dasharray="2 4"/></svg>flaky (kept, not used)</span>
+      <span><svg width="34" height="10" aria-hidden="true"><line x1="0" y1="5" x2="34" y2="5" stroke="var(--accent)" stroke-width="3"/></svg>new in this step, or the path in use</span>
+    </div>
+  </figure>
+
+  <div class="stepper">
+    <div class="card" aria-live="polite">
+      <div class="controls">
+        <button class="btn" id="prev" type="button">&#8592; Back</button>
+        <div class="dots" id="dots" role="group" aria-label="Steps"></div>
+        <button class="btn primary" id="next" type="button">Next &#8594;</button>
+      </div>
+      <div class="step-title" id="stitle"></div>
+      <div id="sbody" class="stack"></div>
+      <div class="who" id="swho"></div>
+      <div id="sextra"></div>
+    </div>
+    <div class="card inspector">
+      <div class="kicker">Node inspector</div>
+      <h3 id="ntitle">Select a node</h3>
+      <p class="small muted" id="nnote"></p>
+      <div class="small"><b>Abstract node</b> <span class="muted">(BFS works on this key)</span></div>
+      <pre class="json" id="nabs"></pre>
+      <div class="small"><b>Concrete node</b> <span class="muted">(replay checks this key after every step)</span></div>
+      <pre class="json" id="ncon"></pre>
+    </div>
+  </div>
+</section>
+
+<section id="verify">
+  <div class="sec-head">
+    <div class="kicker">Focus 1 &middot; Verification</div>
+    <h2>1.2 How we verify the graph and the Tasks</h2>
+    <p class="muted">Two levels of proof. First, each Edge must reproduce. Then, each candidate Task must pass four gates.</p>
+  </div>
+
+  <h3>Edge life cycle</h3>
+  <figure>
+    <div class="fig">
+      <svg class="d-svg" viewBox="0 0 800 226" role="img" aria-label="A candidate Edge becomes verified after 2 of 2 fresh replays. It becomes flaky after 2 replay failures and is kept. If its source cannot be reached, its target goes on the missed list. One failure only causes a retry.">
+        <defs>
+          <marker id="la" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+          <marker id="la-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ok"/></marker>
+          <marker id="la-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-warn"/></marker>
+          <marker id="la-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-bad"/></marker>
+        </defs>
+        <rect class="d-box" x="20" y="90" width="150" height="48" rx="10" stroke-dasharray="6 4"/>
+        <text class="d-t" x="95" y="112" text-anchor="middle">Candidate</text>
+        <text class="d-s" x="95" y="128" text-anchor="middle">from agent or BFS</text>
+        <rect class="d-box d-ok" x="355" y="21" width="150" height="48" rx="10"/>
+        <text class="d-t" x="430" y="50" text-anchor="middle">Verified</text>
+        <rect class="d-box d-warn" x="355" y="90" width="150" height="48" rx="10"/>
+        <text class="d-t" x="430" y="119" text-anchor="middle">Flaky</text>
+        <rect class="d-box d-bad" x="355" y="160" width="150" height="48" rx="10"/>
+        <text class="d-t" x="430" y="189" text-anchor="middle">Missed target</text>
+        <path class="d-ln d-ok" d="M170 106 H232 V45 H353" marker-end="url(#la-ok)"/>
+        <text class="d-lbl" x="292" y="38" text-anchor="middle">2 of 2 pass</text>
+        <path class="d-ln d-warn" d="M170 114 H353" marker-end="url(#la-warn)"/>
+        <text class="d-lbl" x="292" y="107" text-anchor="middle">2 replay failures</text>
+        <path class="d-ln d-bad" d="M170 122 H232 V184 H353" marker-end="url(#la-bad)"/>
+        <text class="d-lbl" x="292" y="177" text-anchor="middle">source not reached</text>
+        <path class="d-ln" d="M66 138 C56 190 134 190 124 140" marker-end="url(#la)"/>
+        <text class="d-lbl" x="95" y="206" text-anchor="middle">1 failure: try again</text>
+        <text class="d-s" x="522" y="42">BFS grows from it. Tasks may use it.</text>
+        <text class="d-s" x="522" y="58">Accepted only by replaying our own path.</text>
+        <text class="d-s" x="522" y="111">Kept and reported. Never deleted.</text>
+        <text class="d-s" x="522" y="127">No Task uses it.</text>
+        <text class="d-s" x="522" y="181">Goes on the missed list.</text>
+        <text class="d-s" x="522" y="197">Reported as a coverage gap.</text>
+      </svg>
+    </div>
+    <figcaption>One bad observation never deletes an Edge. A replay also fails when a locator's match count changes, for example when a banner adds a second "Shop now" link. So replay never clicks the wrong element.</figcaption>
+  </figure>
+
+  <div class="grid">
+    <div class="card">
+      <span class="chip">nodes</span>
+      <h3>Two levels of node</h3>
+      <p class="small"><b>Abstract node</b> = page type from the URL pattern, plus 2 flags: cart empty or not, signed in or not. BFS uses it, so the graph stays small.</p>
+      <p class="small"><b>Concrete node</b> = the Abstract node plus the exact <code>/cart.js</code> lines, the product shown, the selected variant, the quantity input value and allowlisted query parameters. In a SandboxShop it also holds an account signature from the StateSnapshot. Replay uses it, so a replay is exact.</p>
+    </div>
+    <div class="card">
+      <span class="chip">self-loops</span>
+      <h3>Quantity is a tagged self-loop</h3>
+      <p class="small">"+" on the cart page does not change the Abstract node. So it is a self-loop, tagged with its cart-line diff ("Joggers M: 1 &#8594; 2"). Quantity workflows become Tasks, and there is no node per quantity. A cap limits self-loops per path.</p>
+    </div>
+    <div class="card">
+      <span class="chip">splitting</span>
+      <h3>Split only when outcomes repeat</h3>
+      <p class="small">A node splits only when one control gives different outcomes on pages of the same Abstract node, and each outcome repeats at its own Concrete node. The split feature comes from a fixed list: has variants, sold out, has a quantity input. If the outcomes do not repeat, the Edge is flaky.</p>
+    </div>
+    <div class="card">
+      <span class="chip">controls</span>
+      <h3>Do not spend budget on copies</h3>
+      <p class="small">Code removes duplicate controls by role, masked name (digits and prices hidden) and page region. Listing pages sample 1 to 3 product cards by their features. A control counts as tried only after its outcome is recorded.</p>
+    </div>
+  </div>
+
+  <h3>Budgets per shop</h3>
+  <div class="tiles">
+    <div class="tile"><b>6</b><span>depth, in semantic transitions</span></div>
+    <div class="tile"><b>50</b><span>Abstract nodes</span></div>
+    <div class="tile"><b>4,000</b><span>primitive browser actions, prefix replays included</span></div>
+    <div class="tile"><b>caps</b><span>controls per node, Concrete nodes per Abstract node, self-loops per path</span></div>
+  </div>
+  <p class="small muted">We calibrate the budgets on the development SandboxShop, then freeze them. The untested frontier is kept and reported. The graph is cached by storefront, backend and Dataset versions (sandbox), or by URL, capture time, locale and evidence fingerprints (live).</p>
+
+  <h3>Acceptance: four gates after compose</h3>
+  <div class="tw minw">
+    <table>
+      <thead><tr><th>Gate</th><th>What it checks</th><th>If it fails</th></tr></thead>
+      <tbody>
+        <tr><td><b>0. Dedupe</b> <span class="muted small">(in compose)</span></td><td>One candidate per workflow-goal signature: intent class, constraint structure and required state changes, without product ids or wording.</td><td><span class="chip">dropped as duplicate</span></td></tr>
+        <tr><td><b>1. Grounding</b></td><td>Every value in the Checks comes from the intent, the start state or a fact that was visible on a page of the path. In a SandboxShop, a selection rule ("highest-rated") must have exactly one answer in the Dataset. A tie rejects.</td><td><span class="chip bad">task defect</span></td></tr>
+        <tr><td><b>2. Validation agent</b></td><td>pi with the standard browser tools, pinned to one model. The runner replays the Setup steps in a Fresh context and confirms the start signature. The agent gets only the intent and the start URL, and must end at <code>finish</code> with the Checks passing.</td><td><span class="chip warn">environment failure</span> if the start signature does not match. Otherwise unresolved, with a class: <span class="chip bad">task defect</span> or <span class="chip">validator failure</span></td></tr>
+        <tr><td><b>3. Check tests</b></td><td>No browser. Valid alternatives must pass (other action orders from the graph). Targeted violations must fail: unchanged start, wrong quantity, wrong variant, missing kept line, extra line, old matching order, no code, wrong code, code that does not apply, wrong address, wrong default address, recovery request for another email.</td><td><span class="chip bad">task defect</span> (the Check is wrong)</td></tr>
+        <tr><td><b>4. Two fresh replays</b></td><td>The reference path, replayed twice in Fresh contexts, must pass the Checks both times.</td><td><span class="chip warn">environment failure</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="small muted">After the gates, difficulty comes from the efficient replay's count of primitive browser actions: Easy &le; 3, Medium 4 to 9, Hard &ge; 10. Structure tags add constraint count, cross-page evidence and planning. Shortages are reported. We never relax a gate to reach 30.</p>
+</section>
+
+<section id="schema">
+  <div class="sec-head">
+    <div class="kicker">Focus 2 &middot; Task schema</div>
+    <h2>2. The Task record</h2>
+    <p class="muted">WebArena's task config, unchanged, plus 2 ShopGym extensions: a <code>state_check</code> eval type and a <code>metadata</code> object. It is a new schema in <code>@shop-gym/core</code>. The legacy ShopGuru Task schema stays as it is until ShopGuru is removed.</p>
+  </div>
+  <div class="grid wide">
+    <div class="card">
+      <span class="chip">WebArena, unchanged</span>
+      <ul class="small">
+        <li><code>sites</code>, <code>task_id</code></li>
+        <li><code>require_login</code>, <code>storage_state</code>: always null. A Persona logs in through the login form in the Setup steps.</li>
+        <li><code>start_url</code>: <code>__SHOP__</code> plus a path. The shop is resolved only at run time.</li>
+        <li><code>geolocation</code></li>
+        <li><code>intent</code>: a shopper's goal, not the clicks.</li>
+        <li><code>require_reset</code>: true for every Task that changes state.</li>
+        <li><code>intent_template</code>, <code>instantiation_dict</code>, <code>intent_template_id</code>: empty for BFS + explore.</li>
+        <li><code>eval</code>: <code>eval_types</code>, <code>reference_answers</code>, <code>reference_url</code>, <code>program_html</code>, <code>string_note</code>, <code>reference_answer_raw_annotation</code>.</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color: var(--accent);">
+      <span class="chip llm">ShopGym extensions</span>
+      <ul class="small">
+        <li><code>eval.state_check</code>: a list of <code>{path, match, value}</code>. <code>path</code> is a JSON pointer into the StateSnapshot. <code>match</code> is <code>equals</code>, <code>subset</code> or <code>some</code>.</li>
+        <li><code>metadata.target</code>: kind, and the pinned graph or evidence version.</li>
+        <li><code>metadata.intent_class</code>, <code>difficulty</code>, <code>structure</code>, <code>grading</code> (always programmatic for now).</li>
+        <li><code>metadata.setup</code>: Setup steps, the expected start signature, an optional Persona.</li>
+        <li><code>metadata.reference</code>: the validated UI trace.</li>
+        <li><code>metadata.equivalence</code>: ignored paths such as ids and timestamps.</li>
+        <li><code>metadata.method</code>: Generation method, inputs, source records.</li>
+        <li><code>metadata.models</code>, <code>validation</code>, <code>check_tests</code>, <code>replays</code>, <code>evidence</code> (append-only, written by the pipeline).</li>
+      </ul>
+      <p class="small muted">Dropped from the earlier v2 contract: <code>hiddenSpec</code>, <code>oracle</code> as a list of GraphQL mutations, and <code>source</code> as proposer or hardening.</p>
+    </div>
+  </div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Shop kind</th><th>Check that decides</th><th>Check that is only recorded</th></tr></thead>
+      <tbody>
+        <tr><td>SandboxShop</td><td><b>Backend check</b>: <code>state_check</code> on the StateSnapshot</td><td><b>Page check</b>: <code>program_html</code> on <code>/cart.js</code>, the confirmation page or the account pages. We count how often it disagrees with the Backend check.</td></tr>
+        <tr><td>Live storefront</td><td><b>Page check</b>: <code>program_html</code> on <code>/cart.js</code></td><td class="no">none (no backend access)</td></tr>
+        <tr><td>Read Tasks (sandbox)</td><td><code>string_match</code> with <code>reference_answers</code>. The grader normalizes numbers, currency, dates, whitespace and case, and compares lists as sets.</td><td class="no">none</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sub-head" id="examples">
+    <div class="kicker">Focus 2 &middot; Examples</div>
+    <h3 style="font-size:1.3rem">2.1 Five example Tasks, with their check tests</h3>
+    <p class="muted small">The examples are illustrative. Product and variant ids come from today's <code>mock_clothing</code>. Persona data, Discount codes and Live storefront ids are made up. Blue lines are the ShopGym extensions. The check tests run in your browser with the same match rules as today's grader (<code>equals</code>, <code>subset</code>, <code>some</code>).</p>
+  </div>
+  <div class="tabs" role="tablist" id="extabs" aria-label="Example Tasks"></div>
+  <div id="expanel" role="tabpanel"></div>
+</section>
+
+<section id="trial">
+  <div class="sec-head">
+    <div class="kicker">Focus 3 &middot; Trial</div>
+    <h2>3. The first trial: 1 SandboxShop + 1 Live storefront</h2>
+    <p class="muted">Both shops are apparel, so that the Tasks are comparable. Target: 30 Accepted tasks per shop. The trial answers one question: is BFS + explore worth its cost?</p>
+  </div>
+  <div class="tw minw">
+    <table>
+      <thead><tr><th></th><th>SandboxShop: <code>mock_clothing_v2</code></th><th>Live storefront: 1 apparel shop</th></tr></thead>
+      <tbody>
+        <tr><td><b>Source</b></td><td>Generated by ShopArena after the <code>/cart.js</code> route lands, with the commerce features of task-50bc4d23931e.</td><td>A Shopify online-store shop that serves <code>/cart.js</code> and allows guest carts. Picked after a capability check. Headless shops are not eligible.</td></tr>
+        <tr><td><b>Clean state</b></td><td>New episode id. The backend forks a freshly seeded shop.</td><td>New guest browser context.</td></tr>
+        <tr><td><b>Sessions</b></td><td>Guest, and Personas that log in through the login form.</td><td>Guest only.</td></tr>
+        <tr><td><b>Never</b></td><td>Control API reset. Writes through a Shopify API.</td><td>Login. Checkout. The cart is emptied at the end of every context.</td></tr>
+        <tr><td><b>Reads</b></td><td>UI, <code>/cart.js</code>, and read-only backend reads: StateSnapshot effects, selection-rule uniqueness, grading.</td><td>UI and <code>/cart.js</code> only.</td></tr>
+        <tr><td><b>Deciding Check</b></td><td>Backend check. The Page check is recorded next to it.</td><td>Page check.</td></tr>
+        <tr><td><b>Intent classes</b></td><td>7</td><td>2: cart edits and budgeted baskets</td></tr>
+        <tr><td><b>Politeness</b></td><td class="no">not needed</td><td>The robots.txt, rate-limit, user-agent and bot-challenge gates of Storefront exploration.</td></tr>
+        <tr><td><b>When the shop changes</b></td><td>A new storefront, backend or Dataset version starts a new graph.</td><td>A Task is invalidated when its prices, stock or controls change. This is not an agent failure.</td></tr>
+        <tr><td><b>Privacy</b></td><td class="no">synthetic data</td><td>The URL lives only in an untracked config. Graphs, Tasks and trajectories stay in the gitignored outputs directory. Task files use <code>__SHOP__</code>. No output names the shop.</td></tr>
+        <tr><td><b>Data use</b></td><td>Can feed RL.</td><td>Held out. Never enters RL or Shop generation.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Intent classes per shop</h3>
+  <div class="tw minw">
+    <table>
+      <thead><tr><th>Intent class</th><th>Example intent</th><th class="c">Sandbox</th><th class="c">Live</th><th>Graded on</th></tr></thead>
+      <tbody>
+        <tr><td><b>Cart edits</b></td><td class="intent">"The joggers in my cart are too big. Swap them for size M, and keep the shorts."</td><td class="c yes">&ge; 3</td><td class="c yes">&ge; 3</td><td>cart diff</td></tr>
+        <tr><td><b>Budgeted baskets</b></td><td class="intent">"One pair of joggers and one pair of shorts, $90.00 or less."</td><td class="c yes">&ge; 3</td><td class="c yes">&ge; 3</td><td>cart diff + subtotal (sandbox: can be after the discount)</td></tr>
+        <tr><td><b>Discount codes</b></td><td class="intent">"Apply the code from the banner that works for this cart."</td><td class="c yes">&ge; 3</td><td class="c no">no</td><td>applied code + applicable flag, or the order's code and amount</td></tr>
+        <tr><td><b>Review-aware choices and reads</b></td><td class="intent">"Add the highest-rated jogger in size M." / "How many Verified Buyer reviews does it have?"</td><td class="c yes">&ge; 3</td><td class="c no">no</td><td>cart diff, or <code>string_match</code></td></tr>
+        <tr><td><b>Simulated checkout</b></td><td class="intent">"Check out with standard shipping to my default address."</td><td class="c yes">&ge; 3</td><td class="c no">no</td><td>the new order (old orders must not match)</td></tr>
+        <tr><td><b>Account and order reads</b></td><td class="intent">"Which of my orders has not shipped yet?"</td><td class="c yes">&ge; 3</td><td class="c no">no</td><td><code>string_match</code>, explicit dates (the Episode clock is frozen)</td></tr>
+        <tr><td><b>Account changes</b></td><td class="intent">"Add my work address. Keep my default address."</td><td class="c yes">&ge; 3</td><td class="c no">no</td><td>StateSnapshot customers, new customer, or recovery request</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="small muted">Live storefronts get no login, checkout, Discount code, Review or account Tasks. Live Reviews come from third-party apps with no shared shape, and a code is mostly applied at checkout, which is forbidden there.</p>
+
+  <div class="grid wide">
+    <div class="card">
+      <h3>What the per-shop report gives</h3>
+      <ul class="small">
+        <li>Candidates, Accepted tasks and yield, in total and per intent class</li>
+        <li>Cost per Accepted task: model tokens and USD, primitive browser actions, wall time</li>
+        <li>Replay stability</li>
+        <li>Disagreement rate between Page checks and Backend checks (sandbox)</li>
+        <li>Distinct workflow-goal signatures</li>
+        <li>Rejections by failure class</li>
+        <li>The untested frontier and the missed targets</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>What must be true before the trial</h3>
+      <ul class="small">
+        <li><code>/cart.js</code> is in the Storefront template (ticket 2) <b>before</b> <code>mock_clothing_v2</code> is generated. Ticket 2 now blocks task-e9afcad1e964, so this is enforced.</li>
+        <li>The commerce features of task-50bc4d23931e are done: Discount codes, Personas with orders, Reviews, address book, login and password recovery.</li>
+        <li>A Live storefront passes the capability check: serves <code>/cart.js</code>, allows guest carts, passes the robots.txt and bot-challenge gates.</li>
+        <li>Budgets are calibrated on the development SandboxShop, then frozen.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="sub-head" id="tickets">
+    <div class="kicker">Focus 3 &middot; Implementation plan</div>
+    <h3 style="font-size:1.3rem">3.1 Implementation plan: 21 tickets in 6 waves</h3>
+    <p class="muted small">Select a ticket to see what must finish first (amber) and what waits on it (blue). Dashed cards are sibling tickets of the <code>mock_clothing_v2</code> work. All tickets are tagged ready-for-agent in the project-manager vault.</p>
+  </div>
+  <div class="filters" role="group" aria-label="Filter tickets">
+    <button class="flt" type="button" data-f="all" aria-pressed="true">All</button>
+    <button class="flt" type="button" data-f="now" aria-pressed="false">Can start now</button>
+    <button class="flt" type="button" data-f="shared" aria-pressed="false">Shared packages (separate PRs)</button>
+    <button class="flt" type="button" data-f="v2" aria-pressed="false">Waits on mock_clothing_v2 work</button>
+    <button class="flt" type="button" data-f="tracer" aria-pressed="false">Path to the first Accepted task</button>
+  </div>
+  <div class="waves" id="waves"></div>
+  <div class="sibrow">
+    <div class="kicker" style="color:var(--muted)">Sibling blockers: mock_clothing_v2 work (task-50bc4d23931e)</div>
+    <div class="sibs" id="sibs"></div>
+  </div>
+  <div class="card tk-detail" id="tkdetail" aria-live="polite"></div>
+</section>
+
+<section id="questions">
+  <div class="sec-head">
+    <div class="kicker">Focus 4 &middot; Also important</div>
+    <h2>4. Open questions and risks</h2>
+    <p class="muted">Items that the spec leaves open, or that we found while we made the examples on this page. Items marked "suggestion" are not in the spec.</p>
+  </div>
+  <div class="grid wide">
+    <div class="card q">
+      <div class="top"><span class="chip bad">decide in ticket 9</span><span class="chip">found while writing this page</span></div>
+      <h3>How does a Check say "exactly these lines, in any order"?</h3>
+      <p class="small">Today's matchers cannot say it alone. <code>equals</code> compares arrays in order and counts every key, so a cart line's <code>id</code> breaks it. <code>subset</code> allows extra lines. Old orders are in the StateSnapshot too, so a checkout Check must look only at new orders.</p>
+      <p class="small sugg"><b>Suggestion:</b> the Task generation grader applies <code>metadata.equivalence</code> before it matches: drop ignored paths, compare listed arrays as multisets, and keep only orders whose ids are not in the start signature. The examples on this page use this shape (<code>ignore</code>, <code>unordered</code>, <code>orders: new_since_start</code>).</p>
+    </div>
+    <div class="card q">
+      <div class="top"><span class="chip warn">decide before the trial</span></div>
+      <h3>One model writes the intent and also validates it</h3>
+      <p class="small">The intent writer and the Validation agent are both claude-opus-5-5. They can share blind spots: an intent that only this model reads one way can still pass. Also, claude-opus-5-5 can never be an evaluated model. Today's solver audit set (gpt-5.6-luna, claude-sonnet-5-5, claude-haiku-5-5) does not include it, so the rule holds for now.</p>
+      <p class="small sugg"><b>Suggestion:</b> keep the defaults for the trial, but report the result if the Validation agent is a different model family on a sample of candidates.</p>
+    </div>
+    <div class="card q">
+      <div class="top"><span class="chip warn">watch in the trial</span></div>
+      <h3>The explorer's model is also an evaluated model</h3>
+      <p class="small">The Explorer agent and the Action chooser use claude-sonnet-5-5, which is in the audit set. Code checks every Edge, but what the explorer finds shapes the Task mix. This can favor workflows that this model finds easy.</p>
+      <p class="small sugg"><b>Suggestion:</b> look for this bias in the per-model results. BFS tries the skipped controls, which reduces it.</p>
+    </div>
+    <div class="card q">
+      <div class="top"><span class="chip warn">decide before the trial</span></div>
+      <h3>Cost is unknown until we calibrate</h3>
+      <p class="small">Each candidate Edge costs 2 replays of its prefix. Each candidate Task costs a Validation agent run on claude-opus-5-5. The budget is 4,000 primitive actions per shop, but the model cost per Accepted task is not known yet.</p>
+      <p class="small sugg"><b>Suggestion:</b> agree on a cost limit per Accepted task now, so that the keep-or-stop decision after the trial is objective.</p>
+    </div>
+    <div class="card q">
+      <div class="top"><span class="chip warn">decide before the trial</span></div>
+      <h3>Which Live storefront?</h3>
+      <p class="small">Required by the spec: apparel, a Shopify online store that serves <code>/cart.js</code>, guest carts, and it passes the robots.txt, rate-limit, user-agent and bot-challenge gates. Helpful: size variants, a quantity input, collections and search, some sold-out variants, one currency.</p>
+      <p class="small sugg"><b>Suggestion:</b> also read the shop's terms of service for automated browsing before we pick it.</p>
+    </div>
+    <div class="card q">
+      <div class="top"><span class="chip">known limit</span></div>
+      <h3>Live Page checks have no ground truth</h3>
+      <p class="small">On a Live storefront the Page check decides, and nothing checks it. The sandbox disagreement rate between Page checks and Backend checks is our only estimate of its error. Live Tasks are invalidated when prices, stock or controls change.</p>
+    </div>
+    <div class="card q">
+      <div class="top"><span class="chip">dependency</span></div>
+      <h3>Commerce classes wait on sibling work</h3>
+      <p class="small">Five intent classes need task-50bc4d23931e: Discount codes, Reviews, Personas with orders, the address book, login and password recovery. The pipeline, the shared browser and Harness changes, and the cart Tasks do not. If <code>mock_clothing_v2</code> is generated before ticket 2, we must generate it again.</p>
+    </div>
+    <div class="card q">
+      <div class="top"><span class="chip">confirm in ticket 2</span></div>
+      <h3>/cart.js parity with Shopify</h3>
+      <p class="small">The template route must use Shopify's AJAX cart field names, so that one Page check works on both kinds of shop. The exact field set must be confirmed against Shopify's documentation.</p>
+    </div>
+    <div class="card q">
+      <div class="top"><span class="chip warn">suggestion</span></div>
+      <h3>No human reads an Accepted task</h3>
+      <p class="small">Every gate is automatic. A Task can pass all four gates and still have an intent that is clumsy, or that gives away the clicks.</p>
+      <p class="small sugg"><b>Suggestion:</b> two team members read a sample of about 10 Accepted tasks per shop in the trial, and we report what they find.</p>
+    </div>
+  </div>
+</section>
+
+<section id="decisions">
+  <div class="sec-head">
+    <div class="kicker">Focus 4 &middot; Also important</div>
+    <h2>4.1 Decisions we took, and what we did not choose</h2>
+  </div>
+  <div class="tw minw">
+    <table>
+      <thead><tr><th>Decision</th><th>Why</th><th>Instead of</th></tr></thead>
+      <tbody>
+        <tr><td>One UI-only method for SandboxShops and Live storefronts</td><td>Sandbox Tasks and real-shop Tasks stay comparable, so transfer results are not distorted by task style.</td><td>Generating sandbox Tasks from the Dataset or the Control API</td></tr>
+        <tr><td>Code builds the Checks from the state diff</td><td>Exact rewards for RL. Judge-based verifiers in prior work show about 8 to 26% false accepts.</td><td>An LLM judge</td></tr>
+        <tr><td>An Edge counts after 2 of 2 fresh replays of our own shortest path</td><td>Only reproducible behavior enters the graph.</td><td>Trusting the agent's trace. Go-Browse's 1 success in 3.</td></tr>
+        <tr><td>Return to a state by a Fresh context plus the shortest checked path, with a Concrete node check after every step</td><td>The start state of every step is known.</td><td>Jumping back by URL, or the browser back button</td></tr>
+        <tr><td>Two levels of node: Abstract and Concrete</td><td>A small graph for BFS, and exact state for replay.</td><td>URL-only nodes (too coarse), DOM-hash nodes (too many)</td></tr>
+        <tr><td>Quantity changes are tagged self-loops</td><td>Quantity workflows without a node per quantity.</td><td>One node per cart state</td></tr>
+        <tr><td>Split only when outcomes repeat, with features from a fixed list</td><td>No over-merge, and no splits on noise.</td><td>Split on the first difference</td></tr>
+        <tr><td>A control counts as tried only after its outcome is recorded</td><td>A crash does not hide an untried control.</td><td>Marking it tried before acting (SynWeaver)</td></tr>
+        <tr><td>WebArena task format + <code>state_check</code> + <code>metadata</code></td><td>Existing WebArena tools and our RL environment can read it.</td><td>Extending the legacy ShopGuru Task schema</td></tr>
+        <tr><td>A new package. ShopGuru is deprecated and never imported.</td><td>A clean seam. ShopGuru keeps working while the new package grows.</td><td>Adding a method to ShopGuru</td></tr>
+        <tr><td>The Validation agent is never an evaluated model</td><td>The acceptance filter cannot raise a model's own score.</td><td>Validating with a model under test</td></tr>
+        <tr><td>Shortages are reported</td><td>The 30-task target never lowers quality.</td><td>Relaxing a gate to reach the count</td></tr>
+        <tr><td>Read-only backend reads in a SandboxShop, in 3 places only</td><td>Exact account effects, a unique answer for selection rules, and grading.</td><td>No backend reads (inexact), or backend writes (not UI-only)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="prior">
+  <div class="sec-head">
+    <div class="kicker">Focus 4 &middot; Also important</div>
+    <h2>4.2 Prior art: what we take, and what we avoid</h2>
+    <p class="muted">We read the code of four MIT projects. Their code is Python, so reuse means a TypeScript rewrite that keeps the license notice.</p>
+  </div>
+  <div class="tw minw">
+    <table>
+      <thead><tr><th>Source</th><th>We take</th><th>We avoid</th></tr></thead>
+      <tbody>
+        <tr><td><b>AutoWebWorld</b><br><span class="small muted">arXiv 2602.14296, MIT</span></td><td>BFS over states. A path to a goal becomes a task. Replay validates it.</td><td>Its state machine is written by hand for synthetic sites. We infer ours from a real UI.</td></tr>
+        <tr><td><b>DroidBot</b><br><span class="small muted">github repo, MIT</span></td><td>State hashing with a content-free variant. Shortest path in the UI graph. A missed-states list.</td><td>The random-mode fallback after restarts.</td></tr>
+        <tr><td><b>SynWeaver</b><br><span class="small muted">arXiv 2608.12429, MIT</span></td><td>Shortest-path replay with a check after each step. Programmatic checks.</td><td>Marking a control tried before it acts. Checking only the end state after a replay.</td></tr>
+        <tr><td><b>Go-Browse</b><br><span class="small muted">arXiv 2506.03533, MIT</span></td><td>A frontier seeded by an explorer. Task proposals at each node.</td><td>Accepting 1 success in 3. Jumping back to a state by URL.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid wide">
+    <div class="card"><h3>New in our method</h3><p class="small">None of the four records quantity self-loops or splits nodes. The Page check vs Backend check disagreement rate is also new.</p></div>
+    <div class="card"><h3>Do not copy code from</h3><p class="small">PAE (non-commercial license). Repos without a license file: Amazon-Bench, GTA, OS-Genesis, WebRL, AgentTrek, ANCHOR, SynthAgent, VeriEnv. We may cite their ideas.</p></div>
+  </div>
+</section>
+
+<section id="scope">
+  <div class="sec-head">
+    <div class="kicker">Focus 4 &middot; Also important</div>
+    <h2>4.3 Test seam, scope and terms</h2>
+  </div>
+  <div class="grid wide">
+    <div class="card">
+      <h3>One test seam</h3>
+      <p class="small">Tests drive the pipeline function only. FakeRuntime scripts the Explorer agent, the Action chooser and the Validation agent against the real browser tools. A fake <code>LlmClient</code> plays the intent writer. Real Chromium runs against a small <code>node:http</code> fixture shop. In sandbox mode the fixture calls the real ShopBackend in process. In live mode it keeps a guest cart in memory. So one fixture acts as both kinds of shop.</p>
+      <p class="small muted">A live test behind <code>SHOPGYM_LIVE=1</code> runs one short real-model exploration and one validation.</p>
+    </div>
+    <div class="card">
+      <h3>Out of scope for this spec</h3>
+      <ul class="small">
+        <li>The template and product-first Generation methods, and the keep/drop gate that needs them</li>
+        <li>The full pilot: 6 SandboxShops, 3 Live storefronts, 900 Tasks</li>
+        <li>RL training and the before/after RL evaluation</li>
+        <li>New commerce features (returns, cancellations, saved payments, wishlists). Writing Reviews. Completing a password reset.</li>
+        <li>Login, checkout, Discount code, Review and account Tasks on Live storefronts</li>
+        <li>LLM-judge-graded Tasks and subjective recommendations</li>
+        <li>Event-order Checks (the backend has no event log)</li>
+        <li>Removing ShopGuru, or converting its Tasks</li>
+        <li>An evaluation runner or environment server, beyond the Validation agent</li>
+      </ul>
+    </div>
+  </div>
+  <h3>Terms</h3>
+  <dl class="terms">
+    <div><dt>Task generation</dt><dd>The new package and Step pipeline that makes Accepted tasks for one shop.</dd></div>
+    <div><dt>Generation method</dt><dd>One way to make candidate Tasks. BFS + explore is the first.</dd></div>
+    <div><dt>Intent / Intent class</dt><dd>The shopper's goal in words. The class groups intents by workflow, such as cart edits.</dd></div>
+    <div><dt>Interaction graph</dt><dd>The shop's checked UI behavior: nodes are states, Edges are single UI actions.</dd></div>
+    <div><dt>Abstract node</dt><dd>Page type plus the cart-empty and signed-in flags, plus proven split features.</dd></div>
+    <div><dt>Concrete node</dt><dd>An Abstract node plus exact cart lines, product, variant, quantity input and query parameters; in a sandbox, also the account signature.</dd></div>
+    <div><dt>Edge</dt><dd>One UI action with a stable locator, its cart (and account) diff and every recorded outcome.</dd></div>
+    <div><dt>Fresh context</dt><dd>A new episode id (sandbox) or a new guest browser context (live). The only way to a clean state.</dd></div>
+    <div><dt>Setup steps</dt><dd>Recorded UI steps that reach a Task's start Concrete node, plus its expected start signature.</dd></div>
+    <div><dt>Explorer agent</dt><dd>The Harness run that browses area by area and proposes candidate Edges.</dd></div>
+    <div><dt>Action chooser</dt><dd>The LLM that picks untried controls, and text values, at a BFS node.</dd></div>
+    <div><dt>Validation agent</dt><dd>pi, pinned to one model that we never evaluate. It must solve the Task from the intent alone.</dd></div>
+    <div><dt>Backend check / Page check</dt><dd>A Check on the StateSnapshot, or a Check on a page such as <code>/cart.js</code>.</dd></div>
+    <div><dt>Accepted task</dt><dd>A candidate that passed grounding, the Validation agent, check tests and 2 fresh replays.</dd></div>
+  </dl>
+  <p class="foot">Source: the Task generation spec (BFS + explore), decisions of 2026-10-28 and the commerce-feature change of 2026-10-29, and its 21 tickets under task-b1d2b014ab34 in the project-manager vault.</p>
+</section>
+</main>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  /* ---------- JSON renderer: one block line per row, extension rows highlighted ---------- */
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const isBox = (v) => Array.isArray(v) || isObj(v);
+  function scalar(v) {
+    if (v === null) return '<span class="j-lit">null</span>';
+    if (typeof v === 'boolean') return `<span class="j-lit">${v}</span>`;
+    if (typeof v === 'number') return `<span class="j-num">${v}</span>`;
+    return `<span class="j-str">${esc(JSON.stringify(v)).replace(/__SHOP__/g, '<mark class="ph">__SHOP__</mark>')}</span>`;
+  }
+  const keyH = (k) => `<span class="j-key">${esc(JSON.stringify(k))}</span>`;
+  function inline(v) {
+    if (!isBox(v)) return scalar(v);
+    if (Array.isArray(v)) return v.length ? '[' + v.map(inline).join(', ') + ']' : '[]';
+    const ks = Object.keys(v);
+    return ks.length ? '{ ' + ks.map((k) => `${keyH(k)}: ${inline(v[k])}`).join(', ') + ' }' : '{}';
+  }
+  function fitsInline(v, max) {
+    const vals = Array.isArray(v) ? v : Object.values(v);
+    if (vals.length === 0) return true;
+    const flat = vals.every((x) => !isBox(x) || (Array.isArray(x) && x.every((y) => !isBox(y))));
+    return flat && JSON.stringify(v).length <= max && !vals.some((x) => typeof x === 'string' && x.startsWith('…'));
+  }
+  function emit(v, ind, key, comma, path, ext, extSet, out, max) {
+    const pad = '  '.repeat(ind);
+    const on = ext || extSet.has(path);
+    const head = pad + (key !== null ? keyH(key) + ': ' : '');
+    const tail = comma ? ',' : '';
+    if (typeof v === 'string' && v.startsWith('…')) { out.push({ h: pad + `<span class="j-cmt">${esc(v)}</span>`, on }); return; }
+    if (!isBox(v) || fitsInline(v, max)) { out.push({ h: head + inline(v) + tail, on }); return; }
+    const arr = Array.isArray(v);
+    out.push({ h: head + (arr ? '[' : '{'), on });
+    const ents = arr ? v.map((x) => [null, x]) : Object.entries(v);
+    ents.forEach(([k, x], i) => emit(x, ind + 1, k, i < ents.length - 1, arr ? path + '[]' : (path ? path + '.' + k : k), on, extSet, out, max));
+    out.push({ h: pad + (arr ? ']' : '}') + tail, on });
+  }
+  function renderJSON(v, extPaths = [], max = 74) {
+    const out = [];
+    emit(v, 0, null, false, '', false, new Set(extPaths), out, max);
+    return '<code class="jc">' + out.map((l) => `<span class="l${l.on ? ' ext' : ''}">${l.h}</span>`).join('') + '</code>';
+  }
+
+  /* ---------- Graders: same match rules as today's grader ---------- */
+  function deepEq(a, b) {
+    if (Object.is(a, b)) return true;
+    if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => deepEq(x, b[i]));
+    if (isObj(a) && isObj(b)) { const k = Object.keys(a); return k.length === Object.keys(b).length && k.every((x) => deepEq(a[x], b[x])); }
+    return false;
+  }
+  function isSubset(e, a) {
+    if (isObj(e)) return isObj(a) && Object.keys(e).every((k) => isSubset(e[k], a[k]));
+    if (Array.isArray(e)) return Array.isArray(a) && inj(e, a, new Set());
+    return Object.is(e, a);
+  }
+  function inj(e, a, used) {
+    if (e.length === 0) return true;
+    const [h, ...rest] = e;
+    for (let i = 0; i < a.length; i++) {
+      if (used.has(i) || !isSubset(h, a[i])) continue;
+      used.add(i);
+      if (inj(rest, a, used)) return true;
+      used.delete(i);
+    }
+    return false;
+  }
+  const segs = (p) => p.split('/').slice(1).map((s) => s.replace(/~1/g, '/').replace(/~0/g, '~'));
+  const ptr = (o, p) => segs(p).reduce((x, k) => (x == null ? undefined : x[k]), o);
+  const pmatch = (pat, p) => { const a = segs(pat), b = segs(p); return a.length === b.length && a.every((s, i) => s === '*' || s === b[i]); };
+  const cmp = (x, y) => { const a = JSON.stringify(x), b = JSON.stringify(y); return a < b ? -1 : a > b ? 1 : 0; };
+  function walk(o, ss, fn) {
+    if (o == null || typeof o !== 'object') return;
+    const [s, ...rest] = ss;
+    const keys = s === '*' ? Object.keys(o) : [s];
+    for (const k of keys) { if (!(k in o)) continue; if (rest.length === 0) fn(o, k); else walk(o[k], rest, fn); }
+  }
+  function normalize(snap, eq, start) {
+    const s = JSON.parse(JSON.stringify(snap));
+    if (eq.orders === 'new_since_start') s.orders = (s.orders || []).filter((o) => !start.order_ids.includes(o.id));
+    for (const p of eq.ignore || []) walk(s, segs(p), (o, k) => { delete o[k]; });
+    for (const p of eq.unordered || []) walk(s, segs(p), (o, k) => { if (Array.isArray(o[k])) o[k].sort(cmp); });
+    return s;
+  }
+  function match(rule, e, a) {
+    if (rule === 'equals') return deepEq(e, a);
+    if (rule === 'subset') return isSubset(e, a);
+    if (rule === 'some') return Array.isArray(a) && a.some((x) => isSubset(e, x));
+    return false;
+  }
+  function gradeState(snap, rec) {
+    const eq = rec.metadata.equivalence || {};
+    const start = rec.metadata.setup.start_signature || {};
+    const s = normalize(snap, eq, start);
+    return rec.eval.state_check.every((c) => {
+      let e = c.value;
+      if (Array.isArray(e) && (eq.unordered || []).some((p) => pmatch(p, c.path))) e = [...e].sort(cmp);
+      return match(c.match, e, ptr(s, c.path));
+    });
+  }
+
+  /* ---------- Example data ---------- */
+  const MODELS = { explorer_agent: 'claude-sonnet-5-5', action_chooser: 'claude-sonnet-5-5', intent_writer: 'claude-opus-5-5', validation_agent: 'claude-opus-5-5' };
+  const V = (n) => 'gid://shopify/ProductVariant/' + n;
+  const O = (n) => 'gid://shopify/Order/' + n;
+  const AD = (n) => 'gid://shopify/MailingAddress/' + n;
+  const step = (op, role, name, region, extra = {}) => ({ op, role, name, region, index: 0, ...extra });
+  function record(o) {
+    const ev = {
+      eval_types: o.eval_types,
+      reference_answers: o.reference_answers || null,
+      reference_url: '',
+      program_html: o.program_html || [],
+      string_note: '',
+      reference_answer_raw_annotation: o.raw || '',
+    };
+    if (o.state_check) ev.state_check = o.state_check;
+    return {
+      sites: ['shopping'], task_id: o.task_id, require_login: !!o.require_login, storage_state: null,
+      start_url: o.start_url, geolocation: null, intent_template: '', instantiation_dict: {}, intent: o.intent,
+      require_reset: o.require_reset !== false, eval: ev, intent_template_id: null, metadata: o.metadata,
+    };
+  }
+  const SANDBOX = { kind: 'sandbox', shop: 'mock_clothing_v2', graph_version: 'storefront@3f2a1c / backend@91be07 / dataset@5d4e88' };
+  const PERSONA = { email: 'riley.chen@example.com', login: 'login form, in Setup steps' };
+  const LOGIN = [step('click', 'link', 'Account', 'banner'), step('fill', 'textbox', 'Email', 'main', { value: 'riley.chen@example.com' }), step('fill', 'textbox', 'Password', 'main', { value: '(Persona password)' }), step('click', 'button', 'Sign in', 'main')];
+
+  const cartSnap = (...pairs) => ({ carts: [{ id: 'gid://shopify/Cart/1', lines: pairs.map(([v, q], i) => ({ id: 'gid://shopify/CartLine/' + (i + 1), merchandiseId: V(v), quantity: q })), discountCodes: [] }], customers: [], orders: [] });
+  const cartTxt = (...pairs) => pairs.map(([v, q]) => `${v} &#215; ${q}`).join(', ');
+
+  const exA = {
+    key: 'a', tab: 'A. Cart edit', sub: 'sandbox', klass: 'cart_edits',
+    why: 'Grounded: "size M" is in the intent, and the shorts and joggers are in the start cart. Variant 10086 is Birch Fade / M.',
+    rec: record({
+      task_id: 'mock_clothing_v2.cart_edits.0007', start_url: '__SHOP__/cart',
+      intent: 'The joggers in my cart are too big. Swap them for the same joggers in size M, and keep the shorts.',
+      eval_types: ['state_check', 'program_html'],
+      program_html: [{ url: '__SHOP__/cart.js', locator: "JSON.parse(document.body.innerText).items.map(i => i.variant_id + ':' + i.quantity).sort().join(',')", required_contents: { exact_match: '10086:1,10142:1' } }],
+      state_check: [{ path: '/carts/0/lines', match: 'equals', value: [{ merchandiseId: V(10086), quantity: 1 }, { merchandiseId: V(10142), quantity: 1 }] }],
+      metadata: {
+        target: SANDBOX, intent_class: 'cart_edits',
+        difficulty: { tier: 'medium', primitive_actions: 4 }, structure: ['constraints:2', 'keep_line'],
+        grading: { mode: 'programmatic', decides: 'state_check', recorded: ['program_html'] },
+        setup: {
+          steps: [step('click', 'link', 'Joggers', 'navigation'), step('click', 'link', 'AisleArena Print Joggers', 'main'), step('select', 'combobox', 'Size', 'main', { value: 'L' }), step('click', 'button', 'Add to cart', 'main'), '… 4 more steps add the Onyx shorts in M and open the cart'],
+          start_signature: { cart: '10087:1,10142:1', codes: [] }, persona: null,
+        },
+        reference: { trace: 'traces/cart_edits.0007.json' },
+        equivalence: { ignore: ['/carts/*/lines/*/id'], unordered: ['/carts/*/lines'] },
+        method: { primary: 'bfs_explore', inputs: [], source_records: ['edge:7c1e', 'edge:a90f', 'edge:31d2'] },
+        models: MODELS,
+        validation: { result: 'passed', trace: 'validation/cart_edits.0007.json' },
+        check_tests: { valid_passed: 2, violations_failed: 5 },
+        replays: { passed: 2, of: 2 },
+        evidence: [{ step: 'validate', note: '2 of 2 fresh replays passed' }],
+      },
+    }),
+    tests: [
+      { name: 'Remove L, then add M from the product page', kind: 'valid', input: cartSnap([10142, 1], [10086, 1]), show: cartTxt([10142, 1], [10086, 1]) },
+      { name: 'Add M first, then remove L', kind: 'valid', input: cartSnap([10086, 1], [10142, 1]), show: cartTxt([10086, 1], [10142, 1]) },
+      { name: 'Unchanged start state', kind: 'violation', input: cartSnap([10087, 1], [10142, 1]), show: cartTxt([10087, 1], [10142, 1]) },
+      { name: 'Wrong variant: size S', kind: 'violation', input: cartSnap([10142, 1], [10085, 1]), show: cartTxt([10142, 1], [10085, 1]) },
+      { name: 'Wrong quantity: 2 pairs of M', kind: 'violation', input: cartSnap([10142, 1], [10086, 2]), show: cartTxt([10142, 1], [10086, 2]) },
+      { name: 'Missing kept line: shorts removed', kind: 'violation', input: cartSnap([10086, 1]), show: cartTxt([10086, 1]) },
+      { name: 'Extra line: kept the L as well', kind: 'violation', input: cartSnap([10087, 1], [10142, 1], [10086, 1]), show: cartTxt([10087, 1], [10142, 1], [10086, 1]) },
+    ],
+  };
+  exA.grade = (t) => gradeState(t.input, exA.rec);
+
+  const LIVE_J = [101, 102, 103], LIVE_S = [201, 202];
+  const PRICES = { 101: 4400, 102: 5200, 103: 3900, 201: 4500, 202: 3800, 301: 1200 };
+  const liveCart = (...pairs) => {
+    const items = pairs.map(([p, q]) => ({ product_id: p, variant_id: p * 100 + 3, quantity: q, price: PRICES[p], line_price: PRICES[p] * q }));
+    return { items, item_count: items.reduce((s, i) => s + i.quantity, 0), items_subtotal_price: items.reduce((s, i) => s + i.line_price, 0) };
+  };
+  const liveTxt = (c) => (c.items.length ? c.items.map((i) => `${i.product_id} &#215; ${i.quantity}`).join(', ') : 'empty') + ` &#183; ${(c.items_subtotal_price / 100).toFixed(2)}`;
+  const exB = {
+    key: 'b', tab: 'B. Budgeted basket', sub: 'live', klass: 'budgeted_baskets',
+    why: 'Grounded: the roles, the count and the budget are in the intent. The candidate products and their prices were visible on the path. The Page check decides, because a Live storefront has no backend access. Ids and prices are placeholders.',
+    rec: record({
+      task_id: 'live_apparel_1.budgeted_baskets.0003', start_url: '__SHOP__/',
+      intent: 'Put one pair of joggers and one pair of shorts in your cart, any size, for $90.00 or less before shipping and tax.',
+      eval_types: ['program_html'],
+      program_html: [{
+        url: '__SHOP__/cart.js',
+        locator: "(() => { const c = JSON.parse(document.body.innerText); const n = ids => c.items.filter(i => ids.includes(i.product_id)).reduce((s, i) => s + i.quantity, 0); return n([101, 102, 103]) === 1 && n([201, 202]) === 1 && c.item_count === 2 && c.items_subtotal_price <= 9000 ? 'PASS' : 'FAIL'; })()",
+        required_contents: { exact_match: 'PASS' },
+      }],
+      metadata: {
+        target: { kind: 'live', shop: 'from untracked config', evidence_version: 'sha256:e4b1…' },
+        intent_class: 'budgeted_baskets',
+        difficulty: { tier: 'medium', primitive_actions: 8 }, structure: ['roles:2', 'budget', 'cross_page'],
+        grading: { mode: 'programmatic', decides: 'program_html', recorded: [] },
+        setup: { steps: [], start_signature: { cart: '', codes: [] }, persona: null },
+        reference: { trace: 'traces/budgeted_baskets.0003.json' },
+        equivalence: {},
+        method: { primary: 'bfs_explore', inputs: [], source_records: ['edge:0b7a', 'edge:5e21'] },
+        models: MODELS,
+        validation: { result: 'passed', trace: 'validation/budgeted_baskets.0003.json' },
+        check_tests: { valid_passed: 2, violations_failed: 5 },
+        replays: { passed: 2, of: 2 },
+        evidence: [{ kind: 'price', product_id: 101, minor: 4400 }, { kind: 'price', product_id: 202, minor: 3800 }, '… one price per candidate; a change invalidates the Task'],
+      },
+    }),
+    tests: [
+      { name: 'Joggers 101 + shorts 201', kind: 'valid', input: liveCart([101, 1], [201, 1]) },
+      { name: 'Cheapest pair: joggers 103 + shorts 202', kind: 'valid', input: liveCart([103, 1], [202, 1]) },
+      { name: 'Over budget: 102 + 201', kind: 'violation', input: liveCart([102, 1], [201, 1]) },
+      { name: 'Two joggers, no shorts', kind: 'violation', input: liveCart([101, 2]) },
+      { name: 'Two pairs of shorts', kind: 'violation', input: liveCart([103, 1], [202, 2]) },
+      { name: 'Extra item: socks', kind: 'violation', input: liveCart([103, 1], [202, 1], [301, 1]) },
+      { name: 'Unchanged empty cart', kind: 'violation', input: liveCart() },
+    ],
+  };
+  exB.tests.forEach((t) => { t.show = liveTxt(t.input); });
+  exB.grade = (t) => {
+    const c = t.input;
+    const n = (ids) => c.items.filter((i) => ids.includes(i.product_id)).reduce((s, i) => s + i.quantity, 0);
+    return n(LIVE_J) === 1 && n(LIVE_S) === 1 && c.item_count === 2 && c.items_subtotal_price <= 9000;
+  };
+
+  const HOME = { firstName: 'Riley', lastName: 'Chen', address1: '17 Elm Court', city: 'Portland', provinceCode: 'OR', zip: '97214', countryCode: 'US' };
+  const order = (n, items, ship, code, disc, addr = HOME) => ({
+    id: O(n), name: '#' + n, shippingMethod: ship, discountCode: code, totalDiscount: disc, shippingAddress: addr,
+    lineItems: items.map(([v, q]) => ({ variantId: V(v), title: v === 10001 ? 'AisleArena Plush Hoodie' : v === 10086 ? 'AisleArena Print Joggers' : 'AisleArena Crew Socks', quantity: q, price: v === 10001 ? '59.99' : v === 10086 ? '27.99' : '12.00' })),
+  });
+  const OLD = [order(1009, [[10290, 1]], 'Standard', null, '0.00'), order(1010, [[10142, 2]], 'Express', null, '0.00'), order(1011, [[10001, 1], [10086, 1]], 'Standard', 'TAKE10', '10.00'), order(1012, [[10085, 1]], 'Standard', null, '0.00')];
+  const ordSnap = (...extra) => ({ customers: [], carts: [], orders: [...OLD, ...extra] });
+  const exC = {
+    key: 'c', tab: 'C. Checkout + Discount code', sub: 'sandbox', klass: 'discount_codes',
+    why: 'Grounded: the banner showed TAKE10 ($10 off over $75) and SAVE15 (15% off over $120). The cart subtotal is $87.98, so only TAKE10 applies. The Dataset confirms one answer. The old order #1011 has the same lines and code, so the Check must look only at new orders.',
+    rec: record({
+      task_id: 'mock_clothing_v2.discount_codes.0002', start_url: '__SHOP__/cart', require_login: true,
+      intent: 'Check out my cart with the code from the banner that works for it. Ship it to my default address with standard shipping.',
+      eval_types: ['state_check', 'program_html'],
+      program_html: [{ url: 'last', locator: 'document.body.innerText', required_contents: { must_include: ['TAKE10', 'Standard', '17 Elm Court'] } }],
+      state_check: [
+        { path: '/orders/0/lineItems', match: 'equals', value: [{ variantId: V(10001), quantity: 1 }, { variantId: V(10086), quantity: 1 }] },
+        { path: '/orders/0', match: 'subset', value: { shippingMethod: 'Standard', discountCode: 'TAKE10', totalDiscount: '10.00', shippingAddress: { address1: '17 Elm Court', zip: '97214' } } },
+      ],
+      metadata: {
+        target: SANDBOX, intent_class: 'discount_codes',
+        difficulty: { tier: 'hard', primitive_actions: 11 }, structure: ['selection_rule', 'constraints:3', 'cross_page'],
+        grading: { mode: 'programmatic', decides: 'state_check', recorded: ['program_html'] },
+        setup: {
+          steps: [...LOGIN, '… 6 more steps add the Plush Hoodie (Flamingo / S) and the Print Joggers (Birch Fade / M), then open the cart'],
+          start_signature: { cart: '10001:1,10086:1', codes: [], order_ids: [O(1009), O(1010), O(1011), O(1012)] },
+          persona: PERSONA,
+        },
+        reference: { trace: 'traces/discount_codes.0002.json' },
+        equivalence: { orders: 'new_since_start', ignore: ['/orders/*/lineItems/*/title', '/orders/*/lineItems/*/price'], unordered: ['/orders/*/lineItems'] },
+        method: { primary: 'bfs_explore', inputs: [], source_records: ['edge:c41b', 'edge:d8e0', 'edge:f002'] },
+        models: MODELS,
+        validation: { result: 'passed', trace: 'validation/discount_codes.0002.json' },
+        check_tests: { valid_passed: 2, violations_failed: 6 },
+        replays: { passed: 2, of: 2 },
+        evidence: [{ kind: 'banner', text: 'TAKE10: $10 off orders over $75' }, { kind: 'banner', text: 'SAVE15: 15% off orders over $120' }],
+      },
+    }),
+    tests: [
+      { name: 'New order #1013, as asked', kind: 'valid', input: ordSnap(order(1013, [[10001, 1], [10086, 1]], 'Standard', 'TAKE10', '10.00')), show: '#1013: hoodie, joggers, Standard, TAKE10' },
+      { name: 'Same order, lines in the other order', kind: 'valid', input: ordSnap(order(1013, [[10086, 1], [10001, 1]], 'Standard', 'TAKE10', '10.00')), show: '#1013: joggers, hoodie, Standard, TAKE10' },
+      { name: 'No new order; old #1011 happens to match', kind: 'violation', input: ordSnap(), show: 'only #1009 to #1012' },
+      { name: 'No code', kind: 'violation', input: ordSnap(order(1013, [[10001, 1], [10086, 1]], 'Standard', null, '0.00')), show: '#1013: no code' },
+      { name: 'A code that does not apply: SAVE15', kind: 'violation', input: ordSnap(order(1013, [[10001, 1], [10086, 1]], 'Standard', 'SAVE15', '0.00')), show: '#1013: SAVE15, 0.00 off' },
+      { name: 'Express shipping', kind: 'violation', input: ordSnap(order(1013, [[10001, 1], [10086, 1]], 'Express', 'TAKE10', '10.00')), show: '#1013: Express' },
+      { name: 'Extra line: socks added', kind: 'violation', input: ordSnap(order(1013, [[10001, 1], [10086, 1], [10500, 1]], 'Standard', 'TAKE10', '10.00')), show: '#1013: 3 lines' },
+      { name: 'Shipped to another address', kind: 'violation', input: ordSnap(order(1013, [[10001, 1], [10086, 1]], 'Standard', 'TAKE10', '10.00', { ...HOME, address1: '88 Pier Road', zip: '98101' })), show: '#1013: 88 Pier Road' },
+    ],
+  };
+  exC.grade = (t) => gradeState(t.input, exC.rec);
+
+  const homeAddr = { id: AD(31), company: '', address1: '17 Elm Court', city: 'Portland', provinceCode: 'OR', zip: '97214', countryCode: 'US' };
+  const work = (n, extra = {}) => ({ id: AD(n), company: 'Northwind Supply', address1: '88 Pier Road', city: 'Seattle', provinceCode: 'WA', zip: '98101', countryCode: 'US', ...extra });
+  const cust = (addresses, def = AD(31)) => ({ customers: [{ id: 'gid://shopify/Customer/3', email: 'riley.chen@example.com', defaultAddressId: def, addresses }], carts: [], orders: [] });
+  const exD = {
+    key: 'd', tab: 'D. Address change', sub: 'sandbox', klass: 'account_changes',
+    why: 'Grounded: every new field is in the intent. The home address id and its fields come from the start signature. subset lets other addresses stay, and the default must not move.',
+    rec: record({
+      task_id: 'mock_clothing_v2.account_changes.0004', start_url: '__SHOP__/account/addresses', require_login: true,
+      intent: 'Add my work address: Northwind Supply, 88 Pier Road, Seattle, WA 98101, United States. Keep 17 Elm Court as my default address.',
+      eval_types: ['state_check', 'program_html'],
+      program_html: [{ url: '__SHOP__/account/addresses', locator: "document.querySelector('main').innerText", required_contents: { must_include: ['Northwind Supply', '88 Pier Road', '98101'] } }],
+      state_check: [{
+        path: '/customers', match: 'some',
+        value: { email: 'riley.chen@example.com', defaultAddressId: AD(31), addresses: [{ id: AD(31), address1: '17 Elm Court', city: 'Portland', zip: '97214' }, { company: 'Northwind Supply', address1: '88 Pier Road', city: 'Seattle', provinceCode: 'WA', zip: '98101', countryCode: 'US' }] },
+      }],
+      metadata: {
+        target: SANDBOX, intent_class: 'account_changes',
+        difficulty: { tier: 'medium', primitive_actions: 9 }, structure: ['form', 'keep_default'],
+        grading: { mode: 'programmatic', decides: 'state_check', recorded: ['program_html'] },
+        setup: { steps: [...LOGIN, step('click', 'link', 'Addresses', 'main')], start_signature: { cart: '', codes: [], account: { default_address: AD(31), addresses: [AD(31)] } }, persona: PERSONA },
+        reference: { trace: 'traces/account_changes.0004.json' },
+        equivalence: { ignore: ['/customers/*/addresses/*/phone'] },
+        method: { primary: 'bfs_explore', inputs: [], source_records: ['edge:9a33', 'edge:2bc8'] },
+        models: MODELS,
+        validation: { result: 'passed', trace: 'validation/account_changes.0004.json' },
+        check_tests: { valid_passed: 2, violations_failed: 5 },
+        replays: { passed: 2, of: 2 },
+        evidence: [{ kind: 'action_chooser_value', field: 'Company', value: 'Northwind Supply' }],
+      },
+    }),
+    tests: [
+      { name: 'Added, with a phone number too', kind: 'valid', input: cust([homeAddr, work(32, { phone: '+1 206 555 0100' })]), show: '31 home, 32 work + phone; default 31' },
+      { name: 'Added, then edited to fix a typo', kind: 'valid', input: cust([homeAddr, work(33)]), show: '31 home, 33 work; default 31' },
+      { name: 'Unchanged', kind: 'violation', input: cust([homeAddr]), show: '31 home only' },
+      { name: 'Work address set as default', kind: 'violation', input: cust([homeAddr, work(32)], AD(32)), show: 'default 32' },
+      { name: 'Home address edited instead of added', kind: 'violation', input: cust([work(31)]), show: '31 is now the work address' },
+      { name: 'Wrong ZIP: 98109', kind: 'violation', input: cust([homeAddr, work(32, { zip: '98109' })]), show: '32 work, ZIP 98109' },
+      { name: 'Home address deleted', kind: 'violation', input: cust([work(32)], AD(32)), show: '32 work only' },
+    ],
+  };
+  exD.grade = (t) => gradeState(t.input, exD.rec);
+
+  const normAns = (s) => new Set(s.toLowerCase().split(/,|\band\b/).map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean));
+  const exE = {
+    key: 'e', tab: 'E. Order read', sub: 'sandbox', klass: 'account_order_reads',
+    why: 'Grounded: the Dataset has exactly one order of this Persona that is not fulfilled: #1012. The agent must read order status, not only the order list. No state changes, so require_reset is false.',
+    rec: record({
+      task_id: 'mock_clothing_v2.account_order_reads.0005', start_url: '__SHOP__/account', require_login: true, require_reset: false,
+      intent: 'Which of my orders has not shipped yet? Answer with the order number.',
+      eval_types: ['string_match'], reference_answers: { exact_match: '#1012' }, raw: '#1012',
+      metadata: {
+        target: SANDBOX, intent_class: 'account_order_reads',
+        difficulty: { tier: 'easy', primitive_actions: 3 }, structure: ['read', 'status_filter'],
+        grading: { mode: 'programmatic', decides: 'string_match', recorded: [] },
+        setup: { steps: [...LOGIN], start_signature: { cart: '', codes: [], account: { order_ids: [O(1009), O(1010), O(1011), O(1012)] } }, persona: PERSONA },
+        reference: { trace: 'traces/account_order_reads.0005.json' },
+        equivalence: {},
+        method: { primary: 'bfs_explore', inputs: [], source_records: ['edge:44f0', 'edge:b712'] },
+        models: MODELS,
+        validation: { result: 'passed', trace: 'validation/account_order_reads.0005.json' },
+        check_tests: { valid_passed: 2, violations_failed: 3 },
+        replays: { passed: 2, of: 2 },
+        evidence: [{ kind: 'dataset_unique', rule: 'fulfillmentStatus != FULFILLED', answers: 1 }],
+      },
+    }),
+    tests: [
+      { name: 'Exact answer', kind: 'valid', input: '#1012' },
+      { name: 'Extra spaces', kind: 'valid', input: '  #1012 ' },
+      { name: 'A shipped order', kind: 'violation', input: '#1009' },
+      { name: 'An extra order', kind: 'violation', input: '#1012, #1011' },
+      { name: 'No answer', kind: 'violation', input: '' },
+    ],
+  };
+  exE.tests.forEach((t) => { t.show = t.input === '' ? '(empty)' : `"${esc(t.input)}"`; });
+  exE.grade = (t) => {
+    const want = normAns(exE.rec.eval.reference_answers.exact_match), got = normAns(t.input);
+    return want.size === got.size && [...want].every((x) => got.has(x));
+  };
+
+  const EXAMPLES = [exA, exB, exC, exD, exE];
+  const tabs = $('#extabs'), panel = $('#expanel');
+  function showExample(i) {
+    const ex = EXAMPLES[i];
+    $$('.tab', tabs).forEach((b, j) => { b.setAttribute('aria-selected', String(j === i)); b.tabIndex = j === i ? 0 : -1; });
+    panel.setAttribute('aria-labelledby', 'tab-' + ex.key);
+    const rows = ex.tests.map((t) => {
+      const passed = ex.grade(t);
+      const want = t.kind === 'valid';
+      const ok = passed === want;
+      return `<tr><td>${esc(t.name)}<div class="small muted mono">${t.show}</div></td><td><span class="chip ${want ? 'code' : 'bad'}">${want ? 'valid' : 'violation'}</span></td><td class="${passed ? 'pass' : 'fail'}">${passed ? 'PASS' : 'FAIL'}</td><td class="c ${ok ? 'yes' : 'fail'}">${ok ? '&#10003;' : '&#10007;'}</td></tr>`;
+    }).join('');
+    const allOk = ex.tests.every((t) => ex.grade(t) === (t.kind === 'valid'));
+    const m = ex.rec.metadata;
+    panel.innerHTML = `
+      <div class="ex">
+        <div class="side">
+          <div class="card">
+            <div class="who"><span class="chip">${esc(m.target.kind)}</span><span class="chip">${esc(m.intent_class)}</span><span class="chip">${esc(m.difficulty.tier)}: ${m.difficulty.primitive_actions} actions</span><span class="chip code">decides: ${esc(m.grading.decides)}</span></div>
+            <p class="ex-intent">"${esc(ex.rec.intent)}"</p>
+            <p class="small muted">${esc(ex.why)}</p>
+          </div>
+          <div class="card">
+            <h3>Check tests <span class="chip ${allOk ? 'code' : 'bad'}">${allOk ? 'all as expected' : 'mismatch'}</span></h3>
+            <div class="tw"><table>
+              <thead><tr><th>Fixture</th><th>Kind</th><th>Check</th><th class="c">OK</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table></div>
+            <p class="small muted">Valid alternatives must PASS. Targeted violations must FAIL. Computed now, in this page.</p>
+          </div>
+        </div>
+        <div class="rec-label">Task record: ${esc(ex.rec.task_id)}.json</div>
+        <pre class="json" tabindex="0" aria-label="Task record JSON">${renderJSON(ex.rec, ['eval.state_check', 'metadata'])}</pre>
+      </div>`;
+  }
+  EXAMPLES.forEach((ex, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab'; b.type = 'button'; b.id = 'tab-' + ex.key;
+    b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', 'expanel');
+    b.innerHTML = `${esc(ex.tab)}<small>${esc(ex.sub)}</small>`;
+    b.addEventListener('click', () => showExample(i));
+    b.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const j = (i + (e.key === 'ArrowRight' ? 1 : EXAMPLES.length - 1)) % EXAMPLES.length;
+      showExample(j); $$('.tab', tabs)[j].focus();
+    });
+    tabs.appendChild(b);
+  });
+  showExample(0);
+
+  /* ---------- Interaction graph stepper ---------- */
+  const NODES = {
+    H: { title: 'Home', abs: { page_type: 'home', cart_empty: true, signed_in: false }, con: { cart_lines: [], codes: [], product: null, variant: null, quantity_input: null, query: {} } },
+    C: { title: 'Collection', abs: { page_type: 'collection', cart_empty: true, signed_in: false }, con: { cart_lines: [], codes: [], product: null, variant: null, quantity_input: null, query: { sort_by: 'best-selling' } } },
+    P: { title: 'Product', abs: { page_type: 'product', cart_empty: true, signed_in: false }, con: { cart_lines: [], codes: [], product: 'aislearena-print-joggers', variant: '10086 (Birch Fade / M)', quantity_input: 1, query: {} } },
+    PI: { title: 'Product, cart has items', abs: { page_type: 'product', cart_empty: false, signed_in: false }, con: { cart_lines: [['10086', 1]], codes: [], product: 'aislearena-print-joggers', variant: '10086 (Birch Fade / M)', quantity_input: 1, query: {} } },
+    PS: { title: 'Product, sold out', note: 'Exists only after the split in step 5. "sold out" comes from the fixed list of split features.', abs: { page_type: 'product', cart_empty: true, signed_in: false, refinement: { sold_out: true } }, con: { cart_lines: [], codes: [], product: '(a sold-out product)', variant: null, quantity_input: 1, query: {} } },
+    CE: { title: 'Cart, empty', abs: { page_type: 'cart', cart_empty: true, signed_in: false }, con: { cart_lines: [], codes: [], cart_signature: 'sha256( | )', product: null, variant: null, quantity_input: null, query: {} } },
+    CI: { title: 'Cart, has items', note: 'The cart signature is a hash of the sorted (variant id, quantity) pairs and the applied Discount codes with their applicable flags.', abs: { page_type: 'cart', cart_empty: false, signed_in: false }, con: { cart_lines: [['10086', 1]], codes: [], cart_signature: 'sha256(10086:1 | )', product: null, variant: null, quantity_input: null, query: {} } },
+    CK: { title: 'Checkout', note: 'SandboxShop only. In a SandboxShop every Concrete node also holds an account signature from the StateSnapshot. It is shown here on the checkout nodes only.', abs: { page_type: 'checkout', cart_empty: false, signed_in: false }, con: { cart_lines: [['10086', 1]], codes: [], account: { customers: [], order_ids: [], recovery_requests: [] } } },
+    CF: { title: 'Checkout confirmation', note: 'SandboxShop only. The new order id comes from the StateSnapshot, read only.', abs: { page_type: 'checkout confirmation', cart_empty: true, signed_in: false }, con: { cart_lines: [], codes: [], account: { customers: [], order_ids: ['gid://shopify/Order/1001'], recovery_requests: [] } } },
+  };
+  const BASE = ['H', 'C', 'P', 'PI', 'CI', 'CK', 'CF'];
+  const fill = (ids, s) => Object.fromEntries(ids.map((x) => [x, s]));
+  const S1n = fill(BASE, 'n');
+  const S2e = { ...fill(['e1', 'e2', 'e3', 'e4', 'e8', 'e9'], 'ok'), e5: 'flaky' };
+  const S3n = { ...S1n, CE: 'n' };
+  const S3e = { ...S2e, e6: 'ok', e7: 'ok' };
+  const S5n = { ...S3n, PS: 'n' };
+  const S5e = { ...S3e, e10: 'ok', e11: 'ok' };
+  const dimAll = (m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v === 'flaky' || v === 'hidden' ? v : 'dim']));
+  const STEPS = [
+    {
+      t: 'Step 1. The Explorer agent proposes candidate Edges',
+      b: ['The Explorer agent is a Harness run. An LLM planner writes one Plan task per area. A verifier fails the plan if it misses a required area: variants and quantity, add to cart, cart edits, collection or search to product. In a SandboxShop the required areas also include register, login with "Forgot your password?", addresses, order history, the announcement bar, Reviews and the discount field.',
+        'Each Iteration starts in a Fresh context. When it ends, a hook turns every step that changed the page or the cart into a candidate Edge (dashed). We do not trust these claims yet.'],
+      who: [['llm', 'Explorer agent: claude-sonnet-5-5'], ['code', 'plan verifier'], ['code', 'onIterationEnd hook']],
+      n: S1n, e: fill(['e1', 'e2', 'e3', 'e4', 'e5', 'e8', 'e9'], 'cand'),
+    },
+    {
+      t: 'Step 2. Replays check each candidate Edge',
+      b: ['For each candidate, code opens a Fresh context, replays our own shortest checked path to the Edge\'s source node, then runs the recorded step. The Edge is verified only when 2 of 2 replays reproduce it.',
+        'The hero banner rotates. The "Shop now" link\'s match count changes, so replay stops and does not click the wrong element. After 2 failures the Edge is flaky. It stays in the graph and in the report, but no Task uses it.'],
+      who: [['code', 'replayer: Fresh context + shortest checked path']],
+      n: S1n, e: S2e,
+    },
+    {
+      t: 'Step 3. BFS tries the controls the agent skipped',
+      b: ['BFS works breadth-first over Abstract nodes. At Cart (items), code lists the controls and removes duplicates by role, masked name and page region. The Action chooser picks the untried ones: "+" and "Remove".',
+        '"+" does not change the Abstract node, so it becomes a self-loop tagged with its cart diff (Joggers M: 1 → 2). "Remove" on the last line reaches a new node: Cart (empty). Both new Edges then need 2 of 2 replays, like any other. A control counts as tried only after its outcome is recorded.'],
+      who: [['code', 'list and dedupe controls'], ['llm', 'Action chooser: claude-sonnet-5-5']],
+      n: { ...S1n, CI: 'frontier', CE: 'new' }, e: { ...S2e, e6: 'new', e7: 'new' },
+    },
+    {
+      t: 'Step 4. Return to a state: Fresh context, then the shortest path',
+      b: ['To try anything at Cart (items), code never jumps by URL. It opens a Fresh context: a new episode id in a SandboxShop, or a new guest context on a Live storefront. Then it replays the shortest checked path (steps 1 to 4).',
+        'After every step it checks the Concrete node: page type, the exact /cart.js lines, the product and the variant. A mismatch stops the replay and counts as a failure of that Edge. This cost is why the budget counts prefix replays.'],
+      who: [['code', 'replayer'], ['code', 'Concrete node check after every step']],
+      n: { ...dimAll(S3n), H: 'path', C: 'path', P: 'path', PI: 'path', CI: 'path' },
+      e: { ...dimAll(S3e), e1: 'path', e2: 'path', e3: 'path', e4: 'path' },
+    },
+    {
+      t: 'Step 5. Split a node only when outcomes repeat',
+      b: ['On most product pages, "Add to cart" changes the cart. On some, the cart does not change, because the item is sold out. One control, two outcomes, on the same Abstract node.',
+        'Code splits Product into Product and Product (sold out), because each outcome repeats at its own Concrete node. The feature "sold out" comes from a fixed list: has variants, sold out, has a quantity input. If the outcomes did not repeat, the Edge would be marked flaky instead.'],
+      who: [['code', 'node refinement']],
+      n: { ...S3n, P: 'frontier', PS: 'new' }, e: { ...S3e, e10: 'new', e11: 'new' },
+    },
+    {
+      t: 'Step 6. A checked path becomes a candidate Task',
+      b: ['Code cuts a checked path into Setup steps and a task part. Here the start is Home with an empty cart, so there are no Setup steps. (Example A in section 2.1 has Setup steps.)',
+        'The intent writer sees the start state, the end state and the evidence on the path. It writes a shopper\'s goal, not the clicks. Code, not the LLM, builds the Checks from the diff.'],
+      who: [['llm', 'intent writer: claude-opus-5-5'], ['code', 'Checks from the diff']],
+      n: { ...dimAll(S5n), H: 'path', C: 'path', P: 'path', PI: 'path', CI: 'path' },
+      e: { ...dimAll(S5e), e1: 'task', e2: 'task', e3: 'task', e4: 'task', e6: 'task' },
+      x: `<dl>
+        <dt>Start</dt><dd>Home, cart empty, guest</dd>
+        <dt>Goal diff</dt><dd class="mono">cart + {10086 Birch Fade / M: 2}</dd>
+        <dt>Intent</dt><dd class="intent">"Put two pairs of the AisleArena Print Joggers in Birch Fade, size M, in your cart."</dd>
+        <dt>Backend</dt><dd class="mono small">state_check /carts/0/lines equals [{10086, 2}]</dd>
+        <dt>Page</dt><dd class="mono small">/cart.js lines = "10086:2" (recorded)</dd>
+      </dl>`,
+    },
+    {
+      t: 'Step 7. Four gates decide acceptance',
+      b: ['The candidate becomes an Accepted task only if every gate passes. If one fails, the candidate is stored with a failure class, so that we can repair the generator.'],
+      who: [['code', 'grounding'], ['llm', 'Validation agent: pi + claude-opus-5-5'], ['code', 'check tests'], ['code', '2 fresh replays']],
+      n: { ...dimAll(S5n), H: 'path', C: 'path', P: 'path', PI: 'path', CI: 'path' },
+      e: { ...dimAll(S5e), e1: 'task', e2: 'task', e3: 'task', e4: 'task', e6: 'task' },
+      x: `<ul class="gates small">
+        <li>Grounding: "Birch Fade", "M" and "two" are in the intent. The product was visible on the path.</li>
+        <li>Validation agent: it finished from the intent and the start URL only, and the Checks pass.</li>
+        <li>Check tests: 2 valid orders pass ("add 1, then + in the cart" and "set quantity 2, then add"). Violations fail: unchanged, 3 pairs, size L, an extra line.</li>
+        <li>2 of 2 fresh replays pass.</li>
+      </ul>
+      <p><b>Accepted.</b> Efficient replay: 6 primitive actions (menu, card, size M, Add to cart, cart icon, +). So the tier is <b>Medium</b> (4 to 9).</p>`,
+    },
+  ];
+  const svg = $('#gsvg');
+  const dots = $('#dots');
+  let cur = 0, picked = 'CI';
+  STEPS.forEach((s, i) => {
+    const d = document.createElement('button');
+    d.className = 'dot'; d.type = 'button'; d.textContent = String(i + 1);
+    d.setAttribute('aria-label', s.t);
+    d.addEventListener('click', () => go(i));
+    dots.appendChild(d);
+  });
+  function go(i) {
+    cur = Math.max(0, Math.min(STEPS.length - 1, i));
+    const s = STEPS[cur];
+    svg.dataset.step = String(cur + 1);
+    $$('.node', svg).forEach((g) => { g.dataset.s = s.n[g.dataset.id] || 'hidden'; });
+    $$('.edge', svg).forEach((g) => { g.dataset.s = s.e[g.dataset.id] || 'hidden'; });
+    $$('.dot', dots).forEach((d, j) => { if (j === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    $('#stitle').textContent = s.t;
+    $('#sbody').innerHTML = s.b.map((p) => `<p class="small">${esc(p)}</p>`).join('');
+    $('#swho').innerHTML = s.who.map(([k, t]) => `<span class="chip ${k}">${k === 'llm' ? 'LLM' : 'code'}: ${esc(t)}</span>`).join('');
+    $('#sextra').innerHTML = s.x ? `<div class="extra">${s.x}</div>` : '';
+    $('#sextra').hidden = !s.x;
+    $('#prev').disabled = cur === 0;
+    $('#next').disabled = cur === STEPS.length - 1;
+    if ((s.n[picked] || 'hidden') === 'hidden') pick('CI');
+  }
+  function pick(id) {
+    picked = id;
+    const n = NODES[id];
+    $$('.node', svg).forEach((g) => g.classList.toggle('picked', g.dataset.id === id));
+    $('#ntitle').textContent = n.title;
+    $('#nnote').textContent = n.note || 'Toy values. In the real graph, ids come from the shop.';
+    $('#nabs').innerHTML = renderJSON(n.abs, [], 24);
+    $('#ncon').innerHTML = renderJSON(n.con, [], 24);
+  }
+  $$('.node', svg).forEach((g) => {
+    g.addEventListener('click', () => pick(g.dataset.id));
+    g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(g.dataset.id); } });
+  });
+  $('#prev').addEventListener('click', () => go(cur - 1));
+  $('#next').addEventListener('click', () => go(cur + 1));
+  pick('CI');
+  go(0);
+
+  /* ---------- Ticket map ---------- */
+  const T = [
+    [1, 'Deprecate ShopGuru, terms and ADRs', 'task-eb445a28041e', [], 'docs', 'Mark ShopGuru as deprecated. Write the glossary terms and 3 new ADRs. Docs only.'],
+    [2, '/cart.js in the Storefront template', 'task-27bda98c9ae0', [], 'storefront template', 'A read-only, Shopify-shaped /cart.js route, and a Build loop verifier that keeps it working. Blocks the generation of mock_clothing_v2.'],
+    [3, 'Stable locators + replay', 'task-ce2b986b2efc', [], 'browser', 'Every element action records role, accessible name, index, region, match count, URLs and outcome. A replayer runs a step in a fresh context with no model.'],
+    [4, 'Cart reader + settle rule', 'task-54fb69af5d7d', [], 'browser', 'Read /cart.js and a cart signature. After a cart change, wait until the signature changes.'],
+    [5, 'Keep a failed Iteration\'s trajectory', 'task-1949531bdf9c', [], 'harness', 'A timeout or runtime error no longer loses the Iteration\'s steps.'],
+    [6, 'Fresh browser per Iteration', 'task-51efc790957d', [], 'storefront exploration', 'One area\'s cart no longer leaks into the next area.'],
+    [7, 'Coverage counts finished areas', 'task-ebec462546e4', [], 'storefront exploration', 'Unfinished areas show as gaps.'],
+    [8, 'Anonymization scope + reopen cap', 'task-151ae2c92dbe', [], 'storefront exploration', 'Check only the current task\'s fragments, and cap reopens.'],
+    [9, 'Tracer: one Accepted cart Task', 'task-14912f708614', [3, 4], 'task-generation', 'The new package and shopgym tasks run all 4 Steps and write one Accepted cart-edit Task for a guest shop. Every Step is minimal.'],
+    [10, 'BFS expands the graph', 'task-8629650a793f', [9], 'task-generation', 'BFS from checked nodes, return to a state by Fresh context + shortest path, tagged self-loops, budgets.'],
+    [11, 'Action chooser + node splitting', 'task-246f6385a5ca', [10], 'task-generation', 'The LLM that picks untried controls and text values, and splits only on repeated outcomes.'],
+    [12, 'Explorer agent: required areas', 'task-c91a61018dd4', [5, 9], 'task-generation', 'A full Harness run with a required-area plan. Steps from failed Iterations also become candidate Edges.'],
+    [13, 'Cart edit + budgeted baskets', 'task-c3439d2a00ce', [9], 'task-generation', 'Real compose and validate on both kinds of shop: shopper intents, Checks from the cart diff, check tests, dedupe.'],
+    [14, 'Sandbox mode + Backend checks', 'task-25c407ee8ed1', [9], 'task-generation', 'Episode ids, account signature, Persona login in Setup steps, Backend check decides, Page check recorded.'],
+    [15, 'Live storefront rules', 'task-e120c8396195', [9], 'task-generation', 'Polite, safe and private on a Live storefront. Tasks stay valid, or are invalidated, when the shop changes.'],
+    [16, 'Simulated checkout Tasks', 'task-818ba2c771b4', [13, 14], 'task-generation', 'Checkout Tasks graded on the order that the checkout creates.'],
+    [17, 'Discount code Tasks', 'task-6b7309a24795', [16, 'S1'], 'task-generation', 'Find the code that fits the cart, apply it, check out with it, or meet a budget after the discount.'],
+    [18, 'Account + order reads', 'task-cf48e1e87297', [14, 'S2'], 'task-generation', 'Read Tasks for a logged-in Persona, graded by string_match.'],
+    [19, 'Review Tasks', 'task-23a167e377b8', [13, 18, 'S3'], 'task-generation', 'Review-aware choices on the cart, and Review reads by string_match.'],
+    [20, 'Account change Tasks', 'task-06c6d18b22c6', [13, 14, 'S4', 'S5'], 'task-generation', 'Address edits, register and the password-recovery request.'],
+    [21, 'Trial run + report', 'task-d526db640e49', [2, 10, 11, 12, 15, 16, 17, 18, 19, 20, 'S6'], 'task-generation', 'mock_clothing_v2 + 1 apparel Live storefront, 30 Accepted tasks each. Then write the shipped design to the specs directory.'],
+  ].map(([n, title, id, blocked, area, what]) => ({ key: n, n, title, id, blocked, area, what, sib: false }));
+  const SIBS = [
+    ['S1', 'Checkout and thank-you, with Discount codes', 'task-e89d07bcd0cf', []],
+    ['S2', 'Personas and order history', 'task-4c52e51e3429', []],
+    ['S3', 'Reviews on the product page', 'task-edf33460c809', []],
+    ['S4', 'Address book', 'task-82355a544537', []],
+    ['S5', 'Login, register and the Forgot your password? mock', 'task-52f05aed274b', []],
+    ['S6', 'Generate and verify mock_clothing_v2, ship the docs', 'task-e9afcad1e964', [2]],
+  ].map(([key, title, id, blocked]) => ({ key, title, id, blocked, area: 'mock_clothing_v2 work', what: 'Sibling ticket of task-50bc4d23931e.', sib: true }));
+  const ALL = [...T, ...SIBS];
+  const byKey = new Map(ALL.map((t) => [t.key, t]));
+  const deps = new Map(ALL.map((t) => [t.key, []]));
+  ALL.forEach((t) => t.blocked.forEach((b) => deps.get(b).push(t.key)));
+  const wave = new Map();
+  const waveOf = (t) => {
+    if (wave.has(t.key)) return wave.get(t.key);
+    const own = t.blocked.filter((b) => typeof b === 'number');
+    const w = own.length ? 1 + Math.max(...own.map((b) => waveOf(byKey.get(b)))) : 0;
+    wave.set(t.key, w);
+    return w;
+  };
+  T.forEach(waveOf);
+  const closure = (start, next) => {
+    const seen = new Set(), stack = [...next(start)];
+    while (stack.length) { const k = stack.pop(); if (seen.has(k)) continue; seen.add(k); stack.push(...next(k)); }
+    return seen;
+  };
+  const up = (k) => closure(k, (x) => byKey.get(x).blocked);
+  const down = (k) => closure(k, (x) => deps.get(x));
+  const WAVE_NAMES = ['Wave 0: start now', 'Wave 1: tracer', 'Wave 2: modes', 'Wave 3', 'Wave 4', 'Wave 5: trial'];
+  const label = (t) => (t.sib ? t.id.replace('task-', '') : '#' + t.n);
+  const card = (t) => `<button class="tk${t.sib ? ' sib' : ''}" type="button" data-k="${t.key}"><b>${esc(label(t))} &#183; ${esc(t.area)}</b>${esc(t.title)}</button>`;
+  $('#waves').innerHTML = WAVE_NAMES.map((name, w) => `<div class="wave"><h4>${name}</h4>${T.filter((t) => wave.get(t.key) === w).map(card).join('')}</div>`).join('');
+  $('#sibs').innerHTML = SIBS.map(card).join('');
+  const refs = (keys) => keys.length ? keys.map((k) => { const t = byKey.get(k); return `${esc(label(t))} ${esc(t.title)}`; }).join('<br>') : '<span class="muted">none</span>';
+  function detail(k) {
+    const t = byKey.get(k);
+    $('#tkdetail').innerHTML = `
+      <div class="who"><span class="chip">${esc(t.id)}</span><span class="chip">${esc(t.area)}</span>${t.sib ? '' : `<span class="chip">wave ${wave.get(k)}</span>`}</div>
+      <h3>${esc(label(t))} ${esc(t.title)}</h3>
+      <p class="small">${esc(t.what)}</p>
+      <dl><dt>Blocked by</dt><dd>${refs(t.blocked)}</dd><dt>Unblocks</dt><dd>${refs(deps.get(k))}</dd></dl>`;
+  }
+  let sel = null;
+  function select(k) {
+    sel = sel === k ? null : k;
+    const u = sel ? up(sel) : new Set(), d = sel ? down(sel) : new Set();
+    $$('.tk').forEach((b) => {
+      const key = /^\d+$/.test(b.dataset.k) ? Number(b.dataset.k) : b.dataset.k;
+      b.classList.toggle('sel', key === sel);
+      b.classList.toggle('up', u.has(key));
+      b.classList.toggle('down', d.has(key));
+      b.setAttribute('aria-pressed', String(key === sel));
+    });
+    if (sel) detail(sel); else $('#tkdetail').innerHTML = '<p class="small muted">Select a ticket to see its blockers and what it unblocks.</p>';
+  }
+  $$('.tk').forEach((b) => b.addEventListener('click', () => select(/^\d+$/.test(b.dataset.k) ? Number(b.dataset.k) : b.dataset.k)));
+  const FILTERS = {
+    all: () => true,
+    now: (t) => !t.sib && t.blocked.length === 0,
+    shared: (t) => !t.sib && t.n >= 2 && t.n <= 8,
+    v2: (t) => [...up(t.key)].some((k) => typeof k === 'string') || t.sib,
+    tracer: (t) => [3, 4, 9].includes(t.key),
+  };
+  $$('.flt').forEach((f) => f.addEventListener('click', () => {
+    $$('.flt').forEach((x) => x.setAttribute('aria-pressed', String(x === f)));
+    const fn = FILTERS[f.dataset.f];
+    $$('.tk').forEach((b) => { const k = /^\d+$/.test(b.dataset.k) ? Number(b.dataset.k) : b.dataset.k; b.classList.toggle('faded', !fn(byKey.get(k))); });
+  }));
+  select(9);
+
+  /* ---------- Table of contents: mark the section in view ---------- */
+  const links = new Map($$('.toc a[href^="#"]').map((a) => [a.getAttribute('href').slice(1), a]));
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (!e.isIntersecting) return;
+        links.forEach((a) => a.classList.remove('on'));
+        const a = links.get(e.target.id);
+        if (a) a.classList.add('on');
+      });
+    }, { rootMargin: '-15% 0px -75% 0px' });
+    $$('section[id], .sub-head[id]').forEach((s) => io.observe(s));
+  }
+})();
+</script>
+</body>
+</html>
