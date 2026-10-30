@@ -66,7 +66,6 @@ describe('parseGenArgs', () => {
       model: 'p/m',
       buildModel: 'openai/gpt-6-sol',
     });
-    expect(USAGE).toContain('Model for the build agent (default: openai/gpt-6-sol)');
   });
 
   it('validates --from against the gen steps', () => {
@@ -88,5 +87,11 @@ describe('parseGenArgs', () => {
     expect(() => parseGenArgs(['m', '--name', 's', '--images-per-product', '-1'])).toThrow(
       CliError,
     );
+  });
+});
+
+describe('USAGE', () => {
+  it('shows the build agent default', () => {
+    expect(USAGE).toContain('Model for the build agent (default: openai/gpt-6-sol)');
   });
 });

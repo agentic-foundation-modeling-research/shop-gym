@@ -95,8 +95,8 @@ shopgym gen outputs/shop_manuals/<host>/<run_id> --name mock_shop
 to let the build agent extend the shop's backend copy, `--image-backend
 placeholder|openai` (`openai` needs `OPENAI_API_KEY`), catalog sizing
 (`--collections`, `--products-per-collection`, `--images-per-product`),
-`--build-model <ref>` for the build loop (default `openai/gpt-6-sol`, also
-when `--model` is set), and `--from manual_merge|data_synth|
+`--build-model <ref>` for the build loop (default `openai/gpt-6-sol`, even
+if `--model` is set), and `--from manual_merge|data_synth|
 data_validation|build|final_eval|publish` to force a step and everything after
 it. Output layout:
 

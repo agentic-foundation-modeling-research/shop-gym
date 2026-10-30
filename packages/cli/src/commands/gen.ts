@@ -14,7 +14,7 @@ import { logEvent, logLine } from '../progress.js';
 
 const IMAGE_BACKENDS = ['placeholder', 'openai'] as const;
 
-/** Build agent model when `--build-model` is absent, whatever `--model` is. */
+/** Build agent model when `--build-model` is absent, even if `--model` is set. */
 const DEFAULT_BUILD_MODEL = 'openai/gpt-6-sol';
 
 export const USAGE = `Usage: shopgym gen <manual_dir>... --name <shop> [options]
@@ -26,7 +26,7 @@ Options:
   --out <dir>                   Shop directory (default: outputs/shops/<name>)
   --gen-backend                 Let the build agent extend the backend copy
   --from <step>                 Rerun from this step: ${GEN_STEPS.join(' | ')}
-  --model <provider/id>         Model for synthesis, manual merge and the judges (default: ${DEFAULT_MODEL})
+  --model <provider/id>         Model for the synthesis steps (default: ${DEFAULT_MODEL})
   --build-model <provider/id>   Model for the build agent (default: ${DEFAULT_BUILD_MODEL})
   --image-backend <name>        ${IMAGE_BACKENDS.join(' | ')} (default: placeholder)
   --max-iters <n>               Executor iterations for the build loop

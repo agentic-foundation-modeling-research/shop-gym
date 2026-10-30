@@ -56,12 +56,12 @@ const inProcessLaunch: SidecarLaunch = async (options) => {
 
 /** Synthesis prompts are strings; judge prompts carry screenshots. */
 class PipelineLlm implements LlmClient {
-  /** `provider/id` of every request, in call order. */
-  readonly models: string[] = [];
+  /** Model id of every request, in call order. */
+  readonly modelIds: string[] = [];
   private readonly synth = new ScriptedSynthLlm();
   private readonly judge = new ScriptedJudge();
   complete(request: CompleteRequest): Promise<Completion> {
-    this.models.push(`${request.model.provider}/${request.model.id}`);
+    this.modelIds.push(request.model.id);
     return typeof request.prompt === 'string'
       ? this.synth.complete(request)
       : this.judge.complete(request);
@@ -140,11 +140,9 @@ describe('generateShop', () => {
     const report = JSON.parse(await fs.readFile(result.dataValidationPath, 'utf-8'));
     expect(report.ok).toBe(true);
     expect(log.some((l) => l.includes('[build] completed'))).toBe(true);
-    // The build agent runs on `buildModel`; synthesis, merge and the judges on `model`.
-    expect(new Set(runtime.requests.map((r) => `${r.model.provider}/${r.model.id}`))).toEqual(
-      new Set(['fake/builder']),
-    );
-    expect(new Set(llm.models)).toEqual(new Set(['fake/scripted']));
+    // The build agent runs on `buildModel`; synthesis and the judges on `model`.
+    expect(new Set(runtime.requests.map((r) => r.model.id))).toEqual(new Set(['builder']));
+    expect(new Set(llm.modelIds)).toEqual(new Set(['scripted']));
 
     const finalEval = JSON.parse(
       await fs.readFile(path.join(result.finalEvalDir, 'report.json'), 'utf-8'),
