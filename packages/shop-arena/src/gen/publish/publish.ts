@@ -43,6 +43,11 @@ const templateFingerprintSchema = z.object({
 
 export const shopManifestSchema = z.object({
   name: z.string(),
+  /**
+   * Absolute directories of the Shop Manuals the shop was generated from.
+   * Absent in manifests published before the lineage was recorded.
+   */
+  sourceManuals: z.array(z.string()).optional(),
   templates: z.object({
     storefront: templateFingerprintSchema,
     backend: templateFingerprintSchema,
@@ -59,6 +64,8 @@ export interface PublishOptions {
   readonly runDir: string;
   /** Destination shop directory; `storefront/`, `backend/` and `shop.json` are replaced. */
   readonly shopDir: string;
+  /** Absolute directories of the Shop Manuals the shop was generated from. */
+  readonly sourceManuals: readonly string[];
 }
 
 export interface PublishResult {
@@ -70,7 +77,7 @@ export interface PublishResult {
 export class PublishError extends Error {}
 
 export async function publishShop(options: PublishOptions): Promise<PublishResult> {
-  const { runDir, shopDir } = options;
+  const { runDir, shopDir, sourceManuals } = options;
   const artifactDir = path.join(runDir, 'artifact');
   const build = await readJson<BuildRunInfo>(path.join(runDir, BUILD_JSON));
   if (build === undefined) {
@@ -84,6 +91,7 @@ export async function publishShop(options: PublishOptions): Promise<PublishResul
   const run = await readJson<{ finalStatus?: FinalStatus }>(path.join(runDir, 'run.json'));
   const manifest: ShopManifest = {
     name: path.basename(path.resolve(shopDir)),
+    sourceManuals: [...sourceManuals],
     templates,
     genBackend: build.genBackend,
     publishedAt: new Date().toISOString(),

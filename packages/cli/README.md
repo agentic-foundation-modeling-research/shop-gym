@@ -39,8 +39,8 @@ manual path on stdout; exits 1 when the run does not finish with status
 Generates a SandboxShop from one or more shop manuals.
 
 ```
-shopgym gen <manual_dir>... --name <name> [--out <dir>] [--gen-backend]
-            [--from <step>] [--model <ref>] [--build-model <ref>]
+shopgym gen <manual_dir>... --name <name> [--out <dir>] [--data <dir>]
+            [--gen-backend] [--from <step>] [--model <ref>] [--build-model <ref>]
             [--image-backend placeholder|openai] [--max-iters <n>]
             [--collections <n>] [--products-per-collection <n>]
             [--images-per-product <n>] [--concurrency <n>] [--force-resume]
@@ -49,8 +49,11 @@ shopgym gen <manual_dir>... --name <name> [--out <dir>] [--gen-backend]
 `--from` must be one of `manual_merge`, `data_synth`, `data_validation`,
 `build`, `final_eval`, `publish`. `--model` drives data synthesis, manual merge
 and the judges. The build agent runs on `--build-model`, default
-`openai/gpt-6-sol`, even if `--model` is set. Prints the published shop
-directory on stdout.
+`openai/gpt-6-sol`, even if `--model` is set. `--data` copies the products,
+collections and images of an existing SandboxShop Dataset instead of
+synthesizing a catalog, so `--collections`, `--products-per-collection`,
+`--images-per-product` and `--image-backend` do not apply. Prints the published
+shop directory on stdout.
 
 ### `shopgym host start|stop|restart|list`
 

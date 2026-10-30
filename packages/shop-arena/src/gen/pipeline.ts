@@ -189,6 +189,7 @@ export function publishStep(): Step<GenContext> {
       const result = await publishShop({
         runDir: path.join(ctx.outDir, BUILD_RUN_DIR),
         shopDir: ctx.outDir,
+        sourceManuals: ctx.context.manualDirs,
       });
       ctx.log(`[publish] ${result.manifest.name}: ${result.manifestPath}`);
     },
@@ -199,7 +200,7 @@ export function publishStep(): Step<GenContext> {
 export function genSteps(ctx: GenContext): Step<GenContext>[] {
   return [
     manualMergeStep(ctx.manualDirs),
-    dataSynthStep(),
+    dataSynthStep(ctx.sourceDataDir),
     dataValidationStep(),
     buildStep(),
     finalEvalStep(),

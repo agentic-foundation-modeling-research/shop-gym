@@ -14,7 +14,6 @@ import { readJsonFile } from '../io.js';
 import { completeStructured } from '../llm.js';
 import { type SynthContext, cached, pretty, synthPrompt } from './context.js';
 import {
-  type CollectionDraft,
   type NavigationDraft,
   type NavigationItem,
   type PageDraft,
@@ -27,7 +26,7 @@ function walk(items: readonly NavigationItem[]): { url: string; type: string }[]
 
 export function synthNavigation(
   sc: SynthContext,
-  collections: readonly CollectionDraft[],
+  collections: readonly { readonly title: string; readonly handle: string }[],
   pages: readonly PageDraft[],
   policies: readonly PageDraft[],
 ): Promise<NavigationDraft> {

@@ -24,6 +24,8 @@ Generate a SandboxShop from one or more Shop Manual directories.
 Options:
   --name <slug>                 Shop name (required; lowercase slug)
   --out <dir>                   Shop directory (default: outputs/shops/<name>)
+  --data <dir>                  Copy the products, collections and images of this
+                                Dataset; the catalog and image options do not apply
   --gen-backend                 Let the build agent extend the backend copy
   --from <step>                 Rerun from this step: ${GEN_STEPS.join(' | ')}
   --model <provider/id>         Model for the synthesis steps (default: ${DEFAULT_MODEL})
@@ -48,6 +50,7 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
   const args = parse(argv, {
     name: { type: 'string' },
     out: { type: 'string' },
+    data: { type: 'string' },
     'gen-backend': { type: 'boolean' },
     from: { type: 'string' },
     model: { type: 'string' },
@@ -72,6 +75,7 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
     throw new CliError('--name is required');
   }
   const outDir = stringOption(args, 'out');
+  const sourceDataDir = stringOption(args, 'data');
   const from: GenStepName | undefined = enumOption(args, 'from', GEN_STEPS);
   const imageBackend = enumOption(args, 'image-backend', IMAGE_BACKENDS);
   const maxIters = integerOption(args, 'max-iters');
@@ -94,6 +98,7 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
         ...(imagesPerProduct !== undefined ? { imagesPerProduct } : {}),
       },
       ...(outDir !== undefined ? { outDir } : {}),
+      ...(sourceDataDir !== undefined ? { sourceDataDir } : {}),
       ...(from !== undefined ? { from } : {}),
       ...(imageBackend !== undefined ? { imageBackend } : {}),
       ...(maxIters !== undefined ? { maxIters } : {}),

@@ -174,7 +174,12 @@ describe('generateShop', () => {
 
     const manifest = await readShopManifest(outDir);
     expect(result.manifestPath).toBe(path.join(outDir, 'shop.json'));
-    expect(manifest).toMatchObject({ name: 'shop', genBackend: false, finalStatus: 'completed' });
+    expect(manifest).toMatchObject({
+      name: 'shop',
+      sourceManuals: [manualDir],
+      genBackend: false,
+      finalStatus: 'completed',
+    });
     expect(manifest.templates.storefront.name).toBe('storefront');
     expect(await fs.readdir(path.join(outDir, 'storefront'))).toContain('template.json');
     expect(await fs.readdir(path.join(outDir, 'backend'))).toContain('template.json');

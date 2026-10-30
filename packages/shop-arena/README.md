@@ -104,7 +104,7 @@ pipeline runner; `GEN_STEPS` lists them in order:
 | Step | Reads | Writes |
 | --- | --- | --- |
 | `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json`; the checked-in Standard sub-manual `src/gen/manual_merge/standard_sub_manual.md` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section); `parts/` holds the six Sub-manuals cut from `manual.md` and the shop's copy of the Standard sub-manual as `parts/standard.md`. Fusion: for each observed `## Account` or `## Checkout` section in `manual.md`, one LLM call fuses the notes into the copy. Observed labels and layout win. Unsupported behavior and the labels that the browser steps check keep the standard text. With no observed notes, the copy is unchanged and there is no LLM call |
-| `data_synth` | `manual/` | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce`, `reviews` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
+| `data_synth` | `manual/`; with `sourceDataDir` (`--data`), also `products.json`, `collections.json` and `images/` of that Dataset | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce`, `reviews` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
 | `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity that includes the product and variant of each Review, valid Discount codes, seeded order totals and discounts that follow the backend pricing rules, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
 | `build` | `data/`, `manual/`, `data_validation.json` | `runs/build/` via `build.runBuildLoop` (seed staged in `.shop_gen/build_seed/`); a final status other than `completed` fails the step so the next run resumes it |
 | `final_eval` | `runs/build/run.json`, `runs/build/build.json` | `final_eval/` via `finalEval.runFinalEval` against the build artifacts booted on the recorded backend port (sidecar logs in `final_eval/{backend,storefront}.log`); advisory, never fails the step |
@@ -131,6 +131,19 @@ once with the validation error. Prompts are plain Markdown under
 prompt carries the fake-brand allowlist from
 `src/gen/brands/fake_brands.json`; vendors must come from it and titles
 and descriptions may not mention it.
+
+With `sourceDataDir` (`shopgym gen --data <dir>`), `data_synth` copies
+the catalog of an existing SandboxShop Dataset instead of running
+`collections` through `images`. `products.json` and `collections.json`
+are kept as they are written, also the fields that the backend schema
+does not name, and `images/` is copied as it is. Each collection with no
+products is dropped and its handle is logged. `identity` gets a summary
+of the copied catalog (product count, collections, the most common
+product types, the price range and some titles), so the descriptor and
+tone fit the products. Menus link only to the kept collections. All
+other files are synthesized from the manual as usual, so `catalog` and
+`imageBackend` do not apply. A change to the three source paths reruns
+`data_synth`.
 
 ```ts
 import { PiLlmClient, PiRuntime } from '@shop-gym/agent';
@@ -294,6 +307,7 @@ backend serves its own `data/`. It writes `<shopDir>/shop.json`:
 ```json
 {
   "name": "<basename of shopDir>",
+  "sourceManuals": ["/abs/path/to/outputs/shop_manuals/<host>/<run_id>"],
   "templates": { "storefront": { "name": "storefront", "commit": "...", "dirty": false, "contentHash": "...", "files": {}, "seededAt": "..." }, "backend": { "...": "..." } },
   "genBackend": true,
   "publishedAt": "2026-09-30T00:00:00.000Z",
