@@ -1,6 +1,6 @@
 # ShopArena Standard Account and Checkout, and `gen --data` (`packages/shop-arena`)
 
-Status: **Implemented**, except the `mock_clothing_v2` check (§7) · Version: **0.1**
+Status: **Implemented** · Version: **0.1**
 Owners: ShopArena
 
 > Every SandboxShop gets account, checkout and order confirmation pages, an
@@ -16,8 +16,8 @@ Owners: ShopArena
 Storefront exploration sees a Live storefront only as a logged-out buyer.
 A Shop Manual therefore never describes the account pages, a completed
 checkout or the order confirmation. Before this work, no Sub-manual and no
-build task owned these pages, so their labels and flows depended on what
-the build agent made of nothing. Account, order and checkout Tasks need
+build task owned these pages, so their labels and flows depended only on
+the build agent, with no manual text to follow. Account, order and checkout Tasks need
 these pages to be the same in every shop, and the browser steps of the
 Verifiers and the Final eval need fixed selectors and messages.
 
@@ -92,8 +92,8 @@ Before this work:
 After this work, everything in §5 is in `packages/shop-arena` and
 `packages/shop_backend`, with unit tests, the gen pipeline tests on the
 scripted `LlmClient`, and the Storefront template browser suite in every
-`pnpm test` and CI run. `mock_clothing_v2` is not generated yet (§7,
-§8.2).
+`pnpm test` and CI run. `mock_clothing_v2` was generated and verified on
+2026-10-29 (§8.2).
 
 ---
 
@@ -124,7 +124,7 @@ scripted `LlmClient`, and the Storefront template browser suite in every
 ### 5.1 Standard sub-manual
 
 The file is `packages/shop-arena/src/gen/manual_merge/standard_sub_manual.md`.
-It was written once by hand from these sources:
+A person wrote it once by hand from these sources:
 
 - the Dawn theme **v15.5.0**, the last Dawn release with classic customer
   accounts (v16.0.0 removed them): its login, register, account, order,
@@ -172,10 +172,10 @@ section and the section's checked labels. Its rules:
   payment buttons.
 - Every checked label stays word for word, in double quotes.
 
-A reply is refused when it has a `#` or `##` heading, or when it drops a
-checked label. A refused reply is retried once with the reason, and a
+Fusion refuses a reply that has a `#` or `##` heading, or that drops a
+checked label. It retries a refused reply once with the reason, and a
 second failure fails the step. The fused body replaces the standard
-section. The rest of the file is copied unchanged.
+section. Fusion copies the rest of the file unchanged.
 
 | Section | Checked labels |
 | --- | --- |
@@ -228,10 +228,10 @@ fields). It runs in every `pnpm test`, so CI runs it on every PR.
 
 ### 5.4 Build loop
 
-The planner's canonical list gains two tasks after `gen_info_pages` and
+The planner's canonical list gains two build tasks after `gen_info_pages` and
 before `visual_fix`, both at priority 3:
 
-| Task | Brief |
+| Build task | Brief |
 | --- | --- |
 | `gen_account` | restyle the prebuilt account pages to the theme and the Account section of `parts/standard.md`; keep their behavior and form selectors |
 | `gen_checkout` | restyle the prebuilt checkout and thank-you pages to the theme and the Checkout and Order confirmation sections of `parts/standard.md`; keep behavior and form selectors |
@@ -239,7 +239,7 @@ before `visual_fix`, both at priority 3:
 The executor prompt tells each task which Standard sub-manual sections it
 reads, and that its quoted labels are exact:
 
-| Task | Sections | Extra rule |
+| Build task | Sections | Extra rule |
 | --- | --- | --- |
 | `gen_navigation` | Announcement bar | the codes and hints come from the backend |
 | `gen_product` | Reviews | every Review element comes from backend data; an element with no data is left out |
@@ -254,15 +254,17 @@ accessible names of fields and buttons.
 Two Verifiers drive these forms in a real browser, in a fresh Episode,
 with the same browser steps as the Final eval
 (`gen/build/verifiers/browser_flow.ts`). A changed selector or a broken
-page shows as the step that failed.
+page shows as the step that failed. The add-to-cart step checks the
+first enabled variant radio of the product form, or submits the form as it
+is when the form carries its variant in a hidden input.
 
-| Verifier | Tasks | Steps |
+| Verifier | Build tasks | Steps |
 | --- | --- | --- |
 | `account_flow` | `gen_account`, `visual_fix` | sign up, log out, "Forgot your password?" (the login page shows the sent message), log in, add an address, edit it |
-| `discount_flow` | `gen_checkout`, `visual_fix` | add a sampled product to the cart; apply a Dataset Discount code that surely applies to that cart (the "Total" changes); enter `NOT-A-SHOPGYM-CODE` ("Enter a valid discount code" shows, and the "Total" stays) |
+| `discount_flow` | `gen_checkout`, `visual_fix` | add a sampled product to the cart; apply a Dataset Discount code with no minimum subtotal, a percent or fixed-amount code first (the "Total" changes); enter `NOT-A-SHOPGYM-CODE` ("Enter a valid discount code" shows, and the "Total" stays) |
 
-`discount_flow` skips its first check when the Dataset has no code that
-surely applies. `routes_200`, `cart_conformance` and `visual_judge` keep
+`discount_flow` skips its first check when the Dataset has no code
+without a minimum subtotal. `routes_200`, `cart_conformance` and `visual_judge` keep
 gating these pages. The visual judge gets the Account section for the
 account page bucket and the Checkout and Order confirmation sections for
 the checkout bucket, from the shop's `parts/standard.md`, with their own
@@ -302,7 +304,7 @@ seeded order's totals and discount match the backend pricing rules.
 - `products.json` and `collections.json` keep their JSON values, including
   the fields that the backend schema does not name. Both are checked
   against the backend schema. `images/` is copied as it is.
-- Each collection with no products is dropped, with one log line that
+- `--data` drops each collection with no products, and logs one line that
   names its handle.
 - The `collections` through `images` sub-steps do not run, so the catalog
   sizing options and `--image-backend` do not apply.
@@ -360,7 +362,7 @@ judges use `--model` (default `openai/gpt-5.5`).
 | 10 | Final eval: new functional steps and visual pages | done |
 | 11 | `gen --data`; `sourceManuals` in the Shop manifest | done |
 | 12 | Build agent default `openai/gpt-6-sol` | done |
-| 13 | Generate and verify `mock_clothing_v2` (§8.2) | blocked: on 2026-10-29 the model gateway refused the `.env` credentials (401), so data synthesis could not run |
+| 13 | Generate and verify `mock_clothing_v2` (§8.2) | done (2026-10-29) |
 
 ---
 
@@ -393,18 +395,19 @@ packages/shop-arena/
 ### 8.2 `mock_clothing_v2`
 
 The pilot needs an apparel SandboxShop with account and order Tasks. The
-recipe rebuilds the old `mock_clothing` catalog on the current templates:
+recipe rebuilds the old `mock_clothing` catalog on the current templates,
+from the apparel Shop Manual of the Live storefront that `mock_clothing`
+came from:
 
 ```bash
-shopgym gen outputs/shop_manuals/comfrt.com/<run_id>/artifact \
+shopgym gen outputs/shop_manuals/<host>/<run_id>/artifact \
   --name mock_clothing_v2 --data outputs/shops/mock_clothing/data
 ```
 
-- A manual directory must hold `manual.md` directly. The comfrt.com Shop
-  Manual has the older explore layout, so its manual directory is
-  `<run_id>/artifact`.
-- The comfrt.com manual has no Account or Checkout section, so Fusion makes
-  no LLM call, and `parts/standard.md` is the checked-in file.
+- A manual directory must hold `manual.md` directly. This Shop Manual has
+  the older explore layout, so its manual directory is `<run_id>/artifact`.
+- This Shop Manual has no Account or Checkout section, so Fusion makes no
+  LLM call, and `parts/standard.md` is the checked-in file.
 - The old `mock_clothing` catalog loads as it is (157 products, 60
   collections). `--data` drops its 6 empty collections:
   `wide-leg-pairings`, `rider-short-pairings`, `zip-front-hoodies`,
@@ -422,6 +425,9 @@ The shop is verified when all of these are true:
    sign-up-to-order flow.
 4. The shop has enough Personas, orders, stock and Discount codes for
    about 10 account and order Tasks and 10 checkout Tasks.
+
+All four were true on 2026-10-29, with the default models. The pull
+request of that run records the counts and the screenshots.
 
 ### 8.3 Known limitations
 

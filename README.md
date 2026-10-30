@@ -116,11 +116,11 @@ outputs/shops/mock_shop/
   shop.json      Shop manifest (sourceManuals, templates, genBackend, finalStatus)
 ```
 
-Every SandboxShop has customer accounts (register, log in and out, "Forgot
-your password?", order history and order detail, and an address book), a
-one-page checkout with a "Discount code" field, a thank-you page, an
-announcement bar that shows each Discount code with its hint, and product
-Reviews with stars, sorting and paging. These pages follow the Standard
+Every SandboxShop has customer accounts: register, log in and out, "Forgot
+your password?", order history and order detail, and an address book. It
+also has a one-page checkout with a "Discount code" field and a thank-you
+page. An announcement bar shows each Discount code with its hint, and
+product Reviews have stars, sorting and paging. These pages follow the Standard
 sub-manual, `manual/parts/standard.md`, which every shop gets and which
 manual merge fits to the shop's observed account and checkout notes
 ([ADR 0016](docs/adr/0016-standard-sub-manual-for-account-and-checkout.md)).

@@ -6,6 +6,8 @@ Status: **Proposed** · Audience: ShopGym developers · Baseline: [v2 proposal b
 
 ShopGym generates sandbox shops; ShopGuru generates tasks for agents shopping in them. The next improvement should expand **verifiable shopper goals**, rather than multiply paraphrases of existing seeds. We propose three generation methods—**template, product-first, and BFS + explore**—selected by task category and joined by shared validation. Target **100 high-quality accepted tasks per shop across six SandboxShops and three real shops (900 total)**, with **30 template / 40 product-first / 30 BFS + explore** in every shop. Train with RL only in sandboxes; evaluate on both sandbox and real shops to measure transfer. Use existing commerce features.
 
+The note under First experiment records the commerce features added on 2026-10-29.
+
 ## Terminology
 
 A **SandboxShop** contains a catalog, storefront, and backend. An **episode** is one agent attempt; sandbox state is isolated and resettable. A **validation agent** attempts a candidate task; a **verifier** checks its outcome. A **reference replay** repeats a verified solution without prescribing the evaluated agent's path.
@@ -24,7 +26,7 @@ The [explorer](../../../packages/shop-guru/src/explore/verify.ts) checks reachab
 | Recommend, assess compatibility, summarize reviews | Catalog evidence supports bounded factual decisions; subjective suitability needs calibration. Read-only Reviews (rating, title, text, variant, Verified Buyer, helpful count) are Dataset records shown on product pages; summaries need explicit answer criteria. |
 | Policy and order questions | Policy content and order reads exist; reasoning/aggregation need explicit answer criteria. Policy text does not implement after-sales actions. |
 | Cart editing and basket planning | Line/quantity mutations exist; multi-item feasibility and budget checks need generators/verifiers. |
-| Checkout, discounts, delivery | Simulated checkout and stock changes exist. Discount codes (percent, fixed amount, or free shipping; one per cart; optional minimum) change the price, and orders and the state snapshot record them; delivery dates/pickup are absent. |
+| Checkout, discounts, delivery | Simulated checkout and stock changes exist. Discount codes (percent, fixed amount, or free shipping; one per cart; optional minimum) change the price, and orders and the StateSnapshot record them; delivery dates/pickup are absent. |
 | Accounts and repeat shopping | Registration/login/logout, password-reset requests, profile/order reads, and address add/edit/delete/set-default exist. Profile edits, saved payments, and wishlists are absent; reordering needs composition. |
 | After-sales, reviews, subscriptions | Cancellation, returns/exchanges/refunds, writing reviews, and recurring orders need domain state, mutations, and UI. |
 | Memory, clarification, recovery, cross-shop | Variations on the above; dialogue, controlled events, or coordinated episodes need runner support. |
