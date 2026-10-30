@@ -17,7 +17,7 @@ single `shopgym <cmd>: <message>` line with exit code 1.
 Credentials are read from `<repoRoot>/.env` and the shell environment; the
 repository root is the nearest ancestor of the current directory that contains
 `pnpm-workspace.yaml`. The default model is `openai/gpt-5.5`; pass `--model
-<provider>/<id>` to override.
+<provider>/<id>` to override. The `gen` build agent is the exception: see below.
 
 ## Subcommands
 
@@ -47,7 +47,10 @@ shopgym gen <manual_dir>... --name <name> [--out <dir>] [--gen-backend]
 ```
 
 `--from` must be one of `manual_merge`, `data_synth`, `data_validation`,
-`build`, `final_eval`, `publish`. Prints the published shop directory on stdout.
+`build`, `final_eval`, `publish`. `--model` drives data synthesis, manual merge
+and the judges. The build agent runs on `--build-model`, default
+`openai/gpt-6-sol`, even if `--model` is set. Prints the published shop
+directory on stdout.
 
 ### `shopgym host start|stop|restart|list`
 

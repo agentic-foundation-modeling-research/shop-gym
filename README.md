@@ -68,7 +68,8 @@ exposes that same skill tree to Claude Code.
 Every command below is a `shopgym` subcommand; from the repo root run it as
 `node packages/cli/dist/main.js <cmd>` (built by `pnpm -r build`). Progress goes to stderr,
 the result (a path, URL, or number) to stdout. The default model is
-`openai/gpt-5.5`; pass `--model <provider>/<id>` to override. See
+`openai/gpt-5.5`; pass `--model <provider>/<id>` to override. The build agent
+of `shopgym gen` runs on `openai/gpt-6-sol` unless `--build-model` is set. See
 [`packages/cli/README.md`](packages/cli/README.md) for every flag.
 
 ### 1. Explore a storefront
@@ -94,7 +95,8 @@ shopgym gen outputs/shop_manuals/<host>/<run_id> --name mock_shop
 to let the build agent extend the shop's backend copy, `--image-backend
 placeholder|openai` (`openai` needs `OPENAI_API_KEY`), catalog sizing
 (`--collections`, `--products-per-collection`, `--images-per-product`),
-`--build-model <ref>` for the build loop, and `--from manual_merge|data_synth|
+`--build-model <ref>` for the build loop (default `openai/gpt-6-sol`, even
+if `--model` is set), and `--from manual_merge|data_synth|
 data_validation|build|final_eval|publish` to force a step and everything after
 it. Output layout:
 
