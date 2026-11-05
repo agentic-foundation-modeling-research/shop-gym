@@ -591,6 +591,14 @@ export type DiscountApplicationTargetType =
   | 'LINE_ITEM'
   | 'SHIPPING_LINE';
 
+export type DiscountCodeHint = {
+  readonly __typename?: 'DiscountCodeHint';
+  /** The code in its commerce.json spelling. */
+  readonly code: Scalars['String']['output'];
+  /** Short shopper-facing text that tells what the code does. */
+  readonly hint: Scalars['String']['output'];
+};
+
 export type HasMetafieldsIdentifier = {
   readonly key: Scalars['String']['input'];
   readonly namespace: Scalars['String']['input'];
@@ -1198,6 +1206,8 @@ export type Query = {
   /** Shipping and payment options plus tax rules from commerce.json. */
   readonly commerceSettings: CommerceSettings;
   readonly customer: Maybe<Customer>;
+  /** Every Discount code with its hint text, in commerce.json order. */
+  readonly discountCodeHints: ReadonlyArray<DiscountCodeHint>;
   readonly localization: Localization;
   readonly menu: Maybe<Menu>;
   /** Look up any order by id, regardless of customer. */
@@ -1636,6 +1646,7 @@ export type ResolversTypes = {
   CustomerErrorCode: CustomerErrorCode;
   CustomerUserError: ResolverTypeWrapper<CustomerUserError>;
   DiscountApplicationTargetType: DiscountApplicationTargetType;
+  DiscountCodeHint: ResolverTypeWrapper<DiscountCodeHint>;
   Float: ResolverTypeWrapper<Scalars['Float']['output']>;
   HasMetafieldsIdentifier: HasMetafieldsIdentifier;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
@@ -1785,6 +1796,7 @@ export type ResolversParentTypes = {
   CustomerCreatePayload: Omit<CustomerCreatePayload, 'customer'> & { customer?: Maybe<ResolversParentTypes['Customer']> };
   CustomerDefaultAddressUpdatePayload: Omit<CustomerDefaultAddressUpdatePayload, 'customer'> & { customer?: Maybe<ResolversParentTypes['Customer']> };
   CustomerUserError: CustomerUserError;
+  DiscountCodeHint: DiscountCodeHint;
   Float: Scalars['Float']['output'];
   HasMetafieldsIdentifier: HasMetafieldsIdentifier;
   ID: Scalars['ID']['output'];
@@ -2305,6 +2317,12 @@ export type CustomerUserErrorResolvers<ContextType = ResolverContext, ParentType
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type DiscountCodeHintResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['DiscountCodeHint'] = ResolversParentTypes['DiscountCodeHint']> = {
+  code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  hint?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type ImageResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Image'] = ResolversParentTypes['Image']> = {
   altText?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   height?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
@@ -2662,6 +2680,7 @@ export type QueryResolvers<ContextType = ResolverContext, ParentType extends Res
   collections?: Resolver<ResolversTypes['CollectionConnection'], ParentType, ContextType, Partial<QueryCollectionsArgs>>;
   commerceSettings?: Resolver<ResolversTypes['CommerceSettings'], ParentType, ContextType>;
   customer?: Resolver<Maybe<ResolversTypes['Customer']>, ParentType, ContextType, RequireFields<QueryCustomerArgs, 'customerAccessToken'>>;
+  discountCodeHints?: Resolver<ReadonlyArray<ResolversTypes['DiscountCodeHint']>, ParentType, ContextType>;
   localization?: Resolver<ResolversTypes['Localization'], ParentType, ContextType>;
   menu?: Resolver<Maybe<ResolversTypes['Menu']>, ParentType, ContextType, RequireFields<QueryMenuArgs, 'handle'>>;
   order?: Resolver<Maybe<ResolversTypes['Order']>, ParentType, ContextType, RequireFields<QueryOrderArgs, 'id'>>;
@@ -2853,6 +2872,7 @@ export type Resolvers<ContextType = ResolverContext> = {
   CustomerCreatePayload?: CustomerCreatePayloadResolvers<ContextType>;
   CustomerDefaultAddressUpdatePayload?: CustomerDefaultAddressUpdatePayloadResolvers<ContextType>;
   CustomerUserError?: CustomerUserErrorResolvers<ContextType>;
+  DiscountCodeHint?: DiscountCodeHintResolvers<ContextType>;
   Image?: ImageResolvers<ContextType>;
   ImageConnection?: ImageConnectionResolvers<ContextType>;
   ImageEdge?: ImageEdgeResolvers<ContextType>;

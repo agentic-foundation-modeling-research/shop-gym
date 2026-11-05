@@ -281,6 +281,12 @@ export interface CommerceSettings {
   readonly paymentMethods: readonly PaymentMethod[];
 }
 
+/** One Discount code with its hint text, for one slide of the announcement bar. */
+export interface DiscountCodeHint {
+  readonly code: string;
+  readonly hint: string;
+}
+
 export interface CheckoutUserError {
   readonly code: string | null;
   readonly field: readonly string[] | null;

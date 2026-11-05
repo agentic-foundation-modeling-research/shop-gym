@@ -1,8 +1,9 @@
 /**
  * Contract: Discount codes from `commerce.json`. One code per cart, matched
  * in any case, applied to cart cost and discount allocations, recorded on
- * orders by `checkoutComplete`, and shown in the StateSnapshot. Each test
- * uses its own episode so carts and orders do not leak between tests.
+ * orders by `checkoutComplete`, and shown in the StateSnapshot; listed with
+ * their hint texts by `discountCodeHints`. Each test uses its own episode so
+ * carts and orders do not leak between tests.
  */
 
 import * as fs from 'node:fs';
@@ -378,6 +379,50 @@ describe('a seeded order with a Discount code', () => {
       discountCode: 'WELCOME10',
       discountAmount: '2.00',
       totalPrice: '27.98',
+    });
+  });
+});
+
+const HINTS_QUERY = /* GraphQL */ '{ discountCodeHints { code hint } }';
+
+describe('Query.discountCodeHints', () => {
+  it('lists every Discount code with its hint text in commerce.json order', async () => {
+    const result = await ctx.query<unknown>(HINTS_QUERY);
+    expect(result).toEqual({
+      data: {
+        discountCodeHints: [
+          { code: 'WELCOME10', hint: '10% off your order' },
+          { code: 'SAVE5', hint: '$5 off orders over $30' },
+          { code: 'FREESHIP', hint: 'Free shipping on any order' },
+        ],
+      },
+    });
+  });
+
+  describe('a Dataset without Discount codes', () => {
+    let withoutCodes: ContractServer;
+    let dataDir: string;
+
+    beforeAll(async () => {
+      dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'discount-hints-'));
+      fs.cpSync(FIXTURE_DIR, dataDir, { recursive: true });
+      const commercePath = path.join(dataDir, 'commerce.json');
+      const { discount_codes: _codes, ...commerce } = JSON.parse(
+        fs.readFileSync(commercePath, 'utf8'),
+      ) as Record<string, unknown>;
+      fs.writeFileSync(commercePath, JSON.stringify(commerce));
+      withoutCodes = await startContractServer(dataDir);
+    });
+
+    afterAll(async () => {
+      await withoutCodes.server.close();
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('lists no hints', async () => {
+      expect(await withoutCodes.query<unknown>(HINTS_QUERY)).toEqual({
+        data: { discountCodeHints: [] },
+      });
     });
   });
 });

@@ -12,19 +12,21 @@ import {
   useRouteError,
   useRouteLoaderData,
 } from 'react-router';
+import { AnnouncementBar } from '~/components/announcement-bar';
 import { CustomerPopups } from '~/components/popups';
 import { CartDrawer, Footer, Header } from '~/components/storefront';
 import { getAppContext, getCartId } from '~/lib/context';
 import { loadCustomer } from '~/lib/customer';
 import { CART_QUERY, ROOT_QUERY } from '~/lib/queries';
 import { storefrontQuery } from '~/lib/storefront';
-import type { Cart, Customer, Menu, Policy, Shop } from '~/lib/types';
+import type { Cart, Customer, DiscountCodeHint, Menu, Policy, Shop } from '~/lib/types';
 import appStyles from '~/styles/app.css?url';
 
 interface RootQueryData {
   readonly shop: Shop;
   readonly headerMenu: Menu | null;
   readonly footerMenu: Menu | null;
+  readonly discountCodeHints: readonly DiscountCodeHint[];
 }
 
 interface CartQueryData {
@@ -110,6 +112,7 @@ export default function App() {
 
   return (
     <div className="page-shell">
+      <AnnouncementBar key={location.pathname} hints={data.discountCodeHints} />
       <Header
         shop={data.shop}
         menu={data.headerMenu}

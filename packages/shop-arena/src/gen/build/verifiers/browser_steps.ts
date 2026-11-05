@@ -1,12 +1,12 @@
 /**
  * Fixed browser scripts over the storefront template's forms and pages:
  * register, log in, log out, add, edit and delete an address in the address
- * book, open a product page, sort its Reviews and show more of them, add a
- * product to the cart, apply or have a Discount code turned down at
- * checkout, place an order, and open that order's thank-you page, the
- * account order history and an account order page. Each step drives one
- * Playwright page, never throws, and reports what it observed so the
- * callers can record it.
+ * book, step through the announcement bar, open a product page, sort its
+ * Reviews and show more of them, add a product to the cart, apply or have a
+ * Discount code turned down at checkout, place an order, and open that
+ * order's thank-you page, the account order history and an account order
+ * page. Each step drives one Playwright page, never throws, and reports
+ * what it observed so the callers can record it.
  *
  * Forms are submitted with `requestSubmit()` rather than a pointer click so
  * consent or newsletter popups layered over the page cannot intercept them.
@@ -15,6 +15,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import type { BrowserSession } from '@shop-gym/browser';
+import type { DiscountCode } from '@shop-gym/shop-backend';
 
 import { CHECKOUT_ADDRESS } from './storefront_target.js';
 
@@ -286,6 +287,140 @@ async function pollPage<T>(
     }
     await sleep(POLL_INTERVAL_MS);
   }
+}
+
+export interface AnnouncementOutcome extends StepOutcome {
+  /** Text of each slide that the bar showed, from the first; empty when there is no bar. */
+  readonly slides?: readonly string[];
+}
+
+/**
+ * The slide that the announcement bar shows. `label` is its accessible
+ * name, "<n> of <total>"; when not exactly one slide shows, it tells how
+ * many do, for the step's detail.
+ */
+interface Slide {
+  readonly label: string;
+  readonly text: string;
+}
+
+/**
+ * Open `/` and read every slide of the announcement bar; ok when the bar
+ * is well formed and its slides are `codes` as "<code> - <hint>", in
+ * order. With no codes, ok when there is no bar. One code must show as a
+ * plain "Announcement" region with no buttons. Two or more must show as
+ * an "Announcement bar" carousel, which the step goes through: read the
+ * slide it starts on, press "Next announcement" until the bar is back on
+ * the first slide, then press "Previous announcement" once. The carousel
+ * is well formed when it starts on "1 of <n>", Next shows "2 of <n>" to
+ * "<n> of <n>" and then "1 of <n>" again, and Previous on the first slide
+ * shows "<n> of <n>".
+ */
+export async function stepThroughAnnouncements(
+  page: Page,
+  baseUrl: string,
+  codes: readonly Pick<DiscountCode, 'code' | 'hint'>[],
+): Promise<AnnouncementOutcome> {
+  const expected = codes.map(({ code, hint }) => `${code} - ${hint}`);
+  return attempt(async () => {
+    await open(page, `${baseUrl}/`);
+    const outcome = await readAnnouncementBar(page);
+    const shown = outcome.slides ?? [];
+    const same =
+      shown.length === expected.length && shown.every((text, index) => text === expected[index]);
+    return {
+      ...outcome,
+      ok: outcome.ok && same,
+      detail: same
+        ? outcome.detail
+        : `${outcome.detail}; slides [${quoted(shown)}], want [${quoted(expected)}]`,
+    };
+  });
+}
+
+/** Read the announcement bar of the open page as `stepThroughAnnouncements` says. */
+async function readAnnouncementBar(page: Page): Promise<AnnouncementOutcome> {
+  const carousel = page.getByRole('region', { name: 'Announcement bar', exact: true });
+  if ((await carousel.count()) > 0) return stepThroughCarousel(page, carousel);
+  const plain = page.getByRole('region', { name: 'Announcement', exact: true });
+  if ((await plain.count()) === 0) {
+    return { ok: true, detail: 'no announcement bar on /', url: '/', slides: [] };
+  }
+  const buttons = await plain.getByRole('button').count();
+  const text = normalizedText(await plain.innerText());
+  return {
+    ok: buttons === 0,
+    detail: `the "Announcement" region shows "${text}" with ${buttons} buttons`,
+    url: '/',
+    slides: [text],
+  };
+}
+
+/** Step through the "Announcement bar" carousel `bar` as `stepThroughAnnouncements` says. */
+async function stepThroughCarousel(page: Page, bar: Locator): Promise<AnnouncementOutcome> {
+  const next = bar.getByRole('button', { name: 'Next announcement', exact: true });
+  const previous = bar.getByRole('button', { name: 'Previous announcement', exact: true });
+  if ((await next.count()) === 0 || (await previous.count()) === 0) {
+    return {
+      ok: false,
+      detail: 'the "Announcement bar" has no Previous and Next arrows',
+      url: '/',
+    };
+  }
+  const first = await shownSlide(bar);
+  const total = Number(/^1 of (\d+)$/.exec(first.label)?.[1] ?? 0);
+  if (total < 2) {
+    return { ok: false, detail: `the bar starts on "${first.label}"`, url: '/' };
+  }
+  const slides = [first];
+  let last = first;
+  while (slides.length < total) {
+    const slide = await pressArrow(page, bar, next, last.label);
+    if (slide.label === last.label) break;
+    slides.push(slide);
+    last = slide;
+  }
+  const wrapped = await pressArrow(page, bar, next, last.label);
+  const back = await pressArrow(page, bar, previous, wrapped.label);
+  const labels = slides.map((slide) => slide.label);
+  return {
+    ok:
+      labels.length === total &&
+      labels.every((label, index) => label === `${index + 1} of ${total}`) &&
+      wrapped.label === `1 of ${total}` &&
+      back.label === `${total} of ${total}`,
+    detail: `the bar showed ${quoted(labels)}, then Next showed "${wrapped.label}" and Previous "${back.label}"`,
+    url: '/',
+    slides: slides.map((slide) => slide.text),
+  };
+}
+
+/**
+ * Press `arrow` until `bar` no longer shows the slide labelled `from`, and
+ * return the slide it shows then. A press before the page hydrates does
+ * nothing, so each poll presses again until the slide changes.
+ */
+async function pressArrow(page: Page, bar: Locator, arrow: Locator, from: string): Promise<Slide> {
+  return pollPage(
+    page,
+    async () => {
+      await arrow.evaluate((element) => (element as unknown as { click(): void }).click());
+      return shownSlide(bar);
+    },
+    { label: from, text: '' },
+    (slide) => slide.label !== from,
+  );
+}
+
+/** The one slide of `bar` that shows; hidden slides are not in the accessibility tree. */
+async function shownSlide(bar: Locator): Promise<Slide> {
+  const slides = bar.getByRole('group', { name: /^\d+ of \d+$/ });
+  const count = await slides.count();
+  if (count !== 1) return { label: `${count} slides shown`, text: '' };
+  return {
+    label: (await slides.getAttribute('aria-label')) ?? '',
+    text: normalizedText(await slides.innerText()),
+  };
 }
 
 /** Add the first available variant of `productHandle`; expects a non-empty cart. */
@@ -653,6 +788,11 @@ async function heading(page: Page): Promise<string> {
 function pathOf(url: string): string {
   const parsed = new URL(url);
   return parsed.pathname + parsed.search;
+}
+
+/** `texts` in double quotes, joined by commas, for a step's detail. */
+function quoted(texts: readonly string[]): string {
+  return texts.map((text) => `"${text}"`).join(', ');
 }
 
 function normalizedText(text: string): string {

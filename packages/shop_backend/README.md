@@ -33,7 +33,7 @@ The current GraphQL contract is the per-domain SDL under `src/schema/`
 | Localization | `localization`, plus validation for literal `@inContext(country:, language:)` values |
 | Cart | `cart(id)` and cart mutations for create, line add/update/remove, Discount codes (one per cart, priced into `cost` and `discountAllocations`), buyer identity (including `customerAccessToken`), note, attributes, and gift-card codes |
 | Customer | `customerCreate`, `customerAccessTokenCreate`, `customerAccessTokenDelete`, the address book (`customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`, `customerDefaultAddressUpdate`), `customer(customerAccessToken)` with profile, addresses, and `orders` |
-| Checkout | `commerceSettings` and `checkoutComplete(cartId, input)` (sandbox-only) converting a cart into an order |
+| Checkout | `commerceSettings`, `discountCodeHints` and `checkoutComplete(cartId, input)` (sandbox-only) converting a cart into an order |
 | Order | `order(id)` (sandbox-only) plus `Order`, `OrderLineItem`, and `MailingAddress` types |
 
 Fields and operations with no Storefront API equivalent carry the `@sandbox`
@@ -153,7 +153,10 @@ with `applicable: false`. A percent or fixed code lowers `cost.totalAmount`
 adds a `SHIPPING_LINE` allocation of `0.00`, and `checkoutComplete` waives the
 shipping charge. The order records the code and the amount it removed (the
 waived shipping charge for free shipping) in the sandbox field
-`Order.discountCode { code targetType amount }`.
+`Order.discountCode { code targetType amount }`. The sandbox query
+`discountCodeHints` lists every code with its `hint` in `commerce.json` order,
+for the storefront's announcement bar; Shopify has no such query, because a
+merchant types announcement text into the theme.
 
 ### Address book
 

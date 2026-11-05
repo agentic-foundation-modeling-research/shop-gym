@@ -218,6 +218,10 @@ export const ROOT_QUERY = `#graphql
     footerMenu: menu(handle: $footerMenuHandle) {
       ...MenuFields
     }
+    discountCodeHints {
+      code
+      hint
+    }
   }
   ${SHOP_FRAGMENT}
   ${MENU_FRAGMENT}

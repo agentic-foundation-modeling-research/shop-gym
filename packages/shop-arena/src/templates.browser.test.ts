@@ -6,7 +6,9 @@
  * shopper's journey, so the tests run in order and share one browser
  * episode. Assertions read only pages and the episode's StateSnapshot from
  * the Control API. To cover one more page or flow, add a test that calls
- * one more step from `gen/build/verifiers/browser_steps.ts`.
+ * one more step from `gen/build/verifiers/browser_steps.ts`. The last tests
+ * serve the same build over more backends, each on the test Dataset with
+ * fewer Discount codes, for the announcement bar.
  *
  * Not gated: it runs in every `pnpm test`. It needs `pnpm` on PATH,
  * Playwright Chromium and a built `packages/shop_backend`.
@@ -18,6 +20,7 @@ import * as path from 'node:path';
 
 import { BrowserSession } from '@shop-gym/browser';
 import {
+  type SandboxShopData,
   type StateSnapshot,
   createSandboxServer,
   loadShopData,
@@ -27,7 +30,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { seedTemplate } from './gen/build/seed.js';
 import { freePort } from './gen/build/sidecar.js';
-import { StorefrontSidecar } from './gen/build/storefront_sidecar.js';
+import {
+  StorefrontSidecar,
+  type StorefrontSidecarOptions,
+} from './gen/build/storefront_sidecar.js';
 import {
   addAddress,
   addToCart,
@@ -41,6 +47,7 @@ import {
   rejectDiscountCode,
   showMoreReviews,
   sortReviews,
+  stepThroughAnnouncements,
   viewOrder,
   viewOrderHistory,
   viewProduct,
@@ -50,6 +57,8 @@ import { CHECKOUT_ADDRESS } from './gen/build/verifiers/storefront_target.js';
 import { STOREFRONT_TEMPLATE_DIR } from './templates.js';
 
 const FIXTURE_DIR = path.join(STOREFRONT_TEMPLATE_DIR, 'fixtures', 'sandbox_shop_v0');
+/** The Discount codes of the test Dataset, in Dataset order. */
+const DISCOUNT_CODES = loadShopData(FIXTURE_DIR).commerce.discount_codes;
 const EPISODE_ID = 'storefront-template-browser';
 const PRODUCT = { handle: 'shopliseum-mushroom-dog-toys', title: 'Shopliseum Mushroom Dog Toys' };
 const PRODUCT_PATH = `/products/${PRODUCT.handle}`;
@@ -88,9 +97,11 @@ const WORK_ADDRESS = {
 const WORK_ADDRESS_CHANGES = { address2: 'Floor 25', zip: 'H3B 4W8' };
 
 let workDir: string;
-let backend: ReturnType<typeof createSandboxServer>;
+let storefrontDir: string;
 let backendUrl: string;
 let sidecar: StorefrontSidecar;
+/** Every backend and sidecar that `serve` started, in start order; stopped in `afterAll`. */
+const started: Servers[] = [];
 let session: BrowserSession;
 let orderNumber: number | undefined;
 
@@ -149,6 +160,57 @@ async function reviewTitles(): Promise<string[]> {
   return reviewsSection().locator('article h3').allInnerTexts();
 }
 
+interface Servers {
+  readonly backend: ReturnType<typeof createSandboxServer>;
+  readonly backendUrl: string;
+  readonly sidecar: StorefrontSidecar;
+}
+
+/**
+ * Start a backend over `data` and a sidecar that serves the seeded copy over
+ * it, with its log at `logName` in the work dir. `options.runner` replaces
+ * the storefront build.
+ */
+async function serve(
+  data: SandboxShopData,
+  logName: string,
+  options: Pick<StorefrontSidecarOptions, 'runner'> = {},
+): Promise<Servers> {
+  const backendPort = await freePort();
+  const backendUrl = `http://127.0.0.1:${backendPort}`;
+  const servers: Servers = {
+    backend: createSandboxServer({ data, dataDir: FIXTURE_DIR, port: backendPort }),
+    backendUrl,
+    sidecar: new StorefrontSidecar({
+      storefrontDir,
+      backendUrl,
+      port: await freePort(),
+      logPath: path.join(workDir, logName),
+      ...options,
+    }),
+  };
+  started.push(servers);
+  await servers.backend.listen();
+  await servers.sidecar.start();
+  return servers;
+}
+
+/**
+ * Serve the copy that `beforeAll` built over a new backend on the test
+ * Dataset cut to its first `count` Discount codes; resolves to its URL. The
+ * new sidecar's runner does nothing, so the copy is not built again.
+ */
+async function serveWithDiscountCodes(count: number): Promise<string> {
+  const data = loadShopData(FIXTURE_DIR);
+  const discountCodes = data.commerce.discount_codes.slice(0, count);
+  const servers = await serve(
+    { ...data, commerce: { ...data.commerce, discount_codes: discountCodes } },
+    `storefront-${count}-codes.log`,
+    { runner: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }) },
+  );
+  return servers.sidecar.url;
+}
+
 /** Text of each order history row, in page order. */
 async function orderHistoryRows(): Promise<string[]> {
   return (await session.page.locator('table tbody tr').allInnerTexts()).map(normalized);
@@ -157,30 +219,18 @@ async function orderHistoryRows(): Promise<string[]> {
 describe('storefront template in a browser', () => {
   beforeAll(async () => {
     workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'storefront-browser-'));
-    const storefrontDir = path.join(workDir, 'storefront');
+    storefrontDir = path.join(workDir, 'storefront');
     await seedTemplate({ templateDir: STOREFRONT_TEMPLATE_DIR, destDir: storefrontDir });
-    const backendPort = await freePort();
-    backend = createSandboxServer({
-      data: loadShopData(FIXTURE_DIR),
-      dataDir: FIXTURE_DIR,
-      port: backendPort,
-    });
-    await backend.listen();
-    backendUrl = `http://127.0.0.1:${backendPort}`;
-    sidecar = new StorefrontSidecar({
-      storefrontDir,
-      backendUrl,
-      port: await freePort(),
-      logPath: path.join(workDir, 'storefront.log'),
-    });
-    await sidecar.start();
+    ({ backendUrl, sidecar } = await serve(loadShopData(FIXTURE_DIR), 'storefront.log'));
     session = await BrowserSession.launch({ episodeId: EPISODE_ID });
   }, 600_000);
 
   afterAll(async () => {
     await session?.close();
-    await sidecar?.stop();
-    await backend?.close();
+    for (const servers of [...started].reverse()) {
+      await servers.sidecar.stop();
+      await servers.backend.close();
+    }
     if (workDir) await fs.rm(workDir, { recursive: true, force: true });
   });
 
@@ -311,6 +361,38 @@ describe('storefront template in a browser', () => {
     expect(outcome.ok, outcome.detail).toBe(true);
     const { carts } = await snapshot();
     expect(carts.map((cart) => cart.lines.map((line) => line.quantity))).toEqual([[1]]);
+  }, 60_000);
+
+  it('steps through every Discount code in the announcement bar', async () => {
+    const outcome = await stepThroughAnnouncements(session.page, sidecar.url, DISCOUNT_CODES);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    // The codes of the test Dataset with their hints, in commerce.json order.
+    expect(outcome.slides).toEqual([
+      'WELCOME10 - 10% off your order',
+      'SAVE5 - $5 off orders over $30',
+      'FREESHIP - Free shipping on any order',
+    ]);
+  }, 60_000);
+
+  it('never moves the announcement bar by itself', async () => {
+    // A page of its own, so the fake clock does not reach the shopper's page.
+    const page = await session.context.newPage();
+    try {
+      await page.clock.install();
+      const outcome = await stepThroughAnnouncements(page, sidecar.url, DISCOUNT_CODES);
+      expect(outcome.ok, outcome.detail).toBe(true);
+      const shown = page
+        .getByRole('region', { name: 'Announcement bar', exact: true })
+        .getByRole('group', { name: /^\d+ of \d+$/ });
+      // The step ends with Previous on "1 of 3", so the bar shows "3 of 3".
+      // Dawn rotates every 3 to 10 seconds; read after each second of 10.
+      for (let second = 1; second <= 10; second++) {
+        await page.clock.runFor(1000);
+        expect(await shown.getAttribute('aria-label'), `after ${second} s`).toBe('3 of 3');
+      }
+    } finally {
+      await page.close();
+    }
   }, 60_000);
 
   it('turns down an unknown Discount code and keeps the price', async () => {
@@ -519,5 +601,22 @@ describe('storefront template in a browser', () => {
     expect(text).toContain('Payment Status: Paid');
     expect(text).toContain('Fulfillment Status: Fulfilled');
     expect(text).toContain('88 Harbord Street');
+  }, 60_000);
+
+  it('shows one Discount code as a plain announcement with no arrows', async () => {
+    const url = await serveWithDiscountCodes(1);
+    const outcome = await stepThroughAnnouncements(session.page, url, DISCOUNT_CODES.slice(0, 1));
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(outcome.slides).toEqual(['WELCOME10 - 10% off your order']);
+  }, 60_000);
+
+  it('shows no announcement bar for a Dataset with no Discount codes', async () => {
+    const outcome = await stepThroughAnnouncements(
+      session.page,
+      await serveWithDiscountCodes(0),
+      [],
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await pageText()).not.toContain('WELCOME10');
   }, 60_000);
 });
