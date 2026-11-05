@@ -227,11 +227,21 @@ so a resumed or rebuilt loop reruns them; `final_eval` writes
 `storefront: { sidecar, dataDir, manualDir, judge }` to
 `buildVerifiers`, so the storefront verifiers of §5.7.1 (`typecheck`,
 `build`, `routes_200`, `nav_coverage`, `cart_conformance`,
-`visual_judge`) run in every build; the sidecar is built on the first
-verifier that needs it and rebuilt only when the copy changes. The
-`build` verifier builds through the sidecar too, so each version of the
-copy is built once per run, and a failed build is reported again without
-a new build until the copy changes (2026-10-28). The
+`account_flow`, `discount_flow`, `visual_judge`) run in every build; the
+sidecar is built on the first verifier that needs it and rebuilt only
+when the copy changes. The `build` verifier builds through the sidecar
+too, so each version of the copy is built once per run, and a failed
+build is reported again without a new build until the copy changes
+(2026-10-28). The planner's canonical list has `gen_account` and
+`gen_checkout` after `gen_info_pages`. They restyle the template's
+prebuilt account and checkout pages to the theme and the shop's copy of
+the Standard sub-manual, and keep their behavior and form selectors.
+`account_flow` and `discount_flow` drive those forms in a browser with
+the browser steps of the Final eval. `account_flow` signs up, logs out,
+uses "Forgot your password?", logs in, and adds and edits an address.
+In `discount_flow`, a Discount code from the Dataset changes the
+checkout total and an unknown code shows "Enter a valid discount code"
+(2026-10-29). The
 underlying functions stay plain and testable on their own:
 
 - `final_eval/runFinalEval({ dataDir, manualDir?, backendUrl,

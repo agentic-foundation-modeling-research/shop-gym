@@ -20,7 +20,7 @@ import {
 import { SWEEP_CAPS, readDatasetHandles, sampleProductHandles } from './task_routes.js';
 
 export const CART_CONFORMANCE_NAME = 'cart_conformance';
-const CART_TASKS = new Set(['gen_cart_search', 'gen_product', 'visual_fix']);
+const CART_TASKS = new Set(['gen_cart_search', 'gen_product', 'gen_checkout', 'visual_fix']);
 const GUEST_EMAIL = 'guest.shopper@example.com';
 const CART_COST_QUERY = `query CartCost($id: ID!) {
   cart(id: $id) {

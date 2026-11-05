@@ -191,7 +191,10 @@ describe('task routes', () => {
       '/policies/privacy-policy',
     ]);
     expect(bucketRoutes('account', handles, caps)).toEqual(['/account/login', '/account']);
-    expect(bucketsForTask('visual_fix')).toContain('account');
+    expect(bucketRoutes('checkout', handles, caps)).toEqual(['/checkout']);
+    expect(bucketsForTask('gen_account')).toEqual(['account']);
+    expect(bucketsForTask('gen_checkout')).toEqual(['checkout']);
+    expect(bucketsForTask('visual_fix')).toEqual(expect.arrayContaining(['account', 'checkout']));
   });
 
   it('collects same-origin links from rendered bodies', () => {
@@ -286,6 +289,7 @@ describe('cart_conformance', () => {
       dataDir: FIXTURE_DIR,
     });
     expect(verifier.appliesTo('gen_cart_search')).toBe(true);
+    expect(verifier.appliesTo('gen_checkout')).toBe(true);
     expect(verifier.appliesTo('gen_homepage')).toBe(false);
     const result = await verifier.run(await ctx('gen_cart_search'));
     expect(result.verdict).toBe('fail');
@@ -343,6 +347,8 @@ describe('buildVerifiers with a storefront', () => {
       'data_in_use',
       'nav_coverage',
       'cart_conformance',
+      'account_flow',
+      'discount_flow',
       'visual_judge',
     ]);
     const withoutJudge = buildVerifiers({
@@ -359,6 +365,8 @@ describe('buildVerifiers with a storefront', () => {
       'data_in_use',
       'nav_coverage',
       'cart_conformance',
+      'account_flow',
+      'discount_flow',
     ]);
     expect(buildVerifiers({ genBackend: false, sidecar, ownedFiles }).map((v) => v.name)).toEqual([
       'owned_files',

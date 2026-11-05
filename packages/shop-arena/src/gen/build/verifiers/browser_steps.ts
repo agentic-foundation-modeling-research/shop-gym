@@ -27,6 +27,25 @@ export interface StepOutcome {
   readonly url?: string;
 }
 
+/** One step as a caller records it: what the step observed, or why it did not run. */
+export interface StepRecord {
+  readonly name: string;
+  readonly status: 'pass' | 'fail' | 'skipped';
+  readonly detail: string;
+  /** Final page path and query, when the step navigated. */
+  readonly url?: string;
+}
+
+/** The record of step `name`, which ran and gave `outcome`. */
+export function recordStep(name: string, outcome: StepOutcome): StepRecord {
+  return {
+    name,
+    status: outcome.ok ? 'pass' : 'fail',
+    detail: outcome.detail,
+    ...(outcome.url === undefined ? {} : { url: outcome.url }),
+  };
+}
+
 export interface Credentials {
   readonly email: string;
   readonly password: string;

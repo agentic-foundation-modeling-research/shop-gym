@@ -82,9 +82,12 @@ export function routes200Verifier(options: Routes200Options): Verifier {
       const probes: RouteProbe[] = [];
       const bodies: string[] = [];
 
-      // Member-only account routes are probed below in both sessions.
+      // Member-only account routes are probed below in both sessions, and
+      // `/checkout` with a cart line.
       const guestRoutes = new Set(
-        [...STATIC_ROUTES, ...datasetRoutes].filter((route) => !ACCOUNT_ROUTES.includes(route)),
+        [...STATIC_ROUTES, ...datasetRoutes].filter(
+          (route) => !ACCOUNT_ROUTES.includes(route) && route !== '/checkout',
+        ),
       );
       for (const route of guestRoutes) {
         const result = await guest.get(route);

@@ -4,8 +4,9 @@
  * first, then the storefront verifiers (`typecheck`, `build`,
  * `routes_200`), the backend verifiers when `genBackend`, `data_in_use`,
  * and the storefront checks that need a served tree (`nav_coverage`,
- * `cart_conformance`, `visual_judge`). Each verifier decides per task
- * whether it applies, so the order only matters within one task's set.
+ * `cart_conformance`, `account_flow`, `discount_flow`, `visual_judge`).
+ * Each verifier decides per task whether it applies, so the order only
+ * matters within one task's set.
  */
 
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
@@ -13,9 +14,11 @@ import type { Verifier } from '@shop-gym/harness';
 
 import type { BackendSidecar } from '../sidecar.js';
 import type { StorefrontSidecar } from '../storefront_sidecar.js';
+import { accountFlowVerifier } from './account_flow.js';
 import { backendTestVerifier, backendTypecheckVerifier } from './backend_commands.js';
 import { cartConformanceVerifier } from './cart_conformance.js';
 import { type SchemaIntrospector, dataInUseVerifier, introspectSidecar } from './data_in_use.js';
+import { discountFlowVerifier } from './discount_flow.js';
 import { navCoverageVerifier } from './nav_coverage.js';
 import type { OwnedFilesVerifier } from './owned_files.js';
 import { routes200Verifier } from './routes_200.js';
@@ -87,6 +90,8 @@ export function buildVerifiers(options: BuildVerifierOptions): Verifier[] {
         backendUrl: options.sidecar.url,
         dataDir: storefront.dataDir,
       }),
+      accountFlowVerifier({ target }),
+      discountFlowVerifier({ target, dataDir: storefront.dataDir }),
     );
     if (storefront.judge !== undefined) {
       verifiers.push(
@@ -120,6 +125,7 @@ function storefrontTarget(
   };
 }
 
+export { ACCOUNT_FLOW_NAME, type AccountFlowOptions, accountFlowVerifier } from './account_flow.js';
 export {
   BACKEND_DIRNAME,
   type BackendCommandVerifierOptions,
@@ -127,6 +133,7 @@ export {
   backendTestVerifier,
   backendTypecheckVerifier,
 } from './backend_commands.js';
+export { type BrowserFlowOptions, type FlowStep, browserFlowVerifier } from './browser_flow.js';
 export {
   CART_CONFORMANCE_NAME,
   type CartConformanceOptions,
@@ -144,6 +151,11 @@ export {
   introspectSidecar,
   validateBlocks,
 } from './data_in_use.js';
+export {
+  DISCOUNT_FLOW_NAME,
+  type DiscountFlowOptions,
+  discountFlowVerifier,
+} from './discount_flow.js';
 export { type HttpResult, StorefrontClient, type StorefrontClientOptions } from './http.js';
 export {
   type MenuTarget,
@@ -204,6 +216,7 @@ export {
   type SeededCustomer,
   type StorefrontTarget,
   prepareTarget,
+  readApplicableDiscountCode,
   readCheckoutMethods,
   readSeededCustomer,
 } from './storefront_target.js';

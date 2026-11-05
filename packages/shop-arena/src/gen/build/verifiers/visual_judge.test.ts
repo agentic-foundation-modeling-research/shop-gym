@@ -140,6 +140,13 @@ describe('judgeContext', () => {
     );
   });
 
+  it('gives checkout pages the Checkout and Order confirmation sections only', async () => {
+    const checkout = await judgeContext(manualDir, ['checkout']);
+    expect(checkout.manual).toContain('"Enter a valid discount code"');
+    expect(checkout.manual).toContain('### standard.md - Order confirmation');
+    expect(checkout.manual).not.toContain('"Forgot your password?"');
+  });
+
   it('keeps the whole Account section when the cut Sub-manuals fill their budget', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'manual-'));
     try {
@@ -152,6 +159,7 @@ describe('judgeContext', () => {
       const { manual } = await judgeContext(dir, ALL_BUCKETS);
       expect(manual).toContain('"Forgot your password?"');
       expect(manual).toContain('"Are you sure you wish to delete this address?"');
+      expect(manual).toContain('### standard.md - Order confirmation');
       expect(manual.match(/\[\.\.\.truncated\]/g)).toHaveLength(1);
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
@@ -201,24 +209,31 @@ describe('visual_judge', () => {
     expect(result.details).toMatchObject({ buckets: ['homepage'], score: 8.5 });
   }, 60_000);
 
-  it('adds a product to the cart before judging cart routes', async () => {
-    const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));
-    const verifier = visualJudgeVerifier({
-      target: { url },
-      dataDir: FIXTURE_DIR,
-      llm: judge,
-      model: MODEL,
-    });
-    const result = await verifier.run(ctx('gen_cart_search'));
-    expect(result.verdict).toBe('pass');
-    const productVisit = requestedPaths.findIndex((p) => p.startsWith('/products/'));
-    expect(productVisit).toBeGreaterThanOrEqual(0);
-    expect(productVisit).toBeLessThan(requestedPaths.indexOf('/cart'));
-    expect(result.details).toMatchObject({
-      buckets: ['cart_search'],
-      cartSeed: expect.stringContaining('no add-to-cart form'),
-    });
-  }, 60_000);
+  it.each([
+    ['gen_cart_search', 'cart_search', '/cart'],
+    ['gen_checkout', 'checkout', '/checkout'],
+  ])(
+    '%s adds a product to the cart before judging %s routes',
+    async (task, bucket, route) => {
+      const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));
+      const verifier = visualJudgeVerifier({
+        target: { url },
+        dataDir: FIXTURE_DIR,
+        llm: judge,
+        model: MODEL,
+      });
+      const result = await verifier.run(ctx(task));
+      expect(result.verdict).toBe('pass');
+      const productVisit = requestedPaths.findIndex((p) => p.startsWith('/products/'));
+      expect(productVisit).toBeGreaterThanOrEqual(0);
+      expect(productVisit).toBeLessThan(requestedPaths.lastIndexOf(route));
+      expect(result.details).toMatchObject({
+        buckets: [bucket],
+        cartSeed: expect.stringContaining('no add-to-cart form'),
+      });
+    },
+    60_000,
+  );
 
   it('logs in as the seeded customer after the login page and before the account page', async () => {
     const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));

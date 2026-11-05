@@ -11,16 +11,13 @@ import * as path from 'node:path';
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
 import { BrowserSession } from '@shop-gym/browser';
 
+import { readApplicableDiscountCode } from '../build/verifiers/storefront_target.js';
 import {
   SWEEP_CAPS,
   readDatasetHandles,
   sampleProductHandles,
 } from '../build/verifiers/task_routes.js';
-import {
-  type FunctionalStep,
-  readSweepDiscountCode,
-  runFunctionalSweep,
-} from './functional_sweep.js';
+import { type FunctionalStep, runFunctionalSweep } from './functional_sweep.js';
 import { type VisualPageResult, runVisualSweep } from './visual_sweep.js';
 
 export const FINAL_EVAL_REPORT = 'report.json';
@@ -84,7 +81,7 @@ export async function runFinalEval(options: FinalEvalOptions): Promise<FinalEval
   await fs.mkdir(pagesDir, { recursive: true });
   const handles = await readDatasetHandles(options.dataDir);
   const productHandle = sampleProductHandles(handles, SWEEP_CAPS)[0];
-  const discountCode = await readSweepDiscountCode(options.dataDir);
+  const discountCode = await readApplicableDiscountCode(options.dataDir);
 
   const visual = await withSession(options, 'final-eval-visual', (session) =>
     runVisualSweep({
