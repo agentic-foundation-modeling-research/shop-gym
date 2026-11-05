@@ -14,6 +14,9 @@ import { logEvent, logLine } from '../progress.js';
 
 const IMAGE_BACKENDS = ['placeholder', 'openai'] as const;
 
+/** Build agent model when `--build-model` is absent, even if `--model` is set. */
+const DEFAULT_BUILD_MODEL = 'openai/gpt-6-sol';
+
 export const USAGE = `Usage: shopgym gen <manual_dir>... --name <shop> [options]
 
 Generate a SandboxShop from one or more Shop Manual directories.
@@ -24,7 +27,7 @@ Options:
   --gen-backend                 Let the build agent extend the backend copy
   --from <step>                 Rerun from this step: ${GEN_STEPS.join(' | ')}
   --model <provider/id>         Model for the synthesis steps (default: ${DEFAULT_MODEL})
-  --build-model <provider/id>   Model for the build agent (default: --model)
+  --build-model <provider/id>   Model for the build agent (default: ${DEFAULT_BUILD_MODEL})
   --image-backend <name>        ${IMAGE_BACKENDS.join(' | ')} (default: placeholder)
   --max-iters <n>               Executor iterations for the build loop
   --collections <n>             Collections to synthesize
@@ -70,7 +73,6 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
   }
   const outDir = stringOption(args, 'out');
   const from: GenStepName | undefined = enumOption(args, 'from', GEN_STEPS);
-  const buildModel = stringOption(args, 'build-model');
   const imageBackend = enumOption(args, 'image-backend', IMAGE_BACKENDS);
   const maxIters = integerOption(args, 'max-iters');
   const concurrency = integerOption(args, 'concurrency');
@@ -83,6 +85,7 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
       name,
       manualDirs: [...args.positionals],
       model: stringOption(args, 'model') ?? DEFAULT_MODEL,
+      buildModel: stringOption(args, 'build-model') ?? DEFAULT_BUILD_MODEL,
       genBackend: flag(args, 'gen-backend'),
       forceResume: flag(args, 'force-resume'),
       catalog: {
@@ -92,7 +95,6 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
       },
       ...(outDir !== undefined ? { outDir } : {}),
       ...(from !== undefined ? { from } : {}),
-      ...(buildModel !== undefined ? { buildModel } : {}),
       ...(imageBackend !== undefined ? { imageBackend } : {}),
       ...(maxIters !== undefined ? { maxIters } : {}),
       ...(concurrency !== undefined ? { concurrency } : {}),
