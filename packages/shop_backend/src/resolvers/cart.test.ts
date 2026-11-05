@@ -961,7 +961,7 @@ async function readExtras(
 }
 
 describe('cartResolvers — extra-field mutations (T4.4)', () => {
-  it('cartDiscountCodesUpdate stores codes and reflects them on Query.cart', async () => {
+  it('cartDiscountCodesUpdate stores the code and reflects it on Query.cart', async () => {
     const carts = new CartStore();
     const cart = carts.create();
     const run = runWith(carts);
@@ -969,7 +969,7 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
       mutation {
         cartDiscountCodesUpdate(
           cartId: "${cart.id}"
-          discountCodes: ["SUMMER10", "WELCOME"]
+          discountCodes: ["WELCOME10"]
         ) {
           ${CART_EXTRA_FIELDS}
         }
@@ -977,10 +977,7 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
     `);
     expect(result.errors).toBeUndefined();
     const extras = await readExtras(run, cart.id);
-    expect(extras.discountCodes).toEqual([
-      { code: 'SUMMER10', applicable: true },
-      { code: 'WELCOME', applicable: true },
-    ]);
+    expect(extras.discountCodes).toEqual([{ code: 'WELCOME10', applicable: true }]);
   });
 
   it('cartDiscountCodesUpdate accepts Hydrogen deferred cart fragments', async () => {
@@ -991,7 +988,7 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
       mutation {
         cartDiscountCodesUpdate(
           cartId: "${cart.id}"
-          discountCodes: ["SUMMER10"]
+          discountCodes: ["WELCOME10"]
         ) {
           ... @defer {
             cart {
@@ -1007,7 +1004,7 @@ describe('cartResolvers — extra-field mutations (T4.4)', () => {
     expect(result.data).toEqual({
       cartDiscountCodesUpdate: {
         cart: {
-          discountCodes: [{ code: 'SUMMER10', applicable: true }],
+          discountCodes: [{ code: 'WELCOME10', applicable: true }],
         },
         userErrors: [],
         warnings: [],

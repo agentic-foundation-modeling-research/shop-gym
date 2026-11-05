@@ -57,7 +57,10 @@ export const snapshotCartSchema = z.object({
   customerId: z.string().nullable(),
   email: z.string().nullable(),
   lines: z.array(snapshotCartLineSchema),
+  /** Codes as stored; a cart holds at most one. */
   discountCodes: z.array(z.string()),
+  /** The stored code when it applies to the cart now, else `null`. */
+  appliedDiscountCode: z.string().nullable(),
   note: z.string(),
 });
 
@@ -85,6 +88,10 @@ export const snapshotOrderSchema = z.object({
   totalShippingPrice: money,
   totalTax: money,
   totalPrice: money,
+  /** Discount code applied at checkout, or `null`. */
+  discountCode: z.string().nullable(),
+  /** Merchandise discount, or the shipping charge waived by a free-shipping code. */
+  discountAmount: money,
 });
 
 export const snapshotInventoryDeltaSchema = z.object({
@@ -150,6 +157,7 @@ export function exportSnapshot(state: ShopState): StateSnapshot {
         quantity: line.quantity,
       })),
       discountCodes: [...cart.discountCodes],
+      appliedDiscountCode: state.appliedDiscountCode(cart),
       note: cart.note,
     })),
     orders: state.listOrders().map((order) => ({
@@ -177,6 +185,8 @@ export function exportSnapshot(state: ShopState): StateSnapshot {
       totalShippingPrice: order.totalShippingPrice,
       totalTax: order.totalTax,
       totalPrice: order.totalPrice,
+      discountCode: order.discountCode,
+      discountAmount: order.discountAmount,
     })),
     inventory: state.inventoryDeltas().map((delta) => ({
       variantId: `${GID}/ProductVariant/${delta.variantId}`,

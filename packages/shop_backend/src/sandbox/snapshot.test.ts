@@ -81,6 +81,7 @@ describe('exportSnapshot', () => {
         email: 'jane.doe@example.com',
         lines: [{ id: open.lines[0]?.id, merchandiseId: SHOPLISEUM_VARIANT, quantity: 1 }],
         discountCodes: [],
+        appliedDiscountCode: null,
         note: '',
       },
     ]);

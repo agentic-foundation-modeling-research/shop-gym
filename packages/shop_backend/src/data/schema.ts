@@ -366,6 +366,13 @@ export const orderSchema = z
     total_shipping_price: z.string(),
     total_tax: z.string(),
     total_price: z.string(),
+    /** Discount code applied at checkout, in its `commerce.json` spelling; `null` when none. */
+    discount_code: nullableString.default(null),
+    /**
+     * Amount the code removed, decimal as string: merchandise discount for
+     * percent and fixed codes, the shipping charge waived for free shipping.
+     */
+    discount_amount: z.string().default('0.00'),
   })
   .readonly();
 
@@ -379,6 +386,30 @@ export const shippingMethodSchema = z
     title: z.string(),
     /** Flat rate, decimal as string. */
     price: z.string(),
+  })
+  .readonly();
+
+/**
+ * What a Discount code takes off: a percent of the merchandise subtotal, a
+ * fixed amount off the merchandise subtotal, or the whole shipping charge.
+ */
+export const discountCodeKindSchema = z.enum(['percentage', 'fixed_amount', 'free_shipping']);
+
+/** One Discount code a shopper can type at checkout. */
+export const discountCodeSchema = z
+  .object({
+    /** Matched in any case; unique within the file ignoring case. */
+    code: z.string().min(1),
+    kind: discountCodeKindSchema,
+    /**
+     * Decimal as string: the percent for `percentage` ("10" is 10%), the
+     * money off for `fixed_amount`. Not used for `free_shipping`.
+     */
+    amount: z.string(),
+    /** Merchandise subtotal before the discount that the cart must reach; `null` for none. */
+    minimum_subtotal: nullableString.default(null),
+    /** Short shopper-facing text that tells what the code does. */
+    hint: z.string(),
   })
   .readonly();
 
@@ -401,5 +432,6 @@ export const commerceSchema = z
     free_shipping_threshold: nullableString.default(null),
     shipping_methods: z.array(shippingMethodSchema).readonly().default([]),
     payment_methods: z.array(paymentMethodSchema).readonly().default([]),
+    discount_codes: z.array(discountCodeSchema).readonly().default([]),
   })
   .readonly();

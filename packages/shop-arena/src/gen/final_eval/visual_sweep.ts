@@ -12,7 +12,7 @@ import * as path from 'node:path';
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
 import type { BrowserSession } from '@shop-gym/browser';
 
-import { addToCart, logIn } from '../build/verifiers/browser_steps.js';
+import { addToCart, logIn, placeOrder } from '../build/verifiers/browser_steps.js';
 import {
   type PageCapture,
   type PageJudgement,
@@ -136,6 +136,11 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
     route: '/checkout',
     bucket: 'cart_search',
   };
+  const thankYouPage = (orderNumber: number | undefined): CanonicalPage => ({
+    name: 'thankYou',
+    route: `/checkout/confirmation/${orderNumber ?? ''}`,
+    bucket: 'cart_search',
+  });
   const added =
     productHandle === undefined
       ? { ok: false, detail: 'the dataset has no product' }
@@ -143,9 +148,16 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
   if (added.ok) {
     await capture(cartPage);
     await capture(checkoutPage);
+    const order = await placeOrder(session.page, storefrontUrl, 'visual.sweep@example.com');
+    if (order.orderNumber === undefined) {
+      skip(thankYouPage(undefined), `could not place an order: ${order.detail}`);
+    } else {
+      await capture(thankYouPage(order.orderNumber));
+    }
   } else {
     skip(cartPage, `could not add to cart: ${added.detail}`);
     skip(checkoutPage, `could not add to cart: ${added.detail}`);
+    skip(thankYouPage(undefined), `could not add to cart: ${added.detail}`);
   }
 
   const profilePage: CanonicalPage = {

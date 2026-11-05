@@ -8,5 +8,28 @@
   "payment_methods": [
     { "handle": "card", "title": "Credit card" },
     { "handle": "paypal", "title": "PayPal" }
+  ],
+  "discount_codes": [
+    {
+      "code": "WELCOME10",
+      "kind": "percentage",
+      "amount": "10",
+      "minimum_subtotal": null,
+      "hint": "10% off your order"
+    },
+    {
+      "code": "SAVE5",
+      "kind": "fixed_amount",
+      "amount": "5.00",
+      "minimum_subtotal": "30.00",
+      "hint": "$5 off orders over $30"
+    },
+    {
+      "code": "FREESHIP",
+      "kind": "free_shipping",
+      "amount": "0",
+      "minimum_subtotal": null,
+      "hint": "Free shipping on any order"
+    }
   ]
 }

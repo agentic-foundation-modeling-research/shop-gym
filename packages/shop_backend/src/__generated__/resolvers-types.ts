@@ -138,6 +138,7 @@ export type Cart = {
   readonly buyerIdentity: CartBuyerIdentity;
   readonly checkoutUrl: Scalars['String']['output'];
   readonly cost: CartCost;
+  readonly discountAllocations: ReadonlyArray<CartDiscountAllocation>;
   readonly discountCodes: ReadonlyArray<CartDiscountCode>;
   readonly id: Scalars['ID']['output'];
   readonly lines: CartLineConnection;
@@ -180,6 +181,13 @@ export type CartBuyerIdentityUpdatePayload = {
   readonly warnings: ReadonlyArray<CartWarning>;
 };
 
+export type CartCodeDiscountAllocation = CartDiscountAllocation & {
+  readonly __typename?: 'CartCodeDiscountAllocation';
+  readonly code: Scalars['String']['output'];
+  readonly discountedAmount: MoneyV2;
+  readonly targetType: DiscountApplicationTargetType;
+};
+
 export type CartCost = {
   readonly __typename?: 'CartCost';
   readonly subtotalAmount: MoneyV2;
@@ -193,6 +201,11 @@ export type CartCreatePayload = {
   readonly cart: Maybe<Cart>;
   readonly userErrors: ReadonlyArray<CartUserError>;
   readonly warnings: ReadonlyArray<CartWarning>;
+};
+
+export type CartDiscountAllocation = {
+  readonly discountedAmount: MoneyV2;
+  readonly targetType: DiscountApplicationTargetType;
 };
 
 export type CartDiscountCode = {
@@ -549,6 +562,10 @@ export type CustomerUserError = {
   readonly message: Scalars['String']['output'];
 };
 
+export type DiscountApplicationTargetType =
+  | 'LINE_ITEM'
+  | 'SHIPPING_LINE';
+
 export type HasMetafieldsIdentifier = {
   readonly key: Scalars['String']['input'];
   readonly namespace: Scalars['String']['input'];
@@ -801,6 +818,8 @@ export type MutationCustomerCreateArgs = {
 export type Order = {
   readonly __typename?: 'Order';
   readonly currencyCode: Scalars['String']['output'];
+  /** Discount code applied at checkout; null when the order has none. */
+  readonly discountCode: Maybe<OrderDiscountCode>;
   readonly email: Maybe<Scalars['String']['output']>;
   readonly financialStatus: Maybe<OrderFinancialStatus>;
   readonly fulfillmentStatus: OrderFulfillmentStatus;
@@ -831,6 +850,16 @@ export type OrderConnection = {
   readonly edges: ReadonlyArray<OrderEdge>;
   readonly nodes: ReadonlyArray<Order>;
   readonly totalCount: Scalars['Int']['output'];
+};
+
+export type OrderDiscountCode = {
+  readonly __typename?: 'OrderDiscountCode';
+  /** Merchandise discount, or the shipping charge waived by a free-shipping code. */
+  readonly amount: MoneyV2;
+  /** The code in its commerce.json spelling. */
+  readonly code: Scalars['String']['output'];
+  /** SHIPPING_LINE for a free-shipping code, LINE_ITEM for a percent or fixed code. */
+  readonly targetType: DiscountApplicationTargetType;
 };
 
 export type OrderEdge = {
@@ -1420,6 +1449,10 @@ export type ResolversUnionTypes<_RefType extends Record<string, unknown>> = {
   SearchResultItem: ( Article ) | ( Page ) | ( Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<_RefType['ProductVariant']>, metafield?: Maybe<_RefType['Metafield']>, metafields: ReadonlyArray<Maybe<_RefType['Metafield']>>, options: ReadonlyArray<_RefType['ProductOption']>, selectedOrFirstAvailableVariant?: Maybe<_RefType['ProductVariant']>, variants: _RefType['ProductVariantConnection'] } );
 };
 
+/** Mapping of interface types */
+export type ResolversInterfaceTypes<_RefType extends Record<string, unknown>> = {
+  CartDiscountAllocation: ( CartCodeDiscountAllocation );
+};
 
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = {
@@ -1439,13 +1472,15 @@ export type ResolversTypes = {
   Brand: ResolverTypeWrapper<Brand>;
   BrandColorGroup: ResolverTypeWrapper<BrandColorGroup>;
   BrandColors: ResolverTypeWrapper<BrandColors>;
-  Cart: ResolverTypeWrapper<Omit<Cart, 'buyerIdentity' | 'lines'> & { buyerIdentity: ResolversTypes['CartBuyerIdentity'], lines: ResolversTypes['CartLineConnection'] }>;
+  Cart: ResolverTypeWrapper<Omit<Cart, 'buyerIdentity' | 'discountAllocations' | 'lines'> & { buyerIdentity: ResolversTypes['CartBuyerIdentity'], discountAllocations: ReadonlyArray<ResolversTypes['CartDiscountAllocation']>, lines: ResolversTypes['CartLineConnection'] }>;
   CartAttributesUpdatePayload: ResolverTypeWrapper<Omit<CartAttributesUpdatePayload, 'cart'> & { cart?: Maybe<ResolversTypes['Cart']> }>;
   CartBuyerIdentity: ResolverTypeWrapper<Omit<CartBuyerIdentity, 'customer'> & { customer?: Maybe<ResolversTypes['Customer']> }>;
   CartBuyerIdentityInput: CartBuyerIdentityInput;
   CartBuyerIdentityUpdatePayload: ResolverTypeWrapper<Omit<CartBuyerIdentityUpdatePayload, 'cart'> & { cart?: Maybe<ResolversTypes['Cart']> }>;
+  CartCodeDiscountAllocation: ResolverTypeWrapper<CartCodeDiscountAllocation>;
   CartCost: ResolverTypeWrapper<CartCost>;
   CartCreatePayload: ResolverTypeWrapper<Omit<CartCreatePayload, 'cart'> & { cart?: Maybe<ResolversTypes['Cart']> }>;
+  CartDiscountAllocation: ResolverTypeWrapper<ResolversInterfaceTypes<ResolversTypes>['CartDiscountAllocation']>;
   CartDiscountCode: ResolverTypeWrapper<CartDiscountCode>;
   CartDiscountCodesUpdatePayload: ResolverTypeWrapper<Omit<CartDiscountCodesUpdatePayload, 'cart'> & { cart?: Maybe<ResolversTypes['Cart']> }>;
   CartGiftCardCodesAddPayload: ResolverTypeWrapper<Omit<CartGiftCardCodesAddPayload, 'cart'> & { cart?: Maybe<ResolversTypes['Cart']> }>;
@@ -1489,6 +1524,7 @@ export type ResolversTypes = {
   CustomerCreatePayload: ResolverTypeWrapper<Omit<CustomerCreatePayload, 'customer'> & { customer?: Maybe<ResolversTypes['Customer']> }>;
   CustomerErrorCode: CustomerErrorCode;
   CustomerUserError: ResolverTypeWrapper<CustomerUserError>;
+  DiscountApplicationTargetType: DiscountApplicationTargetType;
   Float: ResolverTypeWrapper<Scalars['Float']['output']>;
   HasMetafieldsIdentifier: HasMetafieldsIdentifier;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
@@ -1513,8 +1549,9 @@ export type ResolversTypes = {
   MetafieldReference: ResolverTypeWrapper<ResolversUnionTypes<ResolversTypes>['MetafieldReference']>;
   MoneyV2: ResolverTypeWrapper<MoneyV2>;
   Mutation: ResolverTypeWrapper<{}>;
-  Order: ResolverTypeWrapper<Omit<Order, 'lineItems'> & { lineItems: ResolversTypes['OrderLineItemConnection'] }>;
+  Order: ResolverTypeWrapper<Omit<Order, 'discountCode' | 'lineItems'> & { discountCode?: Maybe<ResolversTypes['OrderDiscountCode']>, lineItems: ResolversTypes['OrderLineItemConnection'] }>;
   OrderConnection: ResolverTypeWrapper<Omit<OrderConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['OrderEdge']>, nodes: ReadonlyArray<ResolversTypes['Order']> }>;
+  OrderDiscountCode: ResolverTypeWrapper<OrderDiscountCode>;
   OrderEdge: ResolverTypeWrapper<Omit<OrderEdge, 'node'> & { node: ResolversTypes['Order'] }>;
   OrderFinancialStatus: OrderFinancialStatus;
   OrderFulfillmentStatus: OrderFulfillmentStatus;
@@ -1581,13 +1618,15 @@ export type ResolversParentTypes = {
   Brand: Brand;
   BrandColorGroup: BrandColorGroup;
   BrandColors: BrandColors;
-  Cart: Omit<Cart, 'buyerIdentity' | 'lines'> & { buyerIdentity: ResolversParentTypes['CartBuyerIdentity'], lines: ResolversParentTypes['CartLineConnection'] };
+  Cart: Omit<Cart, 'buyerIdentity' | 'discountAllocations' | 'lines'> & { buyerIdentity: ResolversParentTypes['CartBuyerIdentity'], discountAllocations: ReadonlyArray<ResolversParentTypes['CartDiscountAllocation']>, lines: ResolversParentTypes['CartLineConnection'] };
   CartAttributesUpdatePayload: Omit<CartAttributesUpdatePayload, 'cart'> & { cart?: Maybe<ResolversParentTypes['Cart']> };
   CartBuyerIdentity: Omit<CartBuyerIdentity, 'customer'> & { customer?: Maybe<ResolversParentTypes['Customer']> };
   CartBuyerIdentityInput: CartBuyerIdentityInput;
   CartBuyerIdentityUpdatePayload: Omit<CartBuyerIdentityUpdatePayload, 'cart'> & { cart?: Maybe<ResolversParentTypes['Cart']> };
+  CartCodeDiscountAllocation: CartCodeDiscountAllocation;
   CartCost: CartCost;
   CartCreatePayload: Omit<CartCreatePayload, 'cart'> & { cart?: Maybe<ResolversParentTypes['Cart']> };
+  CartDiscountAllocation: ResolversInterfaceTypes<ResolversParentTypes>['CartDiscountAllocation'];
   CartDiscountCode: CartDiscountCode;
   CartDiscountCodesUpdatePayload: Omit<CartDiscountCodesUpdatePayload, 'cart'> & { cart?: Maybe<ResolversParentTypes['Cart']> };
   CartGiftCardCodesAddPayload: Omit<CartGiftCardCodesAddPayload, 'cart'> & { cart?: Maybe<ResolversParentTypes['Cart']> };
@@ -1650,8 +1689,9 @@ export type ResolversParentTypes = {
   MetafieldReference: ResolversUnionTypes<ResolversParentTypes>['MetafieldReference'];
   MoneyV2: MoneyV2;
   Mutation: {};
-  Order: Omit<Order, 'lineItems'> & { lineItems: ResolversParentTypes['OrderLineItemConnection'] };
+  Order: Omit<Order, 'discountCode' | 'lineItems'> & { discountCode?: Maybe<ResolversParentTypes['OrderDiscountCode']>, lineItems: ResolversParentTypes['OrderLineItemConnection'] };
   OrderConnection: Omit<OrderConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['OrderEdge']>, nodes: ReadonlyArray<ResolversParentTypes['Order']> };
+  OrderDiscountCode: OrderDiscountCode;
   OrderEdge: Omit<OrderEdge, 'node'> & { node: ResolversParentTypes['Order'] };
   OrderLineItem: Omit<OrderLineItem, 'variant'> & { variant?: Maybe<ResolversParentTypes['ProductVariant']> };
   OrderLineItemConnection: Omit<OrderLineItemConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['OrderLineItemEdge']>, nodes: ReadonlyArray<ResolversParentTypes['OrderLineItem']> };
@@ -1814,6 +1854,7 @@ export type CartResolvers<ContextType = ResolverContext, ParentType extends Reso
   buyerIdentity?: Resolver<ResolversTypes['CartBuyerIdentity'], ParentType, ContextType>;
   checkoutUrl?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   cost?: Resolver<ResolversTypes['CartCost'], ParentType, ContextType>;
+  discountAllocations?: Resolver<ReadonlyArray<ResolversTypes['CartDiscountAllocation']>, ParentType, ContextType>;
   discountCodes?: Resolver<ReadonlyArray<ResolversTypes['CartDiscountCode']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   lines?: Resolver<ResolversTypes['CartLineConnection'], ParentType, ContextType, Partial<CartLinesArgs>>;
@@ -1845,6 +1886,13 @@ export type CartBuyerIdentityUpdatePayloadResolvers<ContextType = ResolverContex
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type CartCodeDiscountAllocationResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CartCodeDiscountAllocation'] = ResolversParentTypes['CartCodeDiscountAllocation']> = {
+  code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  discountedAmount?: Resolver<ResolversTypes['MoneyV2'], ParentType, ContextType>;
+  targetType?: Resolver<ResolversTypes['DiscountApplicationTargetType'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type CartCostResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CartCost'] = ResolversParentTypes['CartCost']> = {
   subtotalAmount?: Resolver<ResolversTypes['MoneyV2'], ParentType, ContextType>;
   totalAmount?: Resolver<ResolversTypes['MoneyV2'], ParentType, ContextType>;
@@ -1858,6 +1906,12 @@ export type CartCreatePayloadResolvers<ContextType = ResolverContext, ParentType
   userErrors?: Resolver<ReadonlyArray<ResolversTypes['CartUserError']>, ParentType, ContextType>;
   warnings?: Resolver<ReadonlyArray<ResolversTypes['CartWarning']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type CartDiscountAllocationResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CartDiscountAllocation'] = ResolversParentTypes['CartDiscountAllocation']> = {
+  __resolveType: TypeResolveFn<'CartCodeDiscountAllocation', ParentType, ContextType>;
+  discountedAmount?: Resolver<ResolversTypes['MoneyV2'], ParentType, ContextType>;
+  targetType?: Resolver<ResolversTypes['DiscountApplicationTargetType'], ParentType, ContextType>;
 };
 
 export type CartDiscountCodeResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['CartDiscountCode'] = ResolversParentTypes['CartDiscountCode']> = {
@@ -2250,6 +2304,7 @@ export type MutationResolvers<ContextType = ResolverContext, ParentType extends 
 
 export type OrderResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Order'] = ResolversParentTypes['Order']> = {
   currencyCode?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  discountCode?: Resolver<Maybe<ResolversTypes['OrderDiscountCode']>, ParentType, ContextType>;
   email?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   financialStatus?: Resolver<Maybe<ResolversTypes['OrderFinancialStatus']>, ParentType, ContextType>;
   fulfillmentStatus?: Resolver<ResolversTypes['OrderFulfillmentStatus'], ParentType, ContextType>;
@@ -2272,6 +2327,13 @@ export type OrderConnectionResolvers<ContextType = ResolverContext, ParentType e
   edges?: Resolver<ReadonlyArray<ResolversTypes['OrderEdge']>, ParentType, ContextType>;
   nodes?: Resolver<ReadonlyArray<ResolversTypes['Order']>, ParentType, ContextType>;
   totalCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type OrderDiscountCodeResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['OrderDiscountCode'] = ResolversParentTypes['OrderDiscountCode']> = {
+  amount?: Resolver<ResolversTypes['MoneyV2'], ParentType, ContextType>;
+  code?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  targetType?: Resolver<ResolversTypes['DiscountApplicationTargetType'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -2573,8 +2635,10 @@ export type Resolvers<ContextType = ResolverContext> = {
   CartAttributesUpdatePayload?: CartAttributesUpdatePayloadResolvers<ContextType>;
   CartBuyerIdentity?: CartBuyerIdentityResolvers<ContextType>;
   CartBuyerIdentityUpdatePayload?: CartBuyerIdentityUpdatePayloadResolvers<ContextType>;
+  CartCodeDiscountAllocation?: CartCodeDiscountAllocationResolvers<ContextType>;
   CartCost?: CartCostResolvers<ContextType>;
   CartCreatePayload?: CartCreatePayloadResolvers<ContextType>;
+  CartDiscountAllocation?: CartDiscountAllocationResolvers<ContextType>;
   CartDiscountCode?: CartDiscountCodeResolvers<ContextType>;
   CartDiscountCodesUpdatePayload?: CartDiscountCodesUpdatePayloadResolvers<ContextType>;
   CartGiftCardCodesAddPayload?: CartGiftCardCodesAddPayloadResolvers<ContextType>;
@@ -2628,6 +2692,7 @@ export type Resolvers<ContextType = ResolverContext> = {
   Mutation?: MutationResolvers<ContextType>;
   Order?: OrderResolvers<ContextType>;
   OrderConnection?: OrderConnectionResolvers<ContextType>;
+  OrderDiscountCode?: OrderDiscountCodeResolvers<ContextType>;
   OrderEdge?: OrderEdgeResolvers<ContextType>;
   OrderLineItem?: OrderLineItemResolvers<ContextType>;
   OrderLineItemConnection?: OrderLineItemConnectionResolvers<ContextType>;

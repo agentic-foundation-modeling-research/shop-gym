@@ -86,6 +86,8 @@ export function synthOrders(
         total_shipping_price: fromCents(shippingCents),
         total_tax: fromCents(tax),
         total_price: fromCents(subtotal + shippingCents + tax),
+        discount_code: null,
+        discount_amount: '0.00',
       });
     }
   }

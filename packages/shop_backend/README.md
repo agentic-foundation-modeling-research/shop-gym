@@ -31,7 +31,7 @@ The current GraphQL contract is the per-domain SDL under `src/schema/`
 | Content | `page(handle)`, `blog(handle)`, `blogs(...)`, `Blog.articles(...)`, `Blog.articleByHandle(...)` |
 | Search | `search(...)`, `predictiveSearch(...)`, `productRecommendations(productId)` |
 | Localization | `localization`, plus validation for literal `@inContext(country:, language:)` values |
-| Cart | `cart(id)` and cart mutations for create, line add/update/remove, discount codes, buyer identity (including `customerAccessToken`), note, attributes, and gift-card codes |
+| Cart | `cart(id)` and cart mutations for create, line add/update/remove, Discount codes (one per cart, priced into `cost` and `discountAllocations`), buyer identity (including `customerAccessToken`), note, attributes, and gift-card codes |
 | Customer | `customerCreate`, `customerAccessTokenCreate`, `customerAccessTokenDelete`, `customer(customerAccessToken)` with profile, addresses, and `orders` |
 | Checkout | `commerceSettings` and `checkoutComplete(cartId, input)` (sandbox-only) converting a cart into an order |
 | Order | `order(id)` (sandbox-only) plus `Order`, `OrderLineItem`, and `MailingAddress` types |
@@ -99,6 +99,9 @@ The control API manages episodes outside GraphQL:
 `StateSnapshot` (`stateSnapshotSchema`, exported) is the grader-facing view:
 `{ episodeId, now, customers, sessions, carts, orders, inventory }`, where
 `inventory` lists only variants whose quantity differs from the dataset.
+Carts show `discountCodes` and the `appliedDiscountCode` (the stored code
+when it applies now, else `null`); orders show `discountCode` and
+`discountAmount`.
 
 ### Checkout flow
 
@@ -132,8 +135,25 @@ mutation {
 creates a `PAID` / `UNFULFILLED` order, decrements episode inventory, and
 deletes the cart. Guest checkout works with `input.email` or a cart
 `buyerIdentity.email`. Totals follow `commerce.json`: flat `tax_rate` on the
-subtotal, the chosen shipping method's price, waived at
-`free_shipping_threshold`.
+subtotal after the discount, the chosen shipping method's price, waived at
+`free_shipping_threshold` (checked before the discount).
+
+### Discount codes
+
+`commerce.json` lists `discount_codes`, each with `code`, `kind`
+(`percentage`, `fixed_amount` or `free_shipping`), `amount`, an optional
+`minimum_subtotal` and a `hint`. A cart holds one code:
+`cartDiscountCodesUpdate` with two codes returns an `INVALID` user error and
+stores nothing, and a new code replaces the old one. Codes match in any case
+and are stored in their `commerce.json` spelling; an unknown code is stored as
+typed. A code applies while the merchandise subtotal before the discount
+reaches its minimum, so a cart that drops below the minimum keeps the code
+with `applicable: false`. A percent or fixed code lowers `cost.totalAmount`
+(never below zero) and adds a `LINE_ITEM` allocation; a free-shipping code
+adds a `SHIPPING_LINE` allocation of `0.00`, and `checkoutComplete` waives the
+shipping charge. The order records the code and the amount it removed (the
+waived shipping charge for free shipping) in the sandbox field
+`Order.discountCode { code targetType amount }`.
 
 ### Example query
 
@@ -192,11 +212,11 @@ Optional files:
 | `metafields.json` | `{ shop: [], products: {}, collections: {} }` | Shop, product, and collection metafield resolvers |
 | `inventory.json` | `{}` | Per-variant `quantityAvailable` and inventory-backed availability |
 | `customers.json` | `[]` | Seeded customer accounts (plain-text sandbox passwords) with addresses |
-| `orders.json` | `[]` | Seeded order history; new orders are numbered after the highest seed (minimum `#1001`) |
-| `commerce.json` | `DEFAULT_COMMERCE` | `tax_rate`, `free_shipping_threshold`, `shipping_methods`, `payment_methods` |
+| `orders.json` | `[]` | Seeded order history, with an optional `discount_code` and `discount_amount`; new orders are numbered after the highest seed (minimum `#1001`) |
+| `commerce.json` | `DEFAULT_COMMERCE` | `tax_rate`, `free_shipping_threshold`, `shipping_methods`, `payment_methods`, `discount_codes` |
 
 `DEFAULT_COMMERCE` is no tax, no free-shipping threshold, one free `standard`
-shipping method, and one `card` payment method. A partial `commerce.json`
+shipping method, one `card` payment method, and no Discount codes. A partial `commerce.json`
 fills the omitted keys with `0` / `null` / `[]`, not with these defaults.
 
 Image assets may live under `<data-dir>/images/` and are served at

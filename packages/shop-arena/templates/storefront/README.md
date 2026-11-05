@@ -44,9 +44,9 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 | `/collections`, `/collections/:handle` | Collection list and detail |
 | `/products/:handle` | Product detail with variant radios and add-to-cart |
 | `/search?q=` | Products, pages, and articles |
-| `/cart` | Cart page; its action handles `add`, `update`, `remove`, `discount` intents |
-| `/checkout` | Shipping address, email, shipping and payment method radios, backend-matching totals; the action calls `checkoutComplete` |
-| `/checkout/confirmation/:orderNumber` | Guest order confirmation |
+| `/cart` | Cart page; its action handles `add`, `update`, `remove`, `discount`, `discount-remove` intents |
+| `/checkout` | Contact email, delivery address, shipping and payment method radios, and an order summary with the "Discount code" field and backend-matching totals; the action applies or removes a Discount code, or calls `checkoutComplete` |
+| `/checkout/confirmation/:orderNumber` | Thank-you page: confirmation number, order summary, addresses, shipping and payment method |
 | `/account/login`, `/account/register` | Credentials forms; on success the token is stored and attached to the cart |
 | `/account/logout` | POST only; deletes the token and clears the cookie |
 | `/account` | Profile, default address, recent orders |
@@ -56,8 +56,9 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 
 Account loaders redirect to `/account/login?redirectTo=<path>` when there is
 no valid session. Checkout works for guests; logged-in customers get the
-form prefilled from their default address and land on
-`/account/orders/<n>` after placing the order.
+form prefilled from their default address. Both land on the thank-you page
+after placing the order. A Discount code that does not apply is not kept on
+the cart, and the form shows "Enter a valid discount code".
 
 ## Cookies and headers
 
@@ -74,7 +75,11 @@ form prefilled from their default address and land on
   `*_MUTATION`, or `*_FRAGMENT` `#graphql` template literals.
 - `app/lib/types.ts`: hand-written response types for those documents.
 - `app/lib/customer.ts`: `loadCustomer`, `requireCustomer`, `loginCustomer`.
-- `app/components/storefront.tsx`: header, footer, grids, cart drawer.
+- `app/lib/discount.ts`: `applyDiscountCode`, `removeDiscountCode`.
+- `app/components/storefront.tsx`: header, footer, grids, cart drawer, cart
+  summary and the "Discount code" form.
+- `app/components/checkout.tsx`: the order summary of checkout and the
+  thank-you page.
 - `app/components/account.tsx`: account nav, forms errors, address and order
   rendering shared by account and checkout pages.
 
@@ -84,5 +89,5 @@ form prefilled from their default address and land on
 policies, two local images per product) plus `customers.json`
 (`jane.doe@example.com` / `password123`), `orders.json` (order `#1001`), and
 `commerce.json` (two shipping methods, two payment methods, free shipping
-over 75.00). It is byte-identical to the backend's fixture for those three
+over 75.00, and the Discount codes `WELCOME10`, `SAVE5` and `FREESHIP`). It is byte-identical to the backend's fixture for those three
 files so both packages agree.

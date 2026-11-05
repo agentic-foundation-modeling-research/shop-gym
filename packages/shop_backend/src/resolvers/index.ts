@@ -75,6 +75,7 @@ export const sandboxResolvers: SandboxSchemaResolvers = {
   Cart: cartResolvers.Cart,
   CartBuyerIdentity: cartResolvers.CartBuyerIdentity,
   BaseCartLine: cartResolvers.BaseCartLine,
+  CartDiscountAllocation: cartResolvers.CartDiscountAllocation,
   Merchandise: cartResolvers.Merchandise,
   Customer: customerResolvers.Customer,
   Order: orderResolvers.Order,

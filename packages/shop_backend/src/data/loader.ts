@@ -52,6 +52,7 @@ export const DEFAULT_COMMERCE: Commerce = Object.freeze({
   free_shipping_threshold: null,
   shipping_methods: [{ handle: 'standard', title: 'Standard Shipping', price: '0.00' }],
   payment_methods: [{ handle: 'card', title: 'Credit card' }],
+  discount_codes: [],
 });
 
 /** Thrown when a required dataset file is not present in the directory. */

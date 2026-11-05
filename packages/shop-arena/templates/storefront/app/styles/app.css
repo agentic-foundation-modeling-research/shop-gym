@@ -292,7 +292,7 @@ label {
 .product-form,
 .search-form,
 .cart-line-update,
-.promo-form,
+.discount-code-form,
 .checkout-actions {
   display: flex;
   flex-wrap: wrap;
@@ -403,24 +403,29 @@ label {
   font-weight: 700;
 }
 
-.cart-discounts {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.discount-list {
+.discount-code {
   display: grid;
   gap: 0.5rem;
-  list-style: none;
-  margin: 0;
-  padding: 0;
 }
 
-.discount-list li {
-  display: flex;
+.discount-code-form label {
+  flex: 1;
+}
+
+.discount-tag {
+  display: inline-flex;
+  justify-self: start;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.35rem;
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  background: var(--color-border);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.discount-row-code {
+  color: var(--color-muted);
 }
 
 .popup-actions {
@@ -582,6 +587,17 @@ html:has(.cart-popup) {
   gap: 2rem;
 }
 
+/* The summary comes first in the page so that it is the top bar on a mobile screen. */
+.checkout-page > .checkout-form {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.checkout-page > .checkout-summary {
+  grid-column: 2;
+  grid-row: 1;
+}
+
 .eyebrow {
   margin: 0;
   color: var(--color-muted);
@@ -596,6 +612,89 @@ html:has(.cart-popup) {
   align-self: start;
   display: grid;
   gap: 1rem;
+  background: var(--color-surface);
+}
+
+.checkout-summary-toggle {
+  display: none;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  padding: 0;
+}
+
+.checkout-summary-toggle:hover {
+  background: transparent;
+}
+
+.checkout-summary-body,
+.checkout-totals {
+  display: grid;
+  gap: 1rem;
+}
+
+.checkout-total-row {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.checkout-total-currency {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.checkout-login {
+  justify-self: end;
+}
+
+.thank-you-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.thank-you-header h1,
+.thank-you-confirmation {
+  margin: 0;
+}
+
+.thank-you-check {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 2px solid var(--color-accent);
+  border-radius: 50%;
+  color: var(--color-accent);
+  font-size: 1.4rem;
+}
+
+.thank-you-details {
+  border: 1px solid var(--color-border);
+  padding: 1rem;
+}
+
+.thank-you-details h2 {
+  margin: 0;
+}
+
+.thank-you-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.thank-you-detail-grid h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.thank-you-detail-grid p {
+  margin: 0;
 }
 
 .checkout-lines {
@@ -613,9 +712,28 @@ html:has(.cart-popup) {
   align-items: center;
 }
 
+.checkout-line-image {
+  position: relative;
+}
+
 .checkout-line-image .image-frame-media,
 .checkout-line-image .image-placeholder {
   aspect-ratio: 1 / 1;
+}
+
+.checkout-line-quantity {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 0.7rem;
+  padding: 0 0.35rem;
+  background: var(--color-muted);
+  color: var(--color-bg);
+  font-size: 0.75rem;
+  line-height: 1.4rem;
+  text-align: center;
 }
 
 .policy-body,
@@ -635,8 +753,22 @@ html:has(.cart-popup) {
   .cookie-popup,
   .cart-line,
   .checkout-page,
-  .checkout-line {
+  .thank-you-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .checkout-page > .checkout-form,
+  .checkout-page > .checkout-summary {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .checkout-summary-toggle {
+    display: flex;
+  }
+
+  .checkout-summary:not(.checkout-summary-open) .checkout-summary-body {
+    display: none;
   }
 
   .site-header,

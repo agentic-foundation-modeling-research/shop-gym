@@ -10,10 +10,12 @@
 
 import type {
   CustomerOrdersArgs,
+  DiscountApplicationTargetType,
   OrderLineItemsArgs,
   QueryOrderArgs,
 } from '../__generated__/resolvers-types.js';
 import { fromCents, toCents } from '../state/money.js';
+import { discountTargetType, findDiscountCode } from '../state/pricing.js';
 import type { OrderLineItemRecord, OrderRecord } from '../state/shop_state.js';
 import {
   type MoneyV2Node,
@@ -39,6 +41,12 @@ export interface OrderLineItemConnectionNode {
   readonly edges: readonly { readonly node: OrderLineItemNode }[];
 }
 
+export interface OrderDiscountCodeNode {
+  readonly code: string;
+  readonly targetType: DiscountApplicationTargetType;
+  readonly amount: MoneyV2Node;
+}
+
 export interface OrderNode {
   readonly id: string;
   readonly name: string;
@@ -55,6 +63,7 @@ export interface OrderNode {
   readonly shippingAddress: MailingAddressNode | null;
   readonly shippingMethod: string | null;
   readonly paymentMethod: string | null;
+  readonly discountCode: OrderDiscountCodeNode | null;
   /** Internal: all line items, sliced by `Order.lineItems(first)`. */
   readonly lineItemNodes: readonly OrderLineItemNode[];
 }
@@ -86,8 +95,29 @@ export function buildOrderNode(order: OrderRecord, ctx: ResolverContext): OrderN
       order.shippingAddress === null ? null : buildMailingAddressNode(order.shippingAddress),
     shippingMethod: order.shippingMethod,
     paymentMethod: order.paymentMethod,
+    discountCode:
+      order.discountCode === null
+        ? null
+        : {
+            code: order.discountCode,
+            targetType: orderDiscountTargetType(order.discountCode, ctx),
+            amount: buildMoneyV2(order.discountAmount, currency),
+          },
     lineItemNodes: order.lineItems.map((line) => buildOrderLineItemNode(line, currency, ctx)),
   };
+}
+
+/**
+ * The cost line an order's Discount code lowered. A seeded order may name a
+ * code that `commerce.json` does not list; with no kind to read, its
+ * discount is reported against the merchandise.
+ */
+function orderDiscountTargetType(
+  code: string,
+  ctx: ResolverContext,
+): DiscountApplicationTargetType {
+  const listed = findDiscountCode(code, ctx.data.commerce);
+  return listed === undefined ? 'LINE_ITEM' : discountTargetType(listed);
 }
 
 function buildOrderLineItemNode(

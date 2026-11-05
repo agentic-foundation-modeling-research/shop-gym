@@ -176,6 +176,9 @@ export const CART_FRAGMENT = `#graphql
       totalAmount {
         ...MoneyFields
       }
+      totalTaxAmount {
+        ...MoneyFields
+      }
     }
     lines(first: 100) {
       nodes {
@@ -191,6 +194,15 @@ export const CART_FRAGMENT = `#graphql
     discountCodes {
       code
       applicable
+    }
+    discountAllocations {
+      discountedAmount {
+        ...MoneyFields
+      }
+      targetType
+      ... on CartCodeDiscountAllocation {
+        code
+      }
     }
   }
 `;
@@ -553,6 +565,13 @@ export const ORDER_DETAIL_FRAGMENT = `#graphql
     }
     shippingMethod
     paymentMethod
+    discountCode {
+      code
+      targetType
+      amount {
+        ...MoneyFields
+      }
+    }
     lineItems(first: 100) {
       nodes {
         title

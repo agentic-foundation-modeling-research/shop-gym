@@ -318,8 +318,9 @@ function stubHtml(body: string, loggedIn: boolean): string {
 
 /**
  * A stand-in storefront that answers every route with a minimal page and
- * walks the account, cart and checkout flows with two cookies:
- * `session=1` marks a logged-in customer, `cart=1` a non-empty cart.
+ * walks the account, cart and checkout flows with three cookies:
+ * `session=1` marks a logged-in customer, `cart=1` a non-empty cart, and
+ * `discount=1` a Discount code applied at checkout.
  */
 export function stubStorefront(): http.Server {
   return http.createServer((req, res) => {
@@ -327,6 +328,7 @@ export function stubStorefront(): http.Server {
     const cookies = req.headers.cookie ?? '';
     const loggedIn = cookies.includes('session=1');
     const hasCart = cookies.includes('cart=1');
+    const hasDiscount = cookies.includes('discount=1');
     const page = (body: string): void => {
       res.writeHead(200, { 'content-type': 'text/html' });
       res.end(stubHtml(body, loggedIn));
@@ -354,10 +356,12 @@ export function stubStorefront(): http.Server {
             redirect(form.get('redirectTo') ?? '/cart', 'cart=1; Path=/');
             return;
           case '/checkout':
-            redirect(
-              loggedIn ? '/account/orders/1001' : '/checkout/confirmation/1001',
-              'cart=; Path=/; Max-Age=0',
-            );
+            // The stub takes any Discount code.
+            if (form.get('intent') === 'discount') {
+              redirect('/checkout', 'discount=1; Path=/');
+              return;
+            }
+            redirect('/checkout/confirmation/1001', 'cart=; Path=/; Max-Age=0');
             return;
           default:
             redirect('/');
@@ -405,8 +409,11 @@ export function stubStorefront(): http.Server {
           return;
         }
         page(
-          '<h1>Checkout</h1><form method="post"><input name="email"><input name="firstName"><input name="lastName"><input name="address1"><input name="city"><input name="province"><input name="country"><input name="zip"><input type="radio" name="shippingMethodHandle" value="standard"><input type="radio" name="paymentMethodHandle" value="card"><button type="submit">Place order</button></form>',
+          `<h1>Checkout</h1><form method="post"><input name="email"><input name="firstName"><input name="lastName"><input name="address1"><input name="city"><input name="province"><input name="country"><input name="zip"><input type="radio" name="shippingMethodHandle" value="standard"><input type="radio" name="paymentMethodHandle" value="card"><button type="submit">Pay now</button></form><form method="post"><input type="hidden" name="intent" value="discount"><input name="discountCode"><button type="submit">Apply</button></form><div><span>Total</span> <span>${hasDiscount ? 'CAD $9.00' : 'CAD $10.00'}</span></div>`,
         );
+        return;
+      case url.pathname.startsWith('/checkout/confirmation/'):
+        page(`<p>Confirmation #${url.pathname.split('/').at(-1)}</p><h1>Thank you!</h1>`);
         return;
       default:
         page(`<h1>${url.pathname}</h1>`);

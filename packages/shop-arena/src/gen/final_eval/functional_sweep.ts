@@ -1,14 +1,20 @@
 /**
  * The functional sweep: a fixed shopper journey through the storefront in
- * one browser episode. Sign up, log out, log in, add to cart, check out,
- * view the order. Returns are not supported by the backend, so that step
- * is recorded as skipped. Steps run in order and stop at the first failure.
+ * one browser episode. Sign up, log out, log in, add to cart, apply a
+ * Discount code, check out, view the order. Returns are not supported by
+ * the backend, so that step is recorded as skipped. Steps run in order and
+ * stop at the first failure.
  */
 
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+
 import type { BrowserSession } from '@shop-gym/browser';
+import { datasetSchema } from '@shop-gym/shop-backend';
 
 import {
   addToCart,
+  applyDiscountCode,
   logIn,
   logOut,
   placeOrder,
@@ -30,6 +36,8 @@ export interface FunctionalSweepOptions {
   readonly storefrontUrl: string;
   /** Handle of the product to buy. */
   readonly productHandle: string | undefined;
+  /** Dataset Discount code to apply at checkout, from `readSweepDiscountCode`. */
+  readonly discountCode: string | undefined;
 }
 
 export const FUNCTIONAL_STEP_NAMES = [
@@ -37,6 +45,7 @@ export const FUNCTIONAL_STEP_NAMES = [
   'logOut',
   'logIn',
   'addToCart',
+  'applyDiscountCode',
   'checkout',
   'viewOrder',
   'requestReturn',
@@ -45,7 +54,7 @@ export const FUNCTIONAL_STEP_NAMES = [
 export async function runFunctionalSweep(
   options: FunctionalSweepOptions,
 ): Promise<FunctionalStep[]> {
-  const { session, storefrontUrl, productHandle } = options;
+  const { session, storefrontUrl, productHandle, discountCode } = options;
   const page = session.page;
   const account = {
     firstName: 'Final',
@@ -67,6 +76,14 @@ export async function runFunctionalSweep(
       productHandle === undefined
         ? { name: 'addToCart', status: 'skipped', detail: 'the dataset has no product' }
         : step('addToCart', await addToCart(page, storefrontUrl, productHandle)),
+    applyDiscountCode: async () =>
+      discountCode === undefined
+        ? {
+            name: 'applyDiscountCode',
+            status: 'skipped',
+            detail: 'the dataset has no Discount code without a minimum subtotal',
+          }
+        : step('applyDiscountCode', await applyDiscountCode(page, storefrontUrl, discountCode)),
     checkout: async () => {
       const outcome = await placeOrder(page, storefrontUrl, account.email);
       orderNumber = outcome.orderNumber;
@@ -93,6 +110,32 @@ export async function runFunctionalSweep(
     failed ||= result.status === 'fail';
   }
   return steps;
+}
+
+/**
+ * The Discount code in `<dataDir>/commerce.json` that the sweep applies to
+ * its one-product cart. Only a code with no minimum subtotal surely applies.
+ * A percent or fixed-amount code comes first, because it always changes the
+ * total; a free-shipping code changes it while the cart pays for shipping.
+ * `undefined` when there is no `commerce.json` or no such code.
+ *
+ * @throws Error when `commerce.json` is not valid JSON or not a valid
+ *   commerce settings file.
+ */
+export async function readSweepDiscountCode(dataDir: string): Promise<string | undefined> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(path.join(dataDir, 'commerce.json'), 'utf-8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return undefined;
+    }
+    throw error;
+  }
+  const codes = datasetSchema.commerceSchema
+    .parse(JSON.parse(raw))
+    .discount_codes.filter((entry) => entry.minimum_subtotal === null);
+  return (codes.find((entry) => entry.kind !== 'free_shipping') ?? codes[0])?.code;
 }
 
 function step(

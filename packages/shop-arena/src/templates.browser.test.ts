@@ -30,13 +30,16 @@ import { freePort } from './gen/build/sidecar.js';
 import { StorefrontSidecar } from './gen/build/storefront_sidecar.js';
 import {
   addToCart,
+  applyDiscountCode,
   logIn,
   logOut,
   placeOrder,
   register,
+  rejectDiscountCode,
   viewOrder,
   viewThankYou,
 } from './gen/build/verifiers/browser_steps.js';
+import { CHECKOUT_ADDRESS } from './gen/build/verifiers/storefront_target.js';
 import { STOREFRONT_TEMPLATE_DIR } from './templates.js';
 
 const FIXTURE_DIR = path.join(STOREFRONT_TEMPLATE_DIR, 'fixtures', 'sandbox_shop_v0');
@@ -145,11 +148,25 @@ describe('storefront template in a browser', () => {
     expect(carts.map((cart) => cart.lines.map((line) => line.quantity))).toEqual([[1]]);
   }, 60_000);
 
-  it('places the order and lands on its account order page', async () => {
+  it('turns down an unknown Discount code and keeps the price', async () => {
+    const outcome = await rejectDiscountCode(session.page, sidecar.url, 'NOT-A-CODE');
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const { carts } = await snapshot();
+    expect(carts.map((cart) => cart.discountCodes)).toEqual([[]]);
+  }, 60_000);
+
+  it('applies a Discount code typed in lower case and changes the total', async () => {
+    const outcome = await applyDiscountCode(session.page, sidecar.url, 'welcome10');
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const { carts } = await snapshot();
+    expect(carts.map((cart) => cart.appliedDiscountCode)).toEqual(['WELCOME10']);
+  }, 60_000);
+
+  it('places the order and lands on its thank-you page', async () => {
     const outcome = await placeOrder(session.page, sidecar.url, SHOPPER.email);
     expect(outcome.ok, outcome.detail).toBe(true);
     orderNumber = outcome.orderNumber;
-    expect(outcome.url).toBe(`/account/orders/${orderNumber}`);
+    expect(outcome.url).toBe(`/checkout/confirmation/${orderNumber}`);
     const state = await snapshot();
     const customerId = shopperId(state);
     const orders = state.orders.filter((order) => order.customerId === customerId);
@@ -158,6 +175,10 @@ describe('storefront template in a browser', () => {
       name: `#${orderNumber}`,
       email: SHOPPER.email,
       lineItems: [{ title: expect.stringContaining(PRODUCT.title), quantity: 1 }],
+      // 19.99 less 10% (2.00), plus 9.99 standard shipping.
+      discountCode: 'WELCOME10',
+      discountAmount: '2.00',
+      totalPrice: '27.98',
     });
   }, 60_000);
 
@@ -165,7 +186,11 @@ describe('storefront template in a browser', () => {
     const number = placedOrderNumber();
     const outcome = await viewThankYou(session.page, sidecar.url, number);
     expect(outcome.ok, outcome.detail).toBe(true);
-    expect(await pageText()).toContain(`#${number}`);
+    const text = await pageText();
+    expect(text).toContain(`Confirmation #${number}`);
+    expect(text).toContain(`Thank you, ${CHECKOUT_ADDRESS.firstName}!`);
+    expect(text).toContain('WELCOME10');
+    expect(text).toContain('Continue shopping');
   }, 60_000);
 
   it('shows the order in the account order detail', async () => {
@@ -175,5 +200,6 @@ describe('storefront template in a browser', () => {
     const text = await pageText();
     expect(text).toContain(`#${number}`);
     expect(text).toContain(PRODUCT.title);
+    expect(text).toContain('WELCOME10');
   }, 60_000);
 });
