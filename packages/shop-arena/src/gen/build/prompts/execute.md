@@ -46,8 +46,10 @@ Feedback shapes you should know how to react to:
   header or footer. Add the link where it belongs; do not rewrite the whole
   component, which tends to drop other links and reopen `visual_judge`.
 - `cart_conformance`: a cart or checkout step (add, update, remove, guest
-  order, confirmation page) did not match what the backend recorded. The
-  body names the step. Keep the template's form fields and actions.
+  order, confirmation page, or `GET /cart.js` after a cart change) did not
+  match what the backend recorded. The body names the step. Keep the
+  template's form fields and actions, and keep `app/routes/cart-json.ts`
+  (`/cart.js`) with its fields.
 - `account_flow`: a step of the account flow in a real browser (sign up,
   log out, "Forgot your password?", log in, add an address, edit it) did
   not end where a shopper expects. The body names the step. Restore the

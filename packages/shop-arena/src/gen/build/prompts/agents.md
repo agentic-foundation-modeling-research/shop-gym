@@ -144,7 +144,7 @@ The backend rows run only when backend generation is enabled.
 | `sandbox_contract`  | `gen_backend`, `backend_*`                                     | read-only backend paths unchanged; `tests/contract` suite passes                                                      |
 | `data_in_use`       | every task                                                     | every storefront GraphQL operation validates against the live schema                                                  |
 | `nav_coverage`      | `gen_theme`, `gen_navigation`, `visual_fix`                    | every `navigation.json` target returns 200 and is a header or footer link                                             |
-| `cart_conformance`  | `gen_product`, `gen_cart_search`, `gen_checkout`, `visual_fix` | cart and checkout forms add, update, remove and order as the backend records                                          |
+| `cart_conformance`  | `gen_product`, `gen_cart_search`, `gen_checkout`, `visual_fix` | cart and checkout forms add, update, remove and order as the backend records; `/cart.js` shows the backend cart       |
 | `account_flow`      | `gen_account`, `visual_fix`                                    | in a browser: sign up, log out, "Forgot your password?", log in, add and edit an address                              |
 | `discount_flow`     | `gen_checkout`, `visual_fix`                                   | in a browser: a Dataset Discount code changes the checkout total; an unknown code shows "Enter a valid discount code" |
 | `visual_judge`      | page tasks (below), `visual_fix`                               | a model judges the task's pages at desktop and mobile size                                                            |
