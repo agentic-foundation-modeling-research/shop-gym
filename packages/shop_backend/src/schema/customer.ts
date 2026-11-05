@@ -1,9 +1,10 @@
 /**
- * Customer domain: accounts, access tokens, and addresses. Shapes follow the
- * Storefront API (`customerCreate`, `customerAccessTokenCreate`,
- * `customerAccessTokenDelete`, `customer(customerAccessToken)`, and the
- * address book: `customerAddressCreate`, `customerAddressUpdate`,
- * `customerAddressDelete`, `customerDefaultAddressUpdate`).
+ * Customer domain: accounts, access tokens, password recovery, and
+ * addresses. Shapes follow the Storefront API (`customerCreate`,
+ * `customerAccessTokenCreate`, `customerAccessTokenDelete`,
+ * `customerRecover`, `customer(customerAccessToken)`, and the address book:
+ * `customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`,
+ * `customerDefaultAddressUpdate`).
  */
 
 export const customerTypeDefs = /* GraphQL */ `
@@ -15,6 +16,7 @@ export const customerTypeDefs = /* GraphQL */ `
     customerCreate(input: CustomerCreateInput!): CustomerCreatePayload!
     customerAccessTokenCreate(input: CustomerAccessTokenCreateInput!): CustomerAccessTokenCreatePayload!
     customerAccessTokenDelete(customerAccessToken: String!): CustomerAccessTokenDeletePayload!
+    customerRecover(email: String!): CustomerRecoverPayload!
     customerAddressCreate(address: MailingAddressInput!, customerAccessToken: String!): CustomerAddressCreatePayload!
     customerAddressUpdate(address: MailingAddressInput!, customerAccessToken: String!, id: ID!): CustomerAddressUpdatePayload!
     customerAddressDelete(customerAccessToken: String!, id: ID!): CustomerAddressDeletePayload!
@@ -110,6 +112,10 @@ export const customerTypeDefs = /* GraphQL */ `
     deletedAccessToken: String
     deletedCustomerAccessTokenId: String
     userErrors: [UserError!]!
+  }
+
+  type CustomerRecoverPayload {
+    customerUserErrors: [CustomerUserError!]!
   }
 
   type CustomerAddressCreatePayload {

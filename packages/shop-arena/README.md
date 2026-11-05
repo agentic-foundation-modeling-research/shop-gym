@@ -24,7 +24,8 @@ lockfile, is not a pnpm workspace member, and installs with
 `pnpm install --ignore-workspace`. Every `pnpm test` (and so CI on every
 PR) runs `src/templates.browser.test.ts`: it builds the template in a temp
 dir, serves it over the in-process backend on the template fixture, and
-walks one shopper in Chromium through sign up, log out, log in, add to cart,
+walks one shopper in Chromium through sign up, log out, a taken email on
+the register page, "Forgot your password?", log in, add to cart,
 every Discount code in the announcement bar (on a fake clock it does not
 move by itself), an unknown and a valid Discount code, check out, the
 thank-you page, the account order page and the address book (add, edit,
@@ -251,12 +252,13 @@ build); `SHOPGYM_LIVE=1` sends one real judge call from
 llm, model, outDir, log?, signal? })` evaluates an already-running shop;
 the `final_eval` pipeline step boots the build artifacts and calls it
 with `outDir = <shopDir>/final_eval`.
-The visual sweep screenshots thirteen canonical pages (home, a collection,
+The visual sweep screenshots fourteen canonical pages (home, a collection,
 a product, search, cart, checkout, the thank-you page of a guest order,
-account login, account profile, the order list, an order detail, the
-address book, a policy page) at both viewports and judges each with the
-same rubric as `visual_judge`; the functional sweep is a fixed browser
-script: sign up, log out, log in, add an address, edit it, add to cart,
+account login, account register, account profile, the order list, an order
+detail, the address book, a policy page) at both viewports and judges each
+with the same rubric as `visual_judge`; the functional sweep is a fixed
+browser script: sign up, log out, "Forgot your password?", log in, add an
+address, edit it, add to cart,
 apply a Discount code, checkout, view order, and
 `requestReturn`
 recorded as `skipped: not supported by backend`. The sweep's code is a

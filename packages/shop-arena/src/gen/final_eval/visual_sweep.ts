@@ -119,6 +119,7 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
     bucket: 'cart_search',
   });
   await capture({ name: 'accountLogin', route: '/account/login', bucket: 'account' });
+  await capture({ name: 'accountRegister', route: '/account/register', bucket: 'account' });
   const policyPage: CanonicalPage = {
     name: 'policy',
     route: `/policies/${policy ?? ''}`,

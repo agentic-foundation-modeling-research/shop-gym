@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { InputHTMLAttributes, ReactNode } from 'react';
 import { Form, Link } from 'react-router';
 import { variantTitle } from '~/components/checkout';
 import { DiscountAmount, Price } from '~/components/storefront';
@@ -22,6 +22,26 @@ export function LogoutLink() {
         Log out
       </button>
     </Form>
+  );
+}
+
+/** The heading of the errors of an account form that failed. */
+export const FORM_ERRORS_HEADING = 'Please adjust the following:';
+
+/** A text field with a floating label: the label shows in the field until it has a value. */
+export function FloatingField({
+  id,
+  label,
+  ...inputProps
+}: {
+  readonly id: string;
+  readonly label: string;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'placeholder'>) {
+  return (
+    <div className="floating-field">
+      <input id={id} placeholder={label} {...inputProps} />
+      <label htmlFor={id}>{label}</label>
+    </div>
   );
 }
 

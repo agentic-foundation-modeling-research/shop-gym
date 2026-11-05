@@ -37,7 +37,8 @@ This spec adds:
   `x-shopgym-episode` request header. `default` is used when the header is
   absent.
 - **ShopState** - the in-memory object holding an episode's carts, customers,
-  sessions, orders, and inventory. Seeded from the dataset; forkable.
+  sessions, password reset requests, orders, and inventory. Seeded from the
+  dataset; forkable.
 - **EpisodeStore** - the per-server registry mapping episode ids to
   `ShopState` instances, created lazily.
 - **Episode clock** - deterministic clock starting at
@@ -111,7 +112,7 @@ src/
   sandbox/control_api.ts createControlApi
   http.ts               + optional `route` hook before GraphQL
   server.ts             EpisodeStore wiring, episode context, 400 on bad header
-tests/contract/         catalog, search, cart (read-only, no new features); later discount, reviews, addresses
+tests/contract/         catalog, search, cart (read-only, no new features); later discount, reviews, addresses, password recovery
 AGENTS.md               template guide
 ```
 
@@ -133,8 +134,9 @@ Methods: `fork(id)`, `getCustomer`, `findCustomerByEmail`
 (case-insensitive), `createCustomer`, `listCustomers`, `createAddress`,
 `updateAddress`, `deleteAddress`, `setDefaultAddress`, `createSession`
 (14-day TTL on the episode clock), `resolveSession`, `deleteSession`,
-`listSessions`, `getOrder`, `ordersForCustomer`, `listOrders`,
-`placeOrder`, `inventoryDeltas`. Every mutation calls `clock.tick()`.
+`listSessions`, `requestPasswordReset`, `listPasswordResetRequests`,
+`getOrder`, `ordersForCustomer`, `listOrders`, `placeOrder`,
+`inventoryDeltas`. Every mutation calls `clock.tick()`.
 The episode's `CartStore` shares the clock: each cart change stamps
 `Cart.updatedAt` with `clock.now()` and does not tick, so cart activity
 never shifts account or order timestamps.
@@ -180,6 +182,7 @@ Control API (`sandbox/control_api.ts`):
 { episodeId, now,
   customers[]: { id, email, firstName, lastName, phone, acceptsMarketing, createdAt, defaultAddressId, addresses[] },
   sessions[]:  { accessToken, customerId, expiresAt },
+  passwordResetRequests[]: { email, requestedAt },
   carts[]:     { id, customerId, email, lines[]: { id, merchandiseId, quantity }, discountCodes[], appliedDiscountCode, note },
   orders[]:    { id, name, customerId, email, processedAt, financialStatus, fulfillmentStatus, currencyCode,
                  lineItems[]: { variantId, title, quantity, price }, shippingAddress, shippingMethod, paymentMethod,
@@ -200,6 +203,7 @@ New SDL modules and operations (names follow the Storefront API):
 | customer | `Mutation.customerCreate(input: CustomerCreateInput!)` | no |
 | customer | `Mutation.customerAccessTokenCreate(input: CustomerAccessTokenCreateInput!)` | no |
 | customer | `Mutation.customerAccessTokenDelete(customerAccessToken: String!)` | no |
+| customer | `Mutation.customerRecover(email: String!): CustomerRecoverPayload { customerUserErrors }` | no |
 | customer | `Mutation.customerAddressCreate(address: MailingAddressInput!, customerAccessToken: String!)`, `customerAddressUpdate(address, customerAccessToken, id: ID!)`, `customerAddressDelete(customerAccessToken, id: ID!)`, `customerDefaultAddressUpdate(addressId: ID!, customerAccessToken)` | no |
 | customer | `Customer { id email firstName lastName displayName phone acceptsMarketing createdAt updatedAt defaultAddress addresses(first) numberOfOrders orders(first, reverse, sortKey) }` | no |
 | customer | `MailingAddress`, `MailingAddressInput`, `CustomerAccessToken`, `CustomerUserError`, `CustomerErrorCode`, `CustomerAddressCreatePayload`, `CustomerAddressUpdatePayload`, `CustomerAddressDeletePayload { deletedCustomerAddressId }`, `CustomerDefaultAddressUpdatePayload { customer }` | no |
@@ -222,6 +226,8 @@ Validation and error codes:
 
 - `customerCreate`: `BLANK` email, `TAKEN` email, `TOO_SHORT` password (< 5).
 - `customerAccessTokenCreate`: `UNIDENTIFIED_CUSTOMER` on bad credentials.
+- `customerRecover`: never a user error, for a known or an unknown email,
+  so the answer does not tell which emails have an account.
 - Address book mutations: `UNIDENTIFIED_CUSTOMER` on
   `['customerAccessToken']` for an unknown token; `NOT_FOUND` on `['id']`
   (`['addressId']` for the default) for an address the customer does not
@@ -263,6 +269,13 @@ store's (the sandbox ships to one country), and a changed province clears
 `updatedAt`; a user error changes nothing. The address book and
 `checkoutComplete` save a `MailingAddressInput` the same way: each line is
 trimmed and a blank optional line is `null`.
+
+Password recovery: `customerRecover` is a mock of "Forgot your password?".
+It sends no email and changes no password. It trims the email, records it
+with the Episode clock time as a password reset request (the email need not
+belong to a customer), and ticks the clock once. The StateSnapshot lists
+the requests in request order, so a grader can check that the agent asked
+for a reset for the right email.
 
 Reviews: read-only and the same in every Episode. `Product.reviews` sorts
 by the sort key, then puts the more recent Review first, then keeps the
@@ -327,6 +340,7 @@ city, province, province_code, country, country_code, zip, phone`.
 | 10 | Reviews: `reviews.json`, `Product.reviews` paging and sorting, computed rating metafields | done |
 | 11 | Address book: `customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`, `customerDefaultAddressUpdate` | done |
 | 12 | `discountCodeHints`: every Discount code with its hint text, for the storefront's announcement bar | done |
+| 13 | Password recovery: `customerRecover` records a password reset request and sends nothing; `passwordResetRequests` in the StateSnapshot | done |
 
 ---
 

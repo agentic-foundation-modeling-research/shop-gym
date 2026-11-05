@@ -1,7 +1,7 @@
 /**
  * Customer domain resolvers: account creation, access-token login/logout,
- * the authenticated `customer` query with addresses and order history, and
- * the address book mutations.
+ * the password-recovery mock, the authenticated `customer` query with
+ * addresses and order history, and the address book mutations.
  *
  * Credentials are checked against the episode's `ShopState`, which is seeded
  * from `customers.json` (plain-text passwords; this is a sandbox). Tokens are
@@ -19,6 +19,7 @@ import type {
   MutationCustomerAddressUpdateArgs,
   MutationCustomerCreateArgs,
   MutationCustomerDefaultAddressUpdateArgs,
+  MutationCustomerRecoverArgs,
   QueryCustomerArgs,
 } from '../__generated__/resolvers-types.js';
 import type { AddressChanges, AddressRecord, CustomerRecord } from '../state/shop_state.js';
@@ -265,6 +266,20 @@ export const customerResolvers = {
         deletedCustomerAccessTokenId: gid('CustomerAccessToken', session.accessToken),
         userErrors: [],
       };
+    },
+
+    /**
+     * Record a password reset request and send nothing. Every email gets the
+     * same answer with no user errors, as on Shopify, so the answer never
+     * tells which emails have an account.
+     */
+    customerRecover: (
+      _parent: unknown,
+      args: MutationCustomerRecoverArgs,
+      ctx: ResolverContext,
+    ): { customerUserErrors: readonly CustomerUserErrorNode[] } => {
+      ctx.state.requestPasswordReset(args.email.trim());
+      return { customerUserErrors: [] };
     },
 
     customerAddressCreate: (

@@ -47,7 +47,7 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 | `/cart` | Cart page; its action handles `add`, `update`, `remove`, `discount`, `discount-remove` intents |
 | `/checkout` | Contact email, delivery address, shipping and payment method radios, and an order summary with the "Discount code" field and backend-matching totals; the action applies or removes a Discount code, or calls `checkoutComplete` |
 | `/checkout/confirmation/:orderNumber` | Thank-you page: confirmation number, order summary, addresses, shipping and payment method |
-| `/account/login`, `/account/register` | Credentials forms; on success the token is stored and attached to the cart |
+| `/account/login`, `/account/register` | Credentials forms; on success the token is stored and attached to the cart. Login also has "Forgot your password?": its form posts intent `recover` to `customerRecover` and shows "We've sent you an email with a link to update your password." |
 | `/account/logout` | POST only; deletes the token and clears the cookie |
 | `/account` | Profile, default address, recent orders |
 | `/account/addresses` | The address book: "Add a new address", and "Edit" and "Delete" for each address; "Set as default address" makes it the default; delete asks the browser's confirm dialog; the action handles `create`, `update`, `delete` intents |
@@ -95,8 +95,8 @@ the cart, and the form shows "Enter a valid discount code".
   Discount codes and their hints.
 - `app/components/checkout.tsx`: the order summary of checkout and the
   thank-you page.
-- `app/components/account.tsx`: the logout link, form errors, address and
-  order rendering shared by account and checkout pages.
+- `app/components/account.tsx`: the logout link, form errors, floating-label
+  fields, address and order rendering shared by account and checkout pages.
 - `app/components/addresses.tsx`: the address book with its add and edit
   forms.
 - `app/components/reviews.tsx`: the rating block near the product title and

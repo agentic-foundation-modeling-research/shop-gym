@@ -1,7 +1,8 @@
 /**
  * The functional sweep: a fixed shopper journey through the storefront in
- * one browser episode. Sign up, log out, log in, add an address and edit
- * it, add to cart, apply a Discount code, check out, view the order.
+ * one browser episode. Sign up, log out, request a password reset with
+ * "Forgot your password?", log in, add an address and edit it, add to
+ * cart, apply a Discount code, check out, view the order.
  * Returns are not supported by the backend, so that step is recorded as
  * skipped. Steps run in order and stop at the first failure.
  */
@@ -21,6 +22,7 @@ import {
   logOut,
   placeOrder,
   register,
+  requestPasswordReset,
   viewOrder,
 } from '../build/verifiers/browser_steps.js';
 import { CHECKOUT_ADDRESS } from '../build/verifiers/storefront_target.js';
@@ -46,6 +48,7 @@ export interface FunctionalSweepOptions {
 export const FUNCTIONAL_STEP_NAMES = [
   'signUp',
   'logOut',
+  'requestPasswordReset',
   'logIn',
   'addAddress',
   'editAddress',
@@ -72,6 +75,8 @@ export async function runFunctionalSweep(
   const scripted: Record<(typeof FUNCTIONAL_STEP_NAMES)[number], () => Promise<FunctionalStep>> = {
     signUp: async () => step('signUp', await register(page, storefrontUrl, account)),
     logOut: async () => step('logOut', await logOut(page, storefrontUrl)),
+    requestPasswordReset: async () =>
+      step('requestPasswordReset', await requestPasswordReset(page, storefrontUrl, account.email)),
     logIn: async () =>
       step(
         'logIn',
