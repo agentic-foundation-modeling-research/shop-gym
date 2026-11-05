@@ -1,6 +1,6 @@
 # AGENTS.md
 
-**ShopGym** is a TypeScript mono-repo for building and evaluating shopping LLM agents. It contains eight packages:
+**ShopGym** is a TypeScript mono-repo for building and evaluating shopping LLM agents. It contains nine packages:
 
 - `packages/core` (`@shop-gym/core`) - shared task / result schemas (zod), the file-based pipeline runner, and the `.env` credentials loader.
 - `packages/agent` (`@shop-gym/agent`) - the `AgentRuntime` / `LlmClient` / `Tool` / `Trajectory` seam, the pi SDK adapter, `FakeRuntime` and the adapter conformance suite.
@@ -9,7 +9,8 @@
 - `packages/shop_backend` (`@shop-gym/shop-backend`) - **ShopBackend**: Storefront-API-compatible GraphQL server with episode-scoped state (carts, customers, checkout, orders) over a SandboxShop dataset; also the backend template seeded into every generated shop.
 - `packages/shop-arena` (`@shop-gym/shop-arena`) - **ShopArena**: Environment Factory. `src/explore` turns a live storefront into an anonymized Shop Manual; `src/gen` turns manuals into a deterministic, self-contained **SandboxShop** (data + storefront + backend); `templates/storefront` is the storefront template.
 - `packages/shop-guru` (`@shop-gym/shop-guru`) - **ShopGuru**: benchmark pipeline that generates grounded tasks from a SandboxShop, discovers more with an explorer agent, runs agents in isolated browser episodes, grades, and aggregates.
-- `packages/cli` (`@shop-gym/cli`) - the `shopgym` binary: `explore | gen | host | guru | trace | doctor`.
+- `packages/reports` (`@shop-gym/reports`) - local website for the HTML review reports: committed reports in `pages/`, the shared style in `assets/`, and the server behind `shopgym report`.
+- `packages/cli` (`@shop-gym/cli`) - the `shopgym` binary: `explore | gen | host | guru | trace | report | doctor`.
 
 IMPORTANT: Always refer to `README.md` for project context, setup and common commands. Always keep `README.md` up-to-date.
 
@@ -31,6 +32,7 @@ shop-gym/
 │   ├── shop_backend/           # @shop-gym/shop-backend - GraphQL server + backend template
 │   ├── shop-arena/             # @shop-gym/shop-arena - explore, gen, templates/storefront
 │   ├── shop-guru/              # @shop-gym/shop-guru - benchmark build / explore / solve / eval
+│   ├── reports/                # @shop-gym/reports - review reports site (HTML pages + server)
 │   └── cli/                    # @shop-gym/cli - the `shopgym` binary
 ├── docs/
 │   ├── adr/                    # architecture decision records (`NNNN-slug.md`)
@@ -39,12 +41,12 @@ shop-gym/
 ├── scripts/                    # thin shell helpers
 ├── outputs/                    # generated artifacts (gitignored): shop_manuals, shops, shop_guru
 ├── pnpm-workspace.yaml         # pnpm workspace root
-├── package.json                # root scripts: build, test, typecheck, lint, codegen:check, shop:host
+├── package.json                # root scripts: build, test, typecheck, lint, codegen:check, shop:host, reports
 ├── tsconfig.base.json          # shared TS compiler config
 └── biome.json                  # TS lint/format config
 ```
 
-Typical data flow: `shopgym explore` -> `shopgym gen` -> `shopgym host` -> `shopgym guru` (build tasks, then evaluate agents). Dependency direction is strictly downward: `cli -> {shop-arena, shop-guru} -> {shop_backend, harness, browser} -> agent -> core`. The `harness` package provides the runtime-agnostic engine used by the explore, build and eval loops.
+Typical data flow: `shopgym explore` -> `shopgym gen` -> `shopgym host` -> `shopgym guru` (build tasks, then evaluate agents). Dependency direction is strictly downward: `cli -> {shop-arena, shop-guru, reports}`, `{shop-arena, shop-guru} -> {shop_backend, harness, browser} -> agent -> core`. `reports` has no workspace dependencies. The `harness` package provides the runtime-agnostic engine used by the explore, build and eval loops.
 
 ## Behavior Guideline
 
@@ -71,6 +73,10 @@ Each specification in `docs/specs/` need to follow the structure:
  Execution Table
  Appendix
 ```
+
+### Review Reports
+
+`docs/` holds Markdown, not HTML. To review Markdown work with teammates, build an HTML report from it into `packages/reports/pages/` (format in `packages/reports/README.md`) and serve it with `pnpm reports`. After the review, write the decisions back into the Markdown in `docs/`. The scripts that build reports stay outside the repository.
 
 ### Think Before Coding
 

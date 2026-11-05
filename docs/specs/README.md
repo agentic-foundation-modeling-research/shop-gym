@@ -56,3 +56,9 @@ decisions are recorded in `docs/adr/` and domain terms in `GLOSSARY.md`.
 | --------- | --------- | ----------- |
 | [shop_guru/task_generation_proposal.md](shop_guru/task_generation_proposal.md) | `packages/shop-guru`, `packages/shop_backend`, `packages/core` | Sandbox limitations and task coverage; template, product-first, and BFS + explore generation; shared validation and difficulty; a proposed 9-shop, 900-task RL and transfer-evaluation pilot across six SandboxShops and three real shops, with no new commerce features. Capability baseline: `4a6a2c5e`. **Status:** Proposed; no implementation in this document. |
 | [shop_guru/benchmark_v2.md](shop_guru/benchmark_v2.md) | `packages/shop-guru` + `packages/cli` (`shopgym guru`) | TypeScript benchmark pipeline: ten seed skills plus agent-discovered tasks over the `core` task schema, `AgentUnderTest` episodes isolated by `BrowserSession` and the backend control API, graders for every check kind, and `aggregate.json`. **Status:** Implemented (v1.1 M9; CLI M10). |
+
+## Reports
+
+| Spec Path | Code Path | Description |
+| --------- | --------- | ----------- |
+| [reports/reports_site.md](reports/reports_site.md) | `packages/reports` + `packages/cli` (`shopgym report`) | Local website for Review reports: HTML fragments committed in `packages/reports/pages/`, one shared stylesheet and theme switch, and a server with an index and strict path patterns. Markdown in `docs/` stays the record. **Status:** Implemented (2026-11-05). |

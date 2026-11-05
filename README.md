@@ -20,7 +20,8 @@ The repository is a pnpm mono-repo of TypeScript packages:
 | [`packages/shop_backend`](packages/shop_backend) | **ShopBackend** - Storefront-API-compatible GraphQL server with episode-scoped state (carts, customers, checkout, orders); also the backend template seeded into every generated shop. |
 | [`packages/shop-arena`](packages/shop-arena) | **ShopArena** - storefront exploration (`explore`), SandboxShop generation (`gen`), and the storefront template under `templates/storefront`. |
 | [`packages/shop-guru`](packages/shop-guru) | **ShopGuru** - benchmark pipeline: seed and explored tasks, `AgentUnderTest` episodes, graders, `aggregate.json`. |
-| [`packages/cli`](packages/cli) | **CLI** - the `shopgym` binary: `explore`, `gen`, `host`, `guru`, `trace`, `doctor`. |
+| [`packages/reports`](packages/reports) | **Reports** - local website for the HTML reports we review with teammates: an index, one shared style, and a small server. |
+| [`packages/cli`](packages/cli) | **CLI** - the `shopgym` binary: `explore`, `gen`, `host`, `guru`, `trace`, `report`, `doctor`. |
 
 A typical loop:
 
@@ -185,7 +186,18 @@ SHOPGYM_LIVE=1 pnpm -r test         # also call real models (reads .env); SHOPGY
 
 pnpm --filter @shop-gym/shop-backend dev   # run the GraphQL server against a dataset
 node packages/cli/dist/main.js trace <iter_dir>   # render a harness iteration as text
+pnpm reports                     # serve the review reports at http://127.0.0.1:4100
 ```
+
+## Review reports
+
+Markdown in `docs/` is the record: plans, specs, ADRs, proposals and final
+designs. For a review, we make an HTML report from that Markdown and commit it
+to [`packages/reports/pages/`](packages/reports). `pnpm reports` serves every
+report with an index and one shared style, for review with teammates. After the
+review, the decisions go back into the Markdown in `docs/`. See
+[`packages/reports/README.md`](packages/reports/README.md) for the report
+format.
 
 ## Hosting a generated shop
 
@@ -237,11 +249,12 @@ shop-gym/
 │   ├── shop_backend/           # @shop-gym/shop-backend: GraphQL server + backend template
 │   ├── shop-arena/             # @shop-gym/shop-arena: explore, gen, templates/storefront
 │   ├── shop-guru/              # @shop-gym/shop-guru: benchmark build / explore / solve / eval
+│   ├── reports/                # @shop-gym/reports: review reports site (pages/, assets/, server)
 │   └── cli/                    # @shop-gym/cli: the `shopgym` binary
 ├── outputs/                    # generated artifacts (gitignored): shop_manuals, shops, shop_guru
 ├── scripts/                    # thin shell helpers
 ├── pnpm-workspace.yaml         # pnpm workspace root
-├── package.json                # root scripts (build, test, lint, codegen:check, shop:host)
+├── package.json                # root scripts (build, test, lint, codegen:check, shop:host, reports)
 ├── tsconfig.base.json
 ├── biome.json
 └── .editorconfig
