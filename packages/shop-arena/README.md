@@ -104,7 +104,7 @@ pipeline runner; `GEN_STEPS` lists them in order:
 | --- | --- | --- |
 | `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json`; the checked-in Standard sub-manual `src/gen/manual_merge/standard_sub_manual.md` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section); `parts/` holds the six Sub-manuals cut from `manual.md` and an unchanged copy of the Standard sub-manual as `parts/standard.md` |
 | `data_synth` | `manual/` | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
-| `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
+| `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity, valid Discount codes, seeded order totals and discounts that follow the backend pricing rules, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
 | `build` | `data/`, `manual/`, `data_validation.json` | `runs/build/` via `build.runBuildLoop` (seed staged in `.shop_gen/build_seed/`); a final status other than `completed` fails the step so the next run resumes it |
 | `final_eval` | `runs/build/run.json`, `runs/build/build.json` | `final_eval/` via `finalEval.runFinalEval` against the build artifacts booted on the recorded backend port (sidecar logs in `final_eval/{backend,storefront}.log`); advisory, never fails the step |
 | `publish` | `runs/build/run.json`, `runs/build/build.json` | `storefront/`, `backend/`, `shop.json` via `publish.publishShop` |
@@ -112,7 +112,10 @@ pipeline runner; `GEN_STEPS` lists them in order:
 `data_synth` runs its sub-steps in order (`identity`, `store`, `pages`,
 `policies`, `commerce`, `collections`, `skeletons`, `details` per
 collection, `alt_text`, `images`, `navigation`, `customers`, then
-assembly with deterministic ids, inventory, and orders). `navigation`
+assembly with deterministic ids, inventory, and orders). `commerce`
+also makes three to five Discount codes, at least one of each kind and
+one percent or fixed code with no minimum, and four seeded orders use
+one. `navigation`
 reads the manual's `parts/navigation.md` so the footer mirrors the manual's
 footer link list and the in-loop judges agree on it. Every LLM call
 asks for one JSON value against a zod-derived JSON Schema and retries
