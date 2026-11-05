@@ -82,6 +82,35 @@ export interface ProductDetail extends ProductSummary {
     readonly nodes: readonly ProductVariant[];
   };
   readonly selectedOrFirstAvailableVariant: ProductVariant | null;
+  /** The `reviews.rating` metafield; null when the product has no Reviews. */
+  readonly rating: { readonly value: string } | null;
+  /** The `reviews.rating_count` metafield; null when the product has no Reviews. */
+  readonly ratingCount: { readonly value: string } | null;
+  readonly reviews: {
+    readonly nodes: readonly Review[];
+    readonly pageInfo: {
+      readonly hasNextPage: boolean;
+    };
+  };
+}
+
+/** One read-only product Review. */
+export interface Review {
+  readonly id: string;
+  /** 1 to 5. */
+  readonly rating: number;
+  readonly title: string;
+  readonly body: string;
+  /** First name and last initial, e.g. "Maya R.". */
+  readonly reviewerName: string;
+  readonly createdAt: string;
+  readonly verifiedBuyer: boolean;
+  readonly helpfulCount: number;
+  /** The variant the reviewer bought; null when the product no longer has it. */
+  readonly variant: {
+    readonly title: string;
+    readonly selectedOptions: readonly SelectedOption[];
+  } | null;
 }
 
 export interface CollectionSummary {

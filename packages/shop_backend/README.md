@@ -26,7 +26,7 @@ The current GraphQL contract is the per-domain SDL under `src/schema/`
 | --- | --- |
 | Shop | `shop`, `Shop.paymentSettings`, `Shop.primaryDomain`, `Shop.brand`, policies, `Shop.metafield(s)` |
 | Menu | `menu(handle)` |
-| Product | `product(handle)`, `products(...)`, product options, variants, images, encoded variant fields, inventory-backed `availableForSale` / `quantityAvailable`, `Product.metafield(s)` |
+| Product | `product(handle)`, `products(...)`, product options, variants, images, encoded variant fields, inventory-backed `availableForSale` / `quantityAvailable`, `Product.metafield(s)`, `Product.reviews(...)` (sandbox-only) |
 | Collection | `collection(handle)`, `collections(...)`, `Collection.products(...)`, `Collection.metafield(s)` |
 | Content | `page(handle)`, `blog(handle)`, `blogs(...)`, `Blog.articles(...)`, `Blog.articleByHandle(...)` |
 | Search | `search(...)`, `predictiveSearch(...)`, `productRecommendations(productId)` |
@@ -155,6 +155,20 @@ shipping charge. The order records the code and the amount it removed (the
 waived shipping charge for free shipping) in the sandbox field
 `Order.discountCode { code targetType amount }`.
 
+### Reviews
+
+`reviews.json` lists read-only product Reviews. `Product.reviews(first,
+after, sortKey)` (sandbox-only) pages them in the order `MOST_RECENT` (the
+default), `HIGHEST_RATING`, `LOWEST_RATING` or `MOST_HELPFUL`; ties put the
+more recent Review first, then keep the file order. Each `Review` has a
+`rating` (1 to 5), `title`, `body`, `reviewerName`, `createdAt`,
+`verifiedBuyer`, `helpfulCount` and the `variant` bought. The product
+metafields `reviews.rating` (Shopify's `rating` JSON, the mean rounded to one
+decimal, for example `{"value":"4.5","scale_min":"1.0","scale_max":"5.0"}`)
+and `reviews.rating_count` (`number_integer`) are computed from the same
+Reviews, and a product with no Reviews has neither. `metafields.json` entries
+with these two keys are ignored.
+
 ### Example query
 
 With the server above running on port 4000:
@@ -214,6 +228,7 @@ Optional files:
 | `customers.json` | `[]` | Seeded customer accounts (plain-text sandbox passwords) with addresses |
 | `orders.json` | `[]` | Seeded order history, with an optional `discount_code` and `discount_amount`; new orders are numbered after the highest seed (minimum `#1001`) |
 | `commerce.json` | `DEFAULT_COMMERCE` | `tax_rate`, `free_shipping_threshold`, `shipping_methods`, `payment_methods`, `discount_codes` |
+| `reviews.json` | `[]` | Product Reviews: `id`, `product_handle`, `variant_id`, `rating`, `title`, `body`, `reviewer_name`, `created_at` (ISO 8601 date and time), `verified_buyer`, `helpful_count` |
 
 `DEFAULT_COMMERCE` is no tax, no free-shipping threshold, one free `standard`
 shipping method, one `card` payment method, and no Discount codes. A partial `commerce.json`

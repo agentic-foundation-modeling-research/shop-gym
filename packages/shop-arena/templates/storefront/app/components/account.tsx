@@ -264,7 +264,7 @@ export function orderGid(orderNumber: string): string {
 // server and the browser must render the same text.
 
 /** "March 3, 2025". */
-function formatDate(iso: string): string {
+export function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('en-US', {
     month: 'long',
     day: 'numeric',

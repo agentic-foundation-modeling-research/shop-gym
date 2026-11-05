@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "product_handle": "shopliseum-mushroom-dog-toys",
+    "variant_id": 47242666836142,
+    "rating": 5,
+    "title": "Still squeaking after a month",
+    "body": "Our terrier carries this everywhere. The squeaker still works after a month of daily play.",
+    "reviewer_name": "Maya R.",
+    "created_at": "2025-11-20T15:00:00.000Z",
+    "verified_buyer": true,
+    "helpful_count": 4
+  },
+  {
+    "id": 2,
+    "product_handle": "shopliseum-mushroom-dog-toys",
+    "variant_id": 47242687709358,
+    "rating": 4,
+    "title": "Good, but the stem came off",
+    "body": "Soft and bright. After two weeks the stem came off, but the cap is still in one piece.",
+    "reviewer_name": "Tom B.",
+    "created_at": "2025-10-02T09:30:00.000Z",
+    "verified_buyer": true,
+    "helpful_count": 12
+  },
+  {
+    "id": 3,
+    "product_handle": "shopliseum-mushroom-dog-toys",
+    "variant_id": 47242695737518,
+    "rating": 2,
+    "title": "Too small for a large dog",
+    "body": "Our labrador can fit the whole toy in her mouth. Buy it for a small dog only.",
+    "reviewer_name": "Ana P.",
+    "created_at": "2025-12-14T18:45:00.000Z",
+    "verified_buyer": false,
+    "helpful_count": 1
+  },
+  {
+    "id": 4,
+    "product_handle": "shopliseum-mushroom-dog-toys",
+    "variant_id": 47242720215214,
+    "rating": 5,
+    "title": "Our puppy's favourite",
+    "body": "The yellow one is easy to find in the grass. She brings it back every time.",
+    "reviewer_name": "Leo K.",
+    "created_at": "2025-09-05T12:00:00.000Z",
+    "verified_buyer": true,
+    "helpful_count": 0
+  },
+  {
+    "id": 5,
+    "product_handle": "shopliseum-mushroom-dog-toys",
+    "variant_id": 47242666836142,
+    "rating": 3,
+    "title": "Fine for gentle chewers",
+    "body": "Good for a dog that plays gently. A strong chewer gets through the fabric in a day.",
+    "reviewer_name": "Sara M.",
+    "created_at": "2025-12-14T18:45:00.000Z",
+    "verified_buyer": true,
+    "helpful_count": 1
+  },
+  {
+    "id": 6,
+    "product_handle": "shopliseum-mushroom-dog-toys",
+    "variant_id": 47242687709358,
+    "rating": 4,
+    "title": "Bright colours",
+    "body": "The colours are as bright as in the photos and did not fade in the wash.",
+    "reviewer_name": "Ivy W.",
+    "created_at": "2025-06-18T08:15:00.000Z",
+    "verified_buyer": false,
+    "helpful_count": 2
+  },
+  {
+    "id": 7,
+    "product_handle": "aislearena-anti-tick-collar",
+    "variant_id": 47642512195758,
+    "rating": 5,
+    "title": "No ticks this summer",
+    "body": "We walk in the woods every day and found no ticks all summer.",
+    "reviewer_name": "Noah G.",
+    "created_at": "2025-08-30T17:20:00.000Z",
+    "verified_buyer": true,
+    "helpful_count": 3
+  },
+  {
+    "id": 8,
+    "product_handle": "aislearena-anti-tick-collar",
+    "variant_id": 47642514456750,
+    "rating": 4,
+    "title": "Works, strong smell at first",
+    "body": "It works well. The smell is strong for the first few days and then goes away.",
+    "reviewer_name": "Emma L.",
+    "created_at": "2025-07-11T10:05:00.000Z",
+    "verified_buyer": false,
+    "helpful_count": 0
+  },
+  {
+    "id": 9,
+    "product_handle": "agoracage-skin-and-coat-chicken-with-grains-12lb",
+    "variant_id": 44795897643182,
+    "rating": 4,
+    "title": "Shinier coat",
+    "body": "After six weeks on this food his coat is softer and shinier.",
+    "reviewer_name": "Omar H.",
+    "created_at": "2025-05-22T14:40:00.000Z",
+    "verified_buyer": true,
+    "helpful_count": 0
+  },
+  {
+    "id": 10,
+    "product_handle": "carthaeum-toothbrush",
+    "variant_id": 47694728298670,
+    "rating": 3,
+    "title": "Handle is a bit short",
+    "body": "The bristles are soft, but the handle is short for a big dog's back teeth.",
+    "reviewer_name": "Lucy T.",
+    "created_at": "2025-04-03T11:00:00.000Z",
+    "verified_buyer": true,
+    "helpful_count": 1
+  }
+]

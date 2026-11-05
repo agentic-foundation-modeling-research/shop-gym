@@ -9,7 +9,7 @@
  * Required files: `store.json`, `products.json`, `collections.json`,
  * `navigation.json`, `pages.json`, `policies.json`.
  * Optional files: `blogs.json`, `metafields.json`, `inventory.json`,
- * `customers.json`, `orders.json`, `commerce.json`.
+ * `customers.json`, `orders.json`, `commerce.json`, `reviews.json`.
  */
 
 import { z } from 'zod';
@@ -435,3 +435,27 @@ export const commerceSchema = z
     discount_codes: z.array(discountCodeSchema).readonly().default([]),
   })
   .readonly();
+
+// ── reviews.json ───────────────────────────────────────────────────────────
+
+/** Element of `reviews.json`: one read-only product Review. */
+export const reviewSchema = z
+  .object({
+    id: z.number(),
+    /** References `products.json[].handle`. */
+    product_handle: z.string(),
+    /** The variant the reviewer bought; references `products.json[].variants[].id`. */
+    variant_id: z.number(),
+    rating: z.number().int().min(1).max(5),
+    title: z.string(),
+    body: z.string(),
+    /** First name and last initial, e.g. "Maya R.". */
+    reviewer_name: z.string(),
+    /** ISO 8601 date and time in UTC, e.g. "2025-11-20T15:00:00.000Z". */
+    created_at: z.iso.datetime(),
+    verified_buyer: z.boolean(),
+    helpful_count: z.number().int().min(0),
+  })
+  .readonly();
+
+export const reviewsFileSchema = z.array(reviewSchema).readonly();

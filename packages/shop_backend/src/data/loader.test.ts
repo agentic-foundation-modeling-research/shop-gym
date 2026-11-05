@@ -243,6 +243,29 @@ describe('loadShopData', () => {
     }
   });
 
+  it.each([
+    ['rating', 6],
+    ['rating', 4.5],
+    ['created_at', 'December 14, 2025'],
+    ['helpful_count', -1],
+  ])('throws InvalidDatasetError when a Review has %s %j', (field, value) => {
+    tmpDir = copyFixture();
+    const reviewsPath = path.join(tmpDir, 'reviews.json');
+    const reviews = JSON.parse(fs.readFileSync(reviewsPath, 'utf8')) as Record<string, unknown>[];
+    const [review] = reviews;
+    if (review === undefined) throw new Error('fixture has no Reviews');
+    review[field] = value;
+    fs.writeFileSync(reviewsPath, JSON.stringify(reviews));
+
+    try {
+      loadShopData(tmpDir);
+      expect.fail('expected loadShopData to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(InvalidDatasetError);
+      expect((err as InvalidDatasetError).path).toBe(`$[0].${field}`);
+    }
+  });
+
   it('defaults inventory to an empty file when inventory.json is absent', () => {
     tmpDir = copyFixture();
     fs.rmSync(path.join(tmpDir, 'inventory.json'));

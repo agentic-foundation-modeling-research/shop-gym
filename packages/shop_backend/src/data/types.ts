@@ -35,6 +35,7 @@ import type {
   productOptionSchema,
   productSchema,
   productVariantSchema,
+  reviewSchema,
   shippingMethodSchema,
   storeBrandColorsSchema,
   storeBrandSchema,
@@ -85,6 +86,8 @@ export type DiscountCode = z.infer<typeof discountCodeSchema>;
 export type DiscountCodeKind = z.infer<typeof discountCodeKindSchema>;
 export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
 
+export type Review = z.infer<typeof reviewSchema>;
+
 /**
  * Lookup entry for `variantsByGid`: the variant plus the product it belongs to,
  * so cart resolvers can materialize merchandise without a second pass.
@@ -114,10 +117,14 @@ export interface SandboxShopData {
   readonly orders: readonly Order[];
   /** Checkout rules; defaults when `commerce.json` is absent. */
   readonly commerce: Commerce;
+  /** Product Reviews in file order; empty when `reviews.json` is absent. */
+  readonly reviews: readonly Review[];
   /** `handle` → product. */
   readonly productsByHandle: ReadonlyMap<string, Product>;
   /** `gid://shopify/ProductVariant/<id>` → owning product + variant. */
   readonly variantsByGid: ReadonlyMap<string, VariantLookup>;
   /** Numeric variant id → inventory entry. Empty when `inventory.json` is absent. */
   readonly inventoryByVariantId: ReadonlyMap<number, InventoryEntry>;
+  /** Product handle → its Reviews in file order. Products with no Reviews have no entry. */
+  readonly reviewsByProductHandle: ReadonlyMap<string, readonly Review[]>;
 }

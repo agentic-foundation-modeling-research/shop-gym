@@ -1,5 +1,6 @@
 /**
- * Catalog domain: products, variants, options, and collections.
+ * Catalog domain: products, variants, options, collections, and the
+ * read-only product Reviews (`@sandbox`) from `reviews.json`.
  */
 
 export const catalogTypeDefs = /* GraphQL */ `
@@ -61,6 +62,15 @@ export const catalogTypeDefs = /* GraphQL */ `
     updatedAt: String
     metafield(namespace: String!, key: String!): Metafield
     metafields(identifiers: [HasMetafieldsIdentifier!]!): [Metafield]!
+    """
+    The product's Reviews. The Storefront API has no Review type; shops show
+    Reviews through a review app.
+    """
+    reviews(
+      first: Int
+      after: String
+      sortKey: ReviewSortKeys = MOST_RECENT
+    ): ReviewConnection! @sandbox
   }
 
   type ProductPriceRange {
@@ -144,6 +154,47 @@ export const catalogTypeDefs = /* GraphQL */ `
   type ProductEdge {
     node: Product!
     cursor: String!
+  }
+
+  # ── Review ────────────────────────────────────────────────────────────────
+
+  """One read-only product Review from reviews.json."""
+  type Review @sandbox {
+    id: ID!
+    """1 to 5."""
+    rating: Int!
+    title: String!
+    body: String!
+    """First name and last initial, e.g. "Maya R."."""
+    reviewerName: String!
+    """ISO 8601 date and time in UTC."""
+    createdAt: String!
+    verifiedBuyer: Boolean!
+    helpfulCount: Int!
+    """The variant the reviewer bought; null when the product no longer has it."""
+    variant: ProductVariant
+  }
+
+  type ReviewConnection @sandbox {
+    nodes: [Review!]!
+    edges: [ReviewEdge!]!
+    pageInfo: PageInfo!
+  }
+
+  type ReviewEdge @sandbox {
+    node: Review!
+    cursor: String!
+  }
+
+  """
+  Review orders. Ties put the more recent Review first, then keep the
+  reviews.json order.
+  """
+  enum ReviewSortKeys @sandbox {
+    MOST_RECENT
+    HIGHEST_RATING
+    LOWEST_RATING
+    MOST_HELPFUL
   }
 
   # ── Collection ────────────────────────────────────────────────────────────

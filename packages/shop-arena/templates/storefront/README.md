@@ -42,7 +42,7 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 | --- | --- |
 | `/` | Home: shop, featured collections and products |
 | `/collections`, `/collections/:handle` | Collection list and detail |
-| `/products/:handle` | Product detail with variant radios and add-to-cart |
+| `/products/:handle` | Product detail with variant radios, add-to-cart, and the Reviews: stars and count near the title, a "Sort by" control (`?reviews_sort=most_recent\|highest_rating\|lowest_rating\|most_helpful`) and "Show more reviews" (`?reviews_pages=<n>`, five Reviews a page); no Reviews section when the product has none |
 | `/search?q=` | Products, pages, and articles |
 | `/cart` | Cart page; its action handles `add`, `update`, `remove`, `discount`, `discount-remove` intents |
 | `/checkout` | Contact email, delivery address, shipping and payment method radios, and an order summary with the "Discount code" field and backend-matching totals; the action applies or removes a Discount code, or calls `checkoutComplete` |
@@ -76,12 +76,16 @@ the cart, and the form shows "Enter a valid discount code".
 - `app/lib/types.ts`: hand-written response types for those documents.
 - `app/lib/customer.ts`: `loadCustomer`, `requireCustomer`, `loginCustomer`.
 - `app/lib/discount.ts`: `applyDiscountCode`, `removeDiscountCode`.
+- `app/lib/reviews.ts`: the Reviews URL parameters, sort options and page
+  size, and the product rating read from its rating metafields.
 - `app/components/storefront.tsx`: header, footer, grids, cart drawer, cart
   summary and the "Discount code" form.
 - `app/components/checkout.tsx`: the order summary of checkout and the
   thank-you page.
 - `app/components/account.tsx`: account nav, forms errors, address and order
   rendering shared by account and checkout pages.
+- `app/components/reviews.tsx`: the rating block near the product title and
+  the "Reviews" section.
 
 ## Fixture
 
@@ -89,5 +93,7 @@ the cart, and the form shows "Enter a valid discount code".
 policies, two local images per product) plus `customers.json`
 (`jane.doe@example.com` / `password123`), `orders.json` (order `#1001`), and
 `commerce.json` (two shipping methods, two payment methods, free shipping
-over 75.00, and the Discount codes `WELCOME10`, `SAVE5` and `FREESHIP`). It is byte-identical to the backend's fixture for those three
+over 75.00, and the Discount codes `WELCOME10`, `SAVE5` and `FREESHIP`), and
+`reviews.json` (Reviews for four products; `cartanvil-mackerel-and-sardines-70g`
+has none). It is byte-identical to the backend's fixture for those four
 files so both packages agree.

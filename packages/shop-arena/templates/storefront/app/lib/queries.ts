@@ -305,7 +305,7 @@ export const COLLECTION_QUERY = `#graphql
 `;
 
 export const PRODUCT_QUERY = `#graphql
-  query Product($handle: String!) {
+  query Product($handle: String!, $reviewsFirst: Int!, $reviewsSortKey: ReviewSortKeys!) {
     product(handle: $handle) {
       ...ProductCardFields
       description
@@ -323,6 +323,34 @@ export const PRODUCT_QUERY = `#graphql
       }
       selectedOrFirstAvailableVariant {
         ...ProductVariantFields
+      }
+      rating: metafield(namespace: "reviews", key: "rating") {
+        value
+      }
+      ratingCount: metafield(namespace: "reviews", key: "rating_count") {
+        value
+      }
+      reviews(first: $reviewsFirst, sortKey: $reviewsSortKey) {
+        nodes {
+          id
+          rating
+          title
+          body
+          reviewerName
+          createdAt
+          verifiedBuyer
+          helpfulCount
+          variant {
+            title
+            selectedOptions {
+              name
+              value
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+        }
       }
     }
   }
