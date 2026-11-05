@@ -172,7 +172,7 @@ export interface MailingAddress {
 export interface OrderLineItem {
   readonly title: string;
   readonly quantity: number;
-  readonly variant: ProductVariant | null;
+  readonly variant: (ProductVariant & { readonly sku: string | null }) | null;
   readonly originalTotalPrice: Money;
 }
 

@@ -581,6 +581,7 @@ export const ORDER_DETAIL_FRAGMENT = `#graphql
         }
         variant {
           ...ProductVariantFields
+          sku
         }
       }
     }

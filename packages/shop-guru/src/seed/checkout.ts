@@ -11,7 +11,14 @@
 import type { Task } from '@shop-gym/core';
 import type { Customer, SandboxShopData } from '@shop-gym/shop-backend';
 
-import { type SeedContext, customerGid, makeTaskId, skillRng, variantGid } from './context.js';
+import {
+  type SeedContext,
+  customerGid,
+  makeTaskId,
+  personaName,
+  skillRng,
+  variantGid,
+} from './context.js';
 import { isTaskCandidate } from './filters.js';
 
 export const SKILL = 'checkout';
@@ -61,7 +68,7 @@ export function generate(ctx: SeedContext, count: number): Task[] {
       id: makeTaskId(ctx.shop, SKILL, tasks.length + 1),
       shop: ctx.shop,
       skill: SKILL,
-      goal: `You are signed in and your cart already holds one "${target.productTitle}"${variantNote}. Check out and place the order, shipping to your default address. Do not change the cart contents.`,
+      goal: `You are signed in as ${personaName(customer)} and your cart already holds one "${target.productTitle}"${variantNote}. Check out and place the order, shipping to your default address. Do not change the cart contents.`,
       setup: { login: String(customer.id), cart: [{ variantId: target.variantId, quantity: 1 }] },
       eval: [
         {

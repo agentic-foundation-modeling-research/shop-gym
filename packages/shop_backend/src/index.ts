@@ -11,7 +11,10 @@ export type { StateSnapshot } from './sandbox/snapshot.js';
 export { createSandboxSchema, typeDefs } from './schema/index.js';
 export { createSandboxServer } from './server.js';
 export type { SandboxServer, ServerOptions } from './server.js';
+export { DEFAULT_EPISODE_START } from './state/episode_clock.js';
 export { EpisodeStore } from './state/episodes.js';
+export { computeOrderTotals } from './state/pricing.js';
+export type { OrderTotals, PricedLine } from './state/pricing.js';
 export { ShopState } from './state/shop_state.js';
 export type {
   CustomerRecord,

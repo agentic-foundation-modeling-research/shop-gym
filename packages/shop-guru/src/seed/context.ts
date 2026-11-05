@@ -3,7 +3,7 @@
  */
 
 import type { Task } from '@shop-gym/core';
-import type { SandboxShopData } from '@shop-gym/shop-backend';
+import type { Customer, SandboxShopData } from '@shop-gym/shop-backend';
 
 import { type Rng, createRng } from './rng.js';
 
@@ -27,6 +27,15 @@ export function makeTaskId(shop: string, skill: string, index: number): string {
 /** An `Rng` scoped to one skill so adding a generator never reshuffles another. */
 export function skillRng(ctx: SeedContext, skill: string): Rng {
   return createRng(`${ctx.seed}:${skill}`);
+}
+
+/**
+ * The Persona's full name, or the email when it has none. Goals name the
+ * signed-in Persona so Tasks for different Personas never share a goal.
+ */
+export function personaName(customer: Customer): string {
+  const name = [customer.first_name, customer.last_name].filter((p) => p !== null).join(' ');
+  return name === '' ? customer.email : name;
 }
 
 /** `gid://shopify/ProductVariant/<id>` as the backend renders it. */

@@ -98,6 +98,35 @@ describe('checkDataset', () => {
     expect(problems.some((p) => p.includes('missing.png'))).toBe(true);
   });
 
+  it('reports seeded orders whose totals break the pricing rules', async () => {
+    type EditableOrder = {
+      id: number;
+      shipping_method: string | null;
+      total_shipping_price: string;
+      total_price: string;
+      discount_code: string | null;
+    };
+    await editJson('orders.json', (orders: EditableOrder[]) =>
+      orders.map((o) => {
+        // #1002 clears the 75.00 free-shipping threshold, so shipping is waived.
+        if (o.id === 1002) return { ...o, total_shipping_price: '9.99', total_price: '115.96' };
+        // #1004 takes SAVE5 off a 32.98 subtotal: 32.98 - 5.00 + 9.99 = 37.97.
+        if (o.id === 1004) return { ...o, total_price: '42.97' };
+        if (o.id === 1005) return { ...o, shipping_method: 'overnight' };
+        // NOPE is not a Discount code of the Dataset, so it takes nothing off.
+        if (o.id === 1003) return { ...o, discount_code: 'NOPE' };
+        return o;
+      }),
+    );
+    expect(await checkDataset(dataDir)).toEqual([
+      'orders.json: order 1002 total_shipping_price is 9.99, the pricing rules give 0.00',
+      'orders.json: order 1002 total_price is 115.96, the pricing rules give 105.97',
+      'orders.json: order 1003 discount_code is NOPE, the pricing rules give null',
+      'orders.json: order 1004 total_price is 42.97, the pricing rules give 37.97',
+      'orders.json: order 1005 shipping method overnight is not in commerce.json',
+    ]);
+  });
+
   it('reports a file that fails the backend schema', async () => {
     await fs.writeFile(path.join(dataDir, 'store.json'), JSON.stringify({ name: 'x' }));
     const problems = await checkDataset(dataDir);

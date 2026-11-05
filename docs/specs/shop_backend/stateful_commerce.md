@@ -300,7 +300,7 @@ city, province, province_code, country, country_code, zip, phone`.
 
 Fresh episode, fixture dataset: `customerAccessTokenCreate` ->
 `sandbox-token-1` expiring `2026-01-15T00:00:01.000Z`; a following
-`checkoutComplete` -> order `#1002` processed at
+`checkoutComplete` -> order `#1007` processed at
 `2026-01-01T00:00:02.000Z`.
 
 ### 8.2 Known limitations

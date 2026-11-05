@@ -1,23 +1,48 @@
 /**
- * `synth_orders`: one to three historical orders per seeded customer, drawn
- * deterministically from the catalog so no LLM call is needed. Totals
- * follow the `commerce.json` rules the backend applies at checkout.
+ * `synth_orders`: fifteen past orders for the Personas, drawn from the
+ * catalog with a fixed seed so no LLM call is needed. The last Persona has
+ * no orders and every other Persona has one to six. Orders fall in the
+ * twelve months before the Episode clock starts, ship to one of the
+ * Persona's saved addresses with a random shipping and payment method,
+ * and cost what the backend charges at checkout.
  */
 
 import type { z } from 'zod';
 
-import type { datasetSchema } from '@shop-gym/shop-backend';
+import {
+  DEFAULT_EPISODE_START,
+  computeOrderTotals,
+  type datasetSchema,
+} from '@shop-gym/shop-backend';
 
-import { fromCents, seededRandom, toCents } from './ids.js';
+import { seededRandom } from './ids.js';
 
 type Customer = z.infer<typeof datasetSchema.customerSchema>;
 type Product = z.infer<typeof datasetSchema.productSchema>;
 type Commerce = z.infer<typeof datasetSchema.commerceSchema>;
 export type Order = z.infer<typeof datasetSchema.orderSchema>;
+type Status = Pick<Order, 'financial_status' | 'fulfillment_status'>;
 
-const FIRST_ORDER_ID = 1001;
-const MAX_ORDERS_PER_CUSTOMER = 3;
+const SEED = 'orders';
+const ORDER_COUNT = 15;
+const MAX_ORDERS_PER_CUSTOMER = 6;
 const MAX_LINES_PER_ORDER = 3;
+const MAX_QUANTITY = 2;
+const FIRST_ORDER_ID = 1001;
+const MINUTE_MS = 60_000;
+const HISTORY_MINUTES = 365 * 24 * 60;
+
+const SHIPPED: Status = { financial_status: 'PAID', fulfillment_status: 'FULFILLED' };
+const NOT_SHIPPED: Status = { financial_status: 'PAID', fulfillment_status: 'UNFULFILLED' };
+const REFUNDED: Status = { financial_status: 'REFUNDED', fulfillment_status: 'FULFILLED' };
+const PARTLY_REFUNDED: Status = {
+  financial_status: 'PARTIALLY_REFUNDED',
+  fulfillment_status: 'FULFILLED',
+};
+const PARTLY_SHIPPED: Status = {
+  financial_status: 'PAID',
+  fulfillment_status: 'PARTIALLY_FULFILLED',
+};
 
 interface Sellable {
   readonly variantId: number;
@@ -33,6 +58,24 @@ function sellables(products: readonly Product[]): Sellable[] {
   );
 }
 
+/** A uniformly random element of `items`, which must not be empty. */
+function pick<T>(rng: () => number, items: readonly T[]): T {
+  // The index is below `items.length`, so it names an element of a non-empty array.
+  return items[Math.floor(rng() * items.length)] as T;
+}
+
+/** How many orders each customer but the last gets: one each, then the rest at random. */
+function orderCounts(rng: () => number, buyers: number): number[] {
+  const counts = Array.from({ length: buyers }, () => 1);
+  const total = Math.min(ORDER_COUNT, buyers * MAX_ORDERS_PER_CUSTOMER);
+  for (let placed = buyers; placed < total; placed += 1) {
+    const open = counts.flatMap((count, i) => (count < MAX_ORDERS_PER_CUSTOMER ? [i] : []));
+    const i = pick(rng, open);
+    counts[i] = (counts[i] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export function synthOrders(
   customers: readonly Customer[],
   products: readonly Product[],
@@ -40,56 +83,61 @@ export function synthOrders(
   currencyCode: string,
 ): Order[] {
   const pool = sellables(products);
-  if (pool.length === 0) return [];
-  const shipping = commerce.shipping_methods[0];
-  const payment = commerce.payment_methods[0];
-  const threshold =
-    commerce.free_shipping_threshold === null ? null : toCents(commerce.free_shipping_threshold);
-  const orders: Order[] = [];
-  for (const customer of customers) {
-    const rng = seededRandom(`orders\0${customer.email}`);
-    const count = 1 + Math.floor(rng() * MAX_ORDERS_PER_CUSTOMER);
-    for (let k = 0; k < count; k += 1) {
+  if (pool.length === 0 || commerce.shipping_methods.length === 0) return [];
+  const rng = seededRandom(SEED);
+  const buyers = customers.slice(0, -1);
+  const counts = orderCounts(rng, buyers.length);
+  const historyStart = Date.parse(DEFAULT_EPISODE_START) - HISTORY_MINUTES * MINUTE_MS;
+  const drafts = buyers.flatMap((customer, c) =>
+    Array.from({ length: counts[c] ?? 0 }, () => {
       const lineCount = 1 + Math.floor(rng() * MAX_LINES_PER_ORDER);
       const picked = new Map<number, Sellable>();
       while (picked.size < Math.min(lineCount, pool.length)) {
-        const s = pool[Math.floor(rng() * pool.length)] as Sellable;
+        const s = pick(rng, pool);
         picked.set(s.variantId, s);
       }
       const lineItems = [...picked.values()].map((s) => ({
         variant_id: s.variantId,
         title: s.title,
-        quantity: 1 + Math.floor(rng() * 2),
+        quantity: 1 + Math.floor(rng() * MAX_QUANTITY),
         price: s.price,
       }));
-      const subtotal = lineItems.reduce((sum, li) => sum + toCents(li.price) * li.quantity, 0);
-      const shippingCents =
-        shipping === undefined || (threshold !== null && subtotal >= threshold)
-          ? 0
-          : toCents(shipping.price);
-      const tax = Math.round(subtotal * commerce.tax_rate);
-      const month = String(1 + Math.floor(rng() * 12)).padStart(2, '0');
-      const day = String(1 + Math.floor(rng() * 28)).padStart(2, '0');
-      orders.push({
-        id: FIRST_ORDER_ID + orders.length,
+      const method = pick(rng, commerce.shipping_methods);
+      const payment =
+        commerce.payment_methods.length === 0 ? null : pick(rng, commerce.payment_methods);
+      const address = customer.addresses.length === 0 ? null : pick(rng, customer.addresses);
+      const minute = Math.floor(rng() * HISTORY_MINUTES);
+      const totals = computeOrderTotals(lineItems, method, commerce, null);
+      return {
         customer_id: customer.id,
         email: customer.email,
-        processed_at: `2024-${month}-${day}T10:00:00Z`,
-        financial_status: 'PAID',
-        fulfillment_status: 'FULFILLED',
+        processed_at: new Date(historyStart + minute * MINUTE_MS).toISOString(),
         currency_code: currencyCode,
         line_items: lineItems,
-        shipping_address: customer.addresses[0] ?? null,
-        shipping_method: shipping?.handle ?? null,
+        shipping_address: address,
+        shipping_method: method.handle,
         payment_method: payment?.handle ?? null,
-        subtotal_price: fromCents(subtotal),
-        total_shipping_price: fromCents(shippingCents),
-        total_tax: fromCents(tax),
-        total_price: fromCents(subtotal + shippingCents + tax),
+        subtotal_price: totals.subtotalPrice,
+        total_shipping_price: totals.totalShippingPrice,
+        total_tax: totals.totalTax,
+        total_price: totals.totalPrice,
         discount_code: null,
-        discount_amount: '0.00',
-      });
-    }
+        discount_amount: totals.discountAmount,
+      };
+    }),
+  );
+  drafts.sort((a, b) => a.processed_at.localeCompare(b.processed_at));
+  // The newest order is not shipped yet. Three random older orders are
+  // refunded, partly refunded and partly shipped; the rest are shipped.
+  const statuses = new Map<number, Status>([[drafts.length - 1, NOT_SHIPPED]]);
+  const older = drafts.slice(0, -1).map((_, i) => i);
+  for (const status of [REFUNDED, PARTLY_REFUNDED, PARTLY_SHIPPED]) {
+    const [i] = older.splice(Math.floor(rng() * older.length), 1);
+    if (i !== undefined) statuses.set(i, status);
   }
-  return orders.sort((a, b) => a.processed_at.localeCompare(b.processed_at) || a.id - b.id);
+  return drafts.map((draft, i) => ({
+    id: FIRST_ORDER_ID + i,
+    ...(statuses.get(i) ?? SHIPPED),
+    ...draft,
+  }));
 }

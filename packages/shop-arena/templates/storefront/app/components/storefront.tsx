@@ -461,17 +461,30 @@ export function DiscountRow({ discount }: { readonly discount: AppliedDiscount }
   return (
     <div className="cart-total-row">
       <span>Discount</span>
-      <span>
-        <span className="discount-row-code">{discount.code}</span>{' '}
-        {discount.targetType === 'SHIPPING_LINE' ? (
-          'Free shipping'
-        ) : (
-          <>
-            -<Price money={discount.amount} />
-          </>
-        )}
-      </span>
+      <DiscountAmount discount={discount} />
     </div>
+  );
+}
+
+/** The code, then the amount as a negative, or "Free shipping" for a free-shipping code. */
+export function DiscountAmount({
+  discount,
+  currencyDisplay = 'symbol',
+}: {
+  readonly discount: AppliedDiscount;
+  readonly currencyDisplay?: 'symbol' | 'narrowSymbol';
+}) {
+  return (
+    <span>
+      <span className="discount-row-code">{discount.code}</span>{' '}
+      {discount.targetType === 'SHIPPING_LINE' ? (
+        'Free shipping'
+      ) : (
+        <>
+          -<Price money={discount.amount} currencyDisplay={currencyDisplay} />
+        </>
+      )}
+    </span>
   );
 }
 

@@ -22,10 +22,20 @@ describe('exportSnapshot', () => {
     expect(stateSnapshotSchema.safeParse(snapshot).success).toBe(true);
     expect(snapshot.episodeId).toBe('ep');
     expect(snapshot.now).toBe('2026-01-01T00:00:00.000Z');
-    expect(snapshot.customers.map((c) => c.id)).toEqual(['gid://shopify/Customer/1']);
+    expect(snapshot.customers.map((c) => c.id)).toEqual([
+      'gid://shopify/Customer/1',
+      'gid://shopify/Customer/2',
+      'gid://shopify/Customer/3',
+      'gid://shopify/Customer/4',
+    ]);
     expect(snapshot.customers[0]?.defaultAddressId).toBe('gid://shopify/MailingAddress/1');
     expect(snapshot.orders.map((o) => [o.id, o.name])).toEqual([
       ['gid://shopify/Order/1001', '#1001'],
+      ['gid://shopify/Order/1002', '#1002'],
+      ['gid://shopify/Order/1003', '#1003'],
+      ['gid://shopify/Order/1004', '#1004'],
+      ['gid://shopify/Order/1005', '#1005'],
+      ['gid://shopify/Order/1006', '#1006'],
     ]);
     expect(snapshot.sessions).toEqual([]);
     expect(snapshot.carts).toEqual([]);
@@ -88,8 +98,13 @@ describe('exportSnapshot', () => {
     expect(snapshot.orders.map((o) => o.id)).toEqual([
       'gid://shopify/Order/1001',
       'gid://shopify/Order/1002',
+      'gid://shopify/Order/1003',
+      'gid://shopify/Order/1004',
+      'gid://shopify/Order/1005',
+      'gid://shopify/Order/1006',
+      'gid://shopify/Order/1007',
     ]);
-    expect(snapshot.orders[1]?.customerId).toBeNull();
+    expect(snapshot.orders[6]?.customerId).toBeNull();
     expect(snapshot.inventory).toEqual([
       { variantId: SHOPLISEUM_VARIANT, baseQuantityAvailable: 2, quantityAvailable: 1 },
     ]);

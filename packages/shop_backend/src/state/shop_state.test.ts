@@ -66,9 +66,16 @@ function checkout(
 describe('ShopState - seeding', () => {
   it('seeds customers and orders from the dataset', () => {
     const state = new ShopState(fixture(), 'default');
-    expect(state.listCustomers().map((c) => c.email)).toEqual(['jane.doe@example.com']);
+    expect(state.listCustomers().map((c) => c.email)).toEqual([
+      'jane.doe@example.com',
+      'marc.tremblay@example.com',
+      'priya.nair@example.com',
+      'sam.okafor@example.com',
+    ]);
     expect(state.getOrder(1001)?.lineItems[0]?.variantId).toBe(SHOPLISEUM_ID);
     expect(state.ordersForCustomer(1)).toHaveLength(1);
+    expect(state.ordersForCustomer(3).map((o) => o.id)).toEqual([1003, 1004, 1006]);
+    expect(state.ordersForCustomer(4)).toEqual([]);
     expect(state.findCustomerByEmail('JANE.DOE@example.com')?.id).toBe(1);
   });
 
@@ -90,13 +97,13 @@ describe('ShopState - seeding', () => {
       phone: null,
       acceptsMarketing: false,
     });
-    expect(customer.id).toBe(2);
+    expect(customer.id).toBe(5);
     const result = state.placeOrder(
       checkout(state, [{ merchandiseId: AISLEARENA_VARIANT, quantity: 1 }]),
     );
-    expect(result.ok && result.order.id).toBe(1002);
-    // Address ids continue after the seeded customer (1) and order (2) addresses.
-    expect(result.ok && result.order.shippingAddress?.id).toBe(3);
+    expect(result.ok && result.order.id).toBe(1007);
+    // Address ids continue after the seeded customer (1, 3-8) and order (2, 9-13) addresses.
+    expect(result.ok && result.order.shippingAddress?.id).toBe(14);
   });
 });
 
@@ -139,8 +146,8 @@ describe('ShopState - fork isolation', () => {
     expect(b.data.inventoryByVariantId.get(SHOPLISEUM_ID)?.quantity_available).toBe(2);
     expect(base.data.inventoryByVariantId.get(SHOPLISEUM_ID)?.quantity_available).toBe(2);
     expect(fixture().inventoryByVariantId.get(SHOPLISEUM_ID)?.quantity_available).toBe(2);
-    expect(a.listOrders()).toHaveLength(2);
-    expect(b.listOrders()).toHaveLength(1);
+    expect(a.listOrders()).toHaveLength(7);
+    expect(b.listOrders()).toHaveLength(6);
     expect(b.carts.list()).toHaveLength(0);
   });
 });
@@ -196,7 +203,7 @@ describe('ShopState - placeOrder', () => {
     });
     expect(state.data.inventoryByVariantId.get(SHOPLISEUM_ID)?.quantity_available).toBe(2);
     expect(state.carts.get(input.cart.id)).toBeDefined();
-    expect(state.listOrders()).toHaveLength(1);
+    expect(state.listOrders()).toHaveLength(6);
   });
 
   it('treats an untracked variant flagged unavailable as out of stock', () => {

@@ -140,9 +140,9 @@ describe('checkoutComplete', () => {
     expect(result.data).toEqual({
       checkoutComplete: {
         order: {
-          id: 'gid://shopify/Order/1002',
-          name: '#1002',
-          orderNumber: 1002,
+          id: 'gid://shopify/Order/1007',
+          name: '#1007',
+          orderNumber: 1007,
           email: 'sam@example.com',
           financialStatus: 'PAID',
           fulfillmentStatus: 'UNFULFILLED',
@@ -177,13 +177,13 @@ describe('checkoutComplete', () => {
         product(handle: "shopliseum-mushroom-dog-toys") {
           variants(first: 1) { nodes { id quantityAvailable } }
         }
-        order(id: "gid://shopify/Order/1002") { name }
+        order(id: "gid://shopify/Order/1007") { name }
       }
     `);
     expect(after.data).toEqual({
       cart: null,
       product: { variants: { nodes: [{ id: SHOPLISEUM_VARIANT, quantityAvailable: 1 }] } },
-      order: { name: '#1002' },
+      order: { name: '#1007' },
     });
   });
 
@@ -231,7 +231,7 @@ describe('checkoutComplete', () => {
     expect(history.data).toEqual({
       customer: {
         numberOfOrders: 2,
-        orders: { totalCount: 2, nodes: [{ name: '#1002' }, { name: '#1001' }] },
+        orders: { totalCount: 2, nodes: [{ name: '#1007' }, { name: '#1001' }] },
       },
     });
   });
@@ -256,7 +256,7 @@ describe('checkoutComplete', () => {
       },
     });
     expect(state.carts.get(cart.id)).toBeDefined();
-    expect(state.listOrders()).toHaveLength(1);
+    expect(state.listOrders()).toHaveLength(6);
   });
 
   it.each([
@@ -298,7 +298,7 @@ describe('checkoutComplete', () => {
     const payload = result.data as CompletePayload;
     expect(payload.checkoutComplete.order).toBeNull();
     expect(payload.checkoutComplete.userErrors).toEqual([expect.objectContaining({ code, field })]);
-    expect(state.listOrders()).toHaveLength(1);
+    expect(state.listOrders()).toHaveLength(6);
   });
 
   it('rejects an empty cart', async () => {

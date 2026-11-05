@@ -852,10 +852,6 @@ html:has(.cart-popup) {
   min-height: 0;
 }
 
-.table-scroll {
-  overflow-x: auto;
-}
-
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -868,22 +864,69 @@ html:has(.cart-popup) {
   border-bottom: 1px solid var(--color-border);
 }
 
-.order-meta {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.35rem 1rem;
-  margin: 0;
+.data-table tfoot th {
+  font-weight: normal;
+  text-align: right;
 }
 
-.order-meta dd {
-  margin: 0;
-}
-
-.order-detail {
+/* Account page, order history and order page: the full page width. */
+.account-page {
   display: grid;
   gap: 2rem;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.account-logout button {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* From 990 px the table is on the left and a narrow column on the right. */
+.account-columns {
+  display: grid;
+  gap: 2rem;
   align-items: start;
+}
+
+@media (min-width: 990px) {
+  .account-columns {
+    grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
+  }
+}
+
+/* Below 750 px each row is a block of lines: the column name, then the value. */
+@media (max-width: 749px) {
+  .responsive-table thead {
+    display: none;
+  }
+
+  .responsive-table tr {
+    display: block;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .responsive-table tfoot tr {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .responsive-table td,
+  .responsive-table th {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.25rem 0;
+    border: 0;
+    text-align: right;
+  }
+
+  .responsive-table tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    text-align: left;
+  }
 }
 
 .address-block {
@@ -896,10 +939,4 @@ html:has(.cart-popup) {
   gap: 1rem;
   padding: 0;
   list-style: none;
-}
-
-@media (max-width: 720px) {
-  .order-detail {
-    grid-template-columns: 1fr;
-  }
 }

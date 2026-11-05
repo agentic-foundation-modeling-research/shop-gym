@@ -1,26 +1,19 @@
-import { type LoaderFunctionArgs, useLoaderData } from 'react-router';
-import { AccountNav, OrderTable } from '~/components/account';
+import { Link, type LoaderFunctionArgs, useLoaderData } from 'react-router';
+import { ORDER_HISTORY_SIZE, OrderHistory } from '~/components/account';
 import { getAppContext, getCustomerAccessToken } from '~/lib/context';
 import { requireCustomer } from '~/lib/customer';
 import { CUSTOMER_ORDERS_QUERY } from '~/lib/queries';
 import { storefrontQuery } from '~/lib/storefront';
-import type { Customer, OrderSummary } from '~/lib/types';
+import type { OrderSummary } from '~/lib/types';
 
 interface CustomerOrdersData {
-  readonly customer:
-    | (Customer & {
-        readonly orders: {
-          readonly totalCount: number;
-          readonly nodes: readonly OrderSummary[];
-        };
-      })
-    | null;
+  readonly customer: {
+    readonly orders: { readonly nodes: readonly OrderSummary[] };
+  } | null;
 }
 
-const MAX_ORDERS = 100;
-
 export function meta() {
-  return [{ title: 'Orders' }];
+  return [{ title: 'Order history' }];
 }
 
 export async function loader({ context, request }: LoaderFunctionArgs) {
@@ -28,24 +21,23 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
   await requireCustomer(appContext, request);
   const data = await storefrontQuery<CustomerOrdersData>(appContext, CUSTOMER_ORDERS_QUERY, {
     customerAccessToken: getCustomerAccessToken(appContext),
-    first: MAX_ORDERS,
+    first: ORDER_HISTORY_SIZE,
   });
-  return {
-    orders: data.customer?.orders.nodes ?? [],
-    totalCount: data.customer?.orders.totalCount ?? 0,
-  };
+  return { orders: data.customer?.orders.nodes ?? [] };
 }
 
 export default function OrdersRoute() {
-  const { orders, totalCount } = useLoaderData<typeof loader>();
+  const { orders } = useLoaderData<typeof loader>();
   return (
-    <div className="page-width stack">
-      <h1>Orders</h1>
-      <AccountNav />
-      <p className="muted">
-        {totalCount} {totalCount === 1 ? 'order' : 'orders'}
-      </p>
-      <OrderTable orders={orders} />
+    <div className="page-width account-page">
+      <div>
+        <h1>Account</h1>
+        <Link to="/account">Return to Account details</Link>
+      </div>
+      <section className="stack" aria-labelledby="order-history-heading">
+        <h2 id="order-history-heading">Order history</h2>
+        <OrderHistory orders={orders} />
+      </section>
     </div>
   );
 }

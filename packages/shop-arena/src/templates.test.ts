@@ -133,7 +133,7 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     expect(registered.location).toBe('/account');
     const profile = await fresh.get('/account');
     expect(profile.status).toBe(200);
-    expect(profile.body).toContain('Test Shopper');
+    expect(profile.body).toContain('placed any orders yet.');
     expect((await fresh.post('/account/logout', {})).location).toBe('/');
     expect((await fresh.get('/account')).location).toBe('/account/login?redirectTo=%2Faccount');
 
@@ -190,8 +190,7 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)('storefront template smoke', ()
     });
     const orders = await episode.get('/account/orders');
     expect(orders.status).toBe(200);
-    expect(orders.body).toContain('#1001');
-    expect(orders.body).not.toContain('#1003');
+    expect(orders.body.match(/Order number #\d+/g)).toEqual(['Order number #1001']);
   });
 });
 

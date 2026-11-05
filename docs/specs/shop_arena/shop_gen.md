@@ -167,7 +167,18 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
 - `data_synth/` ports every v1 sub-step in registration order and adds
   `synth_commerce`, `synth_customers`, and deterministic
   `synth_orders` / inventory so the dataset exercises the stateful
-  backend (`commerce.json`, `customers.json`, `orders.json`). Every
+  backend (`commerce.json`, `customers.json`, `orders.json`).
+  `synth_customers` makes five Personas. The LLM writes the names and
+  one to three addresses for each Persona, and at least two Personas
+  have two or more addresses. Code assigns the emails, passwords and
+  ids. `synth_orders` makes fifteen orders by code from a fixed seed.
+  The last Persona has no orders, and each other Persona has one to
+  six. Each order has random lines, a random shipping and payment
+  method and one of the Persona's saved addresses. Its date is in the
+  twelve months before the Episode clock starts, and its totals follow
+  the backend pricing rules. The newest order is not shipped. Three
+  older orders are refunded, partly refunded and partly shipped. The
+  other orders are paid and shipped. Every
   LLM step goes through `completeJson` with a zod-derived JSON Schema
   and one validation-feedback retry; drafts cache under
   `<shopDir>/.shop_gen/stage_cache/` (v1 file names kept; details per
@@ -176,7 +187,8 @@ driven by the `@shop-gym/core` pipeline runner instead of the legacy
   or `openai` (content-hash cache in `.shop_gen/image_cache/`).
 - `data_validation/` validates `data/` with the backend zod schema,
   checks referential integrity (variant ids in inventory and orders,
-  collection membership, navigation targets, image files), then boots
+  collection membership, navigation targets, image files) and that
+  every seeded order's totals match the backend pricing rules, then boots
   the pristine `packages/shop_backend` template on the dataset and
   runs a fixed Storefront query set ending in `checkoutComplete` as
   the first seeded customer; the report is `data_validation.json`.
@@ -212,10 +224,11 @@ underlying functions stay plain and testable on their own:
 
 - `final_eval/runFinalEval({ dataDir, manualDir?, backendUrl,
   storefrontUrl, llm, model, outDir, log?, signal? })` runs against an
-  already-running shop. The visual sweep captures eleven canonical pages
+  already-running shop. The visual sweep captures twelve canonical pages
   (home, a collection, a product, search, cart, checkout, the thank-you
   page of a guest order, account login, the account profile after
-  login, an order detail, a policy page) at both viewports and judges
+  login, the order list, an order detail, a policy page) at both
+  viewports and judges
   each with the single `visual_judge.md` rubric; the functional sweep is
   a fixed browser script (sign up, log out, log in, add to cart, apply
   a Discount code with no minimum subtotal, checkout, view order;

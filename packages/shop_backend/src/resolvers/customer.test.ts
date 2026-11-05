@@ -87,7 +87,7 @@ describe('customerCreate', () => {
     expect(result.data).toEqual({
       customerCreate: {
         customer: {
-          id: 'gid://shopify/Customer/2',
+          id: 'gid://shopify/Customer/5',
           email: 'sam@example.com',
           displayName: 'Sam Buyer',
           acceptsMarketing: false,
@@ -118,7 +118,7 @@ describe('customerCreate', () => {
         ],
       },
     });
-    expect(state.listCustomers()).toHaveLength(1);
+    expect(state.listCustomers()).toHaveLength(4);
   });
 });
 
