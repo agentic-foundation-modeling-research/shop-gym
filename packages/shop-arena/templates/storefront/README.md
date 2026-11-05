@@ -50,7 +50,7 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 | `/account/login`, `/account/register` | Credentials forms; on success the token is stored and attached to the cart |
 | `/account/logout` | POST only; deletes the token and clears the cookie |
 | `/account` | Profile, default address, recent orders |
-| `/account/addresses` | Saved addresses (read-only) |
+| `/account/addresses` | The address book: "Add a new address", and "Edit" and "Delete" for each address; "Set as default address" makes it the default; delete asks the browser's confirm dialog; the action handles `create`, `update`, `delete` intents |
 | `/account/orders`, `/account/orders/:orderNumber` | Order history and detail |
 | `/pages/:handle`, `/policies/:handle` | Static content |
 
@@ -76,14 +76,18 @@ the cart, and the form shows "Enter a valid discount code".
 - `app/lib/types.ts`: hand-written response types for those documents.
 - `app/lib/customer.ts`: `loadCustomer`, `requireCustomer`, `loginCustomer`.
 - `app/lib/discount.ts`: `applyDiscountCode`, `removeDiscountCode`.
+- `app/lib/addresses.ts`: the address fields shared with checkout, and
+  `createAddress`, `updateAddress`, `deleteAddress`, `setDefaultAddress`.
 - `app/lib/reviews.ts`: the Reviews URL parameters, sort options and page
   size, and the product rating read from its rating metafields.
 - `app/components/storefront.tsx`: header, footer, grids, cart drawer, cart
   summary and the "Discount code" form.
 - `app/components/checkout.tsx`: the order summary of checkout and the
   thank-you page.
-- `app/components/account.tsx`: account nav, forms errors, address and order
-  rendering shared by account and checkout pages.
+- `app/components/account.tsx`: the logout link, form errors, address and
+  order rendering shared by account and checkout pages.
+- `app/components/addresses.tsx`: the address book with its add and edit
+  forms.
 - `app/components/reviews.tsx`: the rating block near the product title and
   the "Reviews" section.
 

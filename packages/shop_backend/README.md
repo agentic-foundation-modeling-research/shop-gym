@@ -32,7 +32,7 @@ The current GraphQL contract is the per-domain SDL under `src/schema/`
 | Search | `search(...)`, `predictiveSearch(...)`, `productRecommendations(productId)` |
 | Localization | `localization`, plus validation for literal `@inContext(country:, language:)` values |
 | Cart | `cart(id)` and cart mutations for create, line add/update/remove, Discount codes (one per cart, priced into `cost` and `discountAllocations`), buyer identity (including `customerAccessToken`), note, attributes, and gift-card codes |
-| Customer | `customerCreate`, `customerAccessTokenCreate`, `customerAccessTokenDelete`, `customer(customerAccessToken)` with profile, addresses, and `orders` |
+| Customer | `customerCreate`, `customerAccessTokenCreate`, `customerAccessTokenDelete`, the address book (`customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`, `customerDefaultAddressUpdate`), `customer(customerAccessToken)` with profile, addresses, and `orders` |
 | Checkout | `commerceSettings` and `checkoutComplete(cartId, input)` (sandbox-only) converting a cart into an order |
 | Order | `order(id)` (sandbox-only) plus `Order`, `OrderLineItem`, and `MailingAddress` types |
 
@@ -154,6 +154,20 @@ adds a `SHIPPING_LINE` allocation of `0.00`, and `checkoutComplete` waives the
 shipping charge. The order records the code and the amount it removed (the
 waived shipping charge for free shipping) in the sandbox field
 `Order.discountCode { code targetType amount }`.
+
+### Address book
+
+A logged-in customer adds, edits and deletes addresses and picks the default
+one with `customerAddressCreate`, `customerAddressUpdate`,
+`customerAddressDelete` and `customerDefaultAddressUpdate`. An address needs
+the same lines as a checkout shipping address (`address1`, `city`,
+`country`, `zip`); a blank one is a `BLANK` user error on
+`['address', <field>]`. An update changes only the fields it sends. An
+unknown token is `UNIDENTIFIED_CUSTOMER`, and an address of another customer
+is `NOT_FOUND`. The first address becomes the default, and when the default
+is deleted the first remaining address takes its place. The country code is
+the store's, and a changed province clears the province code. Each change
+moves the Episode clock and shows in the StateSnapshot customers.
 
 ### Reviews
 

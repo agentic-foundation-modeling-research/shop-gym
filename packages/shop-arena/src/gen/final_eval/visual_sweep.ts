@@ -170,6 +170,11 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
     route: '/account/orders',
     bucket: 'account',
   };
+  const addressesPage: CanonicalPage = {
+    name: 'addresses',
+    route: '/account/addresses',
+    bucket: 'account',
+  };
   const customer = await readSeededCustomer(options.dataDir);
   const orderId =
     customer === undefined ? undefined : await seededOrderId(options.dataDir, customer.email);
@@ -190,10 +195,12 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
     } else {
       await capture(orderPage);
     }
+    await capture(addressesPage);
   } else {
     skip(profilePage, `could not log in: ${login.detail}`);
     skip(orderListPage, `could not log in: ${login.detail}`);
     skip(orderPage, `could not log in: ${login.detail}`);
+    skip(addressesPage, `could not log in: ${login.detail}`);
   }
 
   const judged = await mapConcurrent(

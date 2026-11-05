@@ -1,7 +1,9 @@
 /**
  * Customer domain: accounts, access tokens, and addresses. Shapes follow the
  * Storefront API (`customerCreate`, `customerAccessTokenCreate`,
- * `customerAccessTokenDelete`, `customer(customerAccessToken)`).
+ * `customerAccessTokenDelete`, `customer(customerAccessToken)`, and the
+ * address book: `customerAddressCreate`, `customerAddressUpdate`,
+ * `customerAddressDelete`, `customerDefaultAddressUpdate`).
  */
 
 export const customerTypeDefs = /* GraphQL */ `
@@ -13,6 +15,10 @@ export const customerTypeDefs = /* GraphQL */ `
     customerCreate(input: CustomerCreateInput!): CustomerCreatePayload!
     customerAccessTokenCreate(input: CustomerAccessTokenCreateInput!): CustomerAccessTokenCreatePayload!
     customerAccessTokenDelete(customerAccessToken: String!): CustomerAccessTokenDeletePayload!
+    customerAddressCreate(address: MailingAddressInput!, customerAccessToken: String!): CustomerAddressCreatePayload!
+    customerAddressUpdate(address: MailingAddressInput!, customerAccessToken: String!, id: ID!): CustomerAddressUpdatePayload!
+    customerAddressDelete(customerAccessToken: String!, id: ID!): CustomerAddressDeletePayload!
+    customerDefaultAddressUpdate(addressId: ID!, customerAccessToken: String!): CustomerDefaultAddressUpdatePayload!
   }
 
   type Customer {
@@ -106,6 +112,26 @@ export const customerTypeDefs = /* GraphQL */ `
     userErrors: [UserError!]!
   }
 
+  type CustomerAddressCreatePayload {
+    customerAddress: MailingAddress
+    customerUserErrors: [CustomerUserError!]!
+  }
+
+  type CustomerAddressUpdatePayload {
+    customerAddress: MailingAddress
+    customerUserErrors: [CustomerUserError!]!
+  }
+
+  type CustomerAddressDeletePayload {
+    deletedCustomerAddressId: String
+    customerUserErrors: [CustomerUserError!]!
+  }
+
+  type CustomerDefaultAddressUpdatePayload {
+    customer: Customer
+    customerUserErrors: [CustomerUserError!]!
+  }
+
   type CustomerUserError {
     code: CustomerErrorCode
     field: [String!]
@@ -120,6 +146,7 @@ export const customerTypeDefs = /* GraphQL */ `
   enum CustomerErrorCode {
     BLANK
     INVALID
+    NOT_FOUND
     TAKEN
     TOO_SHORT
     UNIDENTIFIED_CUSTOMER

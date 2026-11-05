@@ -52,6 +52,13 @@ export interface AddressRecord {
 /** Address fields supplied by a client before an id is allocated. */
 export type NewAddress = Omit<AddressRecord, 'id'>;
 
+/**
+ * Fields that an address book edit can change; absent fields keep their
+ * value. The codes are not editable: the sandbox ships to one country and
+ * has no list of provinces.
+ */
+export type AddressChanges = Partial<Omit<NewAddress, 'provinceCode' | 'countryCode'>>;
+
 /** Customer account. Mutable fields are rewritten in place by state methods. */
 export interface CustomerRecord {
   readonly id: number;
@@ -229,6 +236,88 @@ export class ShopState {
     return [...this.customers.values()];
   }
 
+  // ── Address book ───────────────────────────────────────────────────────
+  // A customer with addresses always has a default address, as on Shopify.
+
+  /** Append `address` to the customer's addresses; it becomes the default when there is none. */
+  createAddress(customerId: number, address: NewAddress): AddressRecord {
+    const customer = this.customerRecord(customerId);
+    const now = this.clock.tick();
+    const record = this.allocateAddress(address);
+    this.customers.set(customerId, {
+      ...customer,
+      updatedAt: now,
+      addresses: [...customer.addresses, record],
+      defaultAddressId: customer.defaultAddressId ?? record.id,
+    });
+    return record;
+  }
+
+  /**
+   * Apply `changes` to the customer's address `addressId`. A new province
+   * clears the province code. `undefined` when the customer has no such
+   * address.
+   */
+  updateAddress(
+    customerId: number,
+    addressId: number,
+    changes: AddressChanges,
+  ): AddressRecord | undefined {
+    const customer = this.customerRecord(customerId);
+    const current = customer.addresses.find((address) => address.id === addressId);
+    if (current === undefined) return undefined;
+    const now = this.clock.tick();
+    const provinceKept = changes.province === undefined || changes.province === current.province;
+    const updated: AddressRecord = {
+      ...current,
+      ...changes,
+      provinceCode: provinceKept ? current.provinceCode : null,
+    };
+    this.customers.set(customerId, {
+      ...customer,
+      updatedAt: now,
+      addresses: customer.addresses.map((address) =>
+        address.id === addressId ? updated : address,
+      ),
+    });
+    return updated;
+  }
+
+  /**
+   * Remove the customer's address `addressId`. When it was the default, the
+   * first remaining address becomes the default. `false` when the customer
+   * has no such address.
+   */
+  deleteAddress(customerId: number, addressId: number): boolean {
+    const customer = this.customerRecord(customerId);
+    if (!customer.addresses.some((address) => address.id === addressId)) return false;
+    const now = this.clock.tick();
+    const addresses = customer.addresses.filter((address) => address.id !== addressId);
+    this.customers.set(customerId, {
+      ...customer,
+      updatedAt: now,
+      addresses,
+      defaultAddressId:
+        customer.defaultAddressId === addressId
+          ? (addresses[0]?.id ?? null)
+          : customer.defaultAddressId,
+    });
+    return true;
+  }
+
+  /** Make `addressId` the customer's default address; `undefined` when the customer has no such address. */
+  setDefaultAddress(customerId: number, addressId: number): CustomerRecord | undefined {
+    const customer = this.customerRecord(customerId);
+    if (!customer.addresses.some((address) => address.id === addressId)) return undefined;
+    const updated: CustomerRecord = {
+      ...customer,
+      updatedAt: this.clock.tick(),
+      defaultAddressId: addressId,
+    };
+    this.customers.set(customerId, updated);
+    return updated;
+  }
+
   // ── Sessions ───────────────────────────────────────────────────────────
 
   createSession(customerId: number): SessionRecord {
@@ -363,6 +452,13 @@ export class ShopState {
 
   private get commerce(): Commerce {
     return this.base.commerce;
+  }
+
+  /** Callers pass ids of live sessions, and customers are never removed. */
+  private customerRecord(id: number): CustomerRecord {
+    const customer = this.customers.get(id);
+    if (customer === undefined) throw new Error(`no customer ${id} in episode ${this.episodeId}`);
+    return customer;
   }
 
   private seed(): void {

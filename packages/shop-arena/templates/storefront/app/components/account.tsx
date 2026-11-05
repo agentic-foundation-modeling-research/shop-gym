@@ -1,28 +1,11 @@
 import type { ReactNode } from 'react';
-import { Form, Link, NavLink } from 'react-router';
+import { Form, Link } from 'react-router';
 import { variantTitle } from '~/components/checkout';
 import { DiscountAmount, Price } from '~/components/storefront';
 import type { MailingAddress, Money, OrderDetail, OrderLineItem, OrderSummary } from '~/lib/types';
 
 /** Most orders that the order history lists. */
 export const ORDER_HISTORY_SIZE = 100;
-
-export function AccountNav() {
-  return (
-    <nav className="account-nav" aria-label="Account navigation">
-      <NavLink to="/account" end>
-        Profile
-      </NavLink>
-      <NavLink to="/account/orders">Orders</NavLink>
-      <NavLink to="/account/addresses">Addresses</NavLink>
-      <Form method="post" action="/account/logout" reloadDocument>
-        <button type="submit" className="text-button">
-          Log out
-        </button>
-      </Form>
-    </nav>
-  );
-}
 
 /**
  * "Log out" with the account icon. It looks like a link, but it is the
@@ -42,18 +25,24 @@ export function LogoutLink() {
   );
 }
 
+/** One line for each error from the backend, after `heading` when given. */
 export function FormErrors({
   errors,
+  heading,
 }: {
   readonly errors: readonly { readonly message: string }[] | undefined;
+  readonly heading?: string;
 }) {
   if (!errors || errors.length === 0) return null;
   return (
-    <ul className="form-errors" role="alert">
-      {errors.map((error) => (
-        <li key={error.message}>{error.message}</li>
-      ))}
-    </ul>
+    <div className="form-errors" role="alert">
+      {heading ? <p>{heading}</p> : null}
+      <ul>
+        {errors.map((error) => (
+          <li key={error.message}>{error.message}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

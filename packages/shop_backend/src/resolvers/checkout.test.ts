@@ -204,6 +204,31 @@ describe('checkoutComplete', () => {
     });
   });
 
+  it('saves the shipping address with trimmed lines and a blank optional line as null', async () => {
+    const cart = state.carts.create({
+      lines: [{ merchandiseId: SHOPLISEUM_VARIANT, quantity: 1 }],
+    });
+    const result = await run(/* GraphQL */ `
+      mutation {
+        checkoutComplete(cartId: "${cart.id}", input: {
+          email: "sam@example.com",
+          shippingAddress: {
+            address1: " 1 Main St ", address2: "", city: " Toronto ", country: "Canada", zip: "M5V 1A1"
+          }
+        }) {
+          order { shippingAddress { address1 address2 city } }
+          userErrors { code }
+        }
+      }
+    `);
+    expect(result.data).toEqual({
+      checkoutComplete: {
+        order: { shippingAddress: { address1: '1 Main St', address2: null, city: 'Toronto' } },
+        userErrors: [],
+      },
+    });
+  });
+
   it('attributes the order to the cart customer and lists it under customer.orders', async () => {
     const session = state.createSession(1);
     const cart = state.carts.create({

@@ -29,8 +29,11 @@ import { seedTemplate } from './gen/build/seed.js';
 import { freePort } from './gen/build/sidecar.js';
 import { StorefrontSidecar } from './gen/build/storefront_sidecar.js';
 import {
+  addAddress,
   addToCart,
   applyDiscountCode,
+  deleteAddress,
+  editAddress,
   logIn,
   logOut,
   placeOrder,
@@ -63,6 +66,26 @@ const SHOPPER = {
 };
 /** A seeded Persona of the test Dataset with three orders and three addresses. */
 const PERSONA = { email: 'priya.nair@example.com', password: 'password123' };
+/** Addresses that the shopper saves in the address book; the country stays the shop's. */
+const HOME_ADDRESS = {
+  firstName: 'Suite',
+  lastName: 'Shopper',
+  address1: '77 Rue Sherbrooke Est',
+  city: 'Montreal',
+  province: 'Quebec',
+  zip: 'H2X 1C5',
+  phone: '+15145550123',
+};
+const WORK_ADDRESS = {
+  firstName: 'Suite',
+  lastName: 'Shopper',
+  company: 'Suite Co',
+  address1: '1 Place Ville Marie',
+  city: 'Montreal',
+  province: 'Quebec',
+  zip: 'H3B 2B6',
+};
+const WORK_ADDRESS_CHANGES = { address2: 'Floor 25', zip: 'H3B 4W8' };
 
 let workDir: string;
 let backend: ReturnType<typeof createSandboxServer>;
@@ -89,6 +112,13 @@ function shopperId(state: StateSnapshot): string {
   const customer = state.customers.find((entry) => entry.email === SHOPPER.email);
   expect(customer, `no customer ${SHOPPER.email} in the StateSnapshot`).toBeDefined();
   return customer?.id ?? '';
+}
+
+/** The shopper's customer in the episode's StateSnapshot. */
+async function shopper(): Promise<StateSnapshot['customers'][number] | undefined> {
+  const state = await snapshot();
+  const customerId = shopperId(state);
+  return state.customers.find((customer) => customer.id === customerId);
 }
 
 async function shopperSessionCount(): Promise<number> {
@@ -351,6 +381,106 @@ describe('storefront template in a browser', () => {
     expect(text).toContain('Shipping (Standard Shipping (5-7 days))');
     expect(text).toContain('Payment Status: Paid');
     expect(text).toContain('Fulfillment Status: Unfulfilled');
+  }, 60_000);
+
+  it("shows the backend's errors for an address with no street line", async () => {
+    const outcome = await addAddress(session.page, sidecar.url, { ...HOME_ADDRESS, address1: '' });
+    expect(outcome.ok, outcome.detail).toBe(false);
+    const errors = normalized(await session.page.getByRole('alert').innerText());
+    expect(errors).toBe("Please adjust the following: Address1 can't be blank");
+    expect((await shopper())?.addresses).toEqual([]);
+  }, 60_000);
+
+  it('adds a first address, which becomes the default', async () => {
+    const outcome = await addAddress(session.page, sidecar.url, HOME_ADDRESS);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const customer = await shopper();
+    expect(customer?.addresses).toEqual([
+      {
+        ...HOME_ADDRESS,
+        id: expect.any(String),
+        company: null,
+        address2: null,
+        provinceCode: null,
+        country: 'Canada',
+        countryCode: 'CA',
+      },
+    ]);
+    expect(customer?.defaultAddressId).toBe(customer?.addresses[0]?.id);
+    expect(normalized(await pageText())).toContain(
+      'Default Suite Shopper 77 Rue Sherbrooke Est Montreal Quebec H2X 1C5 Canada',
+    );
+  }, 60_000);
+
+  it('adds a second address and edits it', async () => {
+    const added = await addAddress(session.page, sidecar.url, WORK_ADDRESS);
+    expect(added.ok, added.detail).toBe(true);
+    const edited = await editAddress(session.page, sidecar.url, 2, WORK_ADDRESS_CHANGES);
+    expect(edited.ok, edited.detail).toBe(true);
+    const customer = await shopper();
+    expect(customer?.addresses.map((address) => address.address1)).toEqual([
+      HOME_ADDRESS.address1,
+      WORK_ADDRESS.address1,
+    ]);
+    expect(customer?.addresses[1]).toMatchObject({ ...WORK_ADDRESS, ...WORK_ADDRESS_CHANGES });
+    expect(customer?.defaultAddressId).toBe(customer?.addresses[0]?.id);
+  }, 60_000);
+
+  it('makes the second address the default', async () => {
+    const outcome = await editAddress(session.page, sidecar.url, 2, {}, { setDefault: true });
+    expect(outcome.ok, outcome.detail).toBe(true);
+    const customer = await shopper();
+    expect(customer?.defaultAddressId).toBe(customer?.addresses[1]?.id);
+    // The "Default" heading moves to the second address.
+    const blocks = await session.page
+      .locator('li')
+      .filter({ has: session.page.getByRole('button', { name: /^Edit address \d+$/ }) })
+      .locator('address')
+      .allInnerTexts();
+    expect(blocks.map(normalized)).toEqual([
+      'Suite Shopper 77 Rue Sherbrooke Est Montreal Quebec H2X 1C5 Canada',
+      'Suite Shopper Suite Co 1 Place Ville Marie Floor 25 Montreal Quebec H3B 4W8 Canada',
+    ]);
+    expect(normalized(await pageText())).toContain('Default Suite Shopper Suite Co');
+  }, 60_000);
+
+  it('prefills checkout with the default address', async () => {
+    const added = await addToCart(session.page, sidecar.url, PRODUCT.handle);
+    expect(added.ok, added.detail).toBe(true);
+    await session.page.goto(`${sidecar.url}/checkout`, { waitUntil: 'load' });
+    const form = session.page.locator('form:has(input[name="address1"])');
+    const fields = ['firstName', 'lastName', 'company', 'address1', 'address2', 'city', 'province'];
+    const values = await Promise.all(
+      [...fields, 'country', 'zip'].map((name) =>
+        form.locator(`input[name="${name}"]`).inputValue(),
+      ),
+    );
+    expect(values).toEqual([
+      'Suite',
+      'Shopper',
+      'Suite Co',
+      '1 Place Ville Marie',
+      'Floor 25',
+      'Montreal',
+      'Quebec',
+      'Canada',
+      'H3B 4W8',
+    ]);
+  }, 60_000);
+
+  it('deletes an address after the confirm dialog', async () => {
+    const dialogs: string[] = [];
+    const record = (dialog: { message(): string }) => {
+      dialogs.push(dialog.message());
+    };
+    session.page.on('dialog', record);
+    const outcome = await deleteAddress(session.page, sidecar.url, 1);
+    session.page.off('dialog', record);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(dialogs).toEqual(['Are you sure you wish to delete this address?']);
+    const customer = await shopper();
+    expect(customer?.addresses.map((address) => address.address1)).toEqual([WORK_ADDRESS.address1]);
+    expect(customer?.defaultAddressId).toBe(customer?.addresses[0]?.id);
   }, 60_000);
 
   it('logs in as a seeded Persona and reads their order history', async () => {

@@ -641,6 +641,17 @@ export const CUSTOMER_ADDRESSES_QUERY = `#graphql
   ${CUSTOMER_FRAGMENT}
 `;
 
+export const COUNTRIES_QUERY = `#graphql
+  query Countries {
+    localization {
+      availableCountries {
+        isoCode
+        name
+      }
+    }
+  }
+`;
+
 export const CUSTOMER_ORDERS_QUERY = `#graphql
   query CustomerOrders($customerAccessToken: String!, $first: Int!) {
     customer(customerAccessToken: $customerAccessToken) {
@@ -760,6 +771,68 @@ export const CHECKOUT_COMPLETE_MUTATION = `#graphql
         orderNumber
       }
       userErrors {
+        code
+        field
+        message
+      }
+    }
+  }
+`;
+
+export const CUSTOMER_ADDRESS_CREATE_MUTATION = `#graphql
+  mutation CustomerAddressCreate($customerAccessToken: String!, $address: MailingAddressInput!) {
+    customerAddressCreate(customerAccessToken: $customerAccessToken, address: $address) {
+      customerAddress {
+        id
+      }
+      customerUserErrors {
+        code
+        field
+        message
+      }
+    }
+  }
+`;
+
+export const CUSTOMER_ADDRESS_UPDATE_MUTATION = `#graphql
+  mutation CustomerAddressUpdate(
+    $customerAccessToken: String!
+    $id: ID!
+    $address: MailingAddressInput!
+  ) {
+    customerAddressUpdate(customerAccessToken: $customerAccessToken, id: $id, address: $address) {
+      customerAddress {
+        id
+      }
+      customerUserErrors {
+        code
+        field
+        message
+      }
+    }
+  }
+`;
+
+export const CUSTOMER_ADDRESS_DELETE_MUTATION = `#graphql
+  mutation CustomerAddressDelete($customerAccessToken: String!, $id: ID!) {
+    customerAddressDelete(customerAccessToken: $customerAccessToken, id: $id) {
+      deletedCustomerAddressId
+      customerUserErrors {
+        code
+        field
+        message
+      }
+    }
+  }
+`;
+
+export const CUSTOMER_DEFAULT_ADDRESS_UPDATE_MUTATION = `#graphql
+  mutation CustomerDefaultAddressUpdate($customerAccessToken: String!, $addressId: ID!) {
+    customerDefaultAddressUpdate(customerAccessToken: $customerAccessToken, addressId: $addressId) {
+      customer {
+        id
+      }
+      customerUserErrors {
         code
         field
         message
