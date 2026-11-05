@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { FakeRuntime } from '@shop-gym/agent/testing';
-import { datasetSchema } from '@shop-gym/shop-backend';
+import { type NavigationItem, datasetSchema } from '@shop-gym/shop-backend';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { parseGenConfig } from '../config.js';
@@ -12,10 +12,13 @@ import { checkDataset } from '../data_validation/schema_check.js';
 import { SynthError } from '../llm.js';
 import {
   SCRIPTED_DISCOUNT_CODES,
+  SOURCE_COLLECTIONS,
+  SOURCE_PRODUCTS,
   ScriptedSynthLlm,
   type ScriptedSynthOptions,
   scriptedReviewText,
   writeManualFixture,
+  writeSourceDatasetFixture,
 } from '../testing.js';
 import { runDataSynth } from './index.js';
 import { synthOrders } from './orders.js';
@@ -408,6 +411,181 @@ describe('Review synthesis', () => {
     const retried = reviewPrompts.filter((p) => p.includes(error));
     expect(retried).toHaveLength(1);
     expect(reviews.every((r) => !r.body.includes('AisleArena') && r.body.length >= 20)).toBe(true);
+  });
+});
+
+describe('runDataSynth with sourceDataDir', () => {
+  let sourceDir: string;
+
+  beforeEach(async () => {
+    sourceDir = await writeSourceDatasetFixture(path.join(root, 'source'));
+  });
+
+  function sourceContext(llm: ScriptedSynthLlm, log: string[] = [], outDir = shopDir) {
+    const config = parseGenConfig({
+      name: 'tiny',
+      manualDirs: [path.join(outDir, 'manual')],
+      outDir,
+      sourceDataDir: sourceDir,
+    });
+    const context = createGenContext(config, { llm, runtime: new FakeRuntime(), credentials: {} });
+    return {
+      outDir,
+      context,
+      log: (line: string) => log.push(line),
+      signal: new AbortController().signal,
+    };
+  }
+
+  it('copies the products, the collections that have products and the images without change', async () => {
+    await runDataSynth(sourceContext(new ScriptedSynthLlm()));
+    const dataDir = path.join(shopDir, 'data');
+    expect(await readJson(path.join(dataDir, 'products.json'))).toEqual(SOURCE_PRODUCTS);
+    expect(await readJson(path.join(dataDir, 'collections.json'))).toEqual([
+      SOURCE_COLLECTIONS[0],
+      SOURCE_COLLECTIONS[2],
+    ]);
+    const images = (await fs.readdir(path.join(dataDir, 'images'))).sort();
+    expect(images).toEqual([
+      'rib-sock-1.png',
+      'studio-legging-1.png',
+      'trail-hoodie-1.png',
+      'unused-1.png',
+    ]);
+    for (const name of images) {
+      expect(await fs.readFile(path.join(dataDir, 'images', name), 'utf-8')).toBe(`image ${name}`);
+    }
+  });
+
+  it('logs the handle of each dropped collection', async () => {
+    const log: string[] = [];
+    await runDataSynth(sourceContext(new ScriptedSynthLlm(), log));
+    expect(log.filter((line) => line.includes('dropped collection'))).toEqual([
+      '[data_synth] source Dataset: dropped collection wide-leg-pairings, which has no products',
+      '[data_synth] source Dataset: dropped collection gift-ideas, which has no products',
+    ]);
+  });
+
+  it('makes everything else new from the Shop Manual, for the copied catalog', async () => {
+    const llm = new ScriptedSynthLlm();
+    await runDataSynth(sourceContext(llm));
+    const dataDir = path.join(shopDir, 'data');
+    expect((await fs.readdir(dataDir)).sort()).toEqual([
+      'collections.json',
+      'commerce.json',
+      'customers.json',
+      'images',
+      'inventory.json',
+      'navigation.json',
+      'orders.json',
+      'pages.json',
+      'policies.json',
+      'products.json',
+      'reviews.json',
+      'store.json',
+    ]);
+    const firstLines = llm.requests.map((r) => String(r.prompt).split('\n')[0]);
+    for (const catalogPrompt of [
+      'collections (categories)',
+      'catalog skeleton',
+      'rich product details',
+      'image alt-text',
+    ]) {
+      expect(firstLines.filter((line) => line?.includes(catalogPrompt))).toEqual([]);
+    }
+    const store = datasetSchema.storeSchema.parse(await readJson(path.join(dataDir, 'store.json')));
+    expect(store.description).toBe('Homeware for calm rooms.');
+    const commerce = datasetSchema.commerceSchema.parse(
+      await readJson(path.join(dataDir, 'commerce.json')),
+    );
+    expect(commerce.discount_codes).toEqual(SCRIPTED_DISCOUNT_CODES);
+    const customers = datasetSchema.customersFileSchema.parse(
+      await readJson(path.join(dataDir, 'customers.json')),
+    );
+    expect(customers).toHaveLength(5);
+    const variantIds = [9010, 9011, 9020, 9021, 9030, 9031];
+    const inventory = datasetSchema.inventoryFileSchema.parse(
+      await readJson(path.join(dataDir, 'inventory.json')),
+    );
+    expect(Object.keys(inventory).map(Number).sort()).toEqual(variantIds);
+    const orders = datasetSchema.ordersFileSchema.parse(
+      await readJson(path.join(dataDir, 'orders.json')),
+    );
+    expect(orders).toHaveLength(15);
+    expect(
+      orders.every((o) => o.line_items.every((li) => variantIds.includes(li.variant_id))),
+    ).toBe(true);
+    const reviews = datasetSchema.reviewsFileSchema.parse(
+      await readJson(path.join(dataDir, 'reviews.json')),
+    );
+    expect(reviews.length).toBeGreaterThan(0);
+    expect(reviews.every((r) => variantIds.includes(r.variant_id))).toBe(true);
+    expect(await checkDataset(dataDir)).toEqual([]);
+  });
+
+  it('gives the identity step a summary of the copied catalog', async () => {
+    const llm = new ScriptedSynthLlm();
+    await runDataSynth(sourceContext(llm));
+    const prompt = String(
+      llm.requests.find((r) =>
+        String(r.prompt).startsWith('You are synthesizing the brand identity'),
+      )?.prompt,
+    );
+    const block = /Copied catalog \(JSON\):\n\n```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+    expect(JSON.parse(block ?? 'undefined')).toEqual({
+      product_count: 3,
+      collections: [
+        { title: 'Hoodies', product_count: 1 },
+        { title: 'Bottoms', product_count: 2 },
+      ],
+      product_types: [
+        { product_type: 'Hoodies', product_count: 1 },
+        { product_type: 'Leggings', product_count: 1 },
+        { product_type: 'Socks', product_count: 1 },
+      ],
+      price_range: { min: '30.00', max: '34.00' },
+      sample_titles: ['Trail Hoodie', 'Studio Legging', 'Rib Sock'],
+    });
+  });
+
+  it('links the menus only to the collections that have products', async () => {
+    const llm = new ScriptedSynthLlm({ extraFirstMenuCollection: 'gift-ideas' });
+    await runDataSynth(sourceContext(llm));
+    const navigationPrompts = llm.requests
+      .map((r) => String(r.prompt))
+      .filter((p) => p.includes('navigation menus'));
+    expect(navigationPrompts).toHaveLength(2);
+    expect(navigationPrompts[1]).toContain('unknown collection url /collections/gift-ideas');
+    const navigation = datasetSchema.navigationSchema.parse(
+      await readJson(path.join(shopDir, 'data', 'navigation.json')),
+    );
+    const walk = (items: readonly NavigationItem[]): NavigationItem[] =>
+      items.flatMap((item) => [item, ...walk(item.children)]);
+    const linked = Object.values(navigation)
+      .flatMap(walk)
+      .filter((item) => item.type === 'COLLECTION')
+      .map((item) => item.url);
+    expect(linked.sort()).toEqual(['/collections/bottoms', '/collections/hoodies']);
+  });
+
+  it('gives the same output for the same inputs', async () => {
+    const otherDir = path.join(root, 'other-shop');
+    await writeManualFixture(path.join(otherDir, 'manual'));
+    await runDataSynth(sourceContext(new ScriptedSynthLlm()));
+    await runDataSynth(sourceContext(new ScriptedSynthLlm(), [], otherDir));
+    const files = async (dir: string) => {
+      const entries = await fs.readdir(path.join(dir, 'data'), { recursive: true });
+      const names = [...entries.map((e) => path.join('data', e)), 'identity.json'].sort();
+      return Promise.all(
+        names.map(async (name) => {
+          const file = path.join(dir, name);
+          return [name, (await fs.stat(file)).isFile() ? await fs.readFile(file, 'utf-8') : null];
+        }),
+      );
+    };
+    const first = await files(shopDir);
+    expect(first.map(([name]) => name)).toContain(path.join('data', 'images', 'unused-1.png'));
+    expect(await files(otherDir)).toEqual(first);
   });
 });
 

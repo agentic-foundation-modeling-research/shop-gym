@@ -64,7 +64,7 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)(
       );
 
       const shopDir = path.join(repoRoot, 'outputs', 'shops', SHOP);
-      await publish.publishShop({ runDir, shopDir });
+      await publish.publishShop({ runDir, shopDir, sourceManuals: [] });
       await fs.cp(FIXTURE_DATA, path.join(shopDir, 'data'), { recursive: true });
 
       const state = await startShop({ repoRoot, shop: SHOP, force: false }, defaultHostDeps);

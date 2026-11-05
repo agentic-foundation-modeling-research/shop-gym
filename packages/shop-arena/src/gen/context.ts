@@ -50,6 +50,8 @@ export interface GenContext {
   readonly shopDir: string;
   /** Absolute Shop Manual input directories. */
   readonly manualDirs: readonly string[];
+  /** Absolute directory of the source Dataset whose catalog the shop copies. */
+  readonly sourceDataDir?: string;
   readonly credentials: Credentials;
   readonly llm: LlmClient;
   readonly runtime: AgentRuntime;
@@ -72,6 +74,9 @@ export function createGenContext(config: GenConfig, deps: GenDeps): GenContext {
     config,
     shopDir,
     manualDirs: config.manualDirs.map((dir) => path.resolve(dir)),
+    ...(config.sourceDataDir !== undefined
+      ? { sourceDataDir: path.resolve(config.sourceDataDir) }
+      : {}),
     credentials,
     llm: deps.llm,
     runtime: deps.runtime,

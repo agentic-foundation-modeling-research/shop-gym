@@ -2,8 +2,9 @@
  * `assemble`: turns the cached drafts into the dataset files under
  * `<shopDir>/data/`, each validated against the backend schema before it
  * is written. Ids are stable hashes of handles so re-assembly never
- * changes them; timestamps are a fixed epoch so the dataset is
- * reproducible byte for byte.
+ * changes them (a copied catalog keeps its own ids);
+ * timestamps are a fixed epoch so the dataset is reproducible byte for
+ * byte.
  */
 
 import * as path from 'node:path';
@@ -41,17 +42,23 @@ type Collection = z.infer<typeof datasetSchema.collectionSchema>;
 type Customer = z.infer<typeof datasetSchema.customerSchema>;
 type Inventory = z.infer<typeof datasetSchema.inventoryFileSchema>;
 
-/** The cached drafts, with the products built from them and the Reviews of those products. */
-export interface Drafts {
+/** The products and collections of a Dataset. */
+export interface Catalog {
+  readonly products: readonly Product[];
+  readonly collections: readonly Collection[];
+}
+
+/**
+ * The cached drafts, with the catalog (built by `buildProducts` and
+ * `buildCollections`, or copied from a source Dataset) and the Reviews of its
+ * products.
+ */
+export interface Drafts extends Catalog {
   readonly identity: Identity;
   readonly store: StoreDraft;
   readonly pages: readonly PageDraft[];
   readonly policies: readonly PageDraft[];
   readonly commerce: CommerceDraft;
-  readonly collections: readonly CollectionDraft[];
-  readonly skeletons: readonly ProductSkeleton[];
-  /** From `buildProducts`. */
-  readonly products: readonly Product[];
   readonly navigation: NavigationDraft;
   readonly personas: readonly Persona[];
   readonly reviews: readonly Review[];
@@ -123,6 +130,33 @@ export function buildProducts(
   });
 }
 
+/**
+ * The catalog collections, in draft order, with ids that are stable
+ * hashes of their handles. Each lists its skeletons that became
+ * `products`.
+ */
+export function buildCollections(
+  drafts: readonly CollectionDraft[],
+  skeletons: readonly ProductSkeleton[],
+  products: readonly Product[],
+): Collection[] {
+  const kept = new Set(products.map((p) => p.handle));
+  return drafts.map((c) => ({
+    id: stableId('collection', c.handle),
+    title: c.title,
+    handle: c.handle,
+    description: c.description,
+    description_html: `<p>${c.description}</p>`,
+    image: null,
+    published_at: TIMESTAMP,
+    updated_at: TIMESTAMP,
+    sort_order: c.sort_order,
+    product_handles: skeletons
+      .filter((s) => s.collection_handle === c.handle && kept.has(s.handle))
+      .map((s) => s.handle),
+  }));
+}
+
 function regionName(code: string): string {
   return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code;
 }
@@ -156,21 +190,6 @@ function buildCustomer(persona: Persona, country: string): Customer {
 
 /** Pure assembly of the dataset from drafts; throws `SynthError` when a file would not validate. */
 export function assembleDataset(d: Drafts): Dataset {
-  const kept = new Set(d.products.map((p) => p.handle));
-  const collections: Collection[] = d.collections.map((c) => ({
-    id: stableId('collection', c.handle),
-    title: c.title,
-    handle: c.handle,
-    description: c.description,
-    description_html: `<p>${c.description}</p>`,
-    image: null,
-    published_at: TIMESTAMP,
-    updated_at: TIMESTAMP,
-    sort_order: c.sort_order,
-    product_handles: d.skeletons
-      .filter((s) => s.collection_handle === c.handle && kept.has(s.handle))
-      .map((s) => s.handle),
-  }));
   const inventory: Record<string, { quantity_available: number }> = {};
   for (const p of d.products) {
     for (const v of p.variants) {
@@ -193,7 +212,7 @@ export function assembleDataset(d: Drafts): Dataset {
   const dataset = {
     store,
     products: d.products,
-    collections,
+    collections: d.collections,
     navigation: d.navigation,
     pages: d.pages,
     policies: d.policies,

@@ -1,4 +1,8 @@
-/** `synth_identity`: descriptor, tone, currency, country from the manual; name from the allowlist. */
+/**
+ * `synth_identity`: descriptor, tone, currency, country from the manual,
+ * and from a summary of the catalog copied from a source Dataset; name from the
+ * allowlist.
+ */
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -8,10 +12,46 @@ import { z } from 'zod';
 import { pickBrandName } from '../brands/allowlist.js';
 import { readJsonFile, readJsonIfExists, writeJsonFile } from '../io.js';
 import { completeStructured } from '../llm.js';
+import type { Catalog } from './assemble.js';
 import { IDENTITY_FILE, type SynthContext, pretty, synthPrompt } from './context.js';
 import { type Identity, identityDraftSchema, identitySchema } from './schemas.js';
 
-export async function synthIdentity(sc: SynthContext): Promise<Identity> {
+/** Most product types and product titles in a catalog summary. */
+const SUMMARY_LIMIT = 10;
+
+/**
+ * What the identity step needs to know about `catalog`: its collections,
+ * its most common product types, its price range and its first product
+ * titles.
+ */
+function summarizeCatalog(catalog: Catalog) {
+  const typeCounts = new Map<string, number>();
+  for (const p of catalog.products) {
+    typeCounts.set(p.product_type, (typeCounts.get(p.product_type) ?? 0) + 1);
+  }
+  const prices = catalog.products
+    .flatMap((p) => p.variants.map((v) => v.price))
+    .sort((a, b) => Number(a) - Number(b));
+  return {
+    product_count: catalog.products.length,
+    collections: catalog.collections.map((c) => ({
+      title: c.title,
+      product_count: c.product_handles.length,
+    })),
+    product_types: [...typeCounts]
+      .sort(
+        ([typeA, countA], [typeB, countB]) =>
+          countB - countA || (typeA < typeB ? -1 : typeA > typeB ? 1 : 0),
+      )
+      .slice(0, SUMMARY_LIMIT)
+      .map(([productType, count]) => ({ product_type: productType, product_count: count })),
+    price_range: { min: prices[0] ?? null, max: prices.at(-1) ?? null },
+    sample_titles: catalog.products.slice(0, SUMMARY_LIMIT).map((p) => p.title),
+  };
+}
+
+/** @param catalog The catalog copied from a source Dataset, or `undefined` when the catalog is synthesized. */
+export async function synthIdentity(sc: SynthContext, catalog?: Catalog): Promise<Identity> {
   const file = path.join(sc.shopDir, IDENTITY_FILE);
   const existing = await readJsonIfExists(file, identitySchema);
   if (existing !== undefined) {
@@ -28,6 +68,7 @@ export async function synthIdentity(sc: SynthContext): Promise<Identity> {
     synthPrompt(sc, 'synth_identity', {
       capabilities: pretty(capabilities),
       manual: manual.trimEnd(),
+      catalog: catalog === undefined ? 'null' : pretty(summarizeCatalog(catalog)),
     }),
     identityDraftSchema,
   );

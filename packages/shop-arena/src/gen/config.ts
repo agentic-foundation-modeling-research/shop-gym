@@ -47,6 +47,12 @@ export const genConfigSchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/, 'name must be a lowercase slug'),
   /** One or more Shop Manual directories (each with `manual.md`, `capabilities.json`, `stats.json`). */
   manualDirs: z.array(z.string().min(1)).min(1),
+  /**
+   * Dataset directory whose products, collections and images the shop
+   * copies instead of synthesizing a catalog. `catalog` and
+   * `imageBackend` do not apply when it is set.
+   */
+  sourceDataDir: z.string().min(1).optional(),
   /** Shop directory. Defaults to `outputs/shops/<name>` under the cwd. */
   outDir: z.string().min(1).optional(),
   /** `provider/model-id` for the LLM-backed synthesis steps. */

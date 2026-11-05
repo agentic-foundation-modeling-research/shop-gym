@@ -32,11 +32,14 @@ describe('parseGenArgs', () => {
       '--concurrency',
       '4',
       '--force-resume',
+      '--data',
+      'outputs/shops/source/data',
     ]);
     expect(config).toEqual({
       name: 'shop',
       manualDirs: ['m1', 'm2'],
       outDir: 'o',
+      sourceDataDir: 'outputs/shops/source/data',
       genBackend: true,
       from: 'build',
       model: 'p/m',
@@ -91,6 +94,10 @@ describe('parseGenArgs', () => {
 });
 
 describe('USAGE', () => {
+  it('shows the --data option', () => {
+    expect(USAGE).toContain('--data <dir>');
+  });
+
   it('shows the build agent default', () => {
     expect(USAGE).toContain('Model for the build agent (default: openai/gpt-6-sol)');
   });
