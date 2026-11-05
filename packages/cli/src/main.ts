@@ -11,6 +11,7 @@ import * as explore from './commands/explore.js';
 import * as gen from './commands/gen.js';
 import * as guru from './commands/guru.js';
 import * as host from './commands/host.js';
+import * as report from './commands/report.js';
 import * as trace from './commands/trace.js';
 import { CliError } from './context.js';
 
@@ -19,7 +20,15 @@ interface Command {
   readonly USAGE: string;
 }
 
-const COMMANDS: Readonly<Record<string, Command>> = { explore, gen, host, guru, trace, doctor };
+const COMMANDS: Readonly<Record<string, Command>> = {
+  explore,
+  gen,
+  host,
+  guru,
+  trace,
+  report,
+  doctor,
+};
 
 const USAGE = `Usage: shopgym <command> [args]
 
@@ -29,6 +38,7 @@ Commands:
   host start|stop|restart|list       Run published shops locally
   guru build|explore|solve|eval      Benchmark stages for a hosted shop
   trace <iter_dir>                   Render a harness iteration as text
+  report                             Serve the review reports locally
   doctor                             Check the local toolchain
 
 Run \`shopgym <command> --help\` for details.`;
