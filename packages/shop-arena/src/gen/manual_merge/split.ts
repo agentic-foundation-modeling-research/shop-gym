@@ -4,6 +4,7 @@
  */
 
 import { CANONICAL_SECTIONS, parseManualSections } from './prose.js';
+import { FUSED_SECTIONS } from './standard_sub_manual.js';
 
 export const MANUAL_PARTS = [
   'homepage',
@@ -37,6 +38,8 @@ const SECTION_TO_PART: Readonly<Record<string, readonly ManualPart[]>> = {
   'Floating UX': ['homepage'],
   'Policy & info pages': ['info_pages'],
   'UX Patterns Summary': [],
+  // Fusion consumes these: they go into the Standard sub-manual, not into a cut part.
+  ...Object.fromEntries(FUSED_SECTIONS.map((name) => [name, []])),
 };
 
 const REQUIRED_ANY_OF = [
