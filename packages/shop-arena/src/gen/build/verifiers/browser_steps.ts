@@ -501,7 +501,11 @@ async function shownSlide(bar: Locator): Promise<Slide> {
   };
 }
 
-/** Add the first available variant of `productHandle`; expects a non-empty cart. */
+/**
+ * Add the first available variant of `productHandle`; expects a non-empty
+ * cart. A form with variant radios gets its first enabled radio checked; a
+ * form that carries its variant in a hidden input is submitted as it is.
+ */
 export async function addToCart(
   page: Page,
   baseUrl: string,
@@ -515,7 +519,9 @@ export async function addToCart(
     if ((await form.count()) === 0) {
       return { ok: false, detail: `no add-to-cart form on /products/${productHandle}` };
     }
-    const enabledVariant = form.locator('input[name="merchandiseId"]:not([disabled])').first();
+    const enabledVariant = form
+      .locator('input[type="radio"][name="merchandiseId"]:not([disabled])')
+      .first();
     if ((await enabledVariant.count()) > 0) {
       await enabledVariant.check();
     }
