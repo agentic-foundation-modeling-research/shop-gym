@@ -196,6 +196,12 @@ export const personaSchema = z.object({
 export type Persona = z.infer<typeof personaSchema>;
 export const personasSchema = z.array(personaSchema);
 
+/** LLM reply for one `synth_reviews` batch: the title and text of each planned Review, by id. */
+export const reviewTextsSchema = z.array(
+  z.object({ id: z.number().int(), title: z.string(), body: z.string() }),
+);
+export type ReviewText = z.infer<typeof reviewTextsSchema>[number];
+
 /** `.shop_gen/stage_cache/images_manifest.json`. */
 export const imagesManifestSchema = z.object({
   backend: z.string(),

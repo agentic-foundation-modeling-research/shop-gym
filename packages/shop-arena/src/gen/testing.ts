@@ -14,6 +14,7 @@ import type { CompleteRequest, Completion, LlmClient } from '@shop-gym/agent';
 
 import { capabilitiesSchema } from '../explore/capabilities.js';
 import type { StorefrontLaunch } from './build/storefront_sidecar.js';
+import type { ReviewText } from './data_synth/schemas.js';
 
 const JUDGE_USAGE = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 };
 
@@ -36,6 +37,19 @@ export interface ScriptedSynthOptions {
    * replies use `SCRIPTED_DISCOUNT_CODES`.
    */
   readonly discountCodeReplies?: readonly (readonly unknown[])[];
+  /** Changes the first reviews reply before it is sent; later replies are not changed. */
+  readonly editFirstReviewsReply?: (texts: readonly ReviewText[]) => readonly unknown[];
+}
+
+/**
+ * The title and text that `ScriptedSynthLlm` writes for a Review, from its
+ * product title and planned rating.
+ */
+export function scriptedReviewText(productTitle: string, rating: number): Omit<ReviewText, 'id'> {
+  return {
+    title: `${rating} stars for this bowl`,
+    body: `I give the ${productTitle.toLowerCase()} ${rating} out of 5 after a month of use.`,
+  };
 }
 
 /** The Discount codes of a checkout rules reply: one of each kind. */
@@ -73,6 +87,7 @@ export class ScriptedSynthLlm implements LlmClient {
   private detailsCalls = 0;
   private personaCalls = 0;
   private commerceCalls = 0;
+  private reviewsCalls = 0;
 
   constructor(private readonly options: ScriptedSynthOptions = {}) {}
 
@@ -227,6 +242,15 @@ export class ScriptedSynthLlm implements LlmClient {
           })),
         ],
       };
+    }
+    if (first.includes('product reviews')) {
+      this.reviewsCalls += 1;
+      const products = blocks[0] as { title: string; reviews: { id: number; rating: number }[] }[];
+      const texts = products.flatMap((p) =>
+        p.reviews.map((r) => ({ id: r.id, ...scriptedReviewText(p.title, r.rating) })),
+      );
+      const edit = this.reviewsCalls === 1 ? this.options.editFirstReviewsReply : undefined;
+      return edit === undefined ? texts : edit(texts);
     }
     if (first.includes('customer personas')) {
       const count = Number(/inventing (\d+) fictional/.exec(body)?.[1] ?? 5);

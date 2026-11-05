@@ -18,6 +18,7 @@ import type { SynthContext } from './context.js';
 import { stableId } from './ids.js';
 import { imageFileName } from './images/step.js';
 import { type Order, synthOrders } from './orders.js';
+import type { Review } from './reviews.js';
 import type {
   AltTextMap,
   CollectionDraft,
@@ -40,6 +41,7 @@ type Collection = z.infer<typeof datasetSchema.collectionSchema>;
 type Customer = z.infer<typeof datasetSchema.customerSchema>;
 type Inventory = z.infer<typeof datasetSchema.inventoryFileSchema>;
 
+/** The cached drafts, with the products built from them and the Reviews of those products. */
 export interface Drafts {
   readonly identity: Identity;
   readonly store: StoreDraft;
@@ -48,11 +50,11 @@ export interface Drafts {
   readonly commerce: CommerceDraft;
   readonly collections: readonly CollectionDraft[];
   readonly skeletons: readonly ProductSkeleton[];
-  readonly details: ReadonlyMap<string, ProductDetail>;
-  readonly altText: AltTextMap;
-  readonly images: ImagesManifest;
+  /** From `buildProducts`. */
+  readonly products: readonly Product[];
   readonly navigation: NavigationDraft;
   readonly personas: readonly Persona[];
+  readonly reviews: readonly Review[];
 }
 
 export interface Dataset {
@@ -66,6 +68,7 @@ export interface Dataset {
   readonly customers: readonly Customer[];
   readonly orders: readonly Order[];
   readonly commerce: z.infer<typeof datasetSchema.commerceSchema>;
+  readonly reviews: readonly Review[];
 }
 
 function buildProduct(
@@ -104,6 +107,22 @@ function buildProduct(
   };
 }
 
+/**
+ * The catalog products, in skeleton order, with ids that are stable
+ * hashes of their handles. A skeleton without details is left out.
+ */
+export function buildProducts(
+  skeletons: readonly ProductSkeleton[],
+  details: ReadonlyMap<string, ProductDetail>,
+  altText: AltTextMap,
+  images: ImagesManifest,
+): Product[] {
+  return skeletons.flatMap((s) => {
+    const detail = details.get(s.handle);
+    return detail === undefined ? [] : [buildProduct(s, detail, altText[s.handle] ?? [], images)];
+  });
+}
+
 function regionName(code: string): string {
   return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code;
 }
@@ -137,13 +156,7 @@ function buildCustomer(persona: Persona, country: string): Customer {
 
 /** Pure assembly of the dataset from drafts; throws `SynthError` when a file would not validate. */
 export function assembleDataset(d: Drafts): Dataset {
-  const products = d.skeletons.flatMap((s) => {
-    const detail = d.details.get(s.handle);
-    return detail === undefined
-      ? []
-      : [buildProduct(s, detail, d.altText[s.handle] ?? [], d.images)];
-  });
-  const kept = new Set(products.map((p) => p.handle));
+  const kept = new Set(d.products.map((p) => p.handle));
   const collections: Collection[] = d.collections.map((c) => ({
     id: stableId('collection', c.handle),
     title: c.title,
@@ -159,7 +172,7 @@ export function assembleDataset(d: Drafts): Dataset {
       .map((s) => s.handle),
   }));
   const inventory: Record<string, { quantity_available: number }> = {};
-  for (const p of products) {
+  for (const p of d.products) {
     for (const v of p.variants) {
       inventory[String(v.id)] = {
         quantity_available: v.available ? (stableId('stock', String(v.id)) % MAX_STOCK) + 1 : 0,
@@ -179,15 +192,16 @@ export function assembleDataset(d: Drafts): Dataset {
   };
   const dataset = {
     store,
-    products,
+    products: d.products,
     collections,
     navigation: d.navigation,
     pages: d.pages,
     policies: d.policies,
     inventory,
     customers,
-    orders: synthOrders(customers, products, d.commerce, d.identity.currency),
+    orders: synthOrders(customers, d.products, d.commerce, d.identity.currency),
     commerce: d.commerce,
+    reviews: d.reviews,
   };
   const checks = {
     store: datasetSchema.storeSchema.safeParse(dataset.store),
@@ -200,6 +214,7 @@ export function assembleDataset(d: Drafts): Dataset {
     customers: datasetSchema.customersFileSchema.safeParse(dataset.customers),
     orders: datasetSchema.ordersFileSchema.safeParse(dataset.orders),
     commerce: datasetSchema.commerceSchema.safeParse(dataset.commerce),
+    reviews: datasetSchema.reviewsFileSchema.safeParse(dataset.reviews),
   };
   const bad = Object.entries(checks).filter(([, r]) => !r.success);
   if (bad.length > 0) {
@@ -221,6 +236,7 @@ export const DATASET_FILES = [
   'customers',
   'orders',
   'commerce',
+  'reviews',
 ] as const satisfies readonly (keyof Dataset)[];
 
 export async function writeDataset(sc: SynthContext, dataset: Dataset): Promise<void> {
@@ -231,6 +247,7 @@ export async function writeDataset(sc: SynthContext, dataset: Dataset): Promise<
     ...dataset.products.flatMap((p) => [p.title, p.description_html, ...p.tags]),
     ...dataset.collections.flatMap((c) => [c.title, c.description ?? '']),
     ...[...dataset.pages, ...dataset.policies].flatMap((p) => [p.title, p.body_html]),
+    ...dataset.reviews.flatMap((r) => [r.title, r.body]),
     dataset.store.description,
   ];
   const hits = prose.flatMap((text) => scanBrandLeaks(text, sc.allowlist));
