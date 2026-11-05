@@ -2,7 +2,7 @@
 
 `shopgym` is the single command-line entry point for ShopGym: storefront
 exploration, shop generation, hosting published shops, ShopGuru benchmarks,
-trajectory inspection and an environment check.
+trajectory inspection, the review reports site and an environment check.
 
 ```bash
 pnpm -r build                          # produces packages/cli/dist/main.js
@@ -106,6 +106,14 @@ directory (`solve`), or the run directory followed by the pass rate (`eval`).
 
 Renders `trajectory.json` (and `metadata.json` when present) from a harness
 iteration directory as plain text. Long payloads are clipped unless `--full`.
+
+### `shopgym report [--port <n>] [--host <addr>]`
+
+Serves the review reports in `packages/reports/pages/` as a local website: an
+index of every report, and each report in the shared site shell. Defaults to
+`127.0.0.1:4100`; `--host 0.0.0.0` shares it on the local network. Prints the
+URL on stdout and runs until Ctrl-C. Alias: `pnpm reports`. See
+[`packages/reports/README.md`](../reports/README.md) for how to add a report.
 
 ### `shopgym doctor`
 

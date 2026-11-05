@@ -2,7 +2,7 @@
   "name": "@shop-gym/cli",
   "version": "0.0.0",
   "private": true,
-  "description": "shopgym: one binary for explore, gen, host, guru, trace and doctor.",
+  "description": "shopgym: one binary for explore, gen, host, guru, trace, report and doctor.",
   "type": "module",
   "bin": {
     "shopgym": "./dist/main.js"
@@ -21,6 +21,7 @@
     "@shop-gym/agent": "workspace:*",
     "@shop-gym/core": "workspace:*",
     "@shop-gym/harness": "workspace:*",
+    "@shop-gym/reports": "workspace:*",
     "@shop-gym/shop-arena": "workspace:*",
     "@shop-gym/shop-guru": "workspace:*",
     "playwright": "^1.63.0",

@@ -23,6 +23,10 @@ The runtime-agnostic plan-then-execute engine that drives an agent through Itera
 One named unit of work in the explore or gen pipeline, with declared input paths and declared output paths. A complete Step is skipped on the next run unless `--from` forces it.
 _Avoid_: node, phase
 
+**Review report**:
+An HTML page made from Markdown work, such as a plan, a spec or a proposal, so that teammates can review it. The Markdown stays the record: the decisions from the review go back into it.
+_Avoid_: report (alone), doc
+
 ### ShopArena
 
 **Live storefront**:

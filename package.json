@@ -12,10 +12,11 @@
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "lint": "biome check packages/core packages/agent packages/harness packages/browser packages/shop_backend packages/shop-arena packages/shop-guru packages/cli",
+    "lint": "biome check packages/core packages/agent packages/harness packages/browser packages/shop_backend packages/shop-arena packages/shop-guru packages/reports packages/cli",
     "format": "biome format --write .",
     "codegen:check": "pnpm --filter @shop-gym/shop-backend codegen:check",
-    "shop:host": "node packages/cli/dist/main.js host"
+    "shop:host": "node packages/cli/dist/main.js host",
+    "reports": "node packages/cli/dist/main.js report"
   },
   "dependencies": {
     "pi-playwright": "^0.1.1"

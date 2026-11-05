@@ -1,0 +1,2270 @@
+<title>Next-gen ShopGym Source Bundles</title>
+<meta name="description" content="Interactive review of the Source bundles spec: decisions, terms, user stories and testing seams, with Agree, Question and Change marks.">
+<style>
+/* Layout: a sticky review bar over one reading column; on wide screens a left contents list shows sections with live review counts. */
+:root { --p-src: #3c4956; --p-inf: #1d5bc4; --p-syn: #0b7770; --p-rew: #7440b0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --p-src: #b6c1cc; --p-inf: #7ea8ff; --p-syn: #4fd0c4; --p-rew: #c49cff; }
+}
+:root[data-theme="dark"] { --p-src: #b6c1cc; --p-inf: #7ea8ff; --p-syn: #4fd0c4; --p-rew: #c49cff; }
+/* The sticky review bar is a surface band, so the strip above it on phones matches it. */
+body::before { background: var(--surface); }
+[id] { scroll-margin-top: 120px; }
+
+/* ---- review bar ---- */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line); }
+.bar-inner { max-width: 1240px; margin: 0 auto; padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.bar-title { font: 700 15px/1.2 var(--head); margin-right: auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bar-title small { font: 400 12px/1.2 var(--sans); color: var(--muted); }
+.meter { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.meter-track { width: 120px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; display: flex; }
+.meter-track i { display: block; height: 100%; }
+.meter-track .m-ok { background: var(--ok); } .meter-track .m-ask { background: var(--warn); } .meter-track .m-fix { background: var(--bad); }
+.counts { display: flex; gap: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.counts span { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.counts .c-ok { color: var(--ok); } .counts .c-ask { color: var(--warn); } .counts .c-fix { color: var(--bad); }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select, input[type="search"] { font: 14px var(--sans); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+input[type="search"] { width: 180px; }
+.toast { font-size: 13px; color: var(--ok); min-height: 1em; }
+.chips-nav { display: none; width: 100%; overflow-x: auto; gap: 6px; padding-bottom: 2px; }
+.chips-nav a { flex: none; font-size: 13px; text-decoration: none; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+
+/* ---- shell: shared .shell and .toc, below the sticky review bar ---- */
+.toc { top: calc(env(safe-area-inset-top, 0px) + 124px); max-height: calc(100vh - 148px); }
+.toc a { display: flex; justify-content: space-between; gap: 8px; }
+.toc .n { color: var(--muted); font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+.toc .n.done { color: var(--ok); }
+main { max-width: 800px; }
+
+/* ---- intro ---- */
+.intro { display: grid; gap: 16px; }
+.eyebrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font: 500 12px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.tag { font: 500 12px var(--mono); text-transform: none; letter-spacing: 0; padding: 2px 8px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
+.howto { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 14px 16px; font-size: 15px; display: grid; gap: 6px; }
+.howto b { font-family: var(--head); }
+.related { font-size: 15px; color: var(--muted); }
+.related ul { margin: 6px 0 0; padding-left: 20px; }
+
+/* ---- sections ---- */
+.sec-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.empty { color: var(--muted); font-style: italic; margin: 0; }
+
+/* ---- items ---- */
+.item { display: grid; gap: 12px; }
+.card[data-state="ok"] { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }
+.card[data-state="ask"] { border-color: color-mix(in srgb, var(--warn) 60%, var(--line)); }
+.card[data-state="fix"] { border-color: color-mix(in srgb, var(--bad) 60%, var(--line)); }
+.item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+.item-head h3 { flex: 1 1 260px; }
+.num { font: 500 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.badge { font: 500 12px var(--sans); padding: 2px 8px; border-radius: 999px; text-decoration: none; white-space: nowrap; }
+.badge-changed { background: var(--accent-soft); color: var(--accent); }
+.state-pill { font: 700 12px var(--sans); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+[data-state="ok"] > .item-head .state-pill, [data-state="ok"] .state-pill { background: var(--ok-soft); color: var(--ok); }
+[data-state="ask"] .state-pill { background: var(--warn-soft); color: var(--warn); }
+[data-state="fix"] .state-pill { background: var(--bad-soft); color: var(--bad); }
+
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary .chev { width: 10px; height: 10px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin: 0 4px 3px 0; flex: none; align-self: center; }
+details:not([open]) > summary .chev { transform: rotate(-45deg); }
+details > .prose { margin-top: 14px; }
+
+/* changes */
+.change { background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 8px; padding: 16px 18px; }
+.change p { margin: 0; max-width: 68ch; }
+.affects { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.affects a { font: 500 12px var(--mono); text-decoration: none; padding: 1px 7px; border-radius: 4px; background: var(--surface); }
+
+/* terms */
+.terms { display: grid; gap: 0; border-top: 1px solid var(--line); }
+.term { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 6px 20px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.term dt { font: 700 16px/1.35 var(--head); }
+.term dd { margin: 0; display: grid; gap: 6px; min-width: 0; }
+.term .avoid { font-size: 14px; color: var(--muted); }
+.term .rv { grid-column: 2; }
+.prov { display: flex; flex-wrap: wrap; gap: 6px; }
+.p-src { color: var(--p-src); border-color: color-mix(in srgb, var(--p-src) 40%, transparent); background: color-mix(in srgb, var(--p-src) 8%, transparent); }
+.p-inf { color: var(--p-inf); border-color: color-mix(in srgb, var(--p-inf) 40%, transparent); background: color-mix(in srgb, var(--p-inf) 8%, transparent); }
+.p-syn { color: var(--p-syn); border-color: color-mix(in srgb, var(--p-syn) 40%, transparent); background: color-mix(in srgb, var(--p-syn) 8%, transparent); }
+.p-rew { color: var(--p-rew); border-color: color-mix(in srgb, var(--p-rew) 40%, transparent); background: color-mix(in srgb, var(--p-rew) 8%, transparent); }
+
+/* stories */
+.group-filter { display: flex; flex-wrap: wrap; gap: 6px; }
+.group-filter button { font: 14px var(--sans); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.group-filter button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.group-filter .ct { font: 12px var(--mono); opacity: 0.7; margin-left: 4px; }
+.story-group { display: grid; gap: 0; }
+.story-group h3 { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.story { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 8px 14px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: start; }
+.story .num { padding-top: 2px; }
+.story p { margin: 0; }
+.story .actor { font-size: 13px; color: var(--muted); }
+.story .why { color: var(--muted); }
+.story[data-state="ok"] .num { color: var(--ok); } .story[data-state="ask"] .num { color: var(--warn); } .story[data-state="fix"] .num { color: var(--bad); }
+.story .rv { grid-column: 3; grid-row: 1; }
+.story .rv-note { grid-column: 2 / 4; }
+.rows { display: grid; border-top: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: start; }
+.row p { margin: 0; max-width: 64ch; }
+.row .rv-note { grid-column: 1 / 3; }
+.row[data-state="ok"] { box-shadow: inset 3px 0 0 transparent; }
+
+/* review control */
+.rv { display: contents; }
+.card > .rv, .change > .rv { display: grid; gap: 8px; }
+.rv-btns { display: inline-flex; justify-self: start; }
+.rv-btns button { font: 500 13px var(--sans); padding: 5px 11px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; margin-left: -1px; }
+.rv-btns button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.rv-btns button:last-child { border-radius: 0 6px 6px 0; }
+.rv-btns button:hover { color: var(--ink); }
+.rv-btns button[data-s="ok"][aria-pressed="true"] { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); position: relative; }
+.rv-btns button[data-s="ask"][aria-pressed="true"] { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); position: relative; }
+.rv-btns button[data-s="fix"][aria-pressed="true"] { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); position: relative; }
+.rv-compact .rv-btns button { padding: 3px 8px; font-size: 12px; }
+.rv-note { width: 100%; font: 15px/1.5 var(--sans); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; resize: vertical; }
+
+/* code, tables */
+.code { border: 1px solid var(--line); border-radius: 8px; background: var(--code); overflow: hidden; margin: 14px 0; }
+.code-tab { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 12px; border-bottom: 1px solid var(--line); font: 12px var(--mono); color: var(--muted); }
+.code-file { color: var(--ink); font-weight: 500; }
+.code pre { margin: 0; padding: 12px 14px; overflow-x: auto; }
+.code code { background: none; padding: 0; font-size: 13px; line-height: 1.55; overflow-wrap: normal; }
+.cm { color: var(--muted); }
+.opt { color: var(--p-syn); }
+
+/* flow */
+.flow { margin: 0; display: grid; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; }
+.tracks { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.track { display: grid; justify-items: center; gap: 0; }
+.track-label { font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.node { width: 100%; max-width: 340px; text-align: center; border-radius: 6px; padding: 8px 12px; font-size: 14px; line-height: 1.35; display: grid; gap: 2px; }
+.node small { color: var(--muted); font-size: 13px; }
+.node b { font-family: var(--head); }
+.node-src { border: 1px dashed var(--muted); }
+.node-step { background: var(--ink); color: var(--surface); }
+.node-step small { color: color-mix(in srgb, var(--surface) 72%, var(--ink)); }
+.node-optional { background: transparent; color: var(--ink); border: 2px dashed var(--ink); }
+.node-optional small { color: var(--muted); }
+.node-file { background: var(--code); border: 1px solid var(--line); font-family: var(--mono); font-size: 13px; }
+.node-file span { color: var(--muted); }
+.uses { font-style: normal; font-size: 12px; color: var(--accent); background: var(--surface); border-radius: 4px; padding: 1px 6px; justify-self: center; margin-top: 2px; }
+.node-optional .uses { background: var(--accent-soft); }
+.link { width: 2px; height: 16px; background: var(--muted); }
+.merge { height: 22px; margin: 0 auto; width: 50%; border: 2px solid var(--muted); border-top: 0; border-radius: 0 0 8px 8px; position: relative; }
+.merge::after { content: ""; position: absolute; left: 50%; top: 100%; width: 2px; height: 14px; background: var(--muted); }
+.spine { list-style: none; margin: 14px 0 0; padding: 0; display: grid; justify-items: center; }
+.spine li { position: relative; }
+.spine li + li { margin-top: 16px; }
+.spine li + li::before { content: ""; position: absolute; left: 50%; top: -16px; width: 2px; height: 16px; background: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; font-size: 12px; color: var(--muted); margin-top: 18px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+.key-step { background: var(--ink); } .key-file { background: var(--code); border: 1px solid var(--line); } .key-src { border: 1px dashed var(--muted); } .key-opt { border: 2px dashed var(--ink); }
+
+/* finish */
+.finish { display: grid; gap: 14px; }
+.finish label { font: 700 15px var(--head); }
+#general-notes { min-height: 96px; }
+#notes-out { width: 100%; min-height: 220px; font: 13px/1.5 var(--mono); color: var(--ink); background: var(--code); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+.finish-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+@media (max-width: 1080px) {
+  .chips-nav { display: flex; }
+  main { margin: 0 auto; width: 100%; }
+}
+@media (max-width: 640px) {
+  .tracks { grid-template-columns: 1fr; gap: 20px; }
+  .merge { width: 2px; border: 0; background: var(--muted); border-radius: 0; height: 16px; }
+  .merge::after { display: none; }
+  .term { grid-template-columns: minmax(0, 1fr); }
+  .term .rv { grid-column: 1; }
+  .story { grid-template-columns: 28px minmax(0, 1fr); }
+  .story .rv { grid-column: 2; grid-row: auto; }
+  .story .rv-note { grid-column: 1 / 3; }
+  .row { grid-template-columns: minmax(0, 1fr); }
+  .row .rv-note { grid-column: 1; }
+  .card { padding: 16px; }
+  /* Compact review bar: title + progress, then one tool row, then the section chips. */
+  [id] { scroll-margin-top: 150px; }
+  .bar-inner { position: relative; gap: 8px; padding-block: 8px; }
+  .bar-title small, .meter-track, .counts, .wide-only { display: none; }
+  .tools { width: 100%; flex-wrap: nowrap; }
+  #filter { flex: 0 1 auto; max-width: 128px; }
+  input[type="search"] { flex: 1; min-width: 0; width: auto; }
+  .bar .toast { position: absolute; top: calc(100% + 6px); left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); }
+  .bar .toast:not(:empty) { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+  .chips-nav { scrollbar-width: none; }
+}
+/* Shared overrides: code tabs draw their own box, wide spec tables scroll inside it. */
+.code pre { border: 0; border-radius: 0; background: none; }
+.prose .table-wrap { margin: 14px 0; }
+.prose table { min-width: 760px; }
+</style>
+
+<div class="bar">
+  <div class="bar-inner">
+    <div class="bar-title">Source bundles spec<small>Review copy, marks stay in this browser</small></div>
+    <div class="meter" aria-live="polite"><span class="meter-track" aria-hidden="true"><i class="m-ok"></i><i class="m-ask"></i><i class="m-fix"></i></span><span id="meter-text">0 of 0 reviewed</span></div>
+    <div class="counts"><span class="c-ok" id="ct-ok">0 agree</span><span class="c-ask" id="ct-ask">0 question</span><span class="c-fix" id="ct-fix">0 change</span></div>
+    <div class="tools">
+      <select id="filter" aria-label="Show items">
+        <option value="all">All items</option>
+        <option value="todo">Not reviewed</option>
+        <option value="flagged">Question or change</option>
+        <option value="changed">Changed after grilling</option>
+      </select>
+      <input type="search" id="search" placeholder="Search the spec" aria-label="Search the spec">
+      <button type="button" class="btn primary" id="copy-top">Copy <span class="wide-only">review </span>notes</button>
+      <span class="toast" id="toast" aria-live="polite"></span>
+    </div>
+    <nav class="chips-nav" aria-label="Sections"><a href="#changes">Changes after grilling</a><a href="#problem">Problem</a><a href="#solution">Solution</a><a href="#terms">Terms</a><a href="#stories">User stories</a><a href="#decisions">Implementation decisions</a><a href="#testing">Testing</a><a href="#scope">Out of scope</a><a href="#risks">Risks and open points</a><a href="#research">Research</a><a href="#finish">Your review</a></nav>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="toc" aria-label="Sections">
+    <span class="toc-label">Sections</span>
+    <ol><li><a href="#changes"><span>Changes after grilling</span><span class="n" data-count-for="changes"></span></a></li><li><a href="#problem"><span>Problem</span><span class="n" data-count-for="problem"></span></a></li><li><a href="#solution"><span>Solution</span><span class="n" data-count-for="solution"></span></a></li><li><a href="#terms"><span>Terms</span><span class="n" data-count-for="terms"></span></a></li><li><a href="#stories"><span>User stories</span><span class="n" data-count-for="stories"></span></a></li><li><a href="#decisions"><span>Implementation decisions</span><span class="n" data-count-for="decisions"></span></a></li><li><a href="#testing"><span>Testing</span><span class="n" data-count-for="testing"></span></a></li><li><a href="#scope"><span>Out of scope</span><span class="n" data-count-for="scope"></span></a></li><li><a href="#risks"><span>Risks and open points</span><span class="n" data-count-for="risks"></span></a></li><li><a href="#research"><span>Research</span><span class="n" data-count-for="research"></span></a></li><li><a href="#finish"><span>Your review</span><span class="n" data-count-for="finish"></span></a></li></ol>
+  </aside>
+  <main>
+    <header class="intro hero">
+      <div class="eyebrow">Spec for review <span class="tag">ready-for-agent</span></div>
+      <h1>Next-gen ShopGym: Source bundles and mock_amazon</h1>
+      <p class="lede">Shop generation gets a second input beside the Shop Manual: a Source bundle with a catalog, user profiles and User events, in one ShopGym schema. The first target is mock_amazon on Amazon Reviews 2023.</p>
+      <div class="howto">
+        <div><b>How to review.</b> Mark each item <b>Agree</b>, <b>Question</b> or <b>Change</b>, and add a note where you want. Start with the six changes made after the grilling session. When you finish, press <b>Copy review notes</b> and paste the text into Claude Code.</div>
+      </div>
+      <div class="related"><p>Related work that this spec builds on and must stay aligned with:</p>
+<ul>
+<li><strong>Task generation BFS + explore spec</strong> (vault note) (task-b1d2b014ab34): the new Task generation package, the Interaction graph, the new Task record. ShopGuru is deprecated (task-eb445a28041e).</li>
+<li><code>mock_clothing_v2</code> (task-50bc4d23931e): Personas and order history (task-4c52e51e3429), Reviews on the product page (task-edf33460c809), Review synthesis (task-a33f7cb14943), <code>gen --data</code> and source manual lineage (task-fe55df99b440).</li>
+</ul>
+</div>
+    </header>
+
+    <section id="changes" data-section="changes">
+      <div class="sec-head"><h2>Changes after grilling</h2><p>After the session, the spec was aligned with work already planned in the vault. These points differ from what the session agreed:</p></div>
+      <article class="item change" data-item="c1" id="c1" data-short="Change 1" data-label="Change 1: Personal Tasks are a Generation method in Task generation, not a ShopGuru seed generato..." data-changed="1">
+        <div class="item-head"><span class="num">Change 1</span><span class="state-pill" hidden></span></div>
+        <p>Personal Tasks are a Generation method in Task generation, not a ShopGuru seed generator, because ShopGuru is deprecated (task-eb445a28041e). Test seam 3 moved with them.</p>
+        <div class="affects">Affects <a href="#d13">Decision 13</a><a href="#d14">Decision 14</a><a href="#m3">Test seam 3</a></div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-c1" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item change" data-item="c2" id="c2" data-short="Change 2" data-label="Change 2: Solution paths come from Task generation's Interaction graph. The Site state graph is a..." data-changed="1">
+        <div class="item-head"><span class="num">Change 2</span><span class="state-pill" hidden></span></div>
+        <p>Solution paths come from Task generation&#39;s Interaction graph. The Site state graph is a list of expected flows for the Build loop and for the BFS report.</p>
+        <div class="affects">Affects <a href="#d12">Decision 12</a></div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-c2" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item change" data-item="c3" id="c3" data-short="Change 3" data-label="Change 3: &quot;User trajectories&quot; are named User events, and the bundle folder is events/, because Tr..." data-changed="1">
+        <div class="item-head"><span class="num">Change 3</span><span class="state-pill" hidden></span></div>
+        <p>&quot;User trajectories&quot; are named User events, and the bundle folder is <code>events/</code>, because Trajectory already means an agent run.</p>
+        <div class="affects">Affects <a href="#d2">Decision 2</a><a href="#d5">Decision 5</a></div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-c3" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item change" data-item="c4" id="c4" data-short="Change 4" data-label="Change 4: Saved carts and wishlists do not become shop state, because the templates do not have t..." data-changed="1">
+        <div class="item-head"><span class="num">Change 4</span><span class="state-pill" hidden></span></div>
+        <p>Saved carts and wishlists do not become shop state, because the templates do not have them.</p>
+        <div class="affects">Affects <a href="#d8">Decision 8</a></div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-c4" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item change" data-item="c5" id="c5" data-short="Change 5" data-label="Change 5: Bundle times are shifted to the fixed Episode clock (ADR 0009), not used as the clock." data-changed="1">
+        <div class="item-head"><span class="num">Change 5</span><span class="state-pill" hidden></span></div>
+        <p>Bundle times are shifted to the fixed Episode clock (ADR 0009), not used as the clock.</p>
+        <div class="affects">Affects <a href="#d8">Decision 8</a></div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-c5" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item change" data-item="c6" id="c6" data-short="Change 6" data-label="Change 6: The ADR is a new number, because 0017 is taken by --data." data-changed="1">
+        <div class="item-head"><span class="num">Change 6</span><span class="state-pill" hidden></span></div>
+        <p>The ADR is a new number, because 0017 is taken by <code>--data</code>.</p>
+        <div class="affects">Affects <a href="#d15">Decision 15</a><a href="#d1">Decision 1</a></div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-c6" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+      <p class="empty" hidden>Nothing here matches the filter.</p>
+    </section>
+
+    <section id="problem" data-section="problem">
+      <div class="sec-head"><h2>Problem statement</h2></div>
+      <article class="item card" data-item="x-problem" id="x-problem" data-short="Problem statement" data-label="Problem statement">
+        <div class="item-head"><span class="num">Whole section</span><span class="state-pill" hidden></span></div>
+        <div class="prose"><p>Today ShopGym makes a SandboxShop from one input: a Live storefront, through Storefront exploration and the Shop Manual. Shop generation asks an LLM to invent the whole Dataset: a small catalog, a few Personas with names and addresses, and random seeded orders. Products have no brand, category or attribute fields. No shopper has a history, a taste or a budget. Reviews are random and are not linked to Personas or orders.</p>
+<p>This causes these problems for the team:</p>
+<ol>
+<li>The catalog is small and not realistic. An agent cannot learn or show search, facet and comparison skills on a few dozen invented products.</li>
+<li>The team cannot use the public datasets that it already knows (Amazon Reviews 2023, WebShop, H&amp;M, MerRec, KuaiSearch, OPeRA). Each dataset has its own format. No single ShopGym format exists for a catalog, a user profile or user behavior data.</li>
+<li>Personas have no profile and no real history. So ShopGym cannot make personal Tasks (&quot;buy what this user bought next&quot;, &quot;reorder my last router&quot;) that have one true answer.</li>
+<li>The Shop Manual describes pages and features, but it does not record which actions move a shopper from one page type to the next. The Build loop cannot check that every flow of the Live storefront exists in the built shop.</li>
+<li>The team wants a first realistic marketplace shop (working name mock_amazon) on Amazon Reviews 2023. No path exists to build it.</li>
+</ol>
+</div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-x-problem" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+      <p class="empty" hidden>Nothing here matches the filter.</p>
+    </section>
+
+    <section id="solution" data-section="solution">
+      <div class="sec-head"><h2>Solution</h2></div>
+      <article class="item card" data-item="x-solution" id="x-solution" data-short="Solution" data-label="Solution and pipeline">
+        <div class="item-head"><span class="num">Whole section</span><span class="state-pill" hidden></span></div>
+        <div class="prose"><p>Shop generation gets a second input beside the Shop Manual: a <strong>Source bundle</strong>. A Source bundle is one directory with three optional parts, each in one ShopGym standard schema: a catalog (products and reviews), user profiles, and User events. Thin adapters turn each public dataset into a bundle. Steps then sample the bundle at one cutoff, fill the missing fields (and mark them), and map it to the shop&#39;s Dataset plus a hidden <code>users/</code> directory.</p>
+<p>Storefront exploration also writes a <strong>Site state graph</strong> into the Shop Manual: abstract page states and the actions between them. The Build loop uses it as a list of flows to make and to check. Task generation uses it as a list of flows to expect when it builds its Interaction graph.</p>
+<p>Task generation gets a new Generation method, <strong>user-first</strong>. It reads the hidden user data and makes personal Tasks with a known answer, in the new Task record.</p>
+<p>Every shop goes through a Source bundle. A shop with no catalog uses an empty bundle, and the complete step fills it from the Shop Manual (today&#39;s LLM catalog synthesis). So old and new shops have one path, one provenance model and one set of checks.</p>
+</div>
+        
+<figure class="flow" aria-label="Pipeline from inputs to Accepted tasks">
+  <div class="tracks">
+    <div class="track">
+      <div class="track-label">Website input</div>
+      <div class="node node-src">Live storefront <small>a site URL</small></div>
+      <div class="link" aria-hidden="true"></div>
+      <div class="node node-step">Storefront exploration</div>
+      <div class="link" aria-hidden="true"></div>
+      <div class="node node-file"><span>manual/</span> Shop Manual + site_graph.json</div>
+    </div>
+    <div class="track">
+      <div class="track-label">Data input, optional</div>
+      <div class="node node-src">Public datasets <small>AR23 first</small></div>
+      <div class="link" aria-hidden="true"></div>
+      <div class="node node-step">Adapters</div>
+      <div class="link" aria-hidden="true"></div>
+      <div class="node node-file"><span>bundle/</span> Source bundle, raw</div>
+    </div>
+  </div>
+  <div class="merge" aria-hidden="true"></div>
+  <ol class="spine">
+    <li class="node node-step"><b>Sample</b><small>cutoff, user-first, seeded</small></li>
+    <li class="node node-step"><b>Complete</b><small>fill + mark provenance</small><em class="uses">empty catalog: synthesizes from the Shop Manual</em></li>
+    <li class="node node-file"><span>bundle/</span> Source bundle, complete</li>
+    <li class="node node-step node-optional"><b>Rewrite</b><small>optional, identity only</small></li>
+    <li class="node node-step"><b>Shop generation</b><small>map to Dataset + users/</small></li>
+    <li class="node node-step"><b>Build loop</b><small>makes the storefront</small><em class="uses">checks every Site state graph flow</em></li>
+    <li class="node node-file"><span>shop/</span> SandboxShop</li>
+    <li class="node node-step"><b>Task generation</b><small>BFS + explore, user-first</small><em class="uses">reads users/ and the Site state graph</em></li>
+    <li class="node node-file"><span>tasks/</span> Accepted tasks + reference traces</li>
+  </ol>
+  <figcaption class="legend">
+    <span><i class="key key-step"></i>Step</span>
+    <span><i class="key key-file"></i>Directory or output</span>
+    <span><i class="key key-src"></i>Input</span>
+    <span><i class="key key-opt"></i>Optional step</span>
+  </figcaption>
+</figure>
+        <div class="prose"><p>The synthetic data that comes out is for shopping agents: each row is an Accepted task, a reference trace and the Check results.</p>
+</div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-x-solution" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+      <p class="empty" hidden>Nothing here matches the filter.</p>
+    </section>
+
+    <section id="terms" data-section="terms">
+      <div class="sec-head"><h2>Terms</h2><p>These terms go into GLOSSARY.md when the feature ships.</p></div>
+      <dl class="terms">
+      <div class="item term" data-item="t-source-bundle" id="t-source-bundle" data-short="Term: Source bundle" data-label="Term: Source bundle">
+        <dt>Source bundle</dt>
+        <dd><div>one directory that holds the optional catalog, user profiles and User events for Shop generation, in the ShopGym standard schemas, with one <code>bundle.json</code> that records sources, licenses, locale, currency and cutoff. One bundle can make many SandboxShops.</div><div class="avoid">Avoid: dataset (that is the shop&#39;s Dataset), input data.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-source-bundle" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-adapter" id="t-adapter" data-short="Term: Adapter" data-label="Term: Adapter">
+        <dt>Adapter</dt>
+        <dd><div>the code that turns one public dataset format into a raw Source bundle. It only renames, regroups and drops fields.</div><div class="avoid">Avoid: converter, loader.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-adapter" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-user-event" id="t-user-event" data-short="Term: User event" data-label="Term: User event">
+        <dt>User event</dt>
+        <dd><div>one recorded action of a shopper in a Source bundle, for example a purchase or a search.</div><div class="avoid">Avoid: trajectory (a Trajectory is the record of an agent run), clickstream.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-user-event" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-modeled-user" id="t-modeled-user" data-short="Term: Modeled user" data-label="Term: Modeled user">
+        <dt>Modeled user</dt>
+        <dd><div>a user in a Source bundle that has one user profile and a time-ordered list of User events. Each modeled user becomes one Persona. Other reviewers are only names on Reviews.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-modeled-user" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-user-profile" id="t-user-profile" data-short="Term: User profile" data-label="Term: User profile">
+        <dt>User profile</dt>
+        <dd><div>the structured facts and narrative about one modeled user, in the bundle. It has no account fields.</div><div class="avoid">Avoid: persona (a Persona is the shop account).</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-user-profile" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-cutoff" id="t-cutoff" data-short="Term: Cutoff" data-label="Term: Cutoff">
+        <dt>Cutoff</dt>
+        <dd><div>the one time per bundle that becomes the start of the Episode clock in the shop. Data before it is shop state. Data after it is hidden.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-cutoff" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-task-target" id="t-task-target" data-short="Term: Task target" data-label="Term: Task target">
+        <dt>Task target</dt>
+        <dd><div>a hidden fact after the cutoff, for example the next purchase of a modeled user, that a personal Task asks the agent to reach.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-task-target" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-acceptable-set" id="t-acceptable-set" data-short="Term: Acceptable set" data-label="Term: Acceptable set">
+        <dt>Acceptable set</dt>
+        <dd><div>the set of products, computed by code, that meet every constraint that a personal Task states. The Task passes if the new order holds a product from this set.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-acceptable-set" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-provenance" id="t-provenance" data-short="Term: Provenance" data-label="Term: Provenance">
+        <dt>Provenance</dt>
+        <dd><div>the per-field mark that says where a value came from: <code>source</code>, <code>inferred</code>, <code>synthetic</code> or <code>rewritten</code>.</div><div class="prov">
+  <span class="chip p-src">source</span><span class="chip p-inf">inferred</span><span class="chip p-syn">synthetic</span><span class="chip p-rew">rewritten</span>
+</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-provenance" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-complete-step" id="t-complete-step" data-short="Term: Complete step" data-label="Term: Complete step">
+        <dt>Complete step</dt>
+        <dd><div>the bundle-to-bundle step that fills the fields that a source does not give, and marks them in provenance.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-complete-step" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-rewrite-step" id="t-rewrite-step" data-short="Term: Rewrite step" data-label="Term: Rewrite step">
+        <dt>Rewrite step</dt>
+        <dd><div>the optional bundle-to-bundle step that replaces only identifying text and images.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-rewrite-step" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item term" data-item="t-site-state-graph" id="t-site-state-graph" data-short="Term: Site state graph" data-label="Term: Site state graph">
+        <dt>Site state graph</dt>
+        <dd><div>the abstract graph of page states and actions for one storefront. It is part of the Shop Manual and is anonymized like the rest of it.</div><div class="avoid">Avoid: Interaction graph (that is the run-time graph that Task generation builds on one target), transition state, site map.</div></dd>
+        <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-t-site-state-graph" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+      </dl>
+      <p class="empty" hidden>Nothing here matches the filter.</p>
+    </section>
+
+    <section id="stories" data-section="stories">
+      <div class="sec-head"><h2>User stories</h2><p>69 stories in 7 groups.</p></div>
+      <div class="group-filter" role="group" aria-label="Story group">
+        <button type="button" data-group="" aria-pressed="true">All<span class="ct">69</span></button>
+        <button type="button" data-group="researcher-building-a-shop" aria-pressed="false">Researcher building a shop<span class="ct">21</span></button><button type="button" data-group="adapter-author" aria-pressed="false">Adapter author<span class="ct">11</span></button><button type="button" data-group="user-data" aria-pressed="false">User data<span class="ct">11</span></button><button type="button" data-group="hidden-data-and-safety" aria-pressed="false">Hidden data and safety<span class="ct">4</span></button><button type="button" data-group="site-state-graph" aria-pressed="false">Site state graph<span class="ct">8</span></button><button type="button" data-group="tasks-and-synthetic-data" aria-pressed="false">Tasks and synthetic data<span class="ct">11</span></button><button type="button" data-group="data-and-license-steward" aria-pressed="false">Data and license steward<span class="ct">3</span></button>
+      </div>
+      <div class="story-group" data-group-box="researcher-building-a-shop">
+        <h3>Researcher building a shop</h3>
+        <div class="item story" data-item="s1" id="s1" data-short="Story 1" data-label="Story 1: I want to build a SandboxShop from a Live storefront plus a public catalog dataset" data-group="researcher-building-a-shop">
+          <span class="num">1</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want to build a SandboxShop from a Live storefront plus a public catalog dataset, <span class="why">so that the shop has thousands of real products instead of a few dozen invented ones.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s1" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s2" id="s2" data-short="Story 2" data-label="Story 2: I want one command that turns a public dataset into a Source bundle" data-group="researcher-building-a-shop">
+          <span class="num">2</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want one command that turns a public dataset into a Source bundle, <span class="why">so that I do not write a new script for each dataset.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s2" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s3" id="s3" data-short="Story 3" data-label="Story 3: I want to build one bundle and make many shops from it" data-group="researcher-building-a-shop">
+          <span class="num">3</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want to build one bundle and make many shops from it, <span class="why">so that I can compare shops (for example two storefront UXs) on the same catalog and users.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s3" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s4" id="s4" data-short="Story 4" data-label="Story 4: I want to give the size of the bundle (number of products and of modeled users) and..." data-group="researcher-building-a-shop">
+          <span class="num">4</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want to give the size of the bundle (number of products and of modeled users) and a seed, <span class="why">so that I can make a small shop for tests and a large shop for runs.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s4" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s5" id="s5" data-short="Story 5" data-label="Story 5: I want the same bundle options and seed to always give the same bundle" data-group="researcher-building-a-shop">
+          <span class="num">5</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want the same bundle options and seed to always give the same bundle, <span class="why">so that results are repeatable.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s5" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s6" id="s6" data-short="Story 6" data-label="Story 6: I want to give the cutoff" data-group="researcher-building-a-shop">
+          <span class="num">6</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want to give the cutoff, <span class="why">so that I control which history is visible in the shop and which is hidden for Tasks.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s6" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s7" id="s7" data-short="Story 7" data-label="Story 7: I want a shop with no catalog input to still work as today" data-group="researcher-building-a-shop">
+          <span class="num">7</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want a shop with no catalog input to still work as today, <span class="why">so that existing workflows do not break.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s7" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s8" id="s8" data-short="Story 8" data-label="Story 8: I want a shop with no catalog input to go through the same bundle path" data-group="researcher-building-a-shop">
+          <span class="num">8</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want a shop with no catalog input to go through the same bundle path, <span class="why">so that old and new shops have the same provenance, <code>users/</code> directory and checks.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s8" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s9" id="s9" data-short="Story 9" data-label="Story 9: I want to resume the bundle pipeline from a failed step" data-group="researcher-building-a-shop">
+          <span class="num">9</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want to resume the bundle pipeline from a failed step, <span class="why">so that I do not pay for LLM calls again.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s9" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s10" id="s10" data-short="Story 10" data-label="Story 10: I want to see which fields came from the source and which were inferred, synthetic o..." data-group="researcher-building-a-shop">
+          <span class="num">10</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want to see which fields came from the source and which were inferred, synthetic or rewritten, <span class="why">so that I know how real the shop is.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s10" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s11" id="s11" data-short="Story 11" data-label="Story 11: I want a clear validation error that names the record and the field when a bundle is..." data-group="researcher-building-a-shop">
+          <span class="num">11</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want a clear validation error that names the record and the field when a bundle is not valid, <span class="why">so that I can fix the adapter fast.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s11" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s12" id="s12" data-short="Story 12" data-label="Story 12: I want two validation levels (raw and complete)" data-group="researcher-building-a-shop">
+          <span class="num">12</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want two validation levels (raw and complete), <span class="why">so that an adapter writes only what the source has, and the shop still gets every field it needs.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s12" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s13" id="s13" data-short="Story 13" data-label="Story 13: I want each Shop manifest to record which bundle, cutoff, clock offset and sources m..." data-group="researcher-building-a-shop">
+          <span class="num">13</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want each Shop manifest to record which bundle, cutoff, clock offset and sources made it, next to its source Shop Manuals, <span class="why">so that I can trace any shop back to its data.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s13" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s14" id="s14" data-short="Story 14" data-label="Story 14: I want each bundle to record the license of each source" data-group="researcher-building-a-shop">
+          <span class="num">14</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want each bundle to record the license of each source, <span class="why">so that I know what I may share.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s14" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s15" id="s15" data-short="Story 15" data-label="Story 15: I want an optional rewrite step that replaces real titles, brands, review text and i..." data-group="researcher-building-a-shop">
+          <span class="num">15</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want an optional rewrite step that replaces real titles, brands, review text and images, <span class="why">so that I can make a shop that is safer to share without changing the Tasks.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s15" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s16" id="s16" data-short="Story 16" data-label="Story 16: I want rewrite to keep every id, price, category, attribute value, rating and User e..." data-group="researcher-building-a-shop">
+          <span class="num">16</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want rewrite to keep every id, price, category, attribute value, rating and User event, <span class="why">so that the same Tasks and answers work before and after rewrite.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s16" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s17" id="s17" data-short="Story 17" data-label="Story 17: I want the first mock_amazon shop on Amazon Reviews 2023 (Electronics, Home_and_Kitc..." data-group="researcher-building-a-shop">
+          <span class="num">17</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want the first mock_amazon shop on Amazon Reviews 2023 (Electronics, Home_and_Kitchen, Video_Games), <span class="why">so that we have one realistic marketplace shop to start with.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s17" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s18" id="s18" data-short="Story 18" data-label="Story 18: I want mock_amazon to show search facets (brand, price, rating, category), a rating..." data-group="researcher-building-a-shop">
+          <span class="num">18</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want mock_amazon to show search facets (brand, price, rating, category), a rating histogram and review filters, <span class="why">so that agents meet marketplace UX.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s18" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s19" id="s19" data-short="Story 19" data-label="Story 19: I want mock_amazon to show related products (&quot;frequently bought together&quot;)" data-group="researcher-building-a-shop">
+          <span class="num">19</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want mock_amazon to show related products (&quot;frequently bought together&quot;), <span class="why">so that agents meet cross-sell UX.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s19" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s20" id="s20" data-short="Story 20" data-label="Story 20: I want departments and subcategories to come from the catalog's category path" data-group="researcher-building-a-shop">
+          <span class="num">20</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want departments and subcategories to come from the catalog&#39;s category path, <span class="why">so that navigation matches the catalog.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s20" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s21" id="s21" data-short="Story 21" data-label="Story 21: I want product images downloaded into the shop, with the source URL kept" data-group="researcher-building-a-shop">
+          <span class="num">21</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want product images downloaded into the shop, with the source URL kept, <span class="why">so that the shop works offline and stays traceable.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s21" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+      </div>
+<div class="story-group" data-group-box="adapter-author">
+        <h3>Adapter author</h3>
+        <div class="item story" data-item="s22" id="s22" data-short="Story 22" data-label="Story 22: I want a ShopGym catalog standard that borrows schema.org and Google Merchant Center..." data-group="adapter-author">
+          <span class="num">22</span>
+          <div><p class="actor">As a adapter author</p><p>I want a ShopGym catalog standard that borrows schema.org and Google Merchant Center field names, <span class="why">so that most public datasets map with little work.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s22" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s23" id="s23" data-short="Story 23" data-label="Story 23: I want one product record with its variants inside" data-group="adapter-author">
+          <span class="num">23</span>
+          <div><p class="actor">As a adapter author</p><p>I want one product record with its variants inside, <span class="why">so that datasets with one record per parent product (AR23, WebShop) map almost 1:1.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s23" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s24" id="s24" data-short="Story 24" data-label="Story 24: I want to group flat rows into products inside the adapter (for example H&amp;M articles..." data-group="adapter-author">
+          <span class="num">24</span>
+          <div><p class="actor">As a adapter author</p><p>I want to group flat rows into products inside the adapter (for example H&amp;M articles by product_code), <span class="why">so that the standard stays one shape.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s24" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s25" id="s25" data-short="Story 25" data-label="Story 25: I want to give only product_id, title and at least one variant" data-group="adapter-author">
+          <span class="num">25</span>
+          <div><p class="actor">As a adapter author</p><p>I want to give only product_id, title and at least one variant, <span class="why">so that sparse datasets still make a valid raw bundle.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s25" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s26" id="s26" data-short="Story 26" data-label="Story 26: I want to keep the source's own string ids (ASIN, article_id)" data-group="adapter-author">
+          <span class="num">26</span>
+          <div><p class="actor">As a adapter author</p><p>I want to keep the source&#39;s own string ids (ASIN, article_id), <span class="why">so that joins to the source stay easy to check.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s26" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s27" id="s27" data-short="Story 27" data-label="Story 27: I want one flat User event file with a closed event_type list plus the source's raw_..." data-group="adapter-author">
+          <span class="num">27</span>
+          <div><p class="actor">As a adapter author</p><p>I want one flat User event file with a closed event_type list plus the source&#39;s raw_type, <span class="why">so that every source maps to the same uses and keeps its original meaning.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s27" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s28" id="s28" data-short="Story 28" data-label="Story 28: I want a timestamp_precision field (ms, second, day, order)" data-group="adapter-author">
+          <span class="num">28</span>
+          <div><p class="actor">As a adapter author</p><p>I want a timestamp_precision field (ms, second, day, order), <span class="why">so that day-level data (H&amp;M) and order-only data are honest about what a time means.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s28" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s29" id="s29" data-short="Story 29" data-label="Story 29: I want orders to come from purchase events (by order_id, or by user and session when..." data-group="adapter-author">
+          <span class="num">29</span>
+          <div><p class="actor">As a adapter author</p><p>I want orders to come from purchase events (by order_id, or by user and session when there is no order_id), <span class="why">so that datasets without order ids still give order history.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s29" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s30" id="s30" data-short="Story 30" data-label="Story 30: I want AR23 verified-purchase reviews to make an inferred purchase event" data-group="adapter-author">
+          <span class="num">30</span>
+          <div><p class="actor">As a adapter author</p><p>I want AR23 verified-purchase reviews to make an inferred purchase event, <span class="why">so that a review-only dataset still gives a purchase history.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s30" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s31" id="s31" data-short="Story 31" data-label="Story 31: I want reviews in their own catalog file that may point to a modeled user" data-group="adapter-author">
+          <span class="num">31</span>
+          <div><p class="actor">As a adapter author</p><p>I want reviews in their own catalog file that may point to a modeled user, <span class="why">so that Reviews show on product pages and also join to a user&#39;s history.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s31" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s32" id="s32" data-short="Story 32" data-label="Story 32: I want unmapped source event types dropped and counted in a report" data-group="adapter-author">
+          <span class="num">32</span>
+          <div><p class="actor">As a adapter author</p><p>I want unmapped source event types dropped and counted in a report, <span class="why">so that I see what the closed list does not cover.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s32" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+      </div>
+<div class="story-group" data-group-box="user-data">
+        <h3>User data</h3>
+        <div class="item story" data-item="s33" id="s33" data-short="Story 33" data-label="Story 33: I want LLM-written user profiles when no profile dataset exists" data-group="user-data">
+          <span class="num">33</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want LLM-written user profiles when no profile dataset exists, <span class="why">so that I can start now without public profile data.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s33" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s34" id="s34" data-short="Story 34" data-label="Story 34: I want LLM-written profiles to fit the catalog's categories and price range" data-group="user-data">
+          <span class="num">34</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want LLM-written profiles to fit the catalog&#39;s categories and price range, <span class="why">so that the profiles can shop in this catalog.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s34" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s35" id="s35" data-short="Story 35" data-label="Story 35: I want profiles inferred from history when only User events exist" data-group="user-data">
+          <span class="num">35</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want profiles inferred from history when only User events exist, <span class="why">so that each modeled user&#39;s profile matches what they did.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s35" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s36" id="s36" data-short="Story 36" data-label="Story 36: I want history sampled from the catalog when only profiles exist" data-group="user-data">
+          <span class="num">36</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want history sampled from the catalog when only profiles exist, <span class="why">so that each modeled user still has orders and reviews.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s36" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s37" id="s37" data-short="Story 37" data-label="Story 37: I want missing user data filled offline with a seed, not by LLM shoppers that browse..." data-group="user-data">
+          <span class="num">37</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want missing user data filled offline with a seed, not by LLM shoppers that browse the site, <span class="why">so that it is cheap, fast and repeatable.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s37" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s38" id="s38" data-short="Story 38" data-label="Story 38: I want a user profile with structured fields and a free-text narrative" data-group="user-data">
+          <span class="num">38</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want a user profile with structured fields and a free-text narrative, <span class="why">so that code can check constraints and LLMs can write natural goals.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s38" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s39" id="s39" data-short="Story 39" data-label="Story 39: I want each modeled user to become one Persona with code-made account fields" data-group="user-data">
+          <span class="num">39</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want each modeled user to become one Persona with code-made account fields, <span class="why">so that a Task can log in as that user.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s39" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s40" id="s40" data-short="Story 40" data-label="Story 40: I want each Persona's orders and Reviews before the cutoff to be in the shop" data-group="user-data">
+          <span class="num">40</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want each Persona&#39;s orders and Reviews before the cutoff to be in the shop, <span class="why">so that order-history and reorder Tasks have real data.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s40" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s41" id="s41" data-short="Story 41" data-label="Story 41: I want user-first sampling (modeled users first, then every product in their histori..." data-group="user-data">
+          <span class="num">41</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want user-first sampling (modeled users first, then every product in their histories, then same-category filler), <span class="why">so that every history and every Task target is inside the shop.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s41" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s42" id="s42" data-short="Story 42" data-label="Story 42: I want product ratings recomputed from the Reviews visible before the cutoff" data-group="user-data">
+          <span class="num">42</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want product ratings recomputed from the Reviews visible before the cutoff, <span class="why">so that the shop never leaks future reviews through a rating.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s42" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s43" id="s43" data-short="Story 43" data-label="Story 43: I want all bundle times shifted so that the cutoff lands on the Episode clock start" data-group="user-data">
+          <span class="num">43</span>
+          <div><p class="actor">As a ShopGym researcher</p><p>I want all bundle times shifted so that the cutoff lands on the Episode clock start, <span class="why">so that old source data looks current in the shop and ADR 0009 still holds.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s43" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+      </div>
+<div class="story-group" data-group-box="hidden-data-and-safety">
+        <h3>Hidden data and safety</h3>
+        <div class="item story" data-item="s44" id="s44" data-short="Story 44" data-label="Story 44: I want profiles and after-cutoff User events stored in a users/ directory that the b..." data-group="hidden-data-and-safety">
+          <span class="num">44</span>
+          <div><p class="actor">As a benchmark owner</p><p>I want profiles and after-cutoff User events stored in a <code>users/</code> directory that the backend never loads, <span class="why">so that an agent cannot read a Task target through the site.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s44" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s45" id="s45" data-short="Story 45" data-label="Story 45: I want the SandboxShop to stay self-contained (Dataset, users/, manual, storefront,..." data-group="hidden-data-and-safety">
+          <span class="num">45</span>
+          <div><p class="actor">As a benchmark owner</p><p>I want the SandboxShop to stay self-contained (Dataset, <code>users/</code>, manual, storefront, backend), <span class="why">so that Task generation needs only the shop directory and its hosted URLs.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s45" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s46" id="s46" data-short="Story 46" data-label="Story 46: I want a map from each user_id to its Persona's customer id" data-group="hidden-data-and-safety">
+          <span class="num">46</span>
+          <div><p class="actor">As a benchmark owner</p><p>I want a map from each user_id to its Persona&#39;s customer id, <span class="why">so that Tasks can join hidden facts to shop accounts.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s46" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s47" id="s47" data-short="Story 47" data-label="Story 47: I want products first seen after the cutoff to be left out, except when they are Tas..." data-group="hidden-data-and-safety">
+          <span class="num">47</span>
+          <div><p class="actor">As a benchmark owner</p><p>I want products first seen after the cutoff to be left out, except when they are Task targets, <span class="why">so that the shop looks like it did at the cutoff.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s47" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+      </div>
+<div class="story-group" data-group-box="site-state-graph">
+        <h3>Site state graph</h3>
+        <div class="item story" data-item="s48" id="s48" data-short="Story 48" data-label="Story 48: I want Storefront exploration to write a Site state graph of page states and actions..." data-group="site-state-graph">
+          <span class="num">48</span>
+          <div><p class="actor">As a ShopArena developer</p><p>I want Storefront exploration to write a Site state graph of page states and actions into the Shop Manual, <span class="why">so that the flows of a storefront are recorded, not only its pages.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s48" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s49" id="s49" data-short="Story 49" data-label="Story 49: I want the Site state graph to be anonymized like the rest of the Shop Manual" data-group="site-state-graph">
+          <span class="num">49</span>
+          <div><p class="actor">As a ShopArena developer</p><p>I want the Site state graph to be anonymized like the rest of the Shop Manual, <span class="why">so that ADR 0012 still holds.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s49" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s50" id="s50" data-short="Story 50" data-label="Story 50: I want the Site state graph, the User events and the Interaction graph to share one..." data-group="site-state-graph">
+          <span class="num">50</span>
+          <div><p class="actor">As a ShopArena developer</p><p>I want the Site state graph, the User events and the Interaction graph to share one closed page type list, <span class="why">so that counts and coverage can be compared across them.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s50" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s51" id="s51" data-short="Story 51" data-label="Story 51: I want User event moves to add weights to the graph's transitions" data-group="site-state-graph">
+          <span class="num">51</span>
+          <div><p class="actor">As a ShopArena developer</p><p>I want User event moves to add weights to the graph&#39;s transitions, <span class="why">so that the graph shows which paths real shoppers take.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s51" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s52" id="s52" data-short="Story 52" data-label="Story 52: I want the Build loop to read the graph as a list of flows that the shop must have" data-group="site-state-graph">
+          <span class="num">52</span>
+          <div><p class="actor">As a ShopArena developer</p><p>I want the Build loop to read the graph as a list of flows that the shop must have, <span class="why">so that no flow is missing in the built shop.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s52" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s53" id="s53" data-short="Story 53" data-label="Story 53: I want a Verifier that walks each transition on the built shop" data-group="site-state-graph">
+          <span class="num">53</span>
+          <div><p class="actor">As a ShopArena developer</p><p>I want a Verifier that walks each transition on the built shop, <span class="why">so that a broken flow reopens the Plan task.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s53" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s54" id="s54" data-short="Story 54" data-label="Story 54: I want the explore Capabilities extended for marketplace UX (departments, facets, ra..." data-group="site-state-graph">
+          <span class="num">54</span>
+          <div><p class="actor">As a ShopArena developer</p><p>I want the explore Capabilities extended for marketplace UX (departments, facets, rating histogram, related products), <span class="why">so that the build knows to make them.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s54" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s55" id="s55" data-short="Story 55" data-label="Story 55: I want the Site state graph's transitions as expected flows for BFS" data-group="site-state-graph">
+          <span class="num">55</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want the Site state graph&#39;s transitions as expected flows for BFS, <span class="why">so that the BFS report lists flows that the shop should have but that BFS did not reach.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s55" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+      </div>
+<div class="story-group" data-group-box="tasks-and-synthetic-data">
+        <h3>Tasks and synthetic data</h3>
+        <div class="item story" data-item="s56" id="s56" data-short="Story 56" data-label="Story 56: I want a user-first Generation method that reads users/" data-group="tasks-and-synthetic-data">
+          <span class="num">56</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want a user-first Generation method that reads <code>users/</code>, <span class="why">so that personal Tasks come from real histories.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s56" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s57" id="s57" data-short="Story 57" data-label="Story 57: I want personal Task intents that state the user's need without naming the product" data-group="tasks-and-synthetic-data">
+          <span class="num">57</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want personal Task intents that state the user&#39;s need without naming the product, <span class="why">so that the agent must search and compare.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s57" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s58" id="s58" data-short="Story 58" data-label="Story 58: I want code to compute the acceptable set from the stated constraints" data-group="tasks-and-synthetic-data">
+          <span class="num">58</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want code to compute the acceptable set from the stated constraints, <span class="why">so that grading is code-first (ADR 0014).</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s58" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s59" id="s59" data-short="Story 59" data-label="Story 59: I want to keep a personal Task only when the acceptable set has 5 or fewer products..." data-group="tasks-and-synthetic-data">
+          <span class="num">59</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want to keep a personal Task only when the acceptable set has 5 or fewer products and holds the Task target, <span class="why">so that each Task has a clear answer.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s59" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s60" id="s60" data-short="Story 60" data-label="Story 60: I want a Backend check that passes when the new order holds any product in the accep..." data-group="tasks-and-synthetic-data">
+          <span class="num">60</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want a Backend check that passes when the new order holds any product in the acceptable set, <span class="why">so that I do not need an LLM judge.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s60" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s61" id="s61" data-short="Story 61" data-label="Story 61: I want the check tests to prove that every acceptable set member passes and that pro..." data-group="tasks-and-synthetic-data">
+          <span class="num">61</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want the check tests to prove that every acceptable set member passes and that products outside the set or an old matching order fail, <span class="why">so that the Check is correct before the Task is accepted.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s61" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s62" id="s62" data-short="Story 62" data-label="Story 62: I want reorder and order-history Tasks with an exact answer from the Persona's orders" data-group="tasks-and-synthetic-data">
+          <span class="num">62</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want reorder and order-history Tasks with an exact answer from the Persona&#39;s orders, <span class="why">so that history skills are tested.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s62" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s63" id="s63" data-short="Story 63" data-label="Story 63: I want the reference path of a personal Task to come from the shop's Interaction graph" data-group="tasks-and-synthetic-data">
+          <span class="num">63</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want the reference path of a personal Task to come from the shop&#39;s Interaction graph, <span class="why">so that every Task has a checked way to solve it.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s63" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s64" id="s64" data-short="Story 64" data-label="Story 64: I want user-first generation to be deterministic for one shop and one seed" data-group="tasks-and-synthetic-data">
+          <span class="num">64</span>
+          <div><p class="actor">As a Task generation developer</p><p>I want user-first generation to be deterministic for one shop and one seed, <span class="why">so that Task sets are repeatable.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s64" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s65" id="s65" data-short="Story 65" data-label="Story 65: I want each personal Task to record its Persona, the user_id and the Task target in..." data-group="tasks-and-synthetic-data">
+          <span class="num">65</span>
+          <div><p class="actor">As a agent trainer</p><p>I want each personal Task to record its Persona, the user_id and the Task target in metadata, <span class="why">so that I can study personalization.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s65" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s66" id="s66" data-short="Story 66" data-label="Story 66: I want the output in the new Task record (WebArena format plus state_check and metad..." data-group="tasks-and-synthetic-data">
+          <span class="num">66</span>
+          <div><p class="actor">As a agent trainer</p><p>I want the output in the new Task record (WebArena format plus <code>state_check</code> and <code>metadata</code>), <span class="why">so that personal Tasks and BFS + explore Tasks are one data set.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s66" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+      </div>
+<div class="story-group" data-group-box="data-and-license-steward">
+        <h3>Data and license steward</h3>
+        <div class="item story" data-item="s67" id="s67" data-short="Story 67" data-label="Story 67: I want every bundle and shop to name its sources and their licenses" data-group="data-and-license-steward">
+          <span class="num">67</span>
+          <div><p class="actor">As a data steward</p><p>I want every bundle and shop to name its sources and their licenses, <span class="why">so that research-only data (AR23) is not shared by mistake.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s67" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s68" id="s68" data-short="Story 68" data-label="Story 68: I want the shop's own store name to stay a fake name" data-group="data-and-license-steward">
+          <span class="num">68</span>
+          <div><p class="actor">As a data steward</p><p>I want the shop&#39;s own store name to stay a fake name, <span class="why">so that the shop does not name the Live storefront.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s68" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+<div class="item story" data-item="s69" id="s69" data-short="Story 69" data-label="Story 69: I want the rewrite step to move brand names to the fake-brand allowlist" data-group="data-and-license-steward">
+          <span class="num">69</span>
+          <div><p class="actor">As a data steward</p><p>I want the rewrite step to move brand names to the fake-brand allowlist, <span class="why">so that a rewritten shop follows ADR 0013 again.</span></p></div>
+          <div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-s69" class="rv-note" rows="2" hidden></textarea>
+</div>
+        </div>
+      </div>
+      <p class="empty" hidden>Nothing here matches the filter.</p>
+    </section>
+
+    <section id="decisions" data-section="decisions">
+      <div class="sec-head"><h2>Implementation decisions</h2><p>Schema shapes come from the previews approved in the grilling session.</p>
+        <div class="sec-tools"><button type="button" class="btn" id="collapse-all">Collapse all</button><button type="button" class="btn" id="expand-all">Expand all</button></div>
+      </div>
+      <article class="item card" data-item="d1" id="d1" data-short="Decision 1" data-label="Decision 1: One path through a Source bundle" data-changed="1">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">01</span><h3>One path through a Source bundle</h3><a class="badge badge-changed" href="#c6">Changed after grilling</a><span class="state-pill" hidden></span></summary>
+          <div class="prose"><ul>
+<li>Every shop goes through a Source bundle. The order is: adapters -&gt; raw bundle -&gt; sample (cutoff, user-first) -&gt; complete (fill + mark) -&gt; optional rewrite -&gt; map to Dataset + <code>users/</code> -&gt; Build loop.</li>
+<li>Sample runs before complete, so that the LLM fills only the products that the shop keeps.</li>
+<li>No catalog input means an empty bundle. For an empty catalog, the complete step synthesizes products from the Shop Manual. This is today&#39;s LLM catalog synthesis, moved behind the complete step. All its fields are marked <code>synthetic</code>.</li>
+<li>The bundle steps run on the core pipeline runner, so <code>--from</code> and resume work as they do for <code>gen</code> today.</li>
+<li>A bundle is a reusable artifact under <code>outputs/bundles/&lt;name&gt;</code>. One bundle can make many shops.</li>
+<li><code>gen --data</code> (task-fe55df99b440) stays a separate, narrow path for now: it copies the Catalog of an existing SandboxShop without change. <code>--data</code> and <code>--bundle</code> cannot be used together. Folding <code>--data</code> into a <code>sandbox_dataset</code> adapter that keeps every id and handle is later work.</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d1" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d2" id="d2" data-short="Decision 2" data-label="Decision 2: Source bundle layout" data-changed="1">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">02</span><h3>Source bundle layout</h3><a class="badge badge-changed" href="#c3">Changed after grilling</a><span class="state-pill" hidden></span></summary>
+          <div class="prose"><p>Shape from the approved preview, with User events renamed:</p>
+<div class="code"><pre><code>&lt;bundle&gt;/
+  bundle.json        <span class="cm"># name, sources[] (dataset, version, license, url),</span>
+                     <span class="cm"># locale, currency, cutoff, sample options, seed, created_at</span>
+  catalog/
+    products.jsonl   <span class="cm"># nested products (one line per product)</span>
+    reviews.jsonl    <span class="cm"># one line per review</span>
+    images/          <span class="cm"># optional local files</span>
+  users/
+    profiles.jsonl   <span class="cm"># one line per modeled user</span>
+  events/
+    events.jsonl     <span class="cm"># one line per User event</span>
+
+joins (all optional):
+  reviews.user_id    -&gt; profiles.user_id
+  events.user_id     -&gt; profiles.user_id
+  events.product_id  -&gt; products.product_id
+  events.variant_id  -&gt; products.variants[].variant_id
+  reviews.product_id -&gt; products.product_id</code></pre></div>
+<ul>
+<li>Source ids stay as the source gives them (strings). They are unique inside the bundle.</li>
+<li>One locale and one currency per bundle. English and USD first.</li>
+<li>Reviews are catalog content. A review&#39;s user_id links to a profile only when that reviewer is a modeled user.</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d2" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d3" id="d3" data-short="Decision 3" data-label="Decision 3: Catalog standard">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">03</span><h3>Catalog standard</h3><span class="state-pill" hidden></span></summary>
+          <div class="prose"><ul>
+<li>ShopGym owns the standard. It borrows field names from schema.org Product / ProductGroup and Google Merchant Center where they fit. The goal is the least work per adapter. The Dataset changes only by adding fields.</li>
+<li>One record is one product with its variants inside.</li>
+<li>Required at the raw level: product_id, title, at least one variant with a variant_id. Every other field is optional at raw and filled by the complete step.</li>
+</ul>
+<p>Shape from the approved previews (<code>?</code> = optional at raw):</p>
+<div class="code"><div class="code-tab"><span class="code-file">catalog/products.jsonl</span><span>one line per product</span></div><pre><code>{
+  &quot;product_id&quot;: &quot;B07XYZ&quot;,                <span class="cm">// AR23 parent_asin</span>
+  &quot;title&quot;: &quot;Acme Wireless Headphones&quot;,
+  <span class="opt">&quot;description?&quot;</span>: &quot;...&quot;,
+  <span class="opt">&quot;bullets?&quot;</span>: [&quot;40h battery&quot;, &quot;...&quot;],
+  <span class="opt">&quot;brand?&quot;</span>: &quot;Acme&quot;,
+  <span class="opt">&quot;seller?&quot;</span>: &quot;Acme Store&quot;,
+  <span class="opt">&quot;category_path?&quot;</span>: [&quot;Electronics&quot;, &quot;Headphones&quot;, &quot;Over-Ear&quot;],
+  <span class="opt">&quot;attributes?&quot;</span>: {&quot;connectivity&quot;: &quot;Bluetooth&quot;},
+  <span class="opt">&quot;options?&quot;</span>: [{&quot;name&quot;: &quot;Color&quot;, &quot;values&quot;: [&quot;Black&quot;, &quot;White&quot;]}],
+  &quot;variants&quot;: [
+    {&quot;variant_id&quot;: &quot;B07XYZ1&quot;, <span class="opt">&quot;option_values?&quot;</span>: {&quot;Color&quot;: &quot;Black&quot;},
+     <span class="opt">&quot;price?&quot;</span>: {&quot;amount&quot;: 59.99, &quot;currency&quot;: &quot;USD&quot;}, <span class="opt">&quot;inventory?&quot;</span>: 23}
+  ],
+  <span class="opt">&quot;images?&quot;</span>: [{&quot;source_url&quot;: &quot;https://...&quot;, &quot;path&quot;: &quot;images/b07xyz-1.jpg&quot;, &quot;alt&quot;: &quot;...&quot;}],
+  <span class="opt">&quot;rating?&quot;</span>: {&quot;average&quot;: 4.4, &quot;count&quot;: 1520, &quot;as_of&quot;: &quot;2023-09-01&quot;},
+  <span class="opt">&quot;related?&quot;</span>: {&quot;bought_together&quot;: [&quot;B08ABC&quot;], &quot;also_bought&quot;: [&quot;B09DEF&quot;]},
+  &quot;source&quot;: {&quot;dataset&quot;: &quot;amazon_reviews_2023&quot;, &quot;id&quot;: &quot;B07XYZ&quot;},
+  <span class="opt">&quot;provenance?&quot;</span>: {&quot;variants[].price&quot;: &quot;inferred&quot;, &quot;options[Size]&quot;: &quot;synthetic&quot;}
+}
+
+<span class="cm">// catalog/reviews.jsonl - one line per review</span>
+{
+  &quot;review_id&quot;: &quot;r-000981&quot;,
+  &quot;product_id&quot;: &quot;B07XYZ&quot;, <span class="opt">&quot;variant_id?&quot;</span>: &quot;B07XYZ1&quot;, <span class="opt">&quot;user_id?&quot;</span>: &quot;AH3K...&quot;,
+  &quot;rating&quot;: 4, &quot;title&quot;: &quot;Great battery&quot;, &quot;body&quot;: &quot;...&quot;,
+  &quot;created_at&quot;: &quot;2021-03-14T09:12:00Z&quot;,
+  &quot;verified_purchase&quot;: true, &quot;helpful_votes&quot;: 12
+}</code></pre></div>
+<ul>
+<li>A source <code>rating</code> is never copied into the shop. Shop generation recomputes it from the Reviews visible before the cutoff, as the Reviews work already does for the rating metafields. <code>as_of</code> records when a source rating was taken.</li>
+<li><code>related</code> comes from co-purchases in the User events, plus AR23 bought_together when it is not null.</li>
+<li>Collections and navigation (departments, subcategories) come from <code>category_path</code>.</li>
+<li>Images: download the large images of kept products into the shop, and keep the source URL in the record.</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d3" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d4" id="d4" data-short="Decision 4" data-label="Decision 4: User profile">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">04</span><h3>User profile</h3><span class="state-pill" hidden></span></summary>
+          <div class="prose"><p>Shape from the approved preview:</p>
+<div class="code"><div class="code-tab"><span class="code-file">users/profiles.jsonl</span><span>one line per modeled user</span></div><pre><code>{
+  &quot;user_id&quot;: &quot;AH3K...&quot;,
+  &quot;demographics&quot;: {
+    &quot;age_range&quot;: &quot;25-34&quot;, &quot;gender&quot;: &quot;female&quot;,
+    &quot;location&quot;: {&quot;country&quot;: &quot;US&quot;, &quot;region&quot;: &quot;WA&quot;},
+    &quot;household&quot;: [&quot;partner&quot;, &quot;dog&quot;]
+  },
+  &quot;preferences&quot;: {
+    &quot;price_sensitivity&quot;: &quot;mid&quot;,            <span class="cm">// budget | mid | premium</span>
+    &quot;category_interests&quot;: [ [&quot;Electronics&quot;, &quot;Headphones&quot;] ],
+    &quot;brand_preferences&quot;: [&quot;Acme&quot;],
+    &quot;focus_aspects&quot;: [&quot;battery life&quot;, &quot;reviews&quot;]
+  },
+  &quot;sizes&quot;: {&quot;tops&quot;: &quot;M&quot;, &quot;shoes_us&quot;: &quot;8&quot;},
+  &quot;habits&quot;: {&quot;shop_frequency&quot;: &quot;monthly&quot;},
+  &quot;narrative&quot;: &quot;A nurse in Seattle who runs with her dog...&quot;,
+  &quot;provenance&quot;: {&quot;*&quot;: &quot;synthetic&quot;}
+}</code></pre></div>
+<ul>
+<li>A profile has no account fields (name, email, password, address). Shop generation makes those for the Persona.</li>
+<li>Profiles start LLM-written. Public profile datasets (OPeRA survey, PersonaHub) are a later adapter.</li>
+<li>LLM-written profiles are conditioned on the bundle catalog&#39;s categories and price range.</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d4" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d5" id="d5" data-short="Decision 5" data-label="Decision 5: User events" data-changed="1">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">05</span><h3>User events</h3><a class="badge badge-changed" href="#c3">Changed after grilling</a><span class="state-pill" hidden></span></summary>
+          <div class="prose"><p>Shape from the approved preview:</p>
+<div class="code"><div class="code-tab"><span class="code-file">events/events.jsonl</span><span>one line per User event</span></div><pre><code>{
+  &quot;event_id&quot;: &quot;e-000123&quot;,
+  &quot;user_id&quot;: &quot;AH3K...&quot;,                  <span class="cm">// -&gt; profiles</span>
+  &quot;session_id&quot;: &quot;AH3K..._1690000000&quot;,
+  &quot;seq&quot;: 4,
+  &quot;timestamp&quot;: &quot;2021-07-22T10:31:05Z&quot;,
+  &quot;timestamp_precision&quot;: &quot;second&quot;,       <span class="cm">// ms | second | day | order</span>
+  &quot;event_type&quot;: &quot;add_to_cart&quot;,
+  &quot;raw_type&quot;: &quot;item_add_to_cart_tap&quot;,    <span class="cm">// MerRec original</span>
+  &quot;product_id&quot;: &quot;B07XYZ&quot;,                <span class="cm">// -&gt; catalog</span>
+  &quot;variant_id&quot;: &quot;B07XYZ1&quot;,
+  &quot;quantity&quot;: 1,
+  &quot;price&quot;: {&quot;amount&quot;: 59.99, &quot;currency&quot;: &quot;USD&quot;},
+  &quot;order_id&quot;: null,
+  &quot;query&quot;: null,                         <span class="cm">// set for search</span>
+  &quot;page_type&quot;: &quot;product&quot;,                <span class="cm">// optional, closed list</span>
+  &quot;channel&quot;: &quot;online&quot;                    <span class="cm">// optional (H&amp;M)</span>
+}</code></pre></div>
+<ul>
+<li><code>event_type</code> is a closed list: page_view, product_view, search, search_result_click, add_to_cart, remove_from_cart, wishlist_add, checkout_start, purchase, review, return.</li>
+<li><code>page_type</code> uses one closed list, shared with the Site state graph and the Interaction graph&#39;s Abstract nodes: home, collection, product, search, cart, page, policy, login, register, account, addresses, order detail, checkout, checkout confirmation, other. A new page type is added to that one list, not to one user of it.</li>
+<li>Orders come from purchase events: grouped by order_id, or by user and session when there is no order_id.</li>
+<li>AR23 adapter: a verified-purchase review makes a review event plus an inferred purchase event at the review time, with <code>timestamp_precision: order</code> and provenance <code>inferred</code>. An unverified review makes a review event only. User events exist only for modeled users. Other reviewers are only in reviews.jsonl.</li>
+<li>An adapter drops source event types that do not map to the closed list (for example MerRec offer_make) and counts them in its report.</li>
+<li>User events are used for seed history, Task targets and graph weights. They are not used as UI-level demonstrations for now.</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d5" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d6" id="d6" data-short="Decision 6" data-label="Decision 6: Field map from existing datasets">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">06</span><h3>Field map from existing datasets</h3><span class="state-pill" hidden></span></summary>
+          <div class="prose"><p>AR23 is the first adapter. The others show that the schema fits them. Their adapters are later work.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Catalog</th>
+<th>User profile</th>
+<th>User events</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Amazon Reviews 2023</td>
+<td>parent_asin -&gt; product_id; review asin -&gt; variant_id; features -&gt; bullets; details.brand / store -&gt; brand / seller; categories -&gt; category_path; details -&gt; attributes; price -&gt; every variant (inferred); images.large; bought_together -&gt; related</td>
+<td>none (LLM infers from history)</td>
+<td>review rows -&gt; review events; verified -&gt; inferred purchase</td>
+</tr>
+<tr>
+<td>WebShop</td>
+<td>asin, name, category, customization_options (option -&gt; value -&gt; image) -&gt; options + variants, pricing</td>
+<td>none</td>
+<td>none (demos are out of scope)</td>
+</tr>
+<tr>
+<td>H&amp;M</td>
+<td>product_code -&gt; product_id; article_id -&gt; variant_id; colour -&gt; option Color; product_type / group / index -&gt; category_path</td>
+<td>age -&gt; age_range; club_member_status</td>
+<td>transactions -&gt; purchase (day precision, channel; duplicate rows -&gt; quantity)</td>
+</tr>
+<tr>
+<td>MerRec</td>
+<td>name, brand, c0/c1/c2 -&gt; category_path, condition, size, color</td>
+<td>none</td>
+<td>item_view, item_like, add_to_cart_tap, buy_start, buy_comp -&gt; product_view, wishlist_add, add_to_cart, checkout_start, purchase</td>
+</tr>
+<tr>
+<td>KuaiSearch</td>
+<td>item_title, brand, seller, L1-L3 -&gt; category_path</td>
+<td>gender, age bucket, frequent region</td>
+<td>query sessions -&gt; search, search_result_click, purchase</td>
+</tr>
+<tr>
+<td>OPeRA</td>
+<td>products from sessions</td>
+<td>survey -&gt; demographics, habits, narrative</td>
+<td>UI actions -&gt; page_view, search, add_to_cart, purchase with page_type</td>
+</tr>
+</tbody></table></div>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d6" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d7" id="d7" data-short="Decision 7" data-label="Decision 7: Filling missing user data">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">07</span><h3>Filling missing user data</h3><span class="state-pill" hidden></span></summary>
+          <div class="prose"><p>All filling is offline, seeded, in the same schemas, and marked in provenance. No LLM shopper browses a hosted shop.</p>
+<div class="code"><pre><code>given              -&gt; what the pipeline makes
+profiles + events  -&gt; nothing (link check only)
+events only        -&gt; profiles: LLM infers them from history (inferred)
+profiles only      -&gt; events: sample purchases, reviews, views from the
+                      catalog to fit each profile (synthetic, seeded)
+neither            -&gt; profiles: LLM writes N (synthetic), then events as above</code></pre></div>
+<p>Every modeled user ends with one profile and a time-ordered list of User events before and after the cutoff.</p>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d7" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d8" id="d8" data-short="Decision 8" data-label="Decision 8: Cutoff, sampling and time shift" data-changed="1">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">08</span><h3>Cutoff, sampling and time shift</h3><a class="badge badge-changed" href="#c4">Changed after grilling</a><span class="state-pill" hidden></span></summary>
+          <div class="prose"><ul>
+<li>One global cutoff per bundle.</li>
+<li>Before the cutoff: purchases become orders, and reviews become Reviews, in the Dataset. Ratings are recomputed from visible Reviews. Cart, wishlist and return events stay in the bundle and add graph weights, but they do not become shop state, because the templates have no saved carts, wishlists or returns.</li>
+<li>After the cutoff: User events are hidden Task targets and are never served.</li>
+<li>Time shift: the Episode clock always starts at 2026-01-01 (ADR 0009). Shop generation shifts every bundle time by one whole-day offset, so that the cutoff lands on the clock start. The bundle keeps source times. The Shop manifest records the offset. Intents name shifted dates.</li>
+<li>User-first seeded sampling, size given as bundle options:<ol>
+<li>pick N users with at least 5 User events before the cutoff and at least 1 purchase after it;</li>
+<li>take every product in their histories (before and after the cutoff);</li>
+<li>add filler products from the same categories, most-reviewed first, up to the product count;</li>
+<li>keep all reviews of kept products (all reviewers); only modeled users get profiles and Personas;</li>
+<li>drop products first seen after the cutoff, unless they are Task targets. A target product is listed, and its reviews after the cutoff stay hidden.</li>
+</ol>
+</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d8" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d9" id="d9" data-short="Decision 9" data-label="Decision 9: Complete step and validation">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">09</span><h3>Complete step and validation</h3><span class="state-pill" hidden></span></summary>
+          <div class="prose"><ul>
+<li>The complete step reads a raw bundle and writes a complete bundle in the same schema. It fills gaps by rules first, then by an LLM where rules cannot.</li>
+<li>Each filled field gets a provenance mark: <code>inferred</code> (derived from other source data) or <code>synthetic</code> (made up).</li>
+<li>Validation has two levels: <code>raw</code> (the core fields are present and every join resolves) and <code>complete</code> (every field that Shop generation needs is present). Shop generation accepts only a complete bundle.</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d9" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d10" id="d10" data-short="Decision 10" data-label="Decision 10: Rewrite step">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">10</span><h3>Rewrite step</h3><span class="state-pill" hidden></span></summary>
+          <div class="prose"><ul>
+<li>Optional, bundle to bundle, identity only.</li>
+<li>It changes: titles, descriptions, bullets, brand names (to the fake-brand allowlist, ADR 0013), attributes that name a brand, review text, reviewer names, and images (regenerated).</li>
+<li>It keeps: all ids, structure, prices, categories, attribute values, ratings and User events.</li>
+<li>Each changed field gets provenance <code>rewritten</code>.</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d10" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d11" id="d11" data-short="Decision 11" data-label="Decision 11: Mapping to the SandboxShop">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">11</span><h3>Mapping to the SandboxShop</h3><span class="state-pill" hidden></span></summary>
+          <div class="prose"><p>Shape from the approved preview:</p>
+<div class="code"><pre><code>&lt;shop&gt;/
+  shop.json              <span class="cm"># + source bundle: name, cutoff, clock offset,</span>
+                         <span class="cm">#   sources and licenses (next to sourceManuals)</span>
+  data/                  <span class="cm"># served by the backend</span>
+    products.json        <span class="cm"># + brand, category, attributes, related, source, provenance</span>
+    collections.json     <span class="cm"># from category_path</span>
+    reviews.json         <span class="cm"># Reviews visible before the cutoff (+ customer_id?)</span>
+    customers.json       <span class="cm"># Personas (accounts), schema unchanged</span>
+    orders.json          <span class="cm"># Persona orders before the cutoff</span>
+  users/                 <span class="cm"># never loaded by the backend</span>
+    profiles.jsonl
+    persona_map.json     <span class="cm"># user_id -&gt; customer id</span>
+    future_events.jsonl  <span class="cm"># User events after the cutoff (Task targets)</span>
+  manual/                <span class="cm"># incl. site_graph.json</span>
+  storefront/  backend/</code></pre></div>
+<ul>
+<li>Dataset schema changes are additive only. Shops made without the new fields still load.</li>
+<li>Dataset ids are numbers. Shop generation assigns them in a fixed order from the source ids, keeps each source id in <code>source</code>, and writes future User events with both the Dataset ids and the handles.</li>
+<li>Each modeled user becomes one Persona. The <code>customers.json</code> schema does not change. Code makes the email, password and addresses, as Persona synthesis does today. For a bundle shop, the Personas come from the modeled users, not from LLM-written names, and their orders come from purchase events, not from random code.</li>
+<li>Reviews keep today&#39;s Dataset fields. <code>verified_buyer</code> comes from verified_purchase. <code>reviewer_name</code> is synthetic when the source has no names (AR23). An optional <code>customer_id</code> links a Review to its Persona.</li>
+<li>The ShopBackend gains read paths for the new fields: brand, category, price and rating facets in search, a rating histogram and review filters on the product page, and related products. Search stays in memory for about 10K products.</li>
+<li>The SandboxShop&#39;s own store name stays a fake name. The working name mock_amazon is only the bundle and output directory name. Product brands may be real when a given catalog has them (see decision 15).</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d11" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d12" id="d12" data-short="Decision 12" data-label="Decision 12: Site state graph" data-changed="1">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">12</span><h3>Site state graph</h3><a class="badge badge-changed" href="#c2">Changed after grilling</a><span class="state-pill" hidden></span></summary>
+          <div class="prose"><p>Shape from the approved preview, with the shared page types:</p>
+<div class="code"><div class="code-tab"><span class="code-file">manual/site_graph.json</span></div><pre><code>{
+  &quot;states&quot;: [
+    {&quot;id&quot;: &quot;search&quot;, &quot;page_type&quot;: &quot;search&quot;, &quot;url_pattern&quot;: &quot;/s?k={query}&quot;},
+    {&quot;id&quot;: &quot;pdp&quot;, &quot;page_type&quot;: &quot;product&quot;, &quot;url_pattern&quot;: &quot;/dp/{product_id}&quot;},
+    {&quot;id&quot;: &quot;cart&quot;, &quot;page_type&quot;: &quot;cart&quot;, &quot;url_pattern&quot;: &quot;/cart&quot;}
+  ],
+  &quot;transitions&quot;: [
+    {&quot;from&quot;: &quot;search&quot;, &quot;to&quot;: &quot;search&quot;, &quot;action&quot;: &quot;apply_facet&quot;, &quot;params&quot;: [&quot;brand&quot;]},
+    {&quot;from&quot;: &quot;search&quot;, &quot;to&quot;: &quot;pdp&quot;, &quot;action&quot;: &quot;open_result&quot;},
+    {&quot;from&quot;: &quot;pdp&quot;, &quot;to&quot;: &quot;cart&quot;, &quot;action&quot;: &quot;add_to_cart&quot;, &quot;needs&quot;: [&quot;variant&quot;]}
+  ],
+  &quot;weights&quot;: {&quot;source&quot;: &quot;user_events&quot;}
+}</code></pre></div>
+<ul>
+<li>Abstract only: states are page types plus URL patterns, and transitions are action kinds plus params and needs. It has no locators, product ids or real text.</li>
+<li>Storefront exploration writes it as part of the Shop Manual, anonymized and checked like the rest of the manual. So ADR 0012 still holds.</li>
+<li>It is not the Interaction graph. The Interaction graph is concrete and run-time: Task generation builds it on one hosted target, with Concrete nodes and checked Edges. The Site state graph is what the Live storefront showed. The Interaction graph is what one shop does.</li>
+<li>Shop generation adds transition weights from the bundle&#39;s User events when they have page types.</li>
+<li>The Build loop reads it as a list of flows to make. A new Verifier walks each transition on the built shop and fails, naming the transition, when one does not work.</li>
+<li>Task generation reads it as a list of expected flows. The BFS report lists the transitions that it did not reach.</li>
+<li>The explore Capabilities schema is extended for marketplace UX: departments, facets, rating histogram, related products.</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d12" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d13" id="d13" data-short="Decision 13" data-label="Decision 13: Personal Tasks: the user-first Generation method" data-changed="1">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">13</span><h3>Personal Tasks: the user-first Generation method</h3><a class="badge badge-changed" href="#c1">Changed after grilling</a><span class="state-pill" hidden></span></summary>
+          <div class="prose"><ul>
+<li>A new Generation method in Task generation, after BFS + explore. It runs only on a SandboxShop, because it needs <code>users/</code> and a Persona login.</li>
+<li>For each modeled user with a Task target, an LLM writes the intent from the user profile and the target&#39;s facts (leaf category, key attributes, budget, brand history). The intent does not name the product.</li>
+<li>Code computes the acceptable set: same leaf category plus every constraint that the intent states.</li>
+<li>Keep the candidate only if the acceptable set has 5 or fewer products and holds the target.</li>
+<li>Setup steps log in as the modeled user&#39;s Persona through the login form.</li>
+<li>The reference path comes from the shop&#39;s Interaction graph: a checked path from search to checkout, with the target&#39;s ids.</li>
+<li>The candidate then goes through Task generation&#39;s acceptance as any other candidate: grounding, the Validation agent, check tests and two fresh replays. Check tests: every acceptable set member passes; a product outside the set, no new order and an old matching order fail.</li>
+<li>Grading is code-first (ADR 0014). The Backend check is a <code>state_check</code> on the Episode&#39;s new order. <code>state_check</code> gets one additive match mode: the resolved array must hold an element that matches any one of a list of candidate values. The Page check on the confirmation page is recorded next to it.</li>
+<li>Reorder and order-history Tasks use the Persona&#39;s orders: reorder is graded by <code>state_check</code> with an exact product and variant; reads use <code>string_match</code> with <code>reference_answers</code>, like the planned account and order reads.</li>
+<li>Output is the new Task record. <code>metadata.method</code> names user-first and records the user_id, the target event id and the acceptable set. <code>metadata.setup</code> names the Persona.</li>
+</ul>
+<p>Example from the approved preview:</p>
+<div class="code"><pre><code>target (after cutoff): B09ABC  Acme Mesh Router AX3000
+profile: price_sensitivity=mid, household=[partner]
+
+intent: &quot;Our wifi drops upstairs. Get me a mesh router kit that does
+         Wi-Fi 6, under $200, from a brand I already own.&quot;
+
+acceptable set (code): leaf=Mesh Wi-Fi Systems AND wifi_standard=6
+  AND price&lt;=200 AND brand in history brands
+  -&gt; {B09ABC, B08DEF}   (size 2, holds target: keep)
+
+Backend check: state_check on the new order&#39;s line items:
+  some item&#39;s product is one of {B09ABC, B08DEF}</code></pre></div>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d13" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d14" id="d14" data-short="Decision 14" data-label="Decision 14: Module placement and interfaces" data-changed="1">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">14</span><h3>Module placement and interfaces</h3><a class="badge badge-changed" href="#c1">Changed after grilling</a><span class="state-pill" hidden></span></summary>
+          <div class="prose"><ul>
+<li>The bundle zod schemas (catalog, review, profile, User event, bundle manifest) and the shared page type list live in the core package, because ShopArena and Task generation both read them.</li>
+<li>The adapters (Amazon Reviews 2023 first, LLM profiles), sample, complete, rewrite and validate steps live in ShopArena, in a new bundle module beside explore and gen.</li>
+<li>New deep module: a <code>buildBundle</code> entry point that runs adapter -&gt; sample -&gt; complete -&gt; validate and writes a complete bundle. It is the one new test seam.</li>
+<li>CLI: <code>shopgym bundle &lt;adapter&gt; &lt;src&gt; --out outputs/bundles/&lt;name&gt; --cutoff &lt;date&gt; --products &lt;n&gt; --users &lt;n&gt; --seed &lt;s&gt; [--manual &lt;dir&gt;]</code>. <code>--manual</code> is needed when the catalog is empty, so the complete step can synthesize from it.</li>
+<li>CLI: <code>shopgym gen --manual &lt;dir&gt; --bundle &lt;dir&gt;</code>. Without <code>--bundle</code> (and without <code>--data</code>), gen makes an empty bundle on the fly.</li>
+<li>Task generation reads <code>users/</code> and the Site state graph from the shop directory. It never reads the bundle. ShopGuru gets no changes (it is deprecated).</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d14" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d15" id="d15" data-short="Decision 15" data-label="Decision 15: ADR at ship time" data-changed="1">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">15</span><h3>ADR at ship time</h3><a class="badge badge-changed" href="#c6">Changed after grilling</a><span class="state-pill" hidden></span></summary>
+          <div class="prose"><p>A new ADR (the next free number: 0017 is taken by the <code>--data</code> work, and Task generation plans three more):</p>
+<ul>
+<li>It amends ADR 0012 (as extended by ADR 0017): Shop generation reads the anonymized Shop Manual and a Source bundle. The manual stays anonymized. The bundle is data given on purpose, never a Live storefront&#39;s raw evidence.</li>
+<li>It amends ADR 0013: real brands are allowed when a given catalog has them. The fake-brand allowlist still applies to synthesized products, the shop&#39;s own store name and rewritten bundles.</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d15" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="d16" id="d16" data-short="Decision 16" data-label="Decision 16: mock_amazon, the first target">
+        <details open>
+          <summary class="item-head"><span class="chev" aria-hidden="true"></span><span class="num">16</span><h3>mock_amazon, the first target</h3><span class="state-pill" hidden></span></summary>
+          <div class="prose"><ul>
+<li>Catalog and users: Amazon Reviews 2023, categories Electronics, Home_and_Kitchen and Video_Games. user_id is shared across categories, so histories cross departments.</li>
+<li>Size: about 10K products and 200 modeled users, user-first sampled with a seed.</li>
+<li>Cutoff: AR23 t2 (2022-07-16), shifted to the Episode clock start in the shop.</li>
+<li>Website input: Storefront exploration runs live on amazon.com (the team&#39;s choice).</li>
+<li>Features: search facets and ratings, related products.</li>
+<li>Profiles: LLM-inferred from each modeled user&#39;s history (the events-only case).</li>
+</ul>
+</div>
+        </details>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-d16" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+      <p class="empty" hidden>Nothing here matches the filter.</p>
+    </section>
+
+    <section id="testing" data-section="testing">
+      <div class="sec-head"><h2>Testing decisions</h2></div>
+      <div class="prose"><p>A good test here checks external behavior at the highest seam: given input files, which bundle, shop or Tasks come out. It does not check private helpers, prompt text or the order of internal calls. LLM calls use scripted fakes, so tests are deterministic and offline. Fixtures are tiny (a few products, users and events) and hand-written in the AR23 format, not downloaded.</p>
+<p>Four seams. One is new, two exist, and one comes from the Task generation work:</p>
+</div>
+      <article class="item card" data-item="m1" id="m1" data-short="Test seam 1" data-label="Test seam 1: buildBundle (new seam, behind shopgym bundle)">
+        <div class="item-head"><span class="num">Seam 1</span><h3><code>buildBundle</code> (new seam, behind <code>shopgym bundle</code>)</h3><span class="state-pill" hidden></span></div>
+        <div class="prose"><p>Tests run the AR23 adapter, sample, complete and validate end to end on tiny AR23 fixtures with a scripted LLM. They check:</p>
+<ul>
+<li>the raw and complete validation levels (a missing core field fails with the record and field name; a broken join fails);</li>
+<li>user-first sampling (every history product kept, filler from the same category, products first seen after the cutoff dropped unless they are targets);</li>
+<li>the same options and seed give byte-identical bundles;</li>
+<li>verified reviews make inferred purchase events; unverified reviews do not;</li>
+<li>filled fields carry provenance;</li>
+<li>the empty-catalog case uses the synthesis path and marks every field <code>synthetic</code>;</li>
+<li>rewrite keeps every id, price, category, attribute value, rating and User event.
+Prior art: the gen pipeline test (scripted synth LLM plus the fake agent runtime) and the data synth test in ShopArena.</li>
+</ul>
+</div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-m1" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="m2" id="m2" data-short="Test seam 2" data-label="Test seam 2: generateShop with a bundle (existing seam)">
+        <div class="item-head"><span class="num">Seam 2</span><h3><code>generateShop</code> with a bundle (existing seam)</h3><span class="state-pill" hidden></span></div>
+        <div class="prose"><p>Tests check that:</p>
+<ul>
+<li>the written <code>data/</code> loads through the Dataset loader and the sandbox server serves it;</li>
+<li>ratings come from visible Reviews only;</li>
+<li>each modeled user is one Persona with orders before the cutoff, on shifted dates;</li>
+<li><code>users/</code> holds profiles, the persona map and future events;</li>
+<li>the backend never serves anything from <code>users/</code>;</li>
+<li>a shop made with an empty bundle still passes the existing gen tests.
+Prior art: the gen pipeline test.</li>
+</ul>
+</div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-m2" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="m3" id="m3" data-short="Test seam 3" data-label="Test seam 3: Task generation run with the user-first method (seam from task-b1d2b014ab34)" data-changed="1">
+        <div class="item-head"><span class="num">Seam 3</span><h3>Task generation run with the user-first method (seam from task-b1d2b014ab34)</h3><a class="badge badge-changed" href="#c1">Changed after grilling</a><span class="state-pill" hidden></span></div>
+        <div class="prose"><p>On a fixture SandboxShop with <code>users/</code>, with scripted LLMs, tests check that:</p>
+<ul>
+<li>the intent does not name the target;</li>
+<li>the acceptable set holds the target and has 5 or fewer products, or the candidate is dropped;</li>
+<li>check tests pass every set member and fail a product outside the set, no order and an old matching order;</li>
+<li>reorder Tasks have exact answers;</li>
+<li>output is deterministic for one shop and seed.
+Prior art: the Task generation fixture shop and check-test design in its spec; the ShopGuru seed test for deterministic generation per seed.</li>
+</ul>
+</div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-m3" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+<article class="item card" data-item="m4" id="m4" data-short="Test seam 4" data-label="Test seam 4: Verifier seam (existing)">
+        <div class="item-head"><span class="num">Seam 4</span><h3>Verifier seam (existing)</h3><span class="state-pill" hidden></span></div>
+        <div class="prose"><p>Tests check that the new Site state graph Verifier passes when every transition works on a hosted fixture shop, and fails (naming the transition) when one is broken. Prior art: the build Verifier tests.</p>
+</div>
+        <div class="rv">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-m4" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </article>
+      <div class="prose"><p>The core schemas get small table tests only where a rule is not visible through the seams above (for example the closed event_type and page_type lists). The new <code>state_check</code> match mode gets a Grader test beside the existing <code>state_check</code> cases.</p>
+</div>
+      <p class="empty" hidden>Nothing here matches the filter.</p>
+    </section>
+
+    <section id="scope" data-section="scope">
+      <div class="sec-head"><h2>Out of scope</h2></div>
+      <div class="rows">
+      <div class="item row" data-item="o1" id="o1" data-short="Out of scope 1" data-label="Out of scope 1: Recommender-system data (LLM-CG style ranking or recall sets). The output is...">
+        <p>Recommender-system data (LLM-CG style ranking or recall sets). The output is for shopping agents only, for now.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o1" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o2" id="o2" data-short="Out of scope 2" data-label="Out of scope 2: Using User events as UI-level demonstrations (OPeRA-style replay).">
+        <p>Using User events as UI-level demonstrations (OPeRA-style replay).</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o2" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o3" id="o3" data-short="Out of scope 3" data-label="Out of scope 3: Recorded pages as a website input. Website input stays a live URL.">
+        <p>Recorded pages as a website input. Website input stays a live URL.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o3" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o4" id="o4" data-short="Out of scope 4" data-label="Out of scope 4: A concrete crawl graph in the Shop Manual. The Site state graph is abstract o...">
+        <p>A concrete crawl graph in the Shop Manual. The Site state graph is abstract only. The concrete graph is Task generation&#39;s Interaction graph.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o4" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o5" id="o5" data-short="Out of scope 5" data-label="Out of scope 5: LLM shoppers that browse a hosted shop to make history, and simulated users i...">
+        <p>LLM shoppers that browse a hosted shop to make history, and simulated users in dialogue (v2&#39;s simulated-user phase owns those).</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o5" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o6" id="o6" data-short="Out of scope 6" data-label="Out of scope 6: Saved carts, wishlists and returns as shop state. The templates do not have t...">
+        <p>Saved carts, wishlists and returns as shop state. The templates do not have them.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o6" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o7" id="o7" data-short="Out of scope 7" data-label="Out of scope 7: Public profile datasets as a source (OPeRA survey, PersonaHub). Later adapter.">
+        <p>Public profile datasets as a source (OPeRA survey, PersonaHub). Later adapter.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o7" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o8" id="o8" data-short="Out of scope 8" data-label="Out of scope 8: Adapters other than AR23 and LLM profiles (H&amp;M, WebShop, MerRec, KuaiSearch,...">
+        <p>Adapters other than AR23 and LLM profiles (H&amp;M, WebShop, MerRec, KuaiSearch, ESCI, OPeRA). The schema is designed for them. The adapters are later work.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o8" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o9" id="o9" data-short="Out of scope 9" data-label="Out of scope 9: Folding gen --data into the bundle path.">
+        <p>Folding <code>gen --data</code> into the bundle path.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o9" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o10" id="o10" data-short="Out of scope 10" data-label="Out of scope 10: Multi-seller offers, delivery promises and Q&amp;A on mock_amazon.">
+        <p>Multi-seller offers, delivery promises and Q&amp;A on mock_amazon.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o10" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o11" id="o11" data-short="Out of scope 11" data-label="Out of scope 11: An evaluation runner and a training export format. Nothing replaces ShopGuru'...">
+        <p>An evaluation runner and a training export format. Nothing replaces ShopGuru&#39;s solve and eval yet. The output is Accepted tasks with their reference and Validation agent traces.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o11" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o12" id="o12" data-short="Out of scope 12" data-label="Out of scope 12: More than one locale or currency per bundle.">
+        <p>More than one locale or currency per bundle.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o12" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o13" id="o13" data-short="Out of scope 13" data-label="Out of scope 13: Search beyond today's in-memory backend (about 10K products is the limit we d...">
+        <p>Search beyond today&#39;s in-memory backend (about 10K products is the limit we design for).</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o13" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o14" id="o14" data-short="Out of scope 14" data-label="Out of scope 14: Sharing or hosting shops built on research-only data outside the team.">
+        <p>Sharing or hosting shops built on research-only data outside the team.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o14" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o15" id="o15" data-short="Out of scope 15" data-label="Out of scope 15: Hashed-id clickstreams (RetailRocket, Coveo, Taobao, Diginetica) as direct so...">
+        <p>Hashed-id clickstreams (RetailRocket, Coveo, Taobao, Diginetica) as direct sources. They are only statistical priors, if used at all.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o15" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="o16" id="o16" data-short="Out of scope 16" data-label="Out of scope 16: Any change to ShopGuru.">
+        <p>Any change to ShopGuru.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-o16" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+      </div>
+      <p class="empty" hidden>Nothing here matches the filter.</p>
+    </section>
+
+    <section id="risks" data-section="risks">
+      <div class="sec-head"><h2>Risks and open points</h2></div>
+      <h3>Risks</h3>
+      <div class="rows">
+      <div class="item row" data-item="r1" id="r1" data-short="Risk 1" data-label="Risk 1: amazon.com exploration. Amazon's Conditions of Use forbid robots and data ext...">
+        <p><strong>amazon.com exploration.</strong> Amazon&#39;s Conditions of Use forbid robots and data extraction tools. Bot blocking can stop exploration. Checkout and account pages stay unseen (the Standard sub-manual covers them, as for every shop). The team chose live exploration with these risks known.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-r1" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="r2" id="r2" data-short="Risk 2" data-label="Risk 2: AR23 license. The data has no license and is &quot;primarily for research purposes...">
+        <p><strong>AR23 license.</strong> The data has no license and is &quot;primarily for research purposes&quot;. Treat every AR23 bundle and shop as research-only and internal. The bundle and the shop record this.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-r2" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="r3" id="r3" data-short="Risk 3" data-label="Risk 3: Real brands and names. AR23 brings real brand names and real review text into...">
+        <p><strong>Real brands and names.</strong> AR23 brings real brand names and real review text into the shop. The rewrite step is the path to a shop that is safer to share.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-r3" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="r4" id="r4" data-short="Risk 4" data-label="Risk 4: Inferred purchases. AR23 has no purchase events. A verified review is only a...">
+        <p><strong>Inferred purchases.</strong> AR23 has no purchase events. A verified review is only a proxy for a purchase, at the review time. Personal Task targets have this noise.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-r4" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="r5" id="r5" data-short="Risk 5" data-label="Risk 5: No variant options in AR23. Metadata is per parent product, with no option ta...">
+        <p><strong>No variant options in AR23.</strong> Metadata is per parent product, with no option table and no per-variant price. The complete step infers options and marks them.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-r5" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="r6" id="r6" data-short="Risk 6" data-label="Risk 6: Scale. About 10K products and 50K images (a few GB) per shop. Search is a lin...">
+        <p><strong>Scale.</strong> About 10K products and 50K images (a few GB) per shop. Search is a linear scan in memory.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-r6" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="r7" id="r7" data-short="Risk 7" data-label="Risk 7: Dependencies. The user-first method needs the Task generation pipeline and th...">
+        <p><strong>Dependencies.</strong> The user-first method needs the Task generation pipeline and the new Task record (task-b1d2b014ab34). The Reviews, Personas and <code>--data</code> work (pr/44, pr/45, pr/53, pr/54) must land first, because this spec extends their schemas.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-r7" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+      </div>
+      <h3>Points to confirm during implementation</h3>
+      <div class="rows">
+      <div class="item row" data-item="p1" id="p1" data-short="Open point 1" data-label="Open point 1: The name and exact shape of the new state_check match mode, together with the...">
+        <p>The name and exact shape of the new <code>state_check</code> match mode, together with the Task generation work that owns the new Task record.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-p1" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="p2" id="p2" data-short="Open point 2" data-label="Open point 2: Whether the page type list needs marketplace types (for example a department...">
+        <p>Whether the page type list needs marketplace types (for example a department page), and if so, add them to the one shared list.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-p2" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+<div class="item row" data-item="p3" id="p3" data-short="Open point 3" data-label="Open point 3: How Storefront exploration writes the Site state graph (one new schema-checke...">
+        <p>How Storefront exploration writes the Site state graph (one new schema-checked output next to the Capabilities) and how the anonymization check covers it.</p><div class="rv rv-compact">
+  <div class="rv-btns" role="group" aria-label="Review">
+    <button type="button" data-s="ok" aria-pressed="false">Agree</button><button type="button" data-s="ask" aria-pressed="false">Question</button><button type="button" data-s="fix" aria-pressed="false">Change</button>
+  </div>
+  <textarea id="note-p3" class="rv-note" rows="2" hidden></textarea>
+</div>
+      </div>
+      </div>
+      <p class="empty" hidden>Nothing here matches the filter.</p>
+    </section>
+
+    <section id="research" data-section="research">
+      <div class="sec-head"><h2>Research</h2></div>
+      <div class="prose"><ul><li>Dataset research and the full decisions log are in the researcher&#39;s local outputs, not committed: <code>outputs/research/next_gen_input_datasets.md</code> and <code>outputs/research/next_gen_decisions.md</code>.</li><li>Public recsys dataset survey (LLM-CG, 2026-10-22), shared in Slack.</li><li>Amazon Reviews 2023: <a href="https://amazon-reviews-2023.github.io/">https://amazon-reviews-2023.github.io/</a></li><li>Closest prior work: WebArena OneStopShop (Magento on a WebShop Amazon dump), PersonalWAB (AR23 users with LLM-inferred profiles), AutoWebWorld (a state machine per site), VeriEnv (cloned sites with database judges).</li></ul></div>
+    </section>
+
+    <section id="finish" class="finish">
+      <div class="sec-head"><h2>Your review</h2><p>The notes below update as you mark items. Copy them and paste them into Claude Code.</p></div>
+      <label for="general-notes">General notes</label>
+      <textarea id="general-notes" class="rv-note" placeholder="Anything that is not tied to one item"></textarea>
+      <label for="notes-out">Review notes</label>
+      <textarea id="notes-out" readonly></textarea>
+      <div class="finish-actions">
+        <button type="button" class="btn primary" id="copy-bottom">Copy review notes</button>
+        <button type="button" class="btn" id="clear">Clear all marks</button>
+        <span class="toast" id="toast-bottom" aria-live="polite"></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  var KEY = 'source-bundles-review-v1';
+  var state = { items: {}, general: '' };
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        state.items = parsed.items || {};
+        state.general = parsed.general || '';
+      }
+    }
+  } catch (e) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  var items = Array.prototype.slice.call(document.querySelectorAll('[data-item]'));
+  var LABEL = { ok: 'Agreed', ask: 'Question', fix: 'Change requested' };
+  var HINT = { ok: 'Optional note', ask: 'What is unclear?', fix: 'What should change?' };
+  var searchText = new Map();
+  items.forEach(function (el) { searchText.set(el, el.textContent.toLowerCase()); });
+
+  function get(id) { return state.items[id] || {}; }
+  function apply(el) {
+    var st = get(el.dataset.item);
+    if (st.s) el.dataset.state = st.s; else delete el.dataset.state;
+    el.querySelectorAll('.rv-btns button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.s === st.s)); });
+    var ta = el.querySelector('.rv-note');
+    if (ta) {
+      ta.hidden = !st.s && !st.n;
+      if (ta.value !== (st.n || '')) ta.value = st.n || '';
+      ta.placeholder = HINT[st.s] || 'Note';
+      ta.setAttribute('aria-label', 'Note for ' + el.dataset.short);
+    }
+    var pill = el.querySelector('.state-pill');
+    if (pill) { pill.textContent = st.s ? LABEL[st.s] : ''; pill.hidden = !st.s; }
+  }
+
+  function counts() {
+    var c = { ok: 0, ask: 0, fix: 0, todo: 0 };
+    items.forEach(function (el) { var s = get(el.dataset.item).s; if (s) c[s]++; else c.todo++; });
+    return c;
+  }
+  function refreshCounts() {
+    var c = counts(); var total = items.length; var done = total - c.todo;
+    document.getElementById('meter-text').textContent = done + ' of ' + total + ' reviewed';
+    document.getElementById('ct-ok').textContent = c.ok + ' agree';
+    document.getElementById('ct-ask').textContent = c.ask + ' question';
+    document.getElementById('ct-fix').textContent = c.fix + ' change';
+    var bars = document.querySelectorAll('.meter-track i');
+    bars[0].style.width = (100 * c.ok / total) + '%';
+    bars[1].style.width = (100 * c.ask / total) + '%';
+    bars[2].style.width = (100 * c.fix / total) + '%';
+    document.querySelectorAll('[data-count-for]').forEach(function (n) {
+      var sec = document.getElementById(n.dataset.countFor);
+      var its = sec ? sec.querySelectorAll('[data-item]') : [];
+      if (!its.length) { n.textContent = ''; return; }
+      var d = 0; its.forEach(function (el) { if (get(el.dataset.item).s) d++; });
+      n.textContent = d + '/' + its.length;
+      n.classList.toggle('done', d === its.length);
+    });
+    document.getElementById('notes-out').value = buildNotes();
+  }
+
+  function oneLine(t) { return t.trim().split(/\n+/).join('\n  '); }
+  function buildNotes() {
+    var by = { fix: [], ask: [], ok: [] };
+    items.forEach(function (el) {
+      var st = get(el.dataset.item);
+      if (st.s) by[st.s].push({ label: el.dataset.label, short: el.dataset.short, n: (st.n || '').trim() });
+    });
+    var c = counts();
+    var out = ['Review of the Next-gen ShopGym Source bundles spec (task-f1227c4a9c9a)',
+      'Agree: ' + c.ok + ', Question: ' + c.ask + ', Change: ' + c.fix + ', Not reviewed: ' + c.todo];
+    if (by.fix.length) {
+      out.push('', '## Change requested');
+      by.fix.forEach(function (x) { out.push('- ' + x.label + (x.n ? '\n  Note: ' + oneLine(x.n) : '\n  Note: (none)')); });
+    }
+    if (by.ask.length) {
+      out.push('', '## Questions');
+      by.ask.forEach(function (x) { out.push('- ' + x.label + (x.n ? '\n  Note: ' + oneLine(x.n) : '\n  Note: (none)')); });
+    }
+    var okNotes = by.ok.filter(function (x) { return x.n; });
+    if (okNotes.length) {
+      out.push('', '## Agreed, with notes');
+      okNotes.forEach(function (x) { out.push('- ' + x.label + '\n  Note: ' + oneLine(x.n)); });
+    }
+    if (by.ok.length) {
+      out.push('', '## Agreed');
+      out.push(by.ok.map(function (x) { return x.short; }).join(', '));
+    }
+    if (state.general.trim()) out.push('', '## General notes', state.general.trim());
+    return out.join('\n');
+  }
+
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest('.rv-btns button');
+    if (!b) return;
+    var el = b.closest('[data-item]');
+    var id = el.dataset.item;
+    var st = Object.assign({}, get(id));
+    st.s = st.s === b.dataset.s ? undefined : b.dataset.s;
+    if (!st.s && !st.n) delete state.items[id]; else state.items[id] = st;
+    save(); apply(el); refreshCounts();
+    var ta = el.querySelector('.rv-note');
+    if (ta && st.s && st.s !== 'ok' && !st.n) ta.focus();
+  });
+  document.addEventListener('input', function (ev) {
+    var ta = ev.target;
+    if (ta.id === 'general-notes') { state.general = ta.value; save(); refreshCounts(); return; }
+    if (!ta.classList || !ta.classList.contains('rv-note')) return;
+    var el = ta.closest('[data-item]'); if (!el) return;
+    var id = el.dataset.item; var st = Object.assign({}, get(id));
+    st.n = ta.value;
+    if (!st.s && !st.n) delete state.items[id]; else state.items[id] = st;
+    save(); refreshCounts();
+  });
+
+  // filters
+  var filterSel = document.getElementById('filter');
+  var search = document.getElementById('search');
+  var group = '';
+  function refilter() {
+    var f = filterSel.value; var q = search.value.trim().toLowerCase();
+    items.forEach(function (el) {
+      var s = get(el.dataset.item).s; var show = true;
+      if (f === 'todo') show = !s;
+      else if (f === 'flagged') show = s === 'ask' || s === 'fix';
+      else if (f === 'changed') show = el.dataset.changed === '1';
+      if (show && q) show = searchText.get(el).indexOf(q) !== -1;
+      if (show && group && el.dataset.group && el.dataset.group !== group) show = false;
+      el.hidden = !show;
+    });
+    document.querySelectorAll('[data-group-box]').forEach(function (box) {
+      box.hidden = !box.querySelector('[data-item]:not([hidden])');
+    });
+    document.querySelectorAll('[data-section]').forEach(function (sec) {
+      var its = sec.querySelectorAll('[data-item]'); var empty = sec.querySelector('.empty');
+      if (!its.length || !empty) return;
+      empty.hidden = !!sec.querySelector('[data-item]:not([hidden])');
+    });
+  }
+  filterSel.addEventListener('change', refilter);
+  search.addEventListener('input', refilter);
+  document.querySelectorAll('.group-filter button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      group = b.dataset.group;
+      document.querySelectorAll('.group-filter button').forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+      refilter();
+    });
+  });
+
+  // collapse
+  document.getElementById('collapse-all').addEventListener('click', function () { document.querySelectorAll('#decisions details').forEach(function (d) { d.open = false; }); });
+  document.getElementById('expand-all').addEventListener('click', function () { document.querySelectorAll('#decisions details').forEach(function (d) { d.open = true; }); });
+  document.querySelectorAll('.badge-changed').forEach(function (a) { a.addEventListener('click', function (e) { e.stopPropagation(); }); });
+
+  // copy
+  function copy(toastId) {
+    var text = buildNotes();
+    var out = document.getElementById('notes-out'); out.value = text;
+    var toast = document.getElementById(toastId);
+    function fallback() {
+      document.getElementById('finish').scrollIntoView();
+      out.focus(); out.select();
+      toast.textContent = 'Copy is blocked here. The notes are selected: press Cmd+C or Ctrl+C.';
+    }
+    try {
+      if (!navigator.clipboard) { fallback(); return; }
+      navigator.clipboard.writeText(text).then(function () {
+        var c = counts();
+        toast.textContent = 'Copied ' + (items.length - c.todo) + ' marks. Paste them into Claude Code.';
+        setTimeout(function () { toast.textContent = ''; }, 5000);
+      }, fallback);
+    } catch (e) { fallback(); }
+  }
+  document.getElementById('copy-top').addEventListener('click', function () { copy('toast'); });
+  document.getElementById('copy-bottom').addEventListener('click', function () { copy('toast-bottom'); });
+
+  // clear with an in-page confirm step
+  var clearBtn = document.getElementById('clear'); var armed = null;
+  clearBtn.addEventListener('click', function () {
+    var n = Object.keys(state.items).length;
+    if (!armed) {
+      clearBtn.textContent = 'Press again to clear ' + n + ' marks';
+      armed = setTimeout(function () { clearBtn.textContent = 'Clear all marks'; armed = null; }, 4000);
+      return;
+    }
+    clearTimeout(armed); armed = null; clearBtn.textContent = 'Clear all marks';
+    state.items = {}; save(); items.forEach(apply); refreshCounts(); refilter();
+    document.getElementById('toast-bottom').textContent = 'Cleared all marks.';
+  });
+
+  var gen = document.getElementById('general-notes'); gen.value = state.general;
+  items.forEach(apply); refreshCounts();
+})();
+</script>
