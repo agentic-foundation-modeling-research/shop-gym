@@ -146,9 +146,9 @@ describe('mergeStats', () => {
     expect(merged.homepage_section_count).toBe(4);
   });
 
-  it('reads the source and sample size, and keeps observed-sample zeros out of the totals', () => {
-    // A stats.json from before `source` and `sample_size`: the Shopify catalog endpoints.
-    const catalog = statsSchema.parse({
+  // A stats.json from before `source` and `sample_size`: the Shopify catalog endpoints.
+  const catalogSeed = () =>
+    statsSchema.parse({
       products_total: 40,
       collections_total: 4,
       products_per_collection: { avg: 10, median: 10, max: 12 },
@@ -160,23 +160,31 @@ describe('mergeStats', () => {
       info_pages_count: 2,
       feature_count: 4,
     });
-    // A site with no catalog endpoint shows no totals, so they are 0.
-    const observed = statsSchema.parse({
-      source: 'observed_sample',
-      sample_size: 3,
-      products_total: 0,
-      collections_total: 0,
-      products_per_collection: { avg: 0, median: 0, max: 0 },
-      price: { min: 44.5, max: 79, median: 59, currency: 'USD' },
-      products_with_variants_pct: 0.5,
-      variant_axes_observed: ['edition', 'color'],
-      navigation_depth_max: 3,
-      homepage_section_count: 6,
-      info_pages_count: 0,
-      feature_count: 12,
-    });
+  // A site with no catalog endpoint shows no totals, so they are 0.
+  const observedSeed = {
+    source: 'observed_sample',
+    sample_size: 3,
+    products_total: 0,
+    collections_total: 0,
+    products_per_collection: { avg: 0, median: 0, max: 0 },
+    price: { min: 44.5, max: 79, median: 59, currency: 'USD' },
+    products_with_variants_pct: 0.5,
+    variant_axes_observed: ['edition', 'color'],
+    navigation_depth_max: 3,
+    homepage_section_count: 6,
+    info_pages_count: 0,
+    feature_count: 12,
+  };
 
-    const merged = mergeStats([catalog, observed], seed({}));
+  it('reads a seed without source and sample size as a catalog seed of its products', () => {
+    expect(mergeStats([catalogSeed()], seed({}))).toMatchObject({
+      source: 'catalog_endpoint',
+      sample_size: 40,
+    });
+  });
+
+  it('keeps the zero totals of an observed sample out of the merged totals', () => {
+    const merged = mergeStats([catalogSeed(), statsSchema.parse(observedSeed)], seed({}));
     expect(merged).toMatchObject({
       source: 'observed_sample',
       sample_size: 43,
@@ -186,11 +194,10 @@ describe('mergeStats', () => {
       price: { min: 10, max: 120, median: 47, currency: 'USD' },
       variant_axes_observed: ['size', 'edition', 'color'],
     });
-    expect(mergeStats([catalog], seed({}))).toMatchObject({
-      source: 'catalog_endpoint',
-      sample_size: 40,
-    });
-    expect(() => statsSchema.parse({ ...observed, source: 'guess' })).toThrow();
+  });
+
+  it('rejects a seed with an unknown source', () => {
+    expect(() => statsSchema.parse({ ...observedSeed, source: 'guess' })).toThrow();
   });
 });
 

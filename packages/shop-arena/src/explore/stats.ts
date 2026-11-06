@@ -77,17 +77,20 @@ function toPrice(value: unknown): number | null {
 }
 
 function variantAxes(products: readonly JsonObject[]): string[] {
-  const axes: string[] = [];
+  const names: string[] = [];
   for (const product of products) {
     if (!Array.isArray(product.options)) continue;
     for (const option of product.options) {
       const raw = typeof option === 'string' ? option : isObject(option) ? option.name : null;
-      if (typeof raw !== 'string') continue;
-      const name = raw.trim().toLowerCase();
-      if (name !== '' && !axes.includes(name)) axes.push(name);
+      if (typeof raw === 'string') names.push(raw);
     }
   }
-  return axes;
+  return normalizeAxes(names);
+}
+
+/** The axis names trimmed and lowercased, without empty names or repeats, in first-seen order. */
+function normalizeAxes(names: readonly string[]): string[] {
+  return [...new Set(names.map((name) => name.trim().toLowerCase()).filter((name) => name !== ''))];
 }
 
 /** Counts truthy booleans plus list lengths, recursively. */
@@ -190,9 +193,6 @@ export function computeObservedStats(partsDir: string, capabilities: Capabilitie
     .filter((observation) => observation.currency === currency)
     .map((observation) => observation.price);
   const withVariants = observations.filter((observation) => observation.has_variants).length;
-  const axes = observations.flatMap((observation) =>
-    observation.variant_axes.map((axis) => axis.trim().toLowerCase()),
-  );
   return {
     source: 'observed_sample',
     sample_size: observations.length,
@@ -201,7 +201,7 @@ export function computeObservedStats(partsDir: string, capabilities: Capabilitie
     products_per_collection: { avg: 0, median: 0, max: 0 },
     price: priceStats(prices, currency ?? capabilities.shop.currency ?? ''),
     products_with_variants_pct: observations.length === 0 ? 0 : withVariants / observations.length,
-    variant_axes_observed: [...new Set(axes.filter((axis) => axis !== ''))],
+    variant_axes_observed: normalizeAxes(observations.flatMap((o) => o.variant_axes)),
     ...capabilityCounts(capabilities),
   };
 }

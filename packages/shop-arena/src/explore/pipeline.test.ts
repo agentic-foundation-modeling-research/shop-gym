@@ -294,12 +294,15 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
   });
 
   it('takes the Shopify stats from the catalog endpoints', async () => {
-    const { result, runtime } = await explore({ scripts: SCRIPTS });
+    const { result } = await explore({ scripts: SCRIPTS });
 
     const stats = readJson(result.statsPath);
     expect(stats.source).toBe('catalog_endpoint');
     expect(stats.sample_size).toBe(2);
-    // The Shopify executor prompt does not ask for product observations.
+  });
+
+  it('does not ask the Shopify executors for product observations', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
     expect(promptText(runtime.requests[1]?.prompt ?? '')).not.toMatch(/product observation/i);
   });
 
@@ -578,6 +581,33 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
       homepage_section_count: 2,
     });
     expect(stats.products_with_variants_pct).toBeCloseTo(0.667, 3);
+  });
+
+  it('takes the prices only from the fragments in the most frequent currency', async () => {
+    const fragment = (n: number, price: number, currency: string) => ({
+      [`artifact/parts/product_variants.product-0${n}.json`]: JSON.stringify({
+        price,
+        currency,
+        has_variants: false,
+        variant_axes: [],
+      }),
+    });
+    const { result } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 2),
+        productExecutor(site.url, {
+          ...fragment(1, 40, 'USD'),
+          ...fragment(2, 15, 'EUR'),
+          ...fragment(3, 60, 'USD'),
+        }),
+      ],
+    });
+
+    expect(readJson(result.statsPath)).toMatchObject({
+      sample_size: 3,
+      price: { min: 40, max: 60, median: 50, currency: 'USD' },
+    });
   });
 
   it('fails the Iteration of a fragment that does not match the schema', async () => {
