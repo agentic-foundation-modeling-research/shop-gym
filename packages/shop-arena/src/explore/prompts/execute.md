@@ -43,9 +43,11 @@ edit any other task's checkbox.
    Use `screenshot` when you need to interpret visual layout; the
    runtime keeps those images under the iteration directory for you.
    Never click, type or submit on an interstitial or bot-check page:
-   a page that asks you to prove that you are a person, or to press a
-   button, before it shows the shop. Mark your task `[!]` with the
-   reason "bot check" and end this iteration.
+   a page that the site sends in place of the page that you asked for,
+   to check that you are a person or to make you press a button before
+   it shows the shop. A cookie banner, age gate or popup over a shop
+   page is not a bot check. Mark your task `[!]` with the reason
+   "bot check" and end this iteration.
 
 3. **Write the part files.** Anonymize at write time per AGENTS.md §2.
    - `artifact/parts/<task_id>.md` - markdown describing the *role* and

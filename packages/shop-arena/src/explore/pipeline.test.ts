@@ -621,6 +621,25 @@ async function toolResults(runDir: string, iterId: string): Promise<string[]> {
   return steps.flatMap((step) => (step.kind === 'tool_result' ? [step.output] : []));
 }
 
+/**
+ * The tool results of a run on `url` with one executor Iteration: it makes
+ * `toolCalls` and marks its Plan task blocked with the note "bot check".
+ */
+async function blockedIterationResults(
+  url: string,
+  toolCalls: NonNullable<FakeScript['toolCalls']>,
+): Promise<string[]> {
+  const { result } = await explore({
+    url,
+    maxIters: 1,
+    scripts: [
+      { writeFiles: { 'plan.md': botCheckPlan([]) } },
+      { writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) }, toolCalls },
+    ],
+  });
+  return toolResults(result.runDir, 'exec-0001');
+}
+
 describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
   let site: FixtureSite;
 
@@ -836,23 +855,11 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
   });
 
   it('finds a bot check after a browser action other than navigate', async () => {
-    const { result } = await explore({
-      url: site.url,
-      maxIters: 1,
-      scripts: [
-        { writeFiles: { 'plan.md': botCheckPlan([]) } },
-        {
-          writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) },
-          toolCalls: [
-            { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } },
-            { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001` } },
-            { tool: 'back', arguments: {} },
-          ],
-        },
-      ],
-    });
-
-    const [, product, back] = await toolResults(result.runDir, 'exec-0001');
+    const [, product, back] = await blockedIterationResults(site.url, [
+      { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } },
+      { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001` } },
+      { tool: 'back', arguments: {} },
+    ]);
     expect(product).not.toContain('bot check');
     expect(back).toContain('Went back');
     expect(back).toContain('this page is a bot check');
@@ -878,30 +885,18 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
   );
 
   it('refuses page actions on a bot-check page and allows them again after back', async () => {
-    const { result } = await explore({
-      url: site.url,
-      maxIters: 1,
-      scripts: [
-        { writeFiles: { 'plan.md': botCheckPlan([]) } },
-        {
-          writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) },
-          toolCalls: [
-            { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001` } },
-            { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } },
-            { tool: 'press', arguments: { key: 'Enter' } },
-            { tool: 'click', arguments: { ref: 'e1' } },
-            { tool: 'type', arguments: { ref: 'e1', text: 'abc', submit: true } },
-            { tool: 'select', arguments: { ref: 'e1', value: 'abc' } },
-            { tool: 'back', arguments: {} },
-            { tool: 'press', arguments: { key: 'Tab' } },
-          ],
-        },
+    const [, , press, click, type, select, back, pressAfterBack] = await blockedIterationResults(
+      site.url,
+      [
+        { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001` } },
+        { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } },
+        { tool: 'press', arguments: { key: 'Enter' } },
+        { tool: 'click', arguments: { ref: 'e1' } },
+        { tool: 'type', arguments: { ref: 'e1', text: 'abc', submit: true } },
+        { tool: 'select', arguments: { ref: 'e1', value: 'abc' } },
+        { tool: 'back', arguments: {} },
+        { tool: 'press', arguments: { key: 'Tab' } },
       ],
-    });
-
-    const [, , press, click, type, select, back, pressAfterBack] = await toolResults(
-      result.runDir,
-      'exec-0001',
     );
     for (const [tool, output] of [
       ['press', press],
@@ -923,19 +918,9 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     ['an interstitial page', '/interstitial'],
     ['a rate-limit page served with HTTP 503', '/rate-limit'],
   ])('finds a bot check on %s', async (_, path) => {
-    const { result } = await explore({
-      url: site.url,
-      maxIters: 1,
-      scripts: [
-        { writeFiles: { 'plan.md': botCheckPlan([]) } },
-        {
-          writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) },
-          toolCalls: [{ tool: 'navigate', arguments: { url: `${site.url}${path}` } }],
-        },
-      ],
-    });
-
-    const [navigate] = await toolResults(result.runDir, 'exec-0001');
+    const [navigate] = await blockedIterationResults(site.url, [
+      { tool: 'navigate', arguments: { url: `${site.url}${path}` } },
+    ]);
     expect(navigate).toContain('this page is a bot check');
   });
 
@@ -950,22 +935,10 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
       },
     }));
     try {
-      const { result } = await explore({
-        url: errors.url,
-        maxIters: 1,
-        scripts: [
-          { writeFiles: { 'plan.md': botCheckPlan([]) } },
-          {
-            writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) },
-            toolCalls: [
-              { tool: 'navigate', arguments: { url: `${errors.url}/server-error` } },
-              { tool: 'navigate', arguments: { url: `${errors.url}/unavailable` } },
-            ],
-          },
-        ],
-      });
-
-      const [serverError, unavailable] = await toolResults(result.runDir, 'exec-0001');
+      const [serverError, unavailable] = await blockedIterationResults(errors.url, [
+        { tool: 'navigate', arguments: { url: `${errors.url}/server-error` } },
+        { tool: 'navigate', arguments: { url: `${errors.url}/unavailable` } },
+      ]);
       expect(serverError).toContain('Title: Sorry! Something went wrong!');
       expect(serverError).not.toContain('bot check');
       expect(unavailable).toContain('Title: Back soon');

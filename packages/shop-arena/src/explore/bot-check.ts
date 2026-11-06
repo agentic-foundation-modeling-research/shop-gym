@@ -35,9 +35,8 @@ const INTERSTITIAL_MARKERS: readonly string[] = ['Click the button below to cont
 /**
  * HTML substrings of a rate-limit page: the title of the page that a
  * large marketplace sends with HTTP 503 when it refuses a browser that
- * opens its search and product URLs directly. A normal error page can
- * have the same words, so they count only on a page served with
- * `RATE_LIMIT_STATUS`.
+ * opens its search URLs directly. A normal error page can have the same
+ * words, so they count only on a page served with `RATE_LIMIT_STATUS`.
  */
 const RATE_LIMIT_MARKERS: readonly string[] = ['Sorry! Something went wrong!'];
 
