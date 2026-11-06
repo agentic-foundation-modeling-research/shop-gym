@@ -229,6 +229,7 @@ function explore(options: {
   llm?: StubLlm;
   from?: 'prefetch' | 'explore' | 'merge' | 'synthesize';
   forceResume?: boolean;
+  maxIters?: number;
 }) {
   const runtime = new FakeRuntime(options.scripts ?? []);
   const llm = options.llm ?? new StubLlm();
@@ -236,7 +237,7 @@ function explore(options: {
     url: baseUrl,
     outDir,
     model: 'anthropic/test-model',
-    maxIters: 5,
+    maxIters: options.maxIters ?? 5,
     timeoutMs: 60_000,
     rateLimitMs: 0,
     credentials: CREDENTIALS,
@@ -357,6 +358,33 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(prompt).toContain('"version": "0.2"');
     expect(prompt).toContain('"has_department_menu": null');
     expect(prompt).toContain('"facets": []');
+  });
+
+  it('reports the area of an unfinished Plan task as a coverage gap', async () => {
+    // The budget ends after the homepage iteration, so cart_drawer stays pending.
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          reply: 'homepage done',
+        },
+      ],
+      maxIters: 1,
+    });
+
+    expect(result.finalStatus).toBe('budget_exhausted');
+    const manifest = readJson(result.manifestPath);
+    expect(manifest).toMatchObject({ plan_tasks_total: 2, plan_tasks_done: 1 });
+    expect(manifest.coverage_gaps).toEqual([
+      'cart',
+      'collection',
+      'product_detail',
+      'search_results',
+    ]);
   });
 
   it('skips every step on a second call with the same outDir', async () => {
