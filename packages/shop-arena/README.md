@@ -125,6 +125,25 @@ failed or skipped area is a gap. When the plan has a Plan task with the
 area's own name (for example `header_navigation`), only that task can
 cover the area.
 
+Storefront exploration never tries to pass a bot check. Prefetch stops
+with `ShopUnreachableError` reason `bot_check` when the homepage has a
+captcha marker (`src/explore/bot-check.ts`); a Cloudflare challenge
+homepage keeps the reason `cloudflare_challenge`. In the explore step,
+after each Browser tool call that loaded a page (not only `navigate`), the
+page HTML is checked for the Cloudflare and captcha markers. On a bot
+check, the tool result tells the executor not to try to pass the page and
+to mark its Plan task blocked (`[!]`) with the note "bot check". After two
+Iterations in a row with a bot check, the explore step ends the harness run
+with a caller stop and the reason `bot_check`. `navigate` refuses after
+`NAVIGATION_CAP` (200) calls in one run of the explore step, and the run
+then stops after that Iteration with the reason `navigation_cap`. A stopped
+run has the final status `stopped`. Merge and synthesize still run on the
+finished parts, the unfinished areas are coverage gaps, and
+`manifest.json` records `stop: { reason, iteration, blocked_tasks }`
+(`null` when the run did not stop early). `ExploreResult.stop` gives the
+reason and the Iteration, and `shopgym explore` exits 0 for `completed`
+and `stopped`.
+
 ## Gen
 
 `generateShop(config, deps)` (also under the `gen` namespace export)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CliError, DEFAULT_MODEL } from '../context.js';
-import { parseExploreArgs } from './explore.js';
+import { exploreExitCode, parseExploreArgs } from './explore.js';
 
 describe('parseExploreArgs', () => {
   it('parses the url and every option', () => {
@@ -58,5 +58,22 @@ describe('parseExploreArgs', () => {
 
   it('returns help without validating positionals', () => {
     expect(parseExploreArgs(['--help']).help).toBe(true);
+  });
+});
+
+describe('exploreExitCode', () => {
+  it('exits 0 for a run that completed or that exploration stopped', () => {
+    expect(exploreExitCode('completed')).toBe(0);
+    expect(exploreExitCode('stopped')).toBe(0);
+  });
+
+  it.each([
+    'budget_exhausted',
+    'invalid_plan',
+    'protocol_violation',
+    'timeout',
+    'runtime_error',
+  ] as const)('exits 1 for a run that ended with %s', (status) => {
+    expect(exploreExitCode(status)).toBe(1);
   });
 });

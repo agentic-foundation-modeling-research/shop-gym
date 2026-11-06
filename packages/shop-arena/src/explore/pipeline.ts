@@ -111,7 +111,19 @@ export interface ExploreResult {
   readonly statsPath: string;
   readonly manifestPath: string;
   readonly finalStatus: FinalStatus;
+  /** Why the explore step stopped the run, or `null` when it did not. */
+  readonly stop: ExploreStop | null;
   readonly steps: readonly StepReport[];
+}
+
+/** Why the explore step stopped the harness run early. */
+export type ExploreStopReason = 'bot_check' | 'navigation_cap';
+
+/** A harness run that the explore step stopped after Iteration `iteration`. */
+export interface ExploreStop {
+  readonly reason: ExploreStopReason;
+  /** `plan` or `exec-NNNN`. */
+  readonly iteration: string;
 }
 
 /** The `explore.json` the explore step writes. */
@@ -119,6 +131,8 @@ export interface ExploreOutcome {
   readonly final_status: FinalStatus;
   readonly plan_iters: number;
   readonly exec_iters: number;
+  /** `null` when the explore step did not stop the run. Absent in older files. */
+  readonly stop?: ExploreStop | null;
   readonly finished_at: string;
 }
 
@@ -138,6 +152,8 @@ export interface Manifest {
   readonly omitted_areas: readonly { area: string; reason: string }[];
   readonly capability_conflicts: readonly Conflict[];
   readonly coverage_gaps: readonly string[];
+  /** The early stop of the run, with the ids of its blocked Plan tasks; `null` when the run did not stop early. */
+  readonly stop: (ExploreStop & { readonly blocked_tasks: readonly string[] }) | null;
   readonly merged_at: string;
   readonly paths: {
     manual: string;
@@ -264,6 +280,8 @@ const exploreStep: Step<ExploreContext> = {
       startUrl: `${context.url}/`,
       ...(servesCart(join(outDir, PATHS.prefetch)) ? { cartUrl: `${context.url}/cart.js` } : {}),
     });
+    let stop: ExploreStop | null = null;
+    let botCheckStreak = 0;
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
     try {
       summary = await runPlanExecLoop(
@@ -280,6 +298,14 @@ const exploreStep: Step<ExploreContext> = {
           ...(context.onEvent ? { onEvent: context.onEvent } : {}),
           onIterationStart: async ({ iterDir }) =>
             writeJson(join(iterDir, START_STATE_FILENAME), await browser.start()),
+          onIterationEnd: async ({ iterId }) => {
+            botCheckStreak = browser.botCheck === null ? 0 : botCheckStreak + 1;
+            const reason = stopReason(botCheckStreak, browser.navigationCapReached);
+            if (reason === null) return;
+            stop = { reason, iteration: iterId };
+            log(`stopping the run after ${iterId}: ${reason}`);
+            return { stopReason: reason };
+          },
         },
         context.runtime,
         { force: context.forceResume },
@@ -292,11 +318,30 @@ const exploreStep: Step<ExploreContext> = {
       final_status: summary.finalStatus,
       plan_iters: summary.planIterCount,
       exec_iters: summary.execIterCount,
+      // The harness ignores a stop after an iteration that failed the run.
+      stop: summary.finalStatus === 'stopped' ? stop : null,
       finished_at: new Date().toISOString(),
     };
     writeJson(join(outDir, PATHS.explore), outcome);
   },
 };
+
+/** Iterations in a row with a bot check that stop the run. */
+const BOT_CHECK_STOP_STREAK = 2;
+
+/**
+ * Why the run stops after an Iteration, or `null` when it goes on.
+ * `botCheckStreak` counts the Iterations in a row, up to this one, that
+ * came to a bot-check page.
+ */
+function stopReason(
+  botCheckStreak: number,
+  navigationCapReached: boolean,
+): ExploreStopReason | null {
+  if (botCheckStreak >= BOT_CHECK_STOP_STREAK) return 'bot_check';
+  if (navigationCapReached) return 'navigation_cap';
+  return null;
+}
 
 /** True when prefetch saved a `/cart.js` body that parses as a cart. */
 function servesCart(prefetchDir: string): boolean {
@@ -323,6 +368,8 @@ const mergeStep: Step<ExploreContext> = {
 
     const summary = readRunSummary(runDir);
     const tasks = summary?.tasksFinal ?? [];
+    const stop = outcome.stop ?? null;
+    const blockedTasks = tasks.filter((task) => task.status === 'blocked').map((task) => task.id);
     const omittedAreas = parseOmittedAreas(planMd);
     const omitted = [...omittedAreas].map((entry) => ({
       area: entry,
@@ -338,10 +385,11 @@ const mergeStep: Step<ExploreContext> = {
       iters: { plan: outcome.plan_iters, exec: outcome.exec_iters },
       plan_tasks_total: tasks.length,
       plan_tasks_done: tasks.filter((task) => task.status === 'done').length,
-      plan_tasks_blocked: tasks.filter((task) => task.status === 'blocked').length,
+      plan_tasks_blocked: blockedTasks.length,
       omitted_areas: omitted,
       capability_conflicts: conflicts,
       coverage_gaps: coverageGaps(prefetchDir, tasks, omittedAreas),
+      stop: stop === null ? null : { ...stop, blocked_tasks: blockedTasks },
       merged_at: new Date().toISOString(),
       paths: {
         manual: PATHS.manual,
@@ -449,6 +497,7 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
     statsPath: join(outDir, PATHS.stats),
     manifestPath: join(outDir, PATHS.manifest),
     finalStatus: outcome.final_status,
+    stop: outcome.stop ?? null,
     steps,
   };
 }

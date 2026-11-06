@@ -3,9 +3,15 @@ import type { AddressInfo } from 'node:net';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import type { Tool, ToolContext } from '@shop-gym/agent';
 import { IterationBrowser } from './browser.js';
 
 const HOME = '<!doctype html><html><head><title>Home</title></head><body>Home</body></html>';
+const LINKS =
+  '<!doctype html><html><head><title>Links</title></head><body><a href="/challenge">Deals</a></body></html>';
+/** An invented challenge page with Cloudflare markers. */
+const CHALLENGE =
+  '<!doctype html><html><head><title>Just a moment...</title></head><body><div id="cf-browser-verification">Checking the connection.</div></body></html>';
 
 let server: http.Server;
 let baseUrl = '';
@@ -17,6 +23,10 @@ beforeAll(async () => {
     switch (req.url) {
       case '/':
         return res.writeHead(200, { 'content-type': 'text/html' }).end(HOME);
+      case '/links':
+        return res.writeHead(200, { 'content-type': 'text/html' }).end(LINKS);
+      case '/challenge':
+        return res.writeHead(403, { 'content-type': 'text/html' }).end(CHALLENGE);
       case '/cart.js':
         return res
           .writeHead(200, { 'content-type': 'application/json' })
@@ -125,6 +135,47 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
       const start = await browser.start();
       expect(start.cart).toBeNull();
       expect(start.error).toContain('ERR_CONNECTION_REFUSED');
+    } finally {
+      await browser.close();
+    }
+  });
+});
+
+const CTX: ToolContext = { cwd: '.', callId: 'call', signal: new AbortController().signal };
+
+/** The text of one call of the Browser tool `name`. */
+async function call(browser: IterationBrowser, name: string, params: object = {}): Promise<string> {
+  const tool: Tool | undefined = browser.tools.find((candidate) => candidate.name === name);
+  if (tool === undefined) throw new Error(`no tool '${name}'`);
+  const { content } = await tool.execute(params, CTX);
+  return content.map((block) => (block.type === 'text' ? block.text : '')).join('\n');
+}
+
+describe('IterationBrowser tools', { timeout: 30_000 }, () => {
+  it('tells the agent about a bot check that a click comes to, and forgets it at the next start', async () => {
+    const browser = await IterationBrowser.launch({
+      episodeId: 'iteration-browser',
+      startUrl: `${baseUrl}/links`,
+    });
+    try {
+      await browser.start();
+      const snapshot = await call(browser, 'snapshot');
+      expect(snapshot).not.toContain('bot check');
+      const ref = /link "Deals" \[ref=(\w+)\]/.exec(snapshot)?.[1];
+      expect(ref).toBeDefined();
+
+      const clicked = await call(browser, 'click', { ref });
+
+      expect(clicked).toContain('this page is a bot check');
+      expect(clicked).toContain('Do not try to pass it');
+      expect(browser.botCheck).toEqual({
+        url: `${baseUrl}/challenge`,
+        marker: 'cf-browser-verification',
+      });
+      expect(await call(browser, 'snapshot')).not.toContain('bot check');
+
+      await browser.start();
+      expect(browser.botCheck).toBeNull();
     } finally {
       await browser.close();
     }

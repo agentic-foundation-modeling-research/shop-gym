@@ -94,6 +94,14 @@ Shopify JSON endpoints and the policy pages. On a generic site it fetches
 nothing more, and the planner picks its start URLs from the homepage links
 and the sitemap. `manifest.json` records the `platform`.
 
+Exploration never tries to pass a bot check. A bot-check homepage stops
+prefetch with the reason `bot_check`. In a run, a Plan task that meets a bot
+check is marked blocked with the note "bot check", and the run goes on. Two
+Iterations in a row with a bot check, or the navigation cap of 200
+`navigate` calls per run, stop the run. A stopped run still writes the
+manual from the finished parts, lists the unfinished areas as
+`coverage_gaps`, records the stop in `manifest.json`, and exits 0.
+
 ### 2. Generate a SandboxShop
 
 ```bash

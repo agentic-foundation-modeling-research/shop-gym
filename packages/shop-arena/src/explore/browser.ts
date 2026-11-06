@@ -4,14 +4,32 @@
  * Each Iteration gets its own BrowserSession, so it starts with no cookies,
  * storage or cart from earlier Iterations. The Browser tools in `tools` act
  * on the browser of the current Iteration.
+ *
+ * After a tool call that loaded a page, the page is checked for bot-check
+ * markers; on a bot check the tool result tells the agent not to try to
+ * pass it. `navigate` refuses after `NAVIGATION_CAP` calls in one run.
  */
 
-import type { Tool } from '@shop-gym/agent';
+import type { Tool, ToolContext, ToolResult } from '@shop-gym/agent';
 import { BrowserSession, browserTools } from '@shop-gym/browser';
 import { z } from 'zod';
+import { botCheckMarker } from './bot-check.js';
 
 /** How long the start page and the cart read may take. */
 const START_TIMEOUT_MS = 30_000;
+
+/**
+ * The most `navigate` calls in one run of the explore step, over all its
+ * Iterations. The start page of an Iteration does not count.
+ */
+export const NAVIGATION_CAP = 200;
+
+/** A bot-check page that the browser came to. */
+export interface BotCheck {
+  readonly url: string;
+  /** The bot-check marker found in the page HTML. */
+  readonly marker: string;
+}
 
 const cartSchema = z.object({
   items: z.array(z.object({ variant_id: z.number(), quantity: z.number() })),
@@ -58,6 +76,10 @@ export class IterationBrowser {
   private sessionTools: ReadonlyMap<string, Tool>;
   /** The session from `launch` is unused until the first `start`. */
   private started = false;
+  /** Set when the page loaded a document that no bot check has read yet. */
+  private pageLoaded = false;
+  private navigations = 0;
+  private iterationBotCheck: BotCheck | null = null;
 
   private constructor(
     private readonly options: IterationBrowserOptions,
@@ -65,11 +87,12 @@ export class IterationBrowser {
   ) {
     this.session = session;
     this.sessionTools = toolsByName(session);
+    this.watchPageLoads(session);
     this.tools = [...this.sessionTools.values()].map((tool) => ({
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,
-      execute: (params, ctx) => this.currentTool(tool.name).execute(params, ctx),
+      execute: (params, ctx) => this.execute(tool.name, params, ctx),
     }));
   }
 
@@ -88,8 +111,10 @@ export class IterationBrowser {
       await this.session.close();
       this.session = next;
       this.sessionTools = toolsByName(next);
+      this.watchPageLoads(next);
     }
     this.started = true;
+    this.iterationBotCheck = null;
     const { page } = this.session;
     try {
       await page.goto(this.options.startUrl, {
@@ -108,6 +133,67 @@ export class IterationBrowser {
   /** Closes the browser of the last Iteration. */
   close(): Promise<void> {
     return this.session.close();
+  }
+
+  /** The first bot-check page of the current Iteration, or `null` when it met none. */
+  get botCheck(): BotCheck | null {
+    return this.iterationBotCheck;
+  }
+
+  /** True when this run has made `NAVIGATION_CAP` `navigate` calls. */
+  get navigationCapReached(): boolean {
+    return this.navigations >= NAVIGATION_CAP;
+  }
+
+  /**
+   * Runs one Browser tool call on the current browser. A `navigate` call at
+   * the cap is refused. A bot check on a page that loaded since the last
+   * check adds a notice to the result. The start page of an Iteration is
+   * checked at its first tool call.
+   */
+  private async execute(name: string, params: unknown, ctx: ToolContext): Promise<ToolResult> {
+    if (name === 'navigate') {
+      if (this.navigationCapReached) {
+        return { content: [{ type: 'text', text: navigationCapRefusal() }], isError: true };
+      }
+      this.navigations += 1;
+    }
+    const result = await this.currentTool(name).execute(params, ctx);
+    const botCheck = await this.checkLoadedPage();
+    if (botCheck === null) {
+      return result;
+    }
+    this.iterationBotCheck ??= botCheck;
+    return {
+      ...result,
+      content: [...result.content, { type: 'text', text: botCheckNotice(botCheck) }],
+    };
+  }
+
+  /** The bot check on the page, when a document loaded since the last check. */
+  private async checkLoadedPage(): Promise<BotCheck | null> {
+    if (!this.pageLoaded) {
+      return null;
+    }
+    this.pageLoaded = false;
+    const { page } = this.session;
+    let html: string;
+    try {
+      html = await page.content();
+    } catch {
+      // The page is navigating again; the next tool call checks the new document.
+      this.pageLoaded = true;
+      return null;
+    }
+    const marker = botCheckMarker(html);
+    return marker === undefined ? null : { url: page.url(), marker };
+  }
+
+  private watchPageLoads(session: BrowserSession): void {
+    this.pageLoaded = false;
+    session.page.on('domcontentloaded', () => {
+      this.pageLoaded = true;
+    });
   }
 
   /** The cart of this browser's cookies, or why it could not be read. */
@@ -141,6 +227,23 @@ export class IterationBrowser {
     }
     return tool;
   }
+}
+
+/** Added to a tool result that ends on a bot-check page. */
+function botCheckNotice({ url, marker }: BotCheck): string {
+  return [
+    `Bot check: this page is a bot check, not a page of the shop (${url}, marker "${marker}").`,
+    'Do not try to pass it: do not solve it, click through it, wait for it to clear or open it again, and do not describe it in a part file.',
+    'Mark your Plan task blocked: set its line in plan.md to `[!]`, append the reason "bot check" to its brief after a `;`, and end this iteration.',
+  ].join('\n');
+}
+
+/** The result of a `navigate` call at the cap. */
+function navigationCapRefusal(): string {
+  return [
+    `navigate refused: this run has made its cap of ${NAVIGATION_CAP} navigate calls, so the page did not change.`,
+    'Do not call navigate again. Finish your Plan task with what you have, or mark it `[!]` with the reason "navigation cap", and end this iteration.',
+  ].join('\n');
 }
 
 function launchSession(options: IterationBrowserOptions): Promise<BrowserSession> {

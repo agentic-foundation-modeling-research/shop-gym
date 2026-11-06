@@ -250,6 +250,29 @@ ${selectors}
   );
 }
 
+/**
+ * An invented bot-check page. It has the markers of the captcha page of a
+ * large marketplace (its two prompts and its form path), and no other
+ * text of that page.
+ */
+export const BOT_CHECK_PAGE: FixturePage = {
+  contentType: HTML,
+  body: `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture Mart</title></head>
+<body>
+<h4>Enter the characters you see below</h4>
+<p>We need to know that you are a person before you continue.</p>
+<form method="get" action="/errors/validateCaptcha">
+  <img src="/captcha.png" alt="">
+  <label>Type the characters you see in this image: <input name="answer" autocomplete="off"></label>
+  <button type="submit">Continue</button>
+</form>
+</body>
+</html>
+`,
+};
+
 function sitemap(origin: string): string {
   const paths = [
     '/',
@@ -267,7 +290,8 @@ ${paths.map((path) => `  <url><loc>${origin}${path}</loc></url>`).join('\n')}
  * The pages of the generic fixture site: a marketplace with no Shopify
  * marker and no JSON endpoints. It has robots.txt, a homepage with a
  * tagline title, sitemap.xml, a department page, a search results page
- * (`/search`, any query), and one page per product.
+ * (`/search`, any query), one page per product, and `/bot-check`, which
+ * serves `BOT_CHECK_PAGE`. No other page links to `/bot-check`.
  */
 export function genericSitePages(origin: string): FixturePages {
   const html = (body: string): FixturePage => ({ contentType: HTML, body });
@@ -280,6 +304,7 @@ export function genericSitePages(origin: string): FixturePages {
     '/sitemap.xml': { contentType: 'application/xml', body: sitemap(origin) },
     [VIDEO_GAMES.path]: html(departmentPage(VIDEO_GAMES)),
     '/search': html(searchPage()),
+    '/bot-check': BOT_CHECK_PAGE,
     ...Object.fromEntries(
       GENERIC_SITE_PRODUCTS.map((product) => [product.path, html(productPage(product))]),
     ),

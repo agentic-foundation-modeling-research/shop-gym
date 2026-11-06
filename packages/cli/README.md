@@ -31,8 +31,9 @@ shopgym explore <url> [--out <dir>] [--model <ref>] [--max-iters <n>]
 ```
 
 `--from` must be one of `prefetch`, `explore`, `merge`, `synthesize`. Prints the
-manual path on stdout; exits 1 when the run does not finish with status
-`completed`.
+manual path on stdout. Exits 0 when the run finishes with status `completed`,
+or with `stopped` (exploration stopped it on bot checks or at the navigation
+cap and still wrote the manual); exits 1 for any other status.
 
 ### `shopgym gen <manual_dir>... --name <name>`
 

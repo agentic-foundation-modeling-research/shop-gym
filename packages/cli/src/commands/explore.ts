@@ -1,6 +1,11 @@
 /** `shopgym explore <url>`: produce a Shop Manual from a live storefront. */
 
-import { EXPLORE_STEPS, type ExploreStep, exploreStorefront } from '@shop-gym/shop-arena';
+import {
+  EXPLORE_STEPS,
+  type ExploreResult,
+  type ExploreStep,
+  exploreStorefront,
+} from '@shop-gym/shop-arena';
 
 import { enumOption, flag, integerOption, parse, stringOption } from '../args.js';
 import { CliError, DEFAULT_MODEL, cliCredentials, findRepoRoot } from '../context.js';
@@ -81,7 +86,18 @@ export async function run(argv: readonly string[]): Promise<number> {
     log: logLine,
     onEvent: logEvent,
   });
-  logLine(`explore finished with status ${result.finalStatus}; run dir ${result.runDir}`);
+  const stop =
+    result.stop === null ? '' : ` (${result.stop.reason} after ${result.stop.iteration})`;
+  logLine(`explore finished with status ${result.finalStatus}${stop}; run dir ${result.runDir}`);
   console.log(result.manualPath);
-  return result.finalStatus === 'completed' ? 0 : 1;
+  return exploreExitCode(result.finalStatus);
+}
+
+/**
+ * 0 when the harness run completed, or when exploration stopped it early
+ * (on bot checks or at the navigation cap) and still published the manual;
+ * 1 for every other final status.
+ */
+export function exploreExitCode(status: ExploreResult['finalStatus']): number {
+  return status === 'completed' || status === 'stopped' ? 0 : 1;
 }

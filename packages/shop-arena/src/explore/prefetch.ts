@@ -8,14 +8,17 @@
  * paginated catalog and a fixed plan of Shopify JSON endpoints, cart,
  * search, policy and info pages. The generic path stops there. The
  * results go into a directory with `prefetch.json`, which records the
- * platform and every request. Three gates abort the run before any
+ * platform and every request. Four gates abort the run before any
  * exploration starts, on both paths: a `robots.txt` that forbids `/`, an
- * unreachable or blocking homepage, and a Cloudflare challenge page.
+ * unreachable or blocking homepage, a Cloudflare challenge page, and a
+ * captcha page as the homepage.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+
+import { CAPTCHA_MARKERS, CLOUDFLARE_MARKERS } from './bot-check.js';
 
 export const DEFAULT_USER_AGENT =
   'ShopExplore/0.1.0 (+https://github.com/agentic-foundation-modeling-research/shop-gym)';
@@ -27,14 +30,6 @@ export const PRODUCTS_MAX_PAGES = 200;
 export const SITEMAP_MAX_BYTES = 1_048_576;
 
 const BOT_BLOCK_STATUS = new Set([403, 429, 503]);
-const CLOUDFLARE_MARKERS = [
-  'cf-browser-verification',
-  '__cf_chl_',
-  'Just a moment...',
-  'Checking your browser before accessing',
-  'Attention Required! | Cloudflare',
-  'cf-challenge-running',
-];
 
 /** Homepage substrings that only a Shopify storefront serves. */
 const SHOPIFY_MARKERS = ['cdn.shopify.com', 'myshopify.com', 'Shopify.theme', 'shopify-section'];
@@ -65,7 +60,8 @@ export type UnreachableReason =
   | 'network_error'
   | 'robots_disallow'
   | 'http_status'
-  | 'cloudflare_challenge';
+  | 'cloudflare_challenge'
+  | 'bot_check';
 
 /** The storefront cannot be explored; raised before any browser work starts. */
 export class ShopUnreachableError extends Error {
@@ -354,10 +350,15 @@ function gateIndex(entry: PrefetchEntry, body: Buffer | null): void {
   if (entry.error !== null) {
     throw new ShopUnreachableError('network_error', `/: ${entry.error}`);
   }
+  const text = body?.toString('utf8') ?? '';
+  // A captcha page often comes with HTTP 503, so its markers go before the status gate.
+  const captcha = CAPTCHA_MARKERS.find((candidate) => text.includes(candidate));
+  if (captcha !== undefined) {
+    throw new ShopUnreachableError('bot_check', `/ is a bot-check page with marker '${captcha}'`);
+  }
   if (entry.status === null || entry.status >= 400 || BOT_BLOCK_STATUS.has(entry.status)) {
     throw new ShopUnreachableError('http_status', `/ returned HTTP ${entry.status}`);
   }
-  const text = body?.toString('utf8') ?? '';
   const marker = CLOUDFLARE_MARKERS.find((candidate) => text.includes(candidate));
   if (marker !== undefined) {
     throw new ShopUnreachableError(
