@@ -18,7 +18,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { CAPTCHA_MARKERS, CLOUDFLARE_MARKERS } from './bot-check.js';
+import { captchaMarker, cloudflareMarker } from './bot-check.js';
 
 export const DEFAULT_USER_AGENT =
   'ShopExplore/0.1.0 (+https://github.com/agentic-foundation-modeling-research/shop-gym)';
@@ -352,14 +352,14 @@ function gateIndex(entry: PrefetchEntry, body: Buffer | null): void {
   }
   const text = body?.toString('utf8') ?? '';
   // A captcha page often comes with HTTP 503, so its markers go before the status gate.
-  const captcha = CAPTCHA_MARKERS.find((candidate) => text.includes(candidate));
+  const captcha = captchaMarker(text);
   if (captcha !== undefined) {
     throw new ShopUnreachableError('bot_check', `/ is a bot-check page with marker '${captcha}'`);
   }
   if (entry.status === null || entry.status >= 400 || BOT_BLOCK_STATUS.has(entry.status)) {
     throw new ShopUnreachableError('http_status', `/ returned HTTP ${entry.status}`);
   }
-  const marker = CLOUDFLARE_MARKERS.find((candidate) => text.includes(candidate));
+  const marker = cloudflareMarker(text);
   if (marker !== undefined) {
     throw new ShopUnreachableError(
       'cloudflare_challenge',

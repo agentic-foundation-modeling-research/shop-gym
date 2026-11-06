@@ -114,6 +114,7 @@ export class IterationBrowser {
       this.watchPageLoads(next);
     }
     this.started = true;
+    this.pageLoaded = false;
     this.iterationBotCheck = null;
     const { page } = this.session;
     try {
@@ -154,7 +155,7 @@ export class IterationBrowser {
   private async execute(name: string, params: unknown, ctx: ToolContext): Promise<ToolResult> {
     if (name === 'navigate') {
       if (this.navigationCapReached) {
-        return { content: [{ type: 'text', text: navigationCapRefusal() }], isError: true };
+        return { content: [{ type: 'text', text: NAVIGATION_CAP_REFUSAL }], isError: true };
       }
       this.navigations += 1;
     }
@@ -181,7 +182,8 @@ export class IterationBrowser {
     try {
       html = await page.content();
     } catch {
-      // The page is navigating again; the next tool call checks the new document.
+      // The page could not be read, for example because it navigates again.
+      // The flag stays set, so the next tool call reads the page.
       this.pageLoaded = true;
       return null;
     }
@@ -190,7 +192,6 @@ export class IterationBrowser {
   }
 
   private watchPageLoads(session: BrowserSession): void {
-    this.pageLoaded = false;
     session.page.on('domcontentloaded', () => {
       this.pageLoaded = true;
     });
@@ -233,18 +234,17 @@ export class IterationBrowser {
 function botCheckNotice({ url, marker }: BotCheck): string {
   return [
     `Bot check: this page is a bot check, not a page of the shop (${url}, marker "${marker}").`,
-    'Do not try to pass it: do not solve it, click through it, wait for it to clear or open it again, and do not describe it in a part file.',
-    'Mark your Plan task blocked: set its line in plan.md to `[!]`, append the reason "bot check" to its brief after a `;`, and end this iteration.',
+    'Do not try to pass it: do not solve it, click through it, wait for it to clear or open it again, and do not describe it in any file.',
+    'If you work on a Plan task, mark it blocked: set its line in plan.md to `[!]`, append the reason "bot check" to its brief after a `;`, and end this iteration.',
+    'If you write the plan, plan only from the pages that you could read.',
   ].join('\n');
 }
 
 /** The result of a `navigate` call at the cap. */
-function navigationCapRefusal(): string {
-  return [
-    `navigate refused: this run has made its cap of ${NAVIGATION_CAP} navigate calls, so the page did not change.`,
-    'Do not call navigate again. Finish your Plan task with what you have, or mark it `[!]` with the reason "navigation cap", and end this iteration.',
-  ].join('\n');
-}
+const NAVIGATION_CAP_REFUSAL = [
+  `navigate refused: this run has made its cap of ${NAVIGATION_CAP} navigate calls, so the page did not change.`,
+  'Do not call navigate again. Finish your Plan task with what you have, or mark it `[!]` with the reason "navigation cap", and end this iteration.',
+].join('\n');
 
 function launchSession(options: IterationBrowserOptions): Promise<BrowserSession> {
   return BrowserSession.launch({ episodeId: options.episodeId });

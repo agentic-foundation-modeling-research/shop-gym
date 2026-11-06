@@ -826,6 +826,29 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     });
   });
 
+  it('finds a bot check after a browser action other than navigate', async () => {
+    const { result } = await explore({
+      url: site.url,
+      maxIters: 1,
+      scripts: [
+        { writeFiles: { 'plan.md': botCheckPlan([]) } },
+        {
+          writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) },
+          toolCalls: [
+            { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } },
+            { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001` } },
+            { tool: 'back', arguments: {} },
+          ],
+        },
+      ],
+    });
+
+    const [, product, back] = await toolResults(result.runDir, 'exec-0001');
+    expect(product).not.toContain('bot check');
+    expect(back).toContain('Went back');
+    expect(back).toContain('this page is a bot check');
+  });
+
   it('refuses navigate at the navigation cap and stops the run', async () => {
     const search = { tool: 'navigate', arguments: { url: `${site.url}/search?q=cap` } };
     const { result, runtime } = await explore({

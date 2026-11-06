@@ -6,7 +6,7 @@
  */
 
 /** HTML substrings of a Cloudflare challenge page. */
-export const CLOUDFLARE_MARKERS: readonly string[] = [
+const CLOUDFLARE_MARKERS: readonly string[] = [
   'cf-browser-verification',
   '__cf_chl_',
   'Just a moment...',
@@ -19,13 +19,23 @@ export const CLOUDFLARE_MARKERS: readonly string[] = [
  * HTML substrings of a captcha page: the two prompts and the form path of
  * the captcha page of a large marketplace.
  */
-export const CAPTCHA_MARKERS: readonly string[] = [
+const CAPTCHA_MARKERS: readonly string[] = [
   'Enter the characters you see below',
   'Type the characters you see in this image',
   '/errors/validateCaptcha',
 ];
 
+/** The first Cloudflare challenge marker in `html`, or `undefined`. */
+export function cloudflareMarker(html: string): string | undefined {
+  return CLOUDFLARE_MARKERS.find((marker) => html.includes(marker));
+}
+
+/** The first captcha marker in `html`, or `undefined`. */
+export function captchaMarker(html: string): string | undefined {
+  return CAPTCHA_MARKERS.find((marker) => html.includes(marker));
+}
+
 /** The first Cloudflare or captcha marker in `html`, or `undefined` when the page is not a bot check. */
 export function botCheckMarker(html: string): string | undefined {
-  return [...CLOUDFLARE_MARKERS, ...CAPTCHA_MARKERS].find((marker) => html.includes(marker));
+  return cloudflareMarker(html) ?? captchaMarker(html);
 }

@@ -42,7 +42,7 @@ A page that a site shows in place of the page that was asked for, to find out wh
 _Avoid_: captcha (for all kinds), block page
 
 **Navigation cap**:
-The fixed number of `navigate` calls (200) that one run of the explore step may make, over all its Iterations. It is a constant, not an option. At the cap, `navigate` refuses, and the run ends with a Caller stop after that Iteration.
+The fixed number of `navigate` calls (200) that one run of the explore step may make, over all its Iterations. It is a constant, not an option, and a resumed run starts a new count. At the cap, `navigate` refuses, and the run ends with a Caller stop after that Iteration.
 _Avoid_: page budget, navigation limit
 
 **Shop Manual**:

@@ -303,7 +303,7 @@ const exploreStep: Step<ExploreContext> = {
             const reason = stopReason(botCheckStreak, browser.navigationCapReached);
             if (reason === null) return;
             stop = { reason, iteration: iterId };
-            log(`stopping the run after ${iterId}: ${reason}`);
+            log(`asking the harness to stop the run after ${iterId}: ${reason}`);
             return { stopReason: reason };
           },
         },
