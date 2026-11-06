@@ -3,15 +3,36 @@
  *
  * Each Iteration gets its own BrowserSession, so it starts with no cookies,
  * storage or cart from earlier Iterations. The Browser tools in `tools` act
- * on the browser of the current Iteration.
+ * on the browser of the current Iteration. Their `snapshot` shows a long
+ * accessibility tree in parts, so a few snapshots of a long page do not
+ * fill the model's context.
  */
 
 import type { Tool } from '@shop-gym/agent';
-import { BrowserSession, browserTools } from '@shop-gym/browser';
+import {
+  BrowserSession,
+  type PageSnapshot,
+  browserTools,
+  formatSnapshot,
+  snapshotPage,
+} from '@shop-gym/browser';
+import { Type } from '@sinclair/typebox';
 import { z } from 'zod';
 
 /** How long the start page and the cart read may take. */
 const START_TIMEOUT_MS = 30_000;
+
+/** Characters of the accessibility tree that one `snapshot` result shows. */
+const SNAPSHOT_MAX_CHARS = 50_000;
+
+const SNAPSHOT_PARAMETERS = Type.Object({
+  offset: Type.Optional(
+    Type.Integer({
+      minimum: 0,
+      description: 'Character offset into the tree, from the note of a cut snapshot.',
+    }),
+  ),
+});
 
 const cartSchema = z.object({
   items: z.array(z.object({ variant_id: z.number(), quantity: z.number() })),
@@ -67,12 +88,16 @@ export class IterationBrowser {
   ) {
     this.session = session;
     this.sessionTools = toolsByName(session);
-    this.tools = [...this.sessionTools.values()].map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-      execute: (params, ctx) => this.currentTool(tool.name).execute(params, ctx),
-    }));
+    this.tools = [...this.sessionTools.values()].map((tool) =>
+      tool.name === 'snapshot'
+        ? this.snapshotTool(tool.description)
+        : {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters,
+            execute: (params, ctx) => this.currentTool(tool.name).execute(params, ctx),
+          },
+    );
   }
 
   /** Launches the browser of the first Iteration. */
@@ -136,6 +161,23 @@ export class IterationBrowser {
       : { cart, error: null };
   }
 
+  /** `snapshot` of the current page that shows a long tree in parts. */
+  private snapshotTool(description: string): Tool<typeof SNAPSHOT_PARAMETERS> {
+    return {
+      name: 'snapshot',
+      description: `${description} A tree longer than ${SNAPSHOT_MAX_CHARS} characters comes in parts; the note after a part gives the offset of the next one.`,
+      parameters: SNAPSHOT_PARAMETERS,
+      execute: async ({ offset }) => {
+        try {
+          const snapshot = await snapshotPage(this.session.page);
+          return { content: [{ type: 'text', text: snapshotPart(snapshot, offset ?? 0) }] };
+        } catch (error) {
+          return { content: [{ type: 'text', text: `Error: ${firstLine(error)}` }], isError: true };
+        }
+      },
+    };
+  }
+
   private currentTool(name: string): Tool {
     const tool = this.sessionTools.get(name);
     if (tool === undefined) {
@@ -147,6 +189,37 @@ export class IterationBrowser {
 
 function launchSession(options: IterationBrowserOptions): Promise<BrowserSession> {
   return BrowserSession.launch({ episodeId: options.episodeId, baseUrl: options.baseUrl });
+}
+
+/**
+ * The snapshot text for the tree from `offset`. A tree that fits shows
+ * whole. A longer tree shows at most `SNAPSHOT_MAX_CHARS` characters of
+ * whole lines, so no element line or ref is split, and a note that tells
+ * the agent the offset of the next part.
+ */
+function snapshotPart(snapshot: PageSnapshot, offset: number): string {
+  const { aria } = snapshot;
+  const start = Math.min(offset, aria.length);
+  if (start === 0 && aria.length <= SNAPSHOT_MAX_CHARS) {
+    return formatSnapshot(snapshot);
+  }
+  const limit = start + SNAPSHOT_MAX_CHARS;
+  if (limit >= aria.length) {
+    const part = formatSnapshot({ ...snapshot, aria: aria.slice(start) });
+    return `${part}\n\n[Last part of the snapshot: characters ${start}-${aria.length} of ${aria.length}.]`;
+  }
+  // Cut at the end of the last whole line; a single longer line is cut at the limit.
+  const newline = aria.lastIndexOf('\n', limit);
+  const end = newline > start ? newline : limit;
+  const next = newline > start ? newline + 1 : limit;
+  const part = formatSnapshot({ ...snapshot, aria: aria.slice(start, end) });
+  const note = [
+    `Snapshot cut: this part shows characters ${start}-${end} of ${aria.length}.`,
+    `To see the rest, call snapshot with offset ${next}.`,
+    'Scrolling does not change the snapshot, because it always covers the whole page.',
+    'Refs from every part stay valid until the page changes.',
+  ].join(' ');
+  return `${part}\n\n[${note}]`;
 }
 
 function toolsByName(session: BrowserSession): ReadonlyMap<string, Tool> {
