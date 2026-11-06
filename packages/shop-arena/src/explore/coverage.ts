@@ -1,6 +1,6 @@
 /**
  * Coverage check: which storefront areas the prefetch evidenced but no
- * finished Plan task explored and the plan did not explicitly omit.
+ * done Plan task explored and the plan did not explicitly omit.
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -129,26 +129,33 @@ export function parseOmittedAreas(planMd: string): Set<string> {
   return omitted;
 }
 
+/** Whether a done Plan task covers `area`, by the rule of `coverageGaps`. */
+function coveredByTask(area: Area, tasks: TaskList): boolean {
+  const own = tasks.find((task) => task.id === area.name);
+  if (own !== undefined) return own.status === 'done';
+  return tasks.some((task) => task.status === 'done' && area.taskIds.includes(task.id));
+}
+
 /**
- * Evidenced areas that no finished Plan task covers and `omitted` does not
+ * Evidenced areas that no done Plan task covers and `omitted` does not
  * name.
  *
- * Only a done Plan task covers its area. A pending, in-progress, or blocked
- * task (an area left unfinished, failed, or skipped) leaves the area a gap.
+ * Only a done Plan task covers an area, so a pending, in-progress, or
+ * blocked task (an area left unfinished, failed, or skipped) leaves it a
+ * gap. When the plan has a Plan task with the area's own name, only that
+ * task can cover the area. Otherwise any done task of the area can.
  */
 export function coverageGaps(
   prefetchDir: string,
   tasks: TaskList,
   omitted: ReadonlySet<string>,
 ): string[] {
-  const finished = new Set(tasks.filter((task) => task.status === 'done').map((task) => task.id));
   const gaps: string[] = [];
   for (const area of evidencedAreas(prefetchDir)) {
     const spec = AREAS.find((candidate) => candidate.name === area);
     if (spec === undefined) continue;
     const covered =
-      finished.has(area) ||
-      spec.taskIds.some((id) => finished.has(id)) ||
+      coveredByTask(spec, tasks) ||
       omitted.has(area) ||
       spec.omissionAliases.some((alias) => omitted.has(alias));
     if (!covered) gaps.push(area);
