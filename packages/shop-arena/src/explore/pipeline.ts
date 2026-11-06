@@ -71,6 +71,7 @@ export const EXPLORE_STEPS = ['prefetch', 'explore', 'merge', 'synthesize'] as c
 const EXPLORE_VERSION = '1.1';
 const RUN_ID_HASH_LEN = 8;
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
+const FOCUS_PLACEHOLDER = '{{FOCUS}}';
 
 export type ExploreStep = (typeof EXPLORE_STEPS)[number];
 
@@ -91,6 +92,13 @@ export interface ExploreOptions {
   readonly from?: ExploreStep;
   /** Resume a harness run that ended in a refused status. */
   readonly forceResume?: boolean;
+  /**
+   * One part of the site to explore, for example the department "Video
+   * Games". The planner gets it as a hint for its start URLs, product
+   * pages and search queries, and still plans the site-wide areas.
+   * Navigation outside the focus is not blocked.
+   */
+  readonly focus?: string;
   readonly credentials: Credentials;
   /** Overrides the pi runtime (tests). */
   readonly runtime?: AgentRuntime;
@@ -129,6 +137,8 @@ export interface Manifest {
   readonly model: string;
   /** The prefetch path that the run took. */
   readonly platform: Platform;
+  /** The focus hint of the run, or `null` when the run has none. */
+  readonly focus: string | null;
   readonly harness_status: FinalStatus;
   readonly iters: { plan: number; exec: number };
   readonly plan_tasks_total: number;
@@ -153,6 +163,8 @@ interface Prompts {
   readonly planner: string;
   /** The planner prompt for a site on the generic platform. */
   readonly plannerGeneric: string;
+  /** The hint added to either planner prompt when the run has a focus. */
+  readonly plannerFocus: string;
   readonly execute: string;
   readonly manual: string;
 }
@@ -165,6 +177,7 @@ interface ExploreContext {
   readonly timeoutMs: number;
   readonly rateLimitMs: number | undefined;
   readonly forceResume: boolean;
+  readonly focus: string | null;
   readonly runtime: AgentRuntime;
   readonly llm: LlmClient;
   readonly prompts: Prompts;
@@ -210,14 +223,17 @@ function loadPrompts(): Prompts {
     agents: read('agents.md').replace('{{CAPABILITIES_SCHEMA}}', capabilitiesJsonSchema()),
     planner: read('planner.md'),
     plannerGeneric: read('planner_generic.md'),
+    plannerFocus: read('planner_focus.md'),
     execute: read('execute.md'),
     manual: read('synthesize_manual.md'),
   };
 }
 
-/** The planner prompt for a site on `platform`. */
-function plannerPrompt(prompts: Prompts, platform: Platform): string {
-  return platform === 'generic' ? prompts.plannerGeneric : prompts.planner;
+/** The planner prompt for a site on `platform`, followed by the focus hint when there is a focus. */
+function plannerPrompt(prompts: Prompts, platform: Platform, focus: string | null): string {
+  const planner = platform === 'generic' ? prompts.plannerGeneric : prompts.planner;
+  if (focus === null) return planner;
+  return `${planner}\n${prompts.plannerFocus.replaceAll(FOCUS_PLACEHOLDER, () => focus)}`;
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -255,7 +271,11 @@ const exploreStep: Step<ExploreContext> = {
   outputs: [PATHS.explore],
   async run({ outDir, context, log }) {
     const runDir = join(outDir, PATHS.run);
-    const planner = plannerPrompt(context.prompts, readPlatform(join(outDir, PATHS.prefetch)));
+    const planner = plannerPrompt(
+      context.prompts,
+      readPlatform(join(outDir, PATHS.prefetch)),
+      context.focus,
+    );
     const session = await BrowserSession.launch({ episodeId: basename(outDir) });
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
     try {
@@ -318,6 +338,7 @@ const mergeStep: Step<ExploreContext> = {
       runtime: context.runtime.name,
       model: context.modelName,
       platform: readPlatform(prefetchDir),
+      focus: context.focus,
       harness_status: outcome.final_status,
       iters: { plan: outcome.plan_iters, exec: outcome.exec_iters },
       plan_tasks_total: tasks.length,
@@ -390,11 +411,15 @@ const STEPS: readonly Step<ExploreContext>[] = [
  * Calling again with the same `outDir` skips complete steps and resumes
  * an unfinished harness run; `from` forces a step and its dependents.
  *
+ * @throws Error when `focus` is blank.
  * @throws ShopUnreachableError when the prefetch gates reject the shop.
  * @throws ResumeRefusedError when the prior harness run ended in a
  *   refused status and `forceResume` is not set.
  */
 export async function exploreStorefront(options: ExploreOptions): Promise<ExploreResult> {
+  if (options.focus?.trim() === '') {
+    throw new Error('focus must not be blank');
+  }
   const base = normalizeBase(options.url);
   const runtime = options.runtime ?? new PiRuntime({ credentials: options.credentials });
   const llm = options.llm ?? new PiLlmClient({ credentials: options.credentials });
@@ -411,6 +436,7 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     rateLimitMs: options.rateLimitMs,
     forceResume: options.forceResume ?? false,
+    focus: options.focus ?? null,
     runtime,
     llm,
     prompts: loadPrompts(),

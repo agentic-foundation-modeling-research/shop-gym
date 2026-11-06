@@ -19,6 +19,8 @@ describe('parseExploreArgs', () => {
         '--from',
         'merge',
         '--force-resume',
+        '--focus',
+        'Video Games',
       ]),
     ).toEqual({
       help: false,
@@ -29,6 +31,7 @@ describe('parseExploreArgs', () => {
       timeoutMs: 1000,
       from: 'merge',
       forceResume: true,
+      focus: 'Video Games',
     });
   });
 

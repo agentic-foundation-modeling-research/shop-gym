@@ -71,6 +71,15 @@ in place of `prompts/planner.md`. That prompt tells the planner to pick
 same-origin start URLs from the homepage links and the sitemap. Stats
 count 0 products and 0 collections when the Shopify files are missing.
 
+With a `focus` (for example `"Video Games"`), the explore step adds
+`prompts/planner_focus.md` after the planner prompt of either platform,
+with `{{FOCUS}}` replaced by the focus text. That hint tells the planner
+to pick start URLs, product pages and search queries in the focus, to
+keep every canonical task, and to write the focus into the task briefs,
+which is how the executors get it. Navigation outside the focus is not
+blocked. With no focus the planner prompt is unchanged. `manifest.json`
+records `focus`, or `null`.
+
 The explore step drives `runPlanExecLoop` from `@shop-gym/harness` with
 the pi runtime, one headless `BrowserSession` per harness run, the
 `browserTools` from `@shop-gym/browser`, and three run-dir-scoped file
@@ -102,6 +111,7 @@ Options: `outDir` (defaults to `outputs/shop_manuals/<domain>/<run_id>/`),
 `model`, `maxIters`, `timeoutMs`, `rateLimitMs`, `from` (force a step and
 its dependents: `prefetch` | `explore` | `merge` | `synthesize`),
 `forceResume` (resume a harness run that ended in a refused status),
+`focus` (a hint that keeps the planner in one part of the site),
 `runtime` / `llm` (inject an `AgentRuntime` / `LlmClient`, used by tests),
 `onEvent`, `log`, `signal`.
 

@@ -188,6 +188,7 @@ function explore(options: {
   llm?: StubLlm;
   from?: 'prefetch' | 'explore' | 'merge' | 'synthesize';
   forceResume?: boolean;
+  focus?: string;
 }) {
   const runtime = new FakeRuntime(options.scripts ?? []);
   const llm = options.llm ?? new StubLlm();
@@ -203,10 +204,13 @@ function explore(options: {
     llm,
     ...(options.from ? { from: options.from } : {}),
     ...(options.forceResume ? { forceResume: true } : {}),
+    ...(options.focus !== undefined ? { focus: options.focus } : {}),
   }).then((result) => ({ result, runtime, llm }));
 }
 
 const readJson = (path: string) => JSON.parse(readFileSync(path, 'utf8'));
+const readPrompt = (name: string) =>
+  readFileSync(new URL(`./prompts/${name}`, import.meta.url), 'utf8');
 
 describe('exploreStorefront', { timeout: 60_000 }, () => {
   it('runs every step and publishes the manual, capabilities, stats, and manifest', async () => {
@@ -350,6 +354,31 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(resumed.runtime.requests).toHaveLength(4);
     expect(readJson(resumed.result.manifestPath).plan_tasks_done).toBe(2);
   });
+
+  it('gives the planner the focus as a hint and records it in manifest.json', async () => {
+    const { result, runtime } = await explore({ scripts: SCRIPTS, focus: 'Video Games' });
+
+    // The hint follows the unchanged planner prompt.
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    const prompt = readPrompt('planner.md');
+    expect(planner.startsWith(prompt)).toBe(true);
+    const hint = planner.slice(prompt.length).replace(/\s+/g, ' ');
+    expect(hint).toContain('## Focus hint');
+    expect(hint).toContain('"Video Games"');
+    expect(hint).toContain('Keep every canonical task');
+    // Executors get the focus only through the task briefs in plan.md.
+    for (const request of runtime.requests.slice(1)) {
+      expect(promptText(request.prompt)).not.toContain('Video Games');
+    }
+    expect(readJson(result.manifestPath).focus).toBe('Video Games');
+  });
+
+  it('rejects a blank focus before any step runs', async () => {
+    await expect(explore({ scripts: SCRIPTS, focus: ' ' })).rejects.toThrow(
+      'focus must not be blank',
+    );
+    expect(existsSync(outDir)).toBe(false);
+  });
 });
 
 const GENERIC_PLAN = (homepage: string, product: string) => `# Plan - General Marketplace
@@ -488,6 +517,29 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(stats.products_per_collection).toEqual({ avg: 0, median: 0, max: 0 });
     expect(readJson(result.manifestPath).coverage_gaps).toEqual([]);
     expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
+  });
+
+  it('gives the generic planner the focus as a hint', async () => {
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: genericScripts(site.url),
+      focus: 'Video Games',
+    });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    const prompt = readPrompt('planner_generic.md');
+    expect(planner.startsWith(prompt)).toBe(true);
+    const hint = planner.slice(prompt.length).replace(/\s+/g, ' ');
+    expect(hint).toContain('## Focus hint');
+    expect(hint).toContain('"Video Games"');
+    expect(readJson(result.manifestPath).focus).toBe('Video Games');
+  });
+
+  it('adds no hint and records a null focus when the run has no focus', async () => {
+    const { result, runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    expect(runtime.requests[0]?.prompt).toBe(readPrompt('planner_generic.md'));
+    expect(readJson(result.manifestPath).focus).toBeNull();
   });
 });
 
