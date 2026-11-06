@@ -96,8 +96,8 @@ function compact(text: string): string {
 /**
  * The compact names that the brand segment of a title can have: each
  * brand label of `labels`, alone and joined with the labels after it. So
- * "Fixture Mart" matches `fixturemart.localhost`, and "FixtureMart.com"
- * matches `www.fixturemart.com`.
+ * "Fixture Mart" matches `fixturemart.localhost`, and
+ * "FixtureMart.example" matches `www.fixturemart.example`.
  */
 function hostnameNames(labels: readonly string[]): Set<string> {
   const names = new Set<string>();

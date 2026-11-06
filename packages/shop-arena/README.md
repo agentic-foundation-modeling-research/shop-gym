@@ -50,7 +50,7 @@ steps on the `@shop-gym/core` pipeline runner:
 | `prefetch` | the storefront over HTTP | `seed/prefetch/` (robots, homepage, sitemap, `prefetch.json`; on a Shopify shop also the Shopify JSON endpoints, policy and info pages, merged `products.json`) |
 | `explore` | `seed/prefetch/` | `run/` (harness workspace: `plan.md`, `iters/`, `artifact/{prefetch,parts,evidence}`, `run.json`) and `explore.json` |
 | `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json` | `capabilities.json`, `stats.json`, `manifest.json` |
-| `synthesize` | `capabilities.json`, `stats.json`, `brand_terms.json`, `seed/prefetch/index.html`, `run/artifact/parts/*.md` | `manual.md`, only when the final Anonymization scan is clean |
+| `synthesize` | `capabilities.json`, `stats.json`, `brand_terms.json`, `seed/prefetch/`, `run/artifact/parts/*.md` | `manual.md`, only when the final Anonymization scan is clean |
 
 Prefetch decides the platform before it fetches the rest. First it
 fetches `robots.txt`, the homepage, `sitemap.xml` and one `/products.json`

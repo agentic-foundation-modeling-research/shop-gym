@@ -80,9 +80,9 @@ describe('brandTokens', () => {
     },
     {
       shape: 'brand segment with the top-level domain',
-      host: 'www.fixturemart.com',
-      title: 'FixtureMart.com. Spend less. Shop more.',
-      brand: ['fixturemart', 'fixturemartcom'],
+      host: 'www.fixturemart.example',
+      title: 'FixtureMart.example. Spend less. Shop more.',
+      brand: ['fixturemart', 'fixturemartexample'],
       tagline: ['spend', 'less', 'more'],
     },
     {

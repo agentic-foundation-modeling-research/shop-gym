@@ -9,7 +9,6 @@ export {
   type LeakScanner,
   anonymizationVerifier,
   brandTokens,
-  checkBrandTerms,
   formatLeaks,
   leakScanner,
   publishedLeaks,

@@ -39,7 +39,8 @@ manual path on stdout; exits 1 when the run does not finish with status
 as a sub-brand, that the manual must not name. The Anonymization
 verifier and the final scan of the published files use the terms. The
 run keeps them in `brand_terms.json` in the run directory, and a rerun
-without `--brand-term` uses them again.
+without `--brand-term` uses them again. To drop the stored terms, delete
+that file.
 
 ### `shopgym gen <manual_dir>... --name <name>`
 

@@ -381,7 +381,7 @@ function omissionReason(planMd: string, area: string): string {
 
 const synthesizeStep: Step<ExploreContext> = {
   id: 'synthesize',
-  inputs: [PATHS.capabilities, PATHS.stats, PATHS.brandTerms, join(PATHS.prefetch, 'index.html')],
+  inputs: [PATHS.capabilities, PATHS.stats, PATHS.brandTerms, PATHS.prefetch],
   outputs: [PATHS.manual],
   async run({ outDir, context, log, signal }) {
     const partsDir = join(outDir, PATHS.run, 'artifact', 'parts');
@@ -397,6 +397,8 @@ const synthesizeStep: Step<ExploreContext> = {
       partsDir,
       signal,
     );
+    // Prefetch saves no homepage when `/` answers with an empty body or a
+    // success status other than 200; then no title gives brand tokens.
     const homepagePath = join(outDir, PATHS.prefetch, 'index.html');
     const scan = leakScanner(
       new URL(context.url).hostname,
@@ -415,13 +417,16 @@ const synthesizeStep: Step<ExploreContext> = {
 };
 
 /**
- * Keeps the brand terms of a run in `<outDir>/brand_terms.json`, outside
- * the published files. Given terms replace the stored ones; with none
- * given, the stored terms are used again, so a resumed run keeps them.
+ * The brand terms of a run: `given`, or else the terms that a prior call
+ * kept in `<outDir>/brand_terms.json`, so a resumed run keeps them. Writes
+ * the result back to that file, which is outside the published files.
  *
  * @throws Error when a term has no letter or digit.
  */
-function storeBrandTerms(outDir: string, given: readonly string[] | undefined): readonly string[] {
+function resolveBrandTerms(
+  outDir: string,
+  given: readonly string[] | undefined,
+): readonly string[] {
   const path = join(outDir, PATHS.brandTerms);
   const terms = given ?? (existsSync(path) ? BRAND_TERMS_SCHEMA.parse(readJson(path)) : []);
   checkBrandTerms(terms);
@@ -468,7 +473,7 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     rateLimitMs: options.rateLimitMs,
     forceResume: options.forceResume ?? false,
-    brandTerms: storeBrandTerms(outDir, options.brandTerms),
+    brandTerms: resolveBrandTerms(outDir, options.brandTerms),
     runtime,
     llm,
     prompts: loadPrompts(),
