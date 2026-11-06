@@ -4,13 +4,14 @@
  *
  * Every section is a closed object with nullable scalar fields and
  * empty-list defaults, so a fragment may carry any subset of keys. The
- * defaults also let a schema 0.2 document parse: 0.3 adds the
- * `departments` block, `search.facets` / `search.sort`, and the product
- * rating histogram, review filters and related product types. The
  * merge is pure and order-stable: fragments are read in filename order,
  * objects merge recursively, lists union (first occurrence wins), and a
  * scalar written by two fragments takes the last writer while recording a
  * `Conflict` for the manifest.
+ *
+ * The same defaults let a schema 0.2 document parse. Schema 0.3 adds the
+ * `departments` block, `search.facets` and `search.sort`, and the product
+ * rating histogram, review filters and related product types.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
