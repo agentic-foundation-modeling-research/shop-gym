@@ -173,8 +173,8 @@ numbered for ordering.
 
 `evidence/<task_id>/network.jsonl` - optional; append one JSON object
 per observed request. Use only when the request itself is the evidence
-(predictive search suggestions, cart updates) and you can read it from
-the page (e.g. a JSON endpoint opened with `navigate`).
+(cart updates) and you can read it from the page (e.g. a JSON endpoint
+opened with `navigate`).
 
 Final action of any executor iteration: rewrite `plan.md` with
 `write_file` so that this task's line reads `[x]` (success) or

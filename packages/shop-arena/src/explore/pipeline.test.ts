@@ -247,6 +247,44 @@ function plannedIds(prompt: string): (string | undefined)[] {
   return [...prompt.matchAll(/^- \[ \] ([a-z0-9_]+)\s+— /gm)].map((match) => match[1]);
 }
 
+/** The brief of the `[ ]` task line `id` in a planner prompt. */
+function plannedBrief(prompt: string, id: string): string {
+  const brief = new RegExp(`^- \\[ \\] ${id}\\s+— (.*) \\[priority: \\d+\\]$`, 'm').exec(
+    prompt,
+  )?.[1];
+  if (brief === undefined) throw new Error(`the planner prompt plans no ${id} task`);
+  return brief;
+}
+
+/**
+ * Checks the briefs that send the executor to a storefront page: the same
+ * rules hold on every platform.
+ */
+function expectStorefrontBriefs(planner: string): void {
+  expect(plannedBrief(planner, 'collection_filters')).toContain(
+    'department or category landing page, not a search results page',
+  );
+  // The product page shows the review block; the all-reviews page can ask for a sign-in.
+  const reviews = plannedBrief(planner, 'product_reviews');
+  expect(reviews).toMatch(/^scroll a product page to its review block; /);
+  expect(reviews).toContain('all-reviews page only if public');
+  // The suggestion API can be on another host, so the evidence is the dropdown.
+  const predictive = plannedBrief(planner, 'search_predictive');
+  expect(predictive).toContain(
+    'type 2 prefixes into the search box; snapshot each suggestion dropdown',
+  );
+  expect(predictive).toContain('stay on storefront pages, no network or API capture');
+  expect(predictive).not.toMatch(/network capture|suggest\.json/);
+  // One Plan task owns the shop block, so the block does not stay empty.
+  expect(plannedBrief(planner, 'homepage_sections')).toContain(
+    'fill the shop block (`shop`): descriptor, category, currency, tone',
+  );
+  // The planner adds paths and queries to the briefs, and the rules above stay.
+  expect(planner.replace(/\s+/g, ' ')).toContain(
+    'A tweaked brief keeps every rule of its canonical brief',
+  );
+}
+
 class StubLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
 
@@ -499,6 +537,12 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     });
   });
 
+  it('points the briefs at storefront pages and gives the shop block to homepage_sections', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+
+    expectStorefrontBriefs(promptText(runtime.requests[0]?.prompt ?? ''));
+  });
+
   it('takes the shopify path when products.json returns a product list', async () => {
     const { result, runtime } = await explore({ scripts: SCRIPTS });
 
@@ -718,6 +762,18 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(planner).toContain('explore planner for a generic site');
     expect(plannedIds(planner)).toEqual(EXPECTED_FIXED_AREAS);
     expect(planner).toContain('<= 4 `navigate` calls');
+  });
+
+  it('points the briefs at storefront pages and gives the shop block to homepage_sections', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    expectStorefrontBriefs(planner);
+    // The planner picks the listing page of collection_filters, and the
+    // search results page is not one.
+    expect(planner.replace(/\s+/g, ' ')).toContain(
+      'a department or category landing page for `collection_filters`',
+    );
   });
 });
 

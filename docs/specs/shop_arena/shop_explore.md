@@ -454,8 +454,7 @@ The planner emits `plan.md` tasks of the form:
    - one a11y `snapshot.md` per distinct page state,
    - one full-page PNG per distinct page state (use playwright's
      `--full-page`),
-   - optional `network.jsonl` of relevant XHRs (e.g. predictive search
-     suggestions).
+   - optional `network.jsonl` of relevant XHRs (e.g. cart updates).
 5. Write a markdown section to `artifact/parts/<task_id>.md`,
    apply anonymization rules at write time.
 6. Write a JSON fragment to `artifact/parts/<task_id>.caps.json`

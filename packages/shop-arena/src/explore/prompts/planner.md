@@ -50,14 +50,14 @@ keeps runs stable across shops and gives the synthesis pass a
 predictable input shape.
 
 ```
-- [ ] homepage_sections — capture every section below the hero; snapshot per section [priority: 9]
+- [ ] homepage_sections — capture every section below the hero; snapshot per section; fill the shop block (`shop`): descriptor, category, currency, tone [priority: 9]
 - [ ] header_navigation — header rows, sticky behavior, department menu + sub-levels (`departments`), mega menu / flyouts, search trigger, account / cart icons [priority: 8]
 - [ ] cart_drawer       — add 1 product; capture the cart surface (drawer, page or side sheet): empty, filled, qty change, remove [priority: 8]
 - [ ] product_variants  — pick 2 product pages (one with > 1 variant); capture gallery, variant selectors, qty stepper [priority: 7]
-- [ ] product_reviews   — on a product page with reviews: rating summary, histogram (`product.has_rating_histogram`), filters (`product.review_filters`) [priority: 6]
+- [ ] product_reviews   — scroll a product page to its review block; all-reviews page only if public; fill `product.has_rating_histogram`, `product.review_filters` [priority: 6]
 - [ ] related_products  — on 2 product pages, capture each related-product block; list their kinds in `product.related_product_types` [priority: 5]
-- [ ] collection_filters — open the largest collection or category listing; exercise filters + sort + pagination [priority: 7]
-- [ ] search_predictive — type 2 prefixes; capture the suggestion panel + 1 network capture of its request (e.g. `/search/suggest.json`) [priority: 6]
+- [ ] collection_filters — open the largest collection, department or category landing page, not a search results page; exercise filters + sort + pagination [priority: 7]
+- [ ] search_predictive — type 2 prefixes into the search box; snapshot each suggestion dropdown; stay on storefront pages, no network or API capture [priority: 6]
 - [ ] search_results    — submit 1 query; capture the results layout, facets (`search.facets`), sort (`search.sort`), pagination, empty state [priority: 7]
 - [ ] checkout_flow     — from a filled cart, open checkout; capture guest option, shipping, payment, discount input; stop at the first sign-in or payment wall [priority: 6]
 - [ ] account_pages     — visit only the public sign-in and sign-up entries; capture their fields and options; never submit them [priority: 5]
@@ -70,8 +70,8 @@ Three of them are marketplace areas: `product_reviews`,
 `related_products` and `search_results`. The ids are stable names, not
 a claim about how the shop is built. Every brief uses platform-neutral
 words, so the same block fits any storefront: `cart_drawer` covers a
-cart page or side sheet too, and `collection_filters` covers a category
-listing. A key in backticks (`departments`, `search.facets`, ...) names
+cart page or side sheet too, and `collection_filters` covers a
+department or category landing page. A key in backticks (`departments`, `search.facets`, ...) names
 the `capabilities.json` fields that the task fills.
 
 Priorities are advisory tie-breakers, not gates - every task above
@@ -133,8 +133,10 @@ consume them):
   do not drop tasks because a feature looks absent. Any shop-specific
   additions appear *after* the canonical block.
 - Tweak briefs (the trailer after `—`) when prefetch reveals a more
-  specific target (e.g. naming the largest collection slug). Do not
-  change task ids or priorities of the canonical list.
+  specific target (e.g. naming the largest collection slug). A tweaked
+  brief keeps every rule of its canonical brief, such as "not a search
+  results page" or "no network or API capture". Do not change task ids
+  or priorities of the canonical list.
 
 ---
 
