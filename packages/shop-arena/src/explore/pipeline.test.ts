@@ -398,6 +398,31 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     }
   });
 
+  it('opens a site path from navigate on the storefront', async () => {
+    const { result } = await explore({
+      scripts: [
+        {
+          writeFiles: { 'plan.md': PLAN(' ', ' ') },
+          toolCalls: [{ tool: 'navigate', arguments: { url: '/cart' } }],
+        },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+        },
+        { writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') } },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    const { steps } = await readTrajectory(join(result.runDir, 'iters', 'plan', 'trajectory.json'));
+    expect(steps.find((step) => step.kind === 'tool_result')).toMatchObject({
+      isError: false,
+      output: expect.stringContaining(`Navigated to ${baseUrl}/cart\n`),
+    });
+  });
+
   it('stops at the prefetch gates before any Iteration starts', async () => {
     const gated = http.createServer((_req, res) =>
       res.writeHead(200).end('User-agent: *\nDisallow: /\n'),

@@ -33,6 +33,8 @@ export interface StartState {
 export interface IterationBrowserOptions {
   /** Sent as `x-shopgym-episode` by every browser. */
   readonly episodeId: string;
+  /** The storefront origin. A site path given to `navigate`, such as `/cart`, opens on it. */
+  readonly baseUrl: string;
   /** The page that every Iteration starts on. */
   readonly startUrl: string;
   /** The shop's `/cart.js`, read at each start. Omit it when the shop does not serve one. */
@@ -144,7 +146,7 @@ export class IterationBrowser {
 }
 
 function launchSession(options: IterationBrowserOptions): Promise<BrowserSession> {
-  return BrowserSession.launch({ episodeId: options.episodeId });
+  return BrowserSession.launch({ episodeId: options.episodeId, baseUrl: options.baseUrl });
 }
 
 function toolsByName(session: BrowserSession): ReadonlyMap<string, Tool> {

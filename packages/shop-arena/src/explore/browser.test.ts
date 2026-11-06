@@ -50,6 +50,7 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
   it('records the start URL and the cart lines', async () => {
     const browser = await IterationBrowser.launch({
       episodeId: 'iteration-browser',
+      baseUrl,
       startUrl: `${baseUrl}/`,
       cartUrl: `${baseUrl}/cart.js`,
     });
@@ -68,6 +69,7 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
     requested.length = 0;
     const browser = await IterationBrowser.launch({
       episodeId: 'iteration-browser',
+      baseUrl,
       startUrl: `${baseUrl}/`,
     });
     try {
@@ -84,6 +86,7 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
   ])('records why the cart at %s could not be read', async (cartPath, reason) => {
     const browser = await IterationBrowser.launch({
       episodeId: 'iteration-browser',
+      baseUrl,
       startUrl: `${baseUrl}/`,
       cartUrl: `${baseUrl}${cartPath}`,
     });
@@ -102,6 +105,7 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
     const cartUrl = await closedUrl('/cart.js');
     const browser = await IterationBrowser.launch({
       episodeId: 'iteration-browser',
+      baseUrl,
       startUrl: `${baseUrl}/`,
       cartUrl,
     });
@@ -118,6 +122,7 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
   it('records why the start URL did not load', async () => {
     const browser = await IterationBrowser.launch({
       episodeId: 'iteration-browser',
+      baseUrl,
       startUrl: await closedUrl('/'),
       cartUrl: `${baseUrl}/cart.js`,
     });

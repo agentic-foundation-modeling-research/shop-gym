@@ -242,6 +242,7 @@ const exploreStep: Step<ExploreContext> = {
     const runDir = join(outDir, PATHS.run);
     const browser = await IterationBrowser.launch({
       episodeId: basename(outDir),
+      baseUrl: context.url,
       startUrl: `${context.url}/`,
       ...(servesCart(join(outDir, PATHS.prefetch)) ? { cartUrl: `${context.url}/cart.js` } : {}),
     });
