@@ -4,14 +4,20 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
-import { type CompleteRequest, type Completion, type LlmClient, promptText } from '@shop-gym/agent';
+import {
+  type CompleteRequest,
+  type Completion,
+  type LlmClient,
+  promptText,
+  readTrajectory,
+} from '@shop-gym/agent';
 import { FakeRuntime, type FakeScript } from '@shop-gym/agent/testing';
 import { StepFailedError } from '@shop-gym/core';
 import { ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
-import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT } from './prefetch.js';
+import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
 import { type FixtureSite, genericSitePages, startFixtureSite } from './testing.js';
 
 const CREDENTIALS = {} as const;
@@ -137,6 +143,13 @@ class StubLlm implements LlmClient {
   }
 }
 
+/** The fixture's guest carts, keyed by the `cart` cookie. */
+const carts = new Map<string, { variant_id: number; quantity: number }[]>();
+
+function cartToken(req: http.IncomingMessage): string | undefined {
+  return /(?:^|;\s*)cart=([^;]+)/.exec(req.headers.cookie ?? '')?.[1];
+}
+
 let server: http.Server;
 let baseUrl = '';
 let root: string;
@@ -156,8 +169,18 @@ beforeAll(async () => {
         return json(url.searchParams.get('page') === '1' ? PRODUCTS : { products: [] });
       case '/collections.json':
         return json(COLLECTIONS);
+      case '/cart/add': {
+        // A guest cart lives on the server, found by the `cart` cookie.
+        const token = cartToken(req) ?? `cart-${carts.size + 1}`;
+        const lines = carts.get(token) ?? [];
+        lines.push({ variant_id: Number(url.searchParams.get('id')), quantity: 1 });
+        carts.set(token, lines);
+        return res
+          .writeHead(200, { 'content-type': 'text/html', 'set-cookie': `cart=${token}; Path=/` })
+          .end('<html><head><title>Cart</title></head><body>Added</body></html>');
+      }
       case '/cart.js':
-        return json({ currency: 'USD', items: [] });
+        return json({ currency: 'USD', items: carts.get(cartToken(req) ?? '') ?? [] });
       case '/cart':
       case '/search':
         return res.writeHead(200, { 'content-type': 'text/html' }).end('<html>page</html>');
@@ -358,6 +381,95 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     ).rejects.toThrow(/manual response too short/);
     expect(existsSync(join(outDir, 'manual.md'))).toBe(false);
     expect(existsSync(join(outDir, 'capabilities.json'))).toBe(true);
+  });
+
+  it('starts every Iteration in a fresh browser, so a cart made in one is not in the next', async () => {
+    const readCart = [
+      { tool: 'navigate', arguments: { url: `${baseUrl}/cart.js` } },
+      { tool: 'snapshot', arguments: {} },
+    ];
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') } },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          toolCalls: [
+            { tool: 'navigate', arguments: { url: `${baseUrl}/cart/add?id=101` } },
+            ...readCart,
+          ],
+        },
+        {
+          writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') },
+          toolCalls: readCart,
+        },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    const cartSnapshot = async (iterId: string): Promise<string | undefined> => {
+      const { steps } = await readTrajectory(
+        join(result.runDir, 'iters', iterId, 'trajectory.json'),
+      );
+      return steps.flatMap((step) => (step.kind === 'tool_result' ? [step.output] : [])).at(-1);
+    };
+    // The snapshot shows the `/cart.js` body: one line, then no lines.
+    expect(await cartSnapshot('exec-0001')).toContain('variant_id');
+    expect(await cartSnapshot('exec-0002')).not.toContain('variant_id');
+  });
+
+  it('records where the browser of every Iteration started', async () => {
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') } },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+        },
+        { writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') } },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    for (const iterId of ['plan', 'exec-0001', 'exec-0002']) {
+      expect(readJson(join(result.runDir, 'iters', iterId, 'start_state.json')), iterId).toEqual({
+        url: `${baseUrl}/`,
+        cart: { items: [] },
+        error: null,
+      });
+    }
+  });
+
+  it('stops at the prefetch gates before any Iteration starts', async () => {
+    const gated = http.createServer((_req, res) =>
+      res.writeHead(200).end('User-agent: *\nDisallow: /\n'),
+    );
+    await new Promise<void>((resolve) => gated.listen(0, '127.0.0.1', resolve));
+    const runtime = new FakeRuntime(SCRIPTS);
+    try {
+      await expect(
+        exploreStorefront({
+          url: `http://127.0.0.1:${(gated.address() as AddressInfo).port}`,
+          outDir,
+          model: 'anthropic/test-model',
+          rateLimitMs: 0,
+          credentials: CREDENTIALS,
+          runtime,
+          llm: new StubLlm(),
+        }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof StepFailedError && error.cause instanceof ShopUnreachableError,
+      );
+    } finally {
+      await new Promise<void>((resolve) => gated.close(() => resolve()));
+    }
+    expect(runtime.requests).toHaveLength(0);
+    expect(existsSync(join(outDir, 'run'))).toBe(false);
   });
 
   it('resumes a refused harness run only with forceResume', async () => {

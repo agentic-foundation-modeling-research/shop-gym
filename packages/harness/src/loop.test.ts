@@ -290,6 +290,66 @@ describe('runPlanExecLoop: blocked-and-continue', () => {
   });
 });
 
+describe('runPlanExecLoop: onIterationStart', () => {
+  const PLAN_AB = '## Tasks\n\n- [ ] a [priority: 2]\n- [ ] b [priority: 1]\n';
+
+  it('runs before each Agent run with the iteration id and task', async () => {
+    const log: string[] = [];
+    const runtime = new FakeRuntime([
+      planner(PLAN_AB),
+      exec(PLAN_AB.replace('[ ] a', '[x] a')),
+      exec(PLAN_AB.replace('[ ] a', '[x] a').replace('[ ] b', '[x] b')),
+    ]);
+    await runPlanExecLoop(
+      config({
+        onIterationStart: async (start) => {
+          log.push(`${start.iterId} ${start.taskId} after ${runtime.requests.length} runs`);
+        },
+      }),
+      runtime,
+    );
+    expect(log).toEqual([
+      'plan null after 0 runs',
+      'exec-0001 a after 1 runs',
+      'exec-0002 b after 2 runs',
+    ]);
+  });
+
+  it('gives the iteration directory, which a timeout moves aside with its files', async () => {
+    const runtime = new FakeRuntime([
+      planner(PLAN_AB),
+      { status: 'aborted' },
+      exec(PLAN_AB.replace('[ ] b', '[x] b')),
+    ]);
+    await runPlanExecLoop(
+      config({
+        onIterationStart: async (start) => {
+          await fs.writeFile(
+            path.join(start.iterDir, 'start.txt'),
+            `${start.iterId} ${start.taskId}`,
+          );
+        },
+      }),
+      runtime,
+    );
+    expect(await read('iters/plan/start.txt')).toBe('plan null');
+    // The timed-out iteration's id is used again by the next iteration.
+    expect(await read('iters/exec-0001.aborted-1/start.txt')).toBe('exec-0001 a');
+    expect(await read('iters/exec-0001/start.txt')).toBe('exec-0001 b');
+  });
+
+  it('rejects the run before the Agent run when the hook throws', async () => {
+    const runtime = new FakeRuntime([planner()]);
+    const onIterationStart = async (): Promise<void> => {
+      throw new Error('browser did not start');
+    };
+    await expect(runPlanExecLoop(config({ onIterationStart }), runtime)).rejects.toThrow(
+      'browser did not start',
+    );
+    expect(runtime.requests).toHaveLength(0);
+  });
+});
+
 describe('runPlanExecLoop: onIterationEnd', () => {
   const PLAN_ABCD =
     '## Tasks\n\n- [ ] a [priority: 4]\n- [ ] b [priority: 3]\n- [ ] c [priority: 2]\n- [ ] d [priority: 1]\n';
