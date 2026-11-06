@@ -10,7 +10,6 @@ export {
   brandTokens,
   formatLeaks,
   leakScanner,
-  scanParts,
 } from './anonymization.js';
 export {
   CAPABILITY_KEYS,

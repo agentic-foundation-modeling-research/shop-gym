@@ -107,6 +107,12 @@ exercises its public surface end-to-end.
   `stats.json`, `manifest.json`) sit at `<run_id>/`; the harness
   workspace lives at `<run_id>/run/` and the prefetch seed at
   `<run_id>/seed/prefetch/`. The CLI binary is scheduled for M10.
+- Anonymization scope and reopen cap (2026-11-05): the `anonymization`
+  verifier scans only `parts/<task_id>.md` of the selected task, so a
+  leak in one fragment no longer reopens other tasks. It reopens a task
+  at most twice; the next hit blocks the task with a note that names the
+  fragment. The count per task is kept in
+  `run/checks/anonymization_reopens.json`, so a resumed run keeps it.
 
 ---
 
@@ -448,7 +454,11 @@ The planner emits `plan.md` tasks of the form:
    - optional `network.jsonl` of relevant XHRs (e.g. predictive search
      suggestions).
 5. Write a markdown section to `artifact/parts/<task_id>.md`,
-   apply anonymization rules at write time.
+   apply anonymization rules at write time. The `anonymization`
+   verifier scans only this file of the selected task. A hit reopens
+   the task at most twice (the count per task is kept in
+   `run/checks/anonymization_reopens.json`); the next hit blocks the
+   task with a note that names the file.
 6. Write a JSON fragment to `artifact/parts/<task_id>.caps.json`
    containing only the capabilities-schema keys this task is
    responsible for.

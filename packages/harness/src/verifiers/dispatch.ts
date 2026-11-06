@@ -6,13 +6,14 @@
  * `checks/verifiers/`, writes `feedback.md` (and `feedback_images.json`,
  * the image paths that accompany it) when any verifier produced feedback,
  * and reopens the selected task in `plan.md` when any verifier returned
- * `fail`.
+ * `fail`. A `fail` with a `blockNote` blocks the task instead; then no
+ * feedback is written, because no later iteration works on the task.
  */
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import { reopenTask } from '../plan/rewrite.js';
+import { blockTask, reopenTask } from '../plan/rewrite.js';
 import type { TaskList } from '../plan/tasks.js';
 import type { Verifier, VerifierContext, VerifierResult, VerifierRun } from './types.js';
 
@@ -55,6 +56,7 @@ export async function dispatchVerifiers(input: DispatchInput): Promise<DispatchO
   const runs: VerifierRun[] = [];
   const sections: [string, string][] = [];
   const images: string[] = [];
+  const blockNotes: string[] = [];
   let blocking = false;
   for (const verifier of applicable) {
     const startedAt = new Date();
@@ -95,6 +97,10 @@ export async function dispatchVerifiers(input: DispatchInput): Promise<DispatchO
     });
     if (result.verdict === 'fail') {
       blocking = true;
+      if (result.blockNote !== undefined) {
+        // `plan.md` holds one task per line, so the note must stay on one line.
+        blockNotes.push(`${verifier.name}: ${result.blockNote.replace(/\s+/g, ' ').trim()}`);
+      }
     }
     if (result.verdict === 'fail' || result.verdict === 'advisory') {
       if (feedback !== '') {
@@ -104,11 +110,12 @@ export async function dispatchVerifiers(input: DispatchInput): Promise<DispatchO
     }
   }
 
-  if (sections.length > 0) {
+  const hasBlockNote = blockNotes.length > 0;
+  if (sections.length > 0 && !hasBlockNote) {
     const body = sections.map(([name, text]) => `## ${name}\n\n${text.trimEnd()}\n`).join('\n');
     await fs.writeFile(path.join(checksDir, FEEDBACK_FILENAME), body);
   }
-  if (images.length > 0) {
+  if (images.length > 0 && !hasBlockNote) {
     await fs.writeFile(
       path.join(checksDir, FEEDBACK_IMAGES_FILENAME),
       `${JSON.stringify(images, null, 2)}\n`,
@@ -116,9 +123,11 @@ export async function dispatchVerifiers(input: DispatchInput): Promise<DispatchO
   }
   if (blocking) {
     const text = await fs.readFile(input.planPath, 'utf-8');
-    const reopened = reopenTask(text, input.selectedTaskId);
-    if (reopened !== text) {
-      await fs.writeFile(input.planPath, reopened);
+    const rewritten = hasBlockNote
+      ? (blockTask(text, input.selectedTaskId, blockNotes.join('; ')) ?? text)
+      : reopenTask(text, input.selectedTaskId);
+    if (rewritten !== text) {
+      await fs.writeFile(input.planPath, rewritten);
     }
   }
   return { runs, blocking };

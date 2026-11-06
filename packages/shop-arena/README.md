@@ -79,10 +79,12 @@ tools (`read_file`, `write_file`, `list_dir`) that let the agent write
 emits a fixed canonical task list (homepage, header, cart, product,
 collection, search, checkout, account, footer, info pages, floating
 widgets); each executor iteration writes `parts/<task_id>.md` and
-`parts/<task_id>.caps.json`. An `anonymization` verifier scans the parts
-after every iteration for the store domain, brand tokens from the
-prefetched homepage, absolute store URLs, and email addresses, and
-reopens the task with line-level feedback on a hit.
+`parts/<task_id>.caps.json`. An `anonymization` verifier scans the
+current task's `parts/<task_id>.md` after every iteration for the store
+domain, brand tokens from the prefetched homepage, absolute store URLs,
+and email addresses, and reopens the task with line-level feedback on a
+hit. A task gets at most two such reopens; the next hit blocks it with a
+note that names the fragment.
 
 ```ts
 import { loadCredentials } from '@shop-gym/core';
