@@ -164,7 +164,8 @@ element. Reference your evidence inline by relative path, e.g.
 `parts/<task_id>.caps.json` - a JSON object containing **only** the
 top-level capabilities-schema keys this task is responsible for. The
 schema is closed (extra fields rejected at merge time); do not invent
-keys. Lists are deduplicated and order-preserved at merge time. Do
+keys. Lists are deduplicated and order-preserved at merge time. A `null`
+means unknown: it never replaces a value that another task wrote. Do
 **not** wrap your fragment in any envelope - just the partial object.
 
 `evidence/<task_id>/snapshots/NN-<state>.md` - accessibility snapshots

@@ -393,8 +393,10 @@ so schema drift is loud. Top-level shape:
 Each executor writes a fragment matching one or more top-level keys to
 `parts/<task_id>.caps.json`. The post-loop merge is a deterministic
 deep-merge with the rule: **last writer wins per leaf**, except lists
-(union, deduplicated, order-preserving). Conflicts are recorded in
-`manifest.json:capability_conflicts`.
+(union, deduplicated, order-preserving) and `null`. A `null` means
+unknown: it never replaces a non-null value, and a later non-null value
+fills it. Neither case is a conflict. Conflicts (two different non-null
+values for one leaf) are recorded in `manifest.json:capability_conflicts`.
 
 ### 5.6 Stats schema
 
