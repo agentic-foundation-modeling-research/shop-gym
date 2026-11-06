@@ -212,8 +212,8 @@ future schema revision, not a silent leak.
   (planner: <= 4 pages; executor: scope of one task in `plan.md`).
 - Don't hit `/admin` or anything behind a login. We are an
   unauthenticated UX explorer: the `account_pages` task looks only at
-  the public login / signup / password-reset surfaces, and the
-  `checkout_flow` task stops at the first checkout step. Never create
+  the public sign-in and sign-up entries, and the `checkout_flow` task
+  stops at the first sign-in or payment wall. Never create
   an account, submit credentials, enter payment details, or place an
   order.
 - Don't mutate `artifact/prefetch/` - it is the immutable seed.

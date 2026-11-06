@@ -146,6 +146,82 @@ const MARKETPLACE_SCRIPTS: readonly FakeScript[] = [
   },
 ];
 
+/** The 14 fixed areas: the 11 canonical Plan task ids and the three marketplace ones. */
+const FIXED_AREAS = [
+  'homepage_sections',
+  'header_navigation',
+  'cart_drawer',
+  'product_variants',
+  'product_reviews',
+  'related_products',
+  'collection_filters',
+  'search_predictive',
+  'search_results',
+  'checkout_flow',
+  'account_pages',
+  'footer',
+  'info_pages',
+  'floating_widgets',
+];
+
+/**
+ * A plan with every fixed area at one priority. Ties go to source order,
+ * so the executor takes `search_results`, then `product_reviews`.
+ */
+function fixedPlan(lines: Readonly<Record<string, string>> = {}): string {
+  const first = ['search_results', 'product_reviews'];
+  const tasks = [...first, ...FIXED_AREAS.filter((area) => !first.includes(area))].map(
+    (id) => lines[id] ?? `- [ ] ${id} — capture the area [priority: 5]`,
+  );
+  return `# Plan - Minimal Homeware Shop
+
+A small homeware storefront with a single collection.
+
+## Tasks
+
+${tasks.join('\n')}
+
+## Omitted Areas
+
+(none)
+`;
+}
+
+const SEARCH_RESULTS_PART = `## Search Results
+
+### Results grid
+
+- **Type:** full-page results grid
+- **Layout:** facet column beside a product grid
+- **Content:** product cards with price and rating
+- **Behavior:** facets refine the grid in place
+- **Styling:** light surface
+- **UX Notes:** none
+`;
+
+const FIXED_AREA_SCRIPTS: readonly FakeScript[] = [
+  { writeFiles: { 'plan.md': fixedPlan() }, reply: 'planned' },
+  {
+    writeFiles: {
+      'artifact/parts/search_results.md': SEARCH_RESULTS_PART,
+      'plan.md': fixedPlan({
+        search_results: '- [x] search_results — capture the area [priority: 5]',
+      }),
+    },
+    reply: 'search results done',
+  },
+  {
+    writeFiles: {
+      'plan.md': fixedPlan({
+        search_results: '- [x] search_results — capture the area [priority: 5]',
+        product_reviews:
+          '- [!] product_reviews — capture the area; no product page shows reviews [priority: 5]',
+      }),
+    },
+    reply: 'product reviews blocked',
+  },
+];
+
 /** A `capabilities.json` that Storefront exploration published at schema 0.2. */
 const CAPABILITIES_0_2 = {
   version: '0.2',
@@ -385,6 +461,35 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
       'product_detail',
       'search_results',
     ]);
+  });
+
+  it('plans the 14 fixed areas and records each unfinished one as a gap with a reason', async () => {
+    // The budget ends after two executor iterations: search_results is
+    // done, product_reviews is blocked, and the other areas stay pending.
+    const { result, runtime } = await explore({ scripts: FIXED_AREA_SCRIPTS, maxIters: 2 });
+
+    const plannerPrompt = String(runtime.requests[0]?.prompt);
+    const plannedIds = [...plannerPrompt.matchAll(/^- \[ \] ([a-z0-9_]+)\s+— /gm)].map(
+      (match) => match[1],
+    );
+    expect(plannedIds).toEqual(FIXED_AREAS);
+    expect(plannerPrompt).toContain('<= 4 `navigate` calls');
+
+    expect(result.finalStatus).toBe('budget_exhausted');
+    const manifest = readJson(result.manifestPath);
+    expect(manifest.coverage_gaps).not.toContain('search_results');
+    const gaps: { area: string; reason: string }[] = manifest.fixed_area_gaps;
+    expect(gaps.map((gap) => gap.area)).toEqual(
+      FIXED_AREAS.filter((area) => area !== 'search_results'),
+    );
+    expect(gaps).toContainEqual({
+      area: 'product_reviews',
+      reason: 'blocked: no product page shows reviews',
+    });
+    expect(gaps).toContainEqual({
+      area: 'related_products',
+      reason: 'not started when the run ended',
+    });
   });
 
   it('skips every step on a second call with the same outDir', async () => {

@@ -44,6 +44,9 @@ _Avoid_: manual (alone), seed manual, Seed Shop Manual
 **Capability**:
 One structured, schema-checked fact about one storefront feature, for example the cart type or the list of collection filters.
 
+**Fixed area**:
+One of the 14 Plan tasks that Storefront exploration plans in every run, on every platform: the 11 canonical areas (`homepage_sections` to `floating_widgets`) and the three marketplace areas `product_reviews`, `related_products` and `search_results`. Each one ends done, or `manifest.json` lists it in `fixed_area_gaps` with a one-line reason.
+
 **Anonymization**:
 The rule that a Shop Manual describes only structure and UX patterns, and contains no brand, domain, product name, or other text that identifies the Live storefront.
 

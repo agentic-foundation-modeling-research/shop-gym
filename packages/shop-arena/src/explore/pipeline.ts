@@ -12,7 +12,7 @@
  * explore.json          harness outcome of the explore step
  * capabilities.json     merged, schema-validated capabilities
  * stats.json            catalog and feature statistics
- * manifest.json         counts, omissions, conflicts, coverage gaps, paths
+ * manifest.json         counts, omissions, conflicts, coverage and fixed area gaps, paths
  * manual.md             the synthesized shop manual
  * .pipeline/            step records of the pipeline runner
  * ```
@@ -49,7 +49,7 @@ import {
   mergeFragments,
   parseCapabilities,
 } from './capabilities.js';
-import { coverageGaps, parseOmittedAreas } from './coverage.js';
+import { type AreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
 import { type PrefetchReport, normalizeBase, prefetch } from './prefetch.js';
 import { computeStats } from './stats.js';
@@ -62,7 +62,7 @@ export const DEFAULT_OUTPUT_ROOT = join('outputs', 'shop_manuals');
 export const EXPLORE_STEPS = ['prefetch', 'explore', 'merge', 'synthesize'] as const;
 
 /** Bumped when the prompts or the output contract change shape. */
-const EXPLORE_VERSION = '1.1';
+const EXPLORE_VERSION = '1.2';
 const RUN_ID_HASH_LEN = 8;
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
 
@@ -129,6 +129,8 @@ export interface Manifest {
   readonly omitted_areas: readonly { area: string; reason: string }[];
   readonly capability_conflicts: readonly Conflict[];
   readonly coverage_gaps: readonly string[];
+  /** Each fixed area whose Plan task did not end done, with a one-line reason. */
+  readonly fixed_area_gaps: readonly AreaGap[];
   readonly merged_at: string;
   readonly paths: {
     manual: string;
@@ -307,6 +309,7 @@ const mergeStep: Step<ExploreContext> = {
       omitted_areas: omitted,
       capability_conflicts: conflicts,
       coverage_gaps: coverageGaps(prefetchDir, tasks, omittedAreas),
+      fixed_area_gaps: fixedAreaGaps(tasks),
       merged_at: new Date().toISOString(),
       paths: {
         manual: PATHS.manual,

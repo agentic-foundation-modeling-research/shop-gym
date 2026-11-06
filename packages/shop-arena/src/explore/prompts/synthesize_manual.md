@@ -44,11 +44,12 @@ stop.
   4. `## Collections & navigation` - collection page UX, filters, sort,
      pagination (`collection`).
   5. `## Product page` - gallery, variant axes, options UX, swatches,
-     stock signals (`product`).
+     stock signals, reviews (rating histogram, review filters), related
+     product blocks (`product`).
   6. `## Cart` - drawer vs page, line-item controls, upsells, surfaces
      (`cart`).
-  7. `## Search` - predictive vs full-page, suggestion grouping, empty
-     state (`search`).
+  7. `## Search` - predictive vs full-page, suggestion grouping, results
+     page facets and sort, empty state (`search`).
   8. `## Checkout` - guest option, shipping options, payment methods,
      discount input (`checkout`).
   9. `## Account` - login, signup, profile, addresses, order history
