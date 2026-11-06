@@ -78,7 +78,10 @@ function schemaIssues(error: z.ZodError): string {
 }
 
 /** A fragment file under `parts/` and the page key in its name. */
-type Fragment = { readonly name: string; readonly pageKey: string };
+interface Fragment {
+  readonly name: string;
+  readonly pageKey: string;
+}
 
 type FragmentCheck =
   | { readonly pageKey: string; readonly observation: ProductObservation }
