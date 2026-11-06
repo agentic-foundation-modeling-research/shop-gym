@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { TaskList } from '@shop-gym/harness';
+import { type TaskList, taskById } from '@shop-gym/harness';
 
 interface Area {
   readonly name: string;
@@ -129,11 +129,11 @@ export function parseOmittedAreas(planMd: string): Set<string> {
   return omitted;
 }
 
-/** Whether a done Plan task covers `area`, by the rule of `coverageGaps`. */
-function coveredByTask(area: Area, tasks: TaskList): boolean {
-  const own = tasks.find((task) => task.id === area.name);
+/** Whether a done Plan task covers `spec`, by the rule of `coverageGaps`. */
+function coveredByTask(spec: Area, tasks: TaskList): boolean {
+  const own = taskById(tasks, spec.name);
   if (own !== undefined) return own.status === 'done';
-  return tasks.some((task) => task.status === 'done' && area.taskIds.includes(task.id));
+  return tasks.some((task) => task.status === 'done' && spec.taskIds.includes(task.id));
 }
 
 /**
