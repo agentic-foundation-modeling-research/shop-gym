@@ -53,7 +53,9 @@ steps on the `@shop-gym/core` pipeline runner:
 | `synthesize` | `capabilities.json`, `run/artifact/parts/*.md` | `manual.md` |
 
 The explore step drives `runPlanExecLoop` from `@shop-gym/harness` with
-the pi runtime, one headless `BrowserSession` per harness run, the
+the pi runtime, a new headless `BrowserSession` for every iteration
+(`src/explore/browser.ts`; it opens the homepage, reads `/cart.js` when the
+shop serves it, and writes `run/iters/<id>/start_state.json`), the
 `browserTools` from `@shop-gym/browser`, and three run-dir-scoped file
 tools (`read_file`, `write_file`, `list_dir`) that let the agent write
 `plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. The planner

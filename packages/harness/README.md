@@ -31,6 +31,9 @@ the model; the runtime executes each iteration in-process.
   harness kept it or abandoned it (timeout, invalid plan, protocol
   violation, runtime error). The harness never rolls back `artifact/`
   itself; a caller that wants abandoned edits gone does it in the hook.
+  Before each iteration's Agent run, the optional `onIterationStart` hook
+  receives the iteration id, task and directory, so a caller can give the
+  iteration fresh resources such as a new browser.
 - `telemetry/` - iteration ids, `metadata.json` schema, secret scrubbing,
   atomic `run.json` writes, and `reconstruct(runDir)` for crashed runs.
 - `trace.ts` - `renderIterDir(iterDir)` renders an iteration's
