@@ -474,11 +474,11 @@ class LoopState {
         throw error;
       }
     }
-    const stop = this.stopReason === undefined ? {} : { stopReason: this.stopReason };
+    const stopField = this.stopReason === undefined ? {} : { stopReason: this.stopReason };
     const result: PlanExecLoopResult = {
       runDir: this.workspace.runDir,
       finalStatus,
-      ...stop,
+      ...stopField,
       planIterCount: this.planIterCount,
       execIterCount: this.execIterCount,
       trajectoryPaths: [...this.trajectoryPaths],
@@ -502,7 +502,7 @@ class LoopState {
             startedAt: this.attemptStartedAt,
             endedAt: new Date().toISOString(),
             finalStatus,
-            ...stop,
+            ...stopField,
           },
         ],
       },
