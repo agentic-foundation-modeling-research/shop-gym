@@ -94,10 +94,12 @@ Shopify JSON endpoints and the policy pages. On a generic site it fetches
 nothing more, and the planner picks its start URLs from the homepage links
 and the sitemap. `manifest.json` records the `platform`.
 
-Exploration never tries to pass a bot check. Prefetch stops on a captcha
-homepage with the reason `bot_check`, and on a Cloudflare challenge homepage
-with the reason `cloudflare_challenge`. In a run, a Plan task that meets a bot
-check is marked blocked with the note "bot check", and the run goes on. Two
+Exploration never tries to pass a bot check. Prefetch stops on a captcha,
+interstitial or rate-limit homepage with the reason `bot_check`, and on a
+Cloudflare challenge homepage with the reason `cloudflare_challenge`. In a
+run, the Browser tools refuse `click`, `type`, `select` and `press` on a
+bot-check page, a Plan task that meets a bot check is marked blocked with
+the note "bot check", and the run goes on. Two
 Iterations in a row with a bot check, or the navigation cap of 200
 `navigate` calls per run, stop the run. A stopped run still writes the
 manual from the finished parts, lists the unfinished areas as

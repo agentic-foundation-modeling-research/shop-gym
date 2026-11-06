@@ -25,17 +25,53 @@ const CAPTCHA_MARKERS: readonly string[] = [
   '/errors/validateCaptcha',
 ];
 
+/**
+ * HTML substrings of an interstitial page: a page with one button that
+ * the visitor must click to go on to the shop. The heading of the
+ * interstitial page of a large marketplace.
+ */
+const INTERSTITIAL_MARKERS: readonly string[] = ['Click the button below to continue shopping'];
+
+/**
+ * HTML substrings of a rate-limit page: the title of the page that a
+ * large marketplace sends with HTTP 503 when it refuses a browser that
+ * opens its search and product URLs directly. A normal error page can
+ * have the same words, so they count only on a page served with
+ * `RATE_LIMIT_STATUS`.
+ */
+const RATE_LIMIT_MARKERS: readonly string[] = ['Sorry! Something went wrong!'];
+
+/** The HTTP status of a rate-limit page. */
+const RATE_LIMIT_STATUS = 503;
+
 /** The first Cloudflare challenge marker in `html`, or `undefined`. */
 export function cloudflareMarker(html: string): string | undefined {
-  return CLOUDFLARE_MARKERS.find((marker) => html.includes(marker));
+  return firstMarker(CLOUDFLARE_MARKERS, html);
 }
 
-/** The first captcha marker in `html`, or `undefined`. */
-export function captchaMarker(html: string): string | undefined {
-  return CAPTCHA_MARKERS.find((marker) => html.includes(marker));
+/**
+ * The first marker of a bot check that the site serves itself, not a
+ * Cloudflare challenge in front of it: a captcha page, an interstitial
+ * page or a rate-limit page. `status` is the HTTP status of the page, or
+ * `null` when it is not known; a rate-limit marker counts only with
+ * HTTP 503. `undefined` when the page has none.
+ */
+export function siteBotCheckMarker(html: string, status: number | null): string | undefined {
+  return (
+    firstMarker(CAPTCHA_MARKERS, html) ??
+    firstMarker(INTERSTITIAL_MARKERS, html) ??
+    (status === RATE_LIMIT_STATUS ? firstMarker(RATE_LIMIT_MARKERS, html) : undefined)
+  );
 }
 
-/** The first Cloudflare or captcha marker in `html`, or `undefined` when the page is not a bot check. */
-export function botCheckMarker(html: string): string | undefined {
-  return cloudflareMarker(html) ?? captchaMarker(html);
+/**
+ * The first bot-check marker of a page, or `undefined` when the page is
+ * not a bot check. `status` is as for `siteBotCheckMarker`.
+ */
+export function botCheckMarker(html: string, status: number | null): string | undefined {
+  return cloudflareMarker(html) ?? siteBotCheckMarker(html, status);
+}
+
+function firstMarker(markers: readonly string[], html: string): string | undefined {
+  return markers.find((marker) => html.includes(marker));
 }

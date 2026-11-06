@@ -11,14 +11,14 @@
  * platform and every request. Four gates abort the run before any
  * exploration starts, on both paths: a `robots.txt` that forbids `/`, an
  * unreachable or blocking homepage, a Cloudflare challenge page, and a
- * captcha page as the homepage.
+ * captcha, interstitial or rate-limit page as the homepage.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { captchaMarker, cloudflareMarker } from './bot-check.js';
+import { cloudflareMarker, siteBotCheckMarker } from './bot-check.js';
 
 export const DEFAULT_USER_AGENT =
   'ShopExplore/0.1.0 (+https://github.com/agentic-foundation-modeling-research/shop-gym)';
@@ -351,10 +351,10 @@ function gateIndex(entry: PrefetchEntry, body: Buffer | null): void {
     throw new ShopUnreachableError('network_error', `/: ${entry.error}`);
   }
   const text = body?.toString('utf8') ?? '';
-  // A captcha page often comes with HTTP 503, so its markers go before the status gate.
-  const captcha = captchaMarker(text);
-  if (captcha !== undefined) {
-    throw new ShopUnreachableError('bot_check', `/ is a bot-check page with marker '${captcha}'`);
+  // A bot-check page of the site often comes with HTTP 503, so its markers go before the status gate.
+  const botCheck = siteBotCheckMarker(text, entry.status);
+  if (botCheck !== undefined) {
+    throw new ShopUnreachableError('bot_check', `/ is a bot-check page with marker '${botCheck}'`);
   }
   if (entry.status === null || entry.status >= 400 || BOT_BLOCK_STATUS.has(entry.status)) {
     throw new ShopUnreachableError('http_status', `/ returned HTTP ${entry.status}`);

@@ -19,7 +19,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { NAVIGATION_CAP } from './browser.js';
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
 import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
-import { BOT_CHECK_PAGE, type FixtureSite, genericSitePages, startFixtureSite } from './testing.js';
+import {
+  BOT_CHECK_PAGE,
+  type FixtureSite,
+  INTERSTITIAL_PAGE,
+  RATE_LIMIT_PAGE,
+  genericSitePages,
+  startFixtureSite,
+} from './testing.js';
 
 const CREDENTIALS = {} as const;
 const HOME =
@@ -681,38 +688,40 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
   });
 
-  it.each([200, 503])(
-    'stops prefetch with bot_check when the homepage is a bot-check page (HTTP %i)',
-    async (status) => {
-      const blocked = await startFixtureSite((origin) => ({
-        ...genericSitePages(origin),
-        '/': { ...BOT_CHECK_PAGE, status },
-      }));
-      const runtime = new FakeRuntime(genericScripts(blocked.url));
-      try {
-        await expect(
-          exploreStorefront({
-            url: blocked.url,
-            outDir,
-            model: 'anthropic/test-model',
-            rateLimitMs: 0,
-            credentials: CREDENTIALS,
-            runtime,
-            llm: new StubLlm(),
-          }),
-        ).rejects.toSatisfy(
-          (error: unknown) =>
-            error instanceof StepFailedError &&
-            error.cause instanceof ShopUnreachableError &&
-            error.cause.reason === 'bot_check',
-        );
-      } finally {
-        await blocked.close();
-      }
-      expect(runtime.requests).toHaveLength(0);
-      expect(existsSync(join(outDir, 'run'))).toBe(false);
-    },
-  );
+  it.each([
+    ['a captcha page (HTTP 200)', BOT_CHECK_PAGE],
+    ['a captcha page (HTTP 503)', { ...BOT_CHECK_PAGE, status: 503 }],
+    ['an interstitial page', INTERSTITIAL_PAGE],
+    ['a rate-limit page', RATE_LIMIT_PAGE],
+  ])('stops prefetch with bot_check when the homepage is %s', async (_, homepage) => {
+    const blocked = await startFixtureSite((origin) => ({
+      ...genericSitePages(origin),
+      '/': homepage,
+    }));
+    const runtime = new FakeRuntime(genericScripts(blocked.url));
+    try {
+      await expect(
+        exploreStorefront({
+          url: blocked.url,
+          outDir,
+          model: 'anthropic/test-model',
+          rateLimitMs: 0,
+          credentials: CREDENTIALS,
+          runtime,
+          llm: new StubLlm(),
+        }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof StepFailedError &&
+          error.cause instanceof ShopUnreachableError &&
+          error.cause.reason === 'bot_check',
+      );
+    } finally {
+      await blocked.close();
+    }
+    expect(runtime.requests).toHaveLength(0);
+    expect(existsSync(join(outDir, 'run'))).toBe(false);
+  });
 
   it('blocks a Plan task that meets a bot check and goes on with the run', async () => {
     const botCheck = { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } };
@@ -847,6 +856,123 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(product).not.toContain('bot check');
     expect(back).toContain('Went back');
     expect(back).toContain('this page is a bot check');
+  });
+
+  it.each([
+    ['a Shopify shop', () => ({ url: baseUrl, scripts: SCRIPTS })],
+    ['a generic site', () => ({ url: site.url, scripts: genericScripts(site.url) })],
+  ])(
+    'tells the planner and the executor on %s never to act on a bot-check page',
+    async (_, options) => {
+      const { runtime } = await explore(options());
+
+      const [planner, executor] = runtime.requests.map((request) =>
+        promptText(request.prompt).replace(/\s+/g, ' '),
+      );
+      const rule = 'Never click, type or submit on an interstitial or bot-check page';
+      expect(planner).toContain(rule);
+      expect(planner).toContain('plan only from the pages that you could read');
+      expect(executor).toContain(rule);
+      expect(executor).toContain('Mark your task `[!]` with the reason "bot check"');
+    },
+  );
+
+  it('refuses page actions on a bot-check page and allows them again after back', async () => {
+    const { result } = await explore({
+      url: site.url,
+      maxIters: 1,
+      scripts: [
+        { writeFiles: { 'plan.md': botCheckPlan([]) } },
+        {
+          writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) },
+          toolCalls: [
+            { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001` } },
+            { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } },
+            { tool: 'press', arguments: { key: 'Enter' } },
+            { tool: 'click', arguments: { ref: 'e1' } },
+            { tool: 'type', arguments: { ref: 'e1', text: 'abc', submit: true } },
+            { tool: 'select', arguments: { ref: 'e1', value: 'abc' } },
+            { tool: 'back', arguments: {} },
+            { tool: 'press', arguments: { key: 'Tab' } },
+          ],
+        },
+      ],
+    });
+
+    const [, , press, click, type, select, back, pressAfterBack] = await toolResults(
+      result.runDir,
+      'exec-0001',
+    );
+    for (const [tool, output] of [
+      ['press', press],
+      ['click', click],
+      ['type', type],
+      ['select', select],
+    ]) {
+      expect(output).toContain(`${tool} refused`);
+      expect(output).toContain('this page is a bot check');
+    }
+    // The focused captcha input would send the form on Enter.
+    expect(site.requests.some((request) => request.path.startsWith('/errors/'))).toBe(false);
+    expect(back).toContain('Went back');
+    expect(back).not.toContain('bot check');
+    expect(pressAfterBack).toContain('Pressed Tab');
+  });
+
+  it.each([
+    ['an interstitial page', '/interstitial'],
+    ['a rate-limit page served with HTTP 503', '/rate-limit'],
+  ])('finds a bot check on %s', async (_, path) => {
+    const { result } = await explore({
+      url: site.url,
+      maxIters: 1,
+      scripts: [
+        { writeFiles: { 'plan.md': botCheckPlan([]) } },
+        {
+          writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) },
+          toolCalls: [{ tool: 'navigate', arguments: { url: `${site.url}${path}` } }],
+        },
+      ],
+    });
+
+    const [navigate] = await toolResults(result.runDir, 'exec-0001');
+    expect(navigate).toContain('this page is a bot check');
+  });
+
+  it('does not take a normal error page for a rate-limit page', async () => {
+    const errors = await startFixtureSite((origin) => ({
+      ...genericSitePages(origin),
+      '/server-error': { ...RATE_LIMIT_PAGE, status: 500 },
+      '/unavailable': {
+        status: 503,
+        contentType: 'text/html',
+        body: '<!doctype html><html><head><title>Back soon</title></head><body>Down for maintenance.</body></html>',
+      },
+    }));
+    try {
+      const { result } = await explore({
+        url: errors.url,
+        maxIters: 1,
+        scripts: [
+          { writeFiles: { 'plan.md': botCheckPlan([]) } },
+          {
+            writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) },
+            toolCalls: [
+              { tool: 'navigate', arguments: { url: `${errors.url}/server-error` } },
+              { tool: 'navigate', arguments: { url: `${errors.url}/unavailable` } },
+            ],
+          },
+        ],
+      });
+
+      const [serverError, unavailable] = await toolResults(result.runDir, 'exec-0001');
+      expect(serverError).toContain('Title: Sorry! Something went wrong!');
+      expect(serverError).not.toContain('bot check');
+      expect(unavailable).toContain('Title: Back soon');
+      expect(unavailable).not.toContain('bot check');
+    } finally {
+      await errors.close();
+    }
   });
 
   it('refuses navigate at the navigation cap and stops the run', async () => {

@@ -7,7 +7,8 @@
  *
  * After a tool call that loaded a page, the page is checked for bot-check
  * markers; on a bot check the tool result tells the agent not to try to
- * pass it. `navigate` refuses after `NAVIGATION_CAP` calls in one run.
+ * pass it, and `click`, `type`, `select` and `press` on that page are
+ * refused. `navigate` refuses after `NAVIGATION_CAP` calls in one run.
  */
 
 import type { Tool, ToolContext, ToolResult } from '@shop-gym/agent';
@@ -78,6 +79,8 @@ export class IterationBrowser {
   private started = false;
   /** Set when the page loaded a document that no bot check has read yet. */
   private pageLoaded = false;
+  /** The HTTP status of the last document of the main frame, or `null` before the first. */
+  private documentStatus: number | null = null;
   private navigations = 0;
   private iterationBotCheck: BotCheck | null = null;
 
@@ -115,6 +118,7 @@ export class IterationBrowser {
     }
     this.started = true;
     this.pageLoaded = false;
+    this.documentStatus = null;
     this.iterationBotCheck = null;
     const { page } = this.session;
     try {
@@ -148,9 +152,10 @@ export class IterationBrowser {
 
   /**
    * Runs one Browser tool call on the current browser. A `navigate` call at
-   * the cap is refused. A bot check on a page that loaded since the last
-   * check adds a notice to the result. The start page of an Iteration is
-   * checked at its first tool call.
+   * the cap is refused. A page action (`PAGE_ACTIONS`) on a bot-check page
+   * is refused, and the result is the bot-check notice. A bot check on a
+   * page that loaded since the last check adds the notice to the result.
+   * The start page of an Iteration is checked at its first tool call.
    */
   private async execute(name: string, params: unknown, ctx: ToolContext): Promise<ToolResult> {
     if (name === 'navigate') {
@@ -159,23 +164,34 @@ export class IterationBrowser {
       }
       this.navigations += 1;
     }
+    if (PAGE_ACTIONS.has(name)) {
+      // The page is read again even with no new document, because a script
+      // can change it in place.
+      const botCheck = await this.checkPage();
+      if (botCheck !== null) {
+        return {
+          content: [{ type: 'text', text: pageActionRefusal(name, botCheck) }],
+          isError: true,
+        };
+      }
+    }
     const result = await this.currentTool(name).execute(params, ctx);
-    const botCheck = await this.checkLoadedPage();
+    const botCheck = this.pageLoaded ? await this.checkPage() : null;
     if (botCheck === null) {
       return result;
     }
-    this.iterationBotCheck ??= botCheck;
     return {
       ...result,
       content: [...result.content, { type: 'text', text: botCheckNotice(botCheck) }],
     };
   }
 
-  /** The bot check on the page, when a document loaded since the last check. */
-  private async checkLoadedPage(): Promise<BotCheck | null> {
-    if (!this.pageLoaded) {
-      return null;
-    }
+  /**
+   * Reads the current page and returns its bot check, or `null` when the
+   * page is not a bot check or could not be read. The first bot check of
+   * an Iteration is kept for `botCheck`.
+   */
+  private async checkPage(): Promise<BotCheck | null> {
     this.pageLoaded = false;
     const { page } = this.session;
     let html: string;
@@ -187,12 +203,24 @@ export class IterationBrowser {
       this.pageLoaded = true;
       return null;
     }
-    const marker = botCheckMarker(html);
-    return marker === undefined ? null : { url: page.url(), marker };
+    const marker = botCheckMarker(html, this.documentStatus);
+    if (marker === undefined) {
+      return null;
+    }
+    const botCheck = { url: page.url(), marker };
+    this.iterationBotCheck ??= botCheck;
+    return botCheck;
   }
 
   private watchPageLoads(session: BrowserSession): void {
-    session.page.on('domcontentloaded', () => {
+    const { page } = session;
+    page.on('response', (response) => {
+      const request = response.request();
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+        this.documentStatus = response.status();
+      }
+    });
+    page.on('domcontentloaded', () => {
       this.pageLoaded = true;
     });
   }
@@ -237,6 +265,21 @@ function botCheckNotice({ url, marker }: BotCheck): string {
     'Do not try to pass it: do not solve it, click through it, wait for it to clear or open it again, and do not describe it in any file.',
     'If you work on a Plan task, mark it blocked: set its line in plan.md to `[!]`, append the reason "bot check" to its brief after a `;`, and end this iteration.',
     'If you write the plan, plan only from the pages that you could read.',
+  ].join('\n');
+}
+
+/**
+ * The Browser tools that act on the page, so they could pass a bot check:
+ * they are refused on a bot-check page. `navigate` and `back` leave the
+ * page and stay allowed.
+ */
+const PAGE_ACTIONS: ReadonlySet<string> = new Set(['click', 'type', 'select', 'press']);
+
+/** The result of a page action on a bot-check page. */
+function pageActionRefusal(tool: string, botCheck: BotCheck): string {
+  return [
+    `${tool} refused: the current page is a bot check, so the action did not run.`,
+    botCheckNotice(botCheck),
   ].join('\n');
 }
 

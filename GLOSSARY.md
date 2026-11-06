@@ -38,7 +38,7 @@ The ShopArena process (`shopgym explore`) that browses one Live storefront and w
 _Avoid_: ShopExplore, explore (alone)
 
 **Bot check**:
-A page that a site shows in place of the page that was asked for, to find out whether the visitor is a person, for example a Cloudflare challenge or a captcha page. Storefront exploration finds it by markers in the page HTML and never tries to pass it. A bot-check homepage stops prefetch. In a Harness run, the Plan task that meets a Bot check is marked blocked with the note "bot check", and two Iterations in a row with a Bot check end the run with a Caller stop.
+A page that a site shows in place of the page that was asked for, to find out whether the visitor is a person, for example a Cloudflare challenge, a captcha page, an interstitial page with one button to go on, or a rate-limit page served with HTTP 503. Storefront exploration finds it by markers in the page HTML and never tries to pass it: the Browser tools refuse to click, type, select or press on it. A bot-check homepage stops prefetch. In a Harness run, the Plan task that meets a Bot check is marked blocked with the note "bot check", and two Iterations in a row with a Bot check end the run with a Caller stop.
 _Avoid_: captcha (for all kinds), block page
 
 **Navigation cap**:

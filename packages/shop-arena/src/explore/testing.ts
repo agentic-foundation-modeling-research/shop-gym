@@ -265,9 +265,51 @@ export const BOT_CHECK_PAGE: FixturePage = {
 <p>We need to know that you are a person before you continue.</p>
 <form method="get" action="/errors/validateCaptcha">
   <img src="/captcha.png" alt="">
-  <label>Type the characters you see in this image: <input name="answer" autocomplete="off"></label>
+  <label>Type the characters you see in this image: <input name="answer" autocomplete="off" autofocus></label>
   <button type="submit">Continue</button>
 </form>
+</body>
+</html>
+`,
+};
+
+/**
+ * An invented interstitial page: a heading and one button that the
+ * visitor must click to go on to the shop. The heading is the marker of
+ * the interstitial page of a large marketplace; no captcha marker is on
+ * the page.
+ */
+export const INTERSTITIAL_PAGE: FixturePage = {
+  contentType: HTML,
+  body: `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture Mart</title></head>
+<body>
+<h4>Click the button below to continue shopping</h4>
+<form method="get" action="/">
+  <button type="submit">Continue shopping</button>
+</form>
+</body>
+</html>
+`,
+};
+
+/**
+ * An invented rate-limit page, served with HTTP 503. Its title is the
+ * marker of the rate-limit page of a large marketplace.
+ */
+export const RATE_LIMIT_PAGE: FixturePage = {
+  status: 503,
+  contentType: HTML,
+  body: `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Sorry! Something went wrong!</title></head>
+<body>
+<form method="get" action="/search">
+  <input name="q" aria-label="Search">
+  <button type="submit">Go</button>
+</form>
+<p>The page is busy. Try again later.</p>
 </body>
 </html>
 `,
@@ -290,8 +332,10 @@ ${paths.map((path) => `  <url><loc>${origin}${path}</loc></url>`).join('\n')}
  * The pages of the generic fixture site: a marketplace with no Shopify
  * marker and no JSON endpoints. It has robots.txt, a homepage with a
  * tagline title, sitemap.xml, a department page, a search results page
- * (`/search`, any query), one page per product, and `/bot-check`, which
- * serves `BOT_CHECK_PAGE`. No other page links to `/bot-check`.
+ * (`/search`, any query), one page per product, and the bot-check pages
+ * `/bot-check` (`BOT_CHECK_PAGE`), `/interstitial` (`INTERSTITIAL_PAGE`)
+ * and `/rate-limit` (`RATE_LIMIT_PAGE`). No other page links to a
+ * bot-check page.
  */
 export function genericSitePages(origin: string): FixturePages {
   const html = (body: string): FixturePage => ({ contentType: HTML, body });
@@ -305,6 +349,8 @@ export function genericSitePages(origin: string): FixturePages {
     [VIDEO_GAMES.path]: html(departmentPage(VIDEO_GAMES)),
     '/search': html(searchPage()),
     '/bot-check': BOT_CHECK_PAGE,
+    '/interstitial': INTERSTITIAL_PAGE,
+    '/rate-limit': RATE_LIMIT_PAGE,
     ...Object.fromEntries(
       GENERIC_SITE_PRODUCTS.map((product) => [product.path, html(productPage(product))]),
     ),
