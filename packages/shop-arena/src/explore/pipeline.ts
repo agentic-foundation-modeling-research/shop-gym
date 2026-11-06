@@ -39,7 +39,16 @@ import {
 } from '@shop-gym/agent';
 import { BrowserSession, browserTools } from '@shop-gym/browser';
 import { type Credentials, type Step, type StepReport, runPipeline } from '@shop-gym/core';
-import { type FinalStatus, type RunSummary, runPlanExecLoop } from '@shop-gym/harness';
+import {
+  type FinalStatus,
+  InvalidPlanError,
+  PLAN_ITER_ID,
+  type RunSummary,
+  type TaskList,
+  iterDirPath,
+  parse,
+  runPlanExecLoop,
+} from '@shop-gym/harness';
 
 import { anonymizationVerifier } from './anonymization.js';
 import {
@@ -49,7 +58,7 @@ import {
   mergeFragments,
   parseCapabilities,
 } from './capabilities.js';
-import { type AreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
+import { type FixedAreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
 import {
   type Platform,
@@ -138,7 +147,7 @@ export interface Manifest {
   readonly capability_conflicts: readonly Conflict[];
   readonly coverage_gaps: readonly string[];
   /** Each fixed area whose Plan task did not end done, with a one-line reason. */
-  readonly fixed_area_gaps: readonly AreaGap[];
+  readonly fixed_area_gaps: readonly FixedAreaGap[];
   readonly merged_at: string;
   readonly paths: {
     manual: string;
@@ -235,6 +244,21 @@ function readRunSummary(runDir: string): RunSummary | undefined {
   return existsSync(path) ? readJson<RunSummary>(path) : undefined;
 }
 
+/**
+ * The Plan tasks as the planner wrote them: the `plan.after.md` snapshot
+ * of the planner iteration. Empty when the planner wrote no valid plan.
+ */
+function readPlannedTasks(runDir: string): TaskList {
+  const path = join(iterDirPath(join(runDir, 'iters'), PLAN_ITER_ID), 'plan.after.md');
+  if (!existsSync(path)) return [];
+  try {
+    return parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    if (error instanceof InvalidPlanError) return [];
+    throw error;
+  }
+}
+
 const prefetchStep: Step<ExploreContext> = {
   id: 'prefetch',
   inputs: [],
@@ -329,7 +353,7 @@ const mergeStep: Step<ExploreContext> = {
       omitted_areas: omitted,
       capability_conflicts: conflicts,
       coverage_gaps: coverageGaps(prefetchDir, tasks, omittedAreas),
-      fixed_area_gaps: fixedAreaGaps(tasks),
+      fixed_area_gaps: fixedAreaGaps(tasks, readPlannedTasks(runDir)),
       merged_at: new Date().toISOString(),
       paths: {
         manual: PATHS.manual,

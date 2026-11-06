@@ -168,9 +168,10 @@ layout.
   the plan has a task with the area's own name, only that task can cover
   the area. Each evidenced area that nothing covers is listed in
   `manifest.json:coverage_gaps`. Apart from the evidence, each of the
-  14 fixed areas (the Plan tasks that the planner emits in every run:
-  the 11 canonical ids and `product_reviews`, `related_products`,
-  `search_results`) that does not end done is listed in
+  14 fixed areas (the canonical Plan tasks that the planner emits in
+  every run: 11 for the surfaces of every storefront and
+  `product_reviews`, `related_products`, `search_results`) that does
+  not end done is listed in
   `manifest.json:fixed_area_gaps` with a one-line reason.
 
 ---

@@ -24,7 +24,7 @@ export {
   parseCapabilities,
 } from './capabilities.js';
 export {
-  type AreaGap,
+  type FixedAreaGap,
   FIXED_AREAS,
   coverageGaps,
   evidencedAreas,

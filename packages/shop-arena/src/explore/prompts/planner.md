@@ -40,16 +40,14 @@ optional - the executor will redo the captures in their task.
 
 ## 2. Canonical task list (emit unconditionally)
 
-The following 14 task ids are the **canonical set**: 11 ids for the
-surfaces of every storefront, and three marketplace ids
-(`product_reviews`, `related_products`, `search_results`). Every run,
-on every kind of storefront, emits **all of them** in `## Tasks`, in
-the order shown, with the priorities shown. The planner's job is
-verification + extension, not discovery - do not drop a canonical task
-because a feature looks absent. If the feature really is missing, the
-executor will note that under its `### Edge cases & gaps` block (and
-`caps.json` will reflect it). This keeps runs stable across shops and
-gives the synthesis pass a predictable input shape.
+The following 14 task ids are the **canonical set**. Every run emits
+**all of them** in `## Tasks`, in the order shown, with the priorities
+shown. The planner's job is verification + extension, not discovery -
+do not drop a canonical task because a feature looks absent. If the
+feature really is missing, the executor will note that under its
+`### Edge cases & gaps` block (and `caps.json` will reflect it). This
+keeps runs stable across shops and gives the synthesis pass a
+predictable input shape.
 
 ```
 - [ ] homepage_sections — capture every section below the hero; snapshot per section [priority: 9]
@@ -68,15 +66,13 @@ gives the synthesis pass a predictable input shape.
 - [ ] floating_widgets  — cookie banner, newsletter popup, chat widget, age gate (record presence + behavior) [priority: 3]
 ```
 
-The ids are stable names, not a claim about how the shop is built.
-Every brief uses platform-neutral words, so the same block fits any
-storefront: `cart_drawer` covers a cart page or side sheet too, and
-`collection_filters` covers a category listing. A key in backticks
-(`departments`, `search.facets`, ...) names the `capabilities.json`
-fields that the task fills.
-
-Each canonical task that does not end done (`[x]`) is reported in
-`manifest.json` as a gap with a one-line reason.
+Three of them are marketplace areas: `product_reviews`,
+`related_products` and `search_results`. The ids are stable names, not
+a claim about how the shop is built. Every brief uses platform-neutral
+words, so the same block fits any storefront: `cart_drawer` covers a
+cart page or side sheet too, and `collection_filters` covers a category
+listing. A key in backticks (`departments`, `search.facets`, ...) names
+the `capabilities.json` fields that the task fills.
 
 Priorities are advisory tie-breakers, not gates - every task above
 must appear in `## Tasks` with status `[ ]`.

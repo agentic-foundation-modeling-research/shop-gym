@@ -76,11 +76,12 @@ the pi runtime, one headless `BrowserSession` per harness run, the
 `browserTools` from `@shop-gym/browser`, and three run-dir-scoped file
 tools (`read_file`, `write_file`, `list_dir`) that let the agent write
 `plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. The planner
-emits the same 14 Plan tasks, the fixed areas (`FIXED_AREAS`), in every
-run on every platform: the 11 canonical ones (homepage, header and
-departments, cart, product, collection, predictive search, checkout,
-account, footer, info pages, floating widgets) and three marketplace
-ones (`product_reviews`, `related_products`, `search_results`). Their
+emits the same 14 canonical Plan tasks, the fixed areas
+(`FIXED_AREAS`), in every run on every platform: 11 for the surfaces
+that every storefront has (homepage, header and departments, cart,
+product, collection, predictive search, checkout, account, footer, info
+pages, floating widgets) and three marketplace ones (`product_reviews`,
+`related_products`, `search_results`). Their
 briefs use platform-neutral words (for example, `cart_drawer` covers
 any cart surface) and name the Capabilities that each task fills. Each
 executor iteration writes `parts/<task_id>.md` and
@@ -132,7 +133,8 @@ The merge step also writes `fixed_area_gaps`: one `{ area, reason }`
 entry for each fixed area whose Plan task did not end done, whatever the
 prefetch shows. The reason is one line: `not in the plan`, `not started
 when the run ended`, `in progress when the run ended`, or `blocked:`
-with the reason that the executor added to the brief after a `;`.
+with the text that the executor added after the brief that the planner
+wrote.
 
 ## Gen
 

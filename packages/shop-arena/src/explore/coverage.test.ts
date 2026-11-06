@@ -63,30 +63,45 @@ describe('coverageGaps', () => {
 });
 
 describe('fixedAreaGaps', () => {
-  /** The gap reason of `product_reviews` when the plan holds `tasks`. */
+  const BRIEF = 'on a product page; capture the reviews';
+
+  /** The gap reason of `product_reviews` when `tasks` end a run that planned `BRIEF`. */
   function reviewsGap(tasks: readonly Task[]): string | undefined {
-    return fixedAreaGaps(tasks).find((gap) => gap.area === 'product_reviews')?.reason;
+    const planned = [task('product_reviews', 'pending', BRIEF)];
+    return fixedAreaGaps(tasks, planned).find((gap) => gap.area === 'product_reviews')?.reason;
   }
 
   it('reports every fixed area of an empty plan as not in the plan', () => {
-    const gaps = fixedAreaGaps([]);
+    const gaps = fixedAreaGaps([], []);
     expect(gaps).toHaveLength(14);
     expect(gaps.every((gap) => gap.reason === 'not in the plan')).toBe(true);
   });
 
-  it('leaves out a fixed area whose Plan task is done, and ignores other Plan tasks', () => {
-    const tasks = [task('product_reviews', 'done'), task('gift_card_purchase', 'pending')];
-    expect(reviewsGap(tasks)).toBeUndefined();
-    expect(fixedAreaGaps(tasks).map((gap) => gap.area)).not.toContain('gift_card_purchase');
+  it('leaves out a fixed area whose Plan task is done', () => {
+    expect(reviewsGap([task('product_reviews', 'done', BRIEF)])).toBeUndefined();
+  });
+
+  it('ignores a Plan task that is not a fixed area', () => {
+    const gaps = fixedAreaGaps([task('gift_card_purchase', 'pending')], []);
+    expect(gaps.map((gap) => gap.area)).not.toContain('gift_card_purchase');
   });
 
   it.each<[string, Task, string]>([
-    ['pending', task('product_reviews', 'pending'), 'not started when the run ended'],
-    ['in progress', task('product_reviews', 'in_progress'), 'in progress when the run ended'],
+    ['pending', task('product_reviews', 'pending', BRIEF), 'not started when the run ended'],
+    [
+      'in progress',
+      task('product_reviews', 'in_progress', BRIEF),
+      'in progress when the run ended',
+    ],
     [
       'blocked with a reason after the brief',
-      task('product_reviews', 'blocked', 'open a review block; sort; no reviews on any page'),
-      'blocked: no reviews on any page',
+      task('product_reviews', 'blocked', `${BRIEF}; reviews need a sign-in; none is public`),
+      'blocked: reviews need a sign-in; none is public',
+    ],
+    [
+      'blocked with no reason after the brief',
+      task('product_reviews', 'blocked', BRIEF),
+      'blocked: no reason given',
     ],
     [
       'blocked by a protocol violation',
@@ -98,7 +113,15 @@ describe('fixedAreaGaps', () => {
       "blocked: protocol_violation: resurrected [x] task ids: ['footer']",
     ],
     ['blocked with no note', task('product_reviews', 'blocked'), 'blocked: no reason given'],
-  ])('gives a one-line reason for a Plan task that is %s', (_, planned, reason) => {
-    expect(reviewsGap([planned])).toBe(reason);
+  ])('gives a one-line reason for a Plan task that is %s', (_, final, reason) => {
+    expect(reviewsGap([final])).toBe(reason);
+  });
+
+  it('gives the whole note as the reason of a blocked task the planner did not write', () => {
+    const blocked = task('product_reviews', 'blocked', 'added late; no reviews on any page');
+    expect(fixedAreaGaps([blocked], []).find((gap) => gap.area === 'product_reviews')).toEqual({
+      area: 'product_reviews',
+      reason: 'blocked: added late; no reviews on any page',
+    });
   });
 });

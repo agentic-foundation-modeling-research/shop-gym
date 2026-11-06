@@ -165,10 +165,10 @@ export function coverageGaps(
 }
 
 /**
- * The Plan task ids that the planner emits in every run, on every
- * platform: the 11 canonical ids and the three marketplace ids
- * (`product_reviews`, `related_products`, `search_results`), in the order
- * of the planner prompt.
+ * The canonical Plan task ids that the planner emits in every run, on
+ * every platform, in the order of the planner prompt: 11 for the surfaces
+ * that every storefront has, and three marketplace ids
+ * (`product_reviews`, `related_products`, `search_results`).
  */
 export const FIXED_AREAS: readonly string[] = [
   'homepage_sections',
@@ -188,7 +188,7 @@ export const FIXED_AREAS: readonly string[] = [
 ];
 
 /** A fixed area that did not end done, with a one-line reason. */
-export interface AreaGap {
+export interface FixedAreaGap {
   readonly area: string;
   readonly reason: string;
 }
@@ -200,16 +200,24 @@ export interface AreaGap {
  * Prefetch evidence and plan omissions do not matter here, because every
  * run plans every fixed area. A fixed area that the plan does not have
  * is a gap too.
+ *
+ * @param tasks The Plan tasks when the run ended.
+ * @param planned The Plan tasks as the planner wrote them. The executor
+ *   that blocks a task appends its reason to the planned brief, so the
+ *   reason is the text after that brief.
  */
-export function fixedAreaGaps(tasks: TaskList): AreaGap[] {
+export function fixedAreaGaps(tasks: TaskList, planned: TaskList): FixedAreaGap[] {
   return FIXED_AREAS.flatMap((area) => {
-    const reason = gapReason(taskById(tasks, area));
+    const reason = gapReason(taskById(tasks, area), taskById(planned, area)?.note ?? null);
     return reason === undefined ? [] : [{ area, reason }];
   });
 }
 
-/** Why `task` leaves its fixed area a gap, or `undefined` when it is done. */
-function gapReason(task: Task | undefined): string | undefined {
+/**
+ * Why `task` leaves its fixed area a gap, or `undefined` when it is done.
+ * `brief` is the note of the task as the planner wrote it.
+ */
+function gapReason(task: Task | undefined, brief: string | null): string | undefined {
   if (task === undefined) return 'not in the plan';
   switch (task.status) {
     case 'done':
@@ -219,16 +227,19 @@ function gapReason(task: Task | undefined): string | undefined {
     case 'in_progress':
       return 'in progress when the run ended';
     case 'blocked':
-      return `blocked: ${blockedReason(task.note)}`;
+      return `blocked: ${blockedReason(task.note, brief)}`;
   }
 }
 
 /**
- * The reason of a blocked Plan task: the text after the last `;` of its
- * note, where the executor appends it to the brief. A note with no `;`,
- * such as the note of a protocol violation, is the reason as a whole.
+ * The reason of a blocked Plan task: the text that follows its planned
+ * `brief` in its `note`, without the `;` that starts it. A note that does
+ * not start with the brief, such as the note of a protocol violation that
+ * the harness writes in place of the brief, is the reason as a whole.
  */
-function blockedReason(note: string | null): string {
-  const reason = note?.slice(note.lastIndexOf(';') + 1).trim() ?? '';
+function blockedReason(note: string | null, brief: string | null): string {
+  const text = note ?? '';
+  const appended = brief !== null && text.startsWith(brief) ? text.slice(brief.length) : text;
+  const reason = appended.replace(/^\s*;/, '').trim();
   return reason === '' ? 'no reason given' : reason;
 }

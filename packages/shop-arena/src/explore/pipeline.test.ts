@@ -10,6 +10,7 @@ import { StepFailedError } from '@shop-gym/core';
 import { ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import type { FixedAreaGap } from './coverage.js';
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
 import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT } from './prefetch.js';
 import { type FixtureSite, genericSitePages, startFixtureSite } from './testing.js';
@@ -148,8 +149,8 @@ const MARKETPLACE_SCRIPTS: readonly FakeScript[] = [
   },
 ];
 
-/** The 14 fixed areas: the 11 canonical Plan task ids and the three marketplace ones. */
-const FIXED_AREAS = [
+/** The 14 canonical Plan task ids, in planner order, that every run must plan. */
+const EXPECTED_FIXED_AREAS = [
   'homepage_sections',
   'header_navigation',
   'cart_drawer',
@@ -172,8 +173,8 @@ const FIXED_AREAS = [
  */
 function fixedPlan(lines: Readonly<Record<string, string>> = {}): string {
   const first = ['search_results', 'product_reviews'];
-  const tasks = [...first, ...FIXED_AREAS.filter((area) => !first.includes(area))].map(
-    (id) => lines[id] ?? `- [ ] ${id} — capture the area [priority: 5]`,
+  const tasks = [...first, ...EXPECTED_FIXED_AREAS.filter((area) => !first.includes(area))].map(
+    (id) => lines[id] ?? `- [ ] ${id} — open the area; capture it [priority: 5]`,
   );
   return `# Plan - Minimal Homeware Shop
 
@@ -207,7 +208,7 @@ const FIXED_AREA_SCRIPTS: readonly FakeScript[] = [
     writeFiles: {
       'artifact/parts/search_results.md': SEARCH_RESULTS_PART,
       'plan.md': fixedPlan({
-        search_results: '- [x] search_results — capture the area [priority: 5]',
+        search_results: '- [x] search_results — open the area; capture it [priority: 5]',
       }),
     },
     reply: 'search results done',
@@ -215,9 +216,9 @@ const FIXED_AREA_SCRIPTS: readonly FakeScript[] = [
   {
     writeFiles: {
       'plan.md': fixedPlan({
-        search_results: '- [x] search_results — capture the area [priority: 5]',
+        search_results: '- [x] search_results — open the area; capture it [priority: 5]',
         product_reviews:
-          '- [!] product_reviews — capture the area; no product page shows reviews [priority: 5]',
+          '- [!] product_reviews — open the area; capture it; reviews need a sign-in; none is public [priority: 5]',
       }),
     },
     reply: 'product reviews blocked',
@@ -239,6 +240,11 @@ function constitutionSchema(systemPrompt: string | undefined): {
   const block = /```json\n([\s\S]*?)\n```/.exec(systemPrompt ?? '')?.[1];
   if (block === undefined) throw new Error('the constitution has no JSON Schema block');
   return JSON.parse(block);
+}
+
+/** The ids of the `[ ]` task lines in a planner prompt, in prompt order. */
+function plannedIds(prompt: string): (string | undefined)[] {
+  return [...prompt.matchAll(/^- \[ \] ([a-z0-9_]+)\s+— /gm)].map((match) => match[1]);
 }
 
 class StubLlm implements LlmClient {
@@ -466,28 +472,26 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     ]);
   });
 
-  it('plans the 14 fixed areas and records each unfinished one as a gap with a reason', async () => {
+  it('plans the 14 fixed areas within 4 navigations and records each unfinished one as a gap with a reason', async () => {
     // The budget ends after two executor iterations: search_results is
     // done, product_reviews is blocked, and the other areas stay pending.
     const { result, runtime } = await explore({ scripts: FIXED_AREA_SCRIPTS, maxIters: 2 });
 
-    const plannerPrompt = String(runtime.requests[0]?.prompt);
-    const plannedIds = [...plannerPrompt.matchAll(/^- \[ \] ([a-z0-9_]+)\s+— /gm)].map(
-      (match) => match[1],
-    );
-    expect(plannedIds).toEqual(FIXED_AREAS);
-    expect(plannerPrompt).toContain('<= 4 `navigate` calls');
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    expect(plannedIds(planner)).toEqual(EXPECTED_FIXED_AREAS);
+    expect(planner).toContain('<= 4 `navigate` calls');
 
     expect(result.finalStatus).toBe('budget_exhausted');
     const manifest = readJson(result.manifestPath);
     expect(manifest.coverage_gaps).not.toContain('search_results');
-    const gaps: { area: string; reason: string }[] = manifest.fixed_area_gaps;
+    const gaps: FixedAreaGap[] = manifest.fixed_area_gaps;
     expect(gaps.map((gap) => gap.area)).toEqual(
-      FIXED_AREAS.filter((area) => area !== 'search_results'),
+      EXPECTED_FIXED_AREAS.filter((area) => area !== 'search_results'),
     );
+    // The reason is the text after the planned brief, `;` included.
     expect(gaps).toContainEqual({
       area: 'product_reviews',
-      reason: 'blocked: no product page shows reviews',
+      reason: 'blocked: reviews need a sign-in; none is public',
     });
     expect(gaps).toContainEqual({
       area: 'related_products',
@@ -705,6 +709,15 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(stats.products_per_collection).toEqual({ avg: 0, median: 0, max: 0 });
     expect(readJson(result.manifestPath).coverage_gaps).toEqual([]);
     expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
+  });
+
+  it('asks the generic planner for the 14 fixed areas within 4 navigations', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    expect(planner).toContain('explore planner for a generic site');
+    expect(plannedIds(planner)).toEqual(EXPECTED_FIXED_AREAS);
+    expect(planner).toContain('<= 4 `navigate` calls');
   });
 });
 

@@ -59,7 +59,7 @@ optional - the executor will redo the captures in their task.
 
 ## 2. Canonical task list (emit unconditionally)
 
-The following task ids are the **canonical set**. Every run emits
+The following 14 task ids are the **canonical set**. Every run emits
 **all of them** in `## Tasks`, in the order shown, with the priorities
 shown. The planner's job is verification + extension, not discovery -
 do not drop a canonical task because a feature looks absent. If the
@@ -70,17 +70,28 @@ predictable input shape.
 
 ```
 - [ ] homepage_sections — capture every section below the hero; snapshot per section [priority: 9]
-- [ ] header_navigation — header rows, sticky behavior, mega menu / flyouts, search trigger, account / cart icons [priority: 8]
-- [ ] cart_drawer       — add 1 product, capture drawer states (empty, filled, qty change, remove) [priority: 8]
-- [ ] product_variants  — pick 2 PDPs (one with > 1 variant); capture gallery, variant selectors, qty stepper, recommendations [priority: 7]
-- [ ] collection_filters — open the largest collection; exercise filters + sort + pagination [priority: 7]
-- [ ] search_predictive — type 2 prefixes; capture suggestion panel + 1 network capture for `/search/suggest.json` (or equivalent) [priority: 6]
-- [ ] checkout_flow     — from a filled cart, open checkout; capture guest option, shipping options, payment methods, discount input; do not place an order [priority: 6]
-- [ ] account_pages     — visit login, signup, and password-reset pages; record profile / addresses / order-history entry points without signing in [priority: 5]
+- [ ] header_navigation — header rows, sticky behavior, department menu + sub-levels (`departments`), mega menu / flyouts, search trigger, account / cart icons [priority: 8]
+- [ ] cart_drawer       — add 1 product; capture the cart surface (drawer, page or side sheet): empty, filled, qty change, remove [priority: 8]
+- [ ] product_variants  — pick 2 product pages (one with > 1 variant); capture gallery, variant selectors, qty stepper [priority: 7]
+- [ ] product_reviews   — on a product page with reviews: rating summary, histogram (`product.has_rating_histogram`), filters (`product.review_filters`) [priority: 6]
+- [ ] related_products  — on 2 product pages, capture each related-product block; list their kinds in `product.related_product_types` [priority: 5]
+- [ ] collection_filters — open the largest collection or category listing; exercise filters + sort + pagination [priority: 7]
+- [ ] search_predictive — type 2 prefixes; capture the suggestion panel + 1 network capture of its request (e.g. `/search/suggest.json`) [priority: 6]
+- [ ] search_results    — submit 1 query; capture the results layout, facets (`search.facets`), sort (`search.sort`), pagination, empty state [priority: 7]
+- [ ] checkout_flow     — from a filled cart, open checkout; capture guest option, shipping, payment, discount input; stop at the first sign-in or payment wall [priority: 6]
+- [ ] account_pages     — visit only the public sign-in and sign-up entries; capture their fields and options; never submit them [priority: 5]
 - [ ] footer            — link groups, legal links, payment icons, social icons [priority: 4]
 - [ ] info_pages        — visit shipping, refund, privacy, tos, faq (and contact / about if present); one snapshot each [priority: 4]
 - [ ] floating_widgets  — cookie banner, newsletter popup, chat widget, age gate (record presence + behavior) [priority: 3]
 ```
+
+Three of them are marketplace areas: `product_reviews`,
+`related_products` and `search_results`. The ids are stable names, not
+a claim about how the shop is built. Every brief uses platform-neutral
+words, so the same block fits any storefront: `cart_drawer` covers a
+cart page or side sheet too, and `collection_filters` covers a category
+listing. A key in backticks (`departments`, `search.facets`, ...) names
+the `capabilities.json` fields that the task fills.
 
 Priorities are advisory tie-breakers, not gates - every task above
 must appear in `## Tasks` with status `[ ]`.
