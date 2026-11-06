@@ -426,11 +426,11 @@ No LLM. The source depends on the platform:
   number of distinct product pages. `products_total`,
   `collections_total` and `products_per_collection` stay 0, because a
   sample does not show them. Shop generation takes its totals from its
-  config targets either way. Limits of the key: a site that gives each
-  variant its own URL counts each variant page as one product, and a
-  call made after the executor left the product page keys the page that
-  is open then. The key is a hash, not the URL, but a person who already
-  knows a product URL can check if the run recorded it.
+  config targets either way. The key has limits. A site that gives each
+  variant its own URL counts each variant page as one product. A call
+  made after the executor left the product page records the key of the
+  page that is open then. The key is a hash, not the URL. But a person
+  who already knows a product URL can check if the run recorded it.
 
 Shape:
 

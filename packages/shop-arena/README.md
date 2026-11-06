@@ -79,8 +79,8 @@ only the price, the currency, `has_variants` and `variant_axes` (schema in
 short generic nouns. The tool checks the facts against the schema, takes
 the page key from the open page, and writes the fragment
 `parts/<task_id>.product-<key>.json`. The key is the first 12 hex digits of
-the SHA-256 of the page URL without its query, and the URL is the
-`<link rel="canonical">` target when the page has one. So the key tells
+the SHA-256 of the page URL without its query and fragment, and the URL is
+the `<link rel="canonical">` target when the page has one. So the key tells
 product pages apart without naming them, and two paths to one product page
 give one key. A `product_observations` verifier fails an executor iteration
 whose fragments do not match the schema.

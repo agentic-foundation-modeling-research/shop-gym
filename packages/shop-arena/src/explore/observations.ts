@@ -77,22 +77,27 @@ function schemaIssues(error: z.ZodError): string {
     .join('; ');
 }
 
+/** A fragment file under `parts/` and the page key in its name. */
+type Fragment = { readonly name: string; readonly pageKey: string };
+
 type FragmentCheck =
   | { readonly pageKey: string; readonly observation: ProductObservation }
   | { readonly file: string; readonly error: string };
 
-/** The fragment names under `partsDir` in filename order, only those of `taskId` when given. */
-function fragmentNames(partsDir: string, taskId?: string): string[] {
+/** The fragments under `partsDir` in filename order, only those of `taskId` when given. */
+function listFragments(partsDir: string, taskId?: string): Fragment[] {
   if (!existsSync(partsDir)) return [];
   return readdirSync(partsDir)
-    .filter((name) => {
+    .sort()
+    .flatMap((name) => {
       const match = FRAGMENT_NAME.exec(name);
-      return match !== null && (taskId === undefined || match[1] === taskId);
-    })
-    .sort();
+      if (match === null || (taskId !== undefined && match[1] !== taskId)) return [];
+      // The pattern has two groups, so a match holds the page key.
+      return [{ name, pageKey: match[2] as string }];
+    });
 }
 
-function checkFragment(partsDir: string, name: string): FragmentCheck {
+function checkFragment(partsDir: string, { name, pageKey }: Fragment): FragmentCheck {
   const file = `parts/${name}`;
   let parsed: unknown;
   try {
@@ -103,8 +108,6 @@ function checkFragment(partsDir: string, name: string): FragmentCheck {
   }
   const result = productObservationSchema.safeParse(parsed);
   if (!result.success) return { file, error: schemaIssues(result.error) };
-  // `fragmentNames` keeps only names that match, so the key group is present.
-  const pageKey = FRAGMENT_NAME.exec(name)?.[2] as string;
   return { pageKey, observation: result.data };
 }
 
@@ -118,8 +121,8 @@ function checkFragment(partsDir: string, name: string): FragmentCheck {
  */
 export function readObservations(partsDir: string): ProductObservation[] {
   const byPage = new Map<string, ProductObservation>();
-  for (const name of fragmentNames(partsDir)) {
-    const check = checkFragment(partsDir, name);
+  for (const fragment of listFragments(partsDir)) {
+    const check = checkFragment(partsDir, fragment);
     if ('error' in check) {
       throw new Error(`product observation ${check.file} is invalid: ${check.error}`);
     }
@@ -139,8 +142,8 @@ export function productObservationVerifier(): Verifier {
     appliesTo: () => true,
     async run(ctx): Promise<VerifierResult> {
       const partsDir = join(ctx.artifactDir, 'parts');
-      const invalid = fragmentNames(partsDir, ctx.selectedTaskId)
-        .map((name) => checkFragment(partsDir, name))
+      const invalid = listFragments(partsDir, ctx.selectedTaskId)
+        .map((fragment) => checkFragment(partsDir, fragment))
         .filter((check) => 'error' in check);
       if (invalid.length === 0) return { verdict: 'pass' };
       return {
@@ -165,7 +168,7 @@ export function productObservationVerifier(): Verifier {
  * target when the page has a valid one, so two paths to one product page
  * give one key. Else it is the address of the page.
  */
-async function openPage(page: BrowserSession['page']): Promise<{ key: string; path: string }> {
+async function keyOfOpenPage(page: BrowserSession['page']): Promise<{ key: string; path: string }> {
   const address = page.url();
   const canonical = page.locator('link[rel~="canonical"]').first();
   const href = (await canonical.count()) > 0 ? await canonical.getAttribute('href') : null;
@@ -182,7 +185,8 @@ function textResult(text: string): ToolResult {
   return { content: [{ type: 'text', text }] };
 }
 
-function errorResult(message: string): ToolResult {
+function errorResult(error: unknown): ToolResult {
+  const message = error instanceof Error ? error.message : String(error);
   return { content: [{ type: 'text', text: `Error: ${message}` }], isError: true };
 }
 
@@ -221,14 +225,14 @@ export function productObservationTool(session: BrowserSession): Tool {
         );
       }
       try {
-        const { key, path } = await openPage(session.page);
+        const { key, path } = await keyOfOpenPage(session.page);
         const name = `${taskId}.product-${key}.json`;
         const partsDir = join(ctx.cwd, 'artifact', 'parts');
         mkdirSync(partsDir, { recursive: true });
         writeFileSync(join(partsDir, name), `${JSON.stringify(observation.data, null, 2)}\n`);
         return textResult(`Recorded the product page ${path} as artifact/parts/${name}.`);
       } catch (error) {
-        return errorResult(error instanceof Error ? error.message : String(error));
+        return errorResult(error);
       }
     },
   };

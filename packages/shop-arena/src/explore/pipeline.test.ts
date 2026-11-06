@@ -578,7 +578,9 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
 
     const executor = promptText(runtime.requests[1]?.prompt ?? '').replace(/\s+/g, ' ');
-    expect(executor).toContain('`N/A` when it does not apply and `unknown` when you did not see it');
+    expect(executor).toContain(
+      '`N/A` when it does not apply and `unknown` when you did not see it',
+    );
     expect(executor).toContain('marks it as unknown, not as absent');
   });
 
