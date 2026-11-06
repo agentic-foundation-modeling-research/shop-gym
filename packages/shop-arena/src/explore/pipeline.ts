@@ -9,6 +9,7 @@
  * ```
  * seed/prefetch/        prefetch.json + saved bodies (seeded into the run)
  * run/                  harness workspace (plan.md, iters/, artifact/, run.json)
+ * run/iters/<id>/start_state.json   where the Iteration's fresh browser started
  * explore.json          harness outcome of the explore step
  * capabilities.json     merged, schema-validated capabilities
  * stats.json            catalog and feature statistics
@@ -37,11 +38,11 @@ import {
   PiLlmClient,
   PiRuntime,
 } from '@shop-gym/agent';
-import { BrowserSession, browserTools } from '@shop-gym/browser';
 import { type Credentials, type Step, type StepReport, runPipeline } from '@shop-gym/core';
 import { type FinalStatus, type RunSummary, runPlanExecLoop } from '@shop-gym/harness';
 
 import { anonymizationVerifier } from './anonymization.js';
+import { IterationBrowser, parseCart } from './browser.js';
 import {
   type Capabilities,
   type Conflict,
@@ -171,6 +172,8 @@ const PATHS = {
   manifest: 'manifest.json',
   manual: 'manual.md',
 } as const;
+/** Written into each Iteration's directory when the Iteration starts. */
+const START_STATE_FILENAME = 'start_state.json';
 
 /** Splits `provider/model-id` into a `ModelRef`. */
 export function parseModel(model: string): ModelRef {
@@ -237,7 +240,11 @@ const exploreStep: Step<ExploreContext> = {
   outputs: [PATHS.explore],
   async run({ outDir, context, log }) {
     const runDir = join(outDir, PATHS.run);
-    const session = await BrowserSession.launch({ episodeId: basename(outDir) });
+    const browser = await IterationBrowser.launch({
+      episodeId: basename(outDir),
+      startUrl: `${context.url}/`,
+      ...(servesCart(join(outDir, PATHS.prefetch)) ? { cartUrl: `${context.url}/cart.js` } : {}),
+    });
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
     try {
       summary = await runPlanExecLoop(
@@ -249,15 +256,17 @@ const exploreStep: Step<ExploreContext> = {
           maxIters: context.maxIters,
           timeoutMs: context.timeoutMs,
           model: context.model,
-          tools: [...browserTools(session), ...fileTools()],
+          tools: [...browser.tools, ...fileTools()],
           verifiers: [anonymizationVerifier(context.url)],
           ...(context.onEvent ? { onEvent: context.onEvent } : {}),
+          onIterationStart: async ({ iterDir }) =>
+            writeJson(join(iterDir, START_STATE_FILENAME), await browser.start()),
         },
         context.runtime,
         { force: context.forceResume },
       );
     } finally {
-      await session.close();
+      await browser.close();
     }
     log(`harness finished: ${summary.finalStatus} (${summary.execIterCount} executor iterations)`);
     const outcome: ExploreOutcome = {
@@ -269,6 +278,12 @@ const exploreStep: Step<ExploreContext> = {
     writeJson(join(outDir, PATHS.explore), outcome);
   },
 };
+
+/** True when prefetch saved a `/cart.js` body that parses as a cart. */
+function servesCart(prefetchDir: string): boolean {
+  const path = join(prefetchDir, 'cart.js');
+  return existsSync(path) && parseCart(readFileSync(path, 'utf8')) !== null;
+}
 
 const mergeStep: Step<ExploreContext> = {
   id: 'merge',

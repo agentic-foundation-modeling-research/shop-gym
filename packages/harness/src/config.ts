@@ -32,6 +32,18 @@ export type IterationOutcome =
   | 'kept'
   | Extract<FinalStatus, 'timeout' | 'invalid_plan' | 'protocol_violation' | 'runtime_error'>;
 
+export interface IterationStart {
+  /** `plan` or `exec-NNNN`. A timed-out executor id is used again by the next iteration. */
+  readonly iterId: string;
+  /** The executor's selected task; `null` for the planner. */
+  readonly taskId: string | null;
+  /**
+   * `iters/<iterId>/`, which exists. The harness writes the iteration's
+   * telemetry here, and moves the directory aside when the iteration times out.
+   */
+  readonly iterDir: string;
+}
+
 export interface IterationEnd {
   /** `plan` or `exec-NNNN`. A timed-out executor id is used again by the next iteration. */
   readonly iterId: string;
@@ -58,6 +70,13 @@ export interface PlanExecLoopConfig {
   /** Truncation budget of verifier feedback rendered into the prompt. */
   readonly verifierFeedbackMaxChars?: number;
   readonly onEvent?: (iterId: string, event: AgentEvent) => void;
+  /**
+   * Awaited once before each planner and executor iteration, after its
+   * directory exists and before its Agent run starts. A caller uses it to give
+   * each iteration fresh resources, for example a new browser. An error thrown
+   * here rejects `runPlanExecLoop`.
+   */
+  readonly onIterationStart?: (start: IterationStart) => Promise<void>;
   /**
    * Awaited once after each planner and executor iteration, when the harness
    * has recorded it (verifiers, `plan.md` repair, `run.json`) and before the

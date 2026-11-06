@@ -83,6 +83,10 @@ coupled to neither. Its tests run against arbitrary toy tasks.
   reports how each iteration ended: `kept`, or the reason the harness
   abandoned it (§5.9). The ShopArena build loop uses it to keep or roll
   back its `artifact/` checkpoints.
+- **Iteration-start hook (2026-11-05).**
+  `PlanExecLoopConfig.onIterationStart` runs before each iteration's Agent
+  run (§5.10). Storefront exploration uses it to give each iteration a
+  fresh browser.
 
 ---
 
@@ -414,6 +418,23 @@ rolled the edits back. An error thrown by the hook rejects
 `runPlanExecLoop`. A crash inside an iteration reports nothing; on
 resume the partial iteration is quarantined and its edits stay.
 
+### 5.10 Iteration-start hook
+
+A caller that gives each iteration its own resources, for example a new
+browser, passes `onIterationStart(start)`. The harness awaits it once
+before each planner and executor iteration, after the iteration
+directory exists and the executor's task is selected, and before the
+Agent run starts.
+
+`start` is `{ iterId, taskId, iterDir }`. `taskId` is `null` for the
+planner. `iterDir` is `iters/<iterId>/`. The caller can write a file
+about the iteration's start there, next to the telemetry. When the
+iteration times out, the harness moves the directory and that file to
+`iters/<iterId>.aborted-N/`. The next iteration uses the timed-out
+executor's `iterId` again, so the hook can see the same `iterId` more
+than once. An error thrown by the hook rejects `runPlanExecLoop` before
+that iteration's Agent run.
+
 ---
 
 ## 6. Alternative
@@ -450,12 +471,12 @@ cassette drift.
 ### 8.1 Public surface (informative)
 
 - **Types**: `Task`, `TaskList`, `TaskStatus`, `Trajectory`, `TrajectoryStep`, `AgentRuntime`, `IterationMetadata`, `ProtocolCheckResult`.
-- **Config & result**: `PlanExecLoopConfig` (contains `run_dir`, `prompts`, `agents_md`, `artifact_seed_dir`, loop budget, and the `onEvent` / `onIterationEnd` hooks), `Prompts`, `PlanExecLoopResult`, `IterationEnd`, `IterationOutcome`.
+- **Config & result**: `PlanExecLoopConfig` (contains `run_dir`, `prompts`, `agents_md`, `artifact_seed_dir`, loop budget, and the `onEvent` / `onIterationStart` / `onIterationEnd` hooks), `Prompts`, `PlanExecLoopResult`, `IterationStart`, `IterationEnd`, `IterationOutcome`.
 - **Entry points**: `run_plan_exec_loop(config, runtime)`, `get_runtime(name, **kwargs)`.
 
 ### 8.2 Future directions (non-blocking)
 
-- **Hooks.** OpenClaw-style `before_iter`/`on_stuck` callbacks for callers to add observability without forking. `after_iter` shipped as `onIterationEnd` (§5.9).
+- **Hooks.** OpenClaw-style `on_stuck` callbacks for callers to add observability without forking. `after_iter` shipped as `onIterationEnd` (§5.9) and `before_iter` as `onIterationStart` (§5.10).
 - **Independent evaluator phases.** Add isolated evaluator phases for benchmark-grade evaluation, with read-only access to the main workspace and separate telemetry.
 - **Long-lived orchestrator mode.** Alternative entry point reusing the runtime protocol, workspace, and trajectory schema.
 - **Parallelism.** Shard `plan.md` Tasks by id with per-iteration locks.

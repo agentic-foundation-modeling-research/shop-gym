@@ -107,6 +107,16 @@ exercises its public surface end-to-end.
   `stats.json`, `manifest.json`) sit at `<run_id>/`; the harness
   workspace lives at `<run_id>/run/` and the prefetch seed at
   `<run_id>/seed/prefetch/`. The CLI binary is scheduled for M10.
+- Fresh browser per Iteration (2026-11-05): the explore step gives every
+  planner and executor Iteration a new headless browser through the
+  harness `onIterationStart` hook, so no cookies, storage or cart carry
+  over from an earlier Iteration. Each new browser opens the storefront
+  homepage. When the prefetched `cart.js` parses as a cart, the browser
+  also reads `/cart.js`. The explore step writes the result to
+  `run/iters/<id>/start_state.json` as `{ url, cart, error }`. When the
+  homepage or the cart cannot be read, `error` gives the reason, and the
+  Iteration still runs. All browsers of a run send the same
+  `x-shopgym-episode` header.
 
 ---
 

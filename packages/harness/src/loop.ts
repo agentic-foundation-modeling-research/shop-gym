@@ -3,11 +3,12 @@
  *
  * One planner iteration writes `plan.md`; executor iterations then take the
  * highest-priority pending task one at a time until the plan drains, the
- * budget runs out, or a terminal failure occurs. Every iteration leaves a
- * `trajectory.json`, `metadata.json`, `plan.before.md` and `plan.after.md`
- * under `iters/<iterId>/`, and `run.json` is rewritten after each one. The
- * caller's `onIterationEnd` then hears whether the iteration was kept or
- * abandoned.
+ * budget runs out, or a terminal failure occurs. The caller's
+ * `onIterationStart` runs before each iteration's Agent run. Every
+ * iteration leaves a `trajectory.json`, `metadata.json`, `plan.before.md`
+ * and `plan.after.md` under `iters/<iterId>/`, and `run.json` is rewritten
+ * after each one. The caller's `onIterationEnd` then hears whether the
+ * iteration was kept or abandoned.
  *
  * Mode is inferred from `runDir`: empty or absent starts fresh, populated
  * resumes. Resume skips the planner when its trajectory exists, quarantines
@@ -175,6 +176,7 @@ class LoopState {
     const planDir = iterDirPath(this.workspace.itersDir, PLAN_ITER_ID);
     await fs.mkdir(planDir);
     await this.workspace.snapshotPlan(path.join(planDir, PLAN_BEFORE_FILENAME));
+    await this.config.onIterationStart?.({ iterId: PLAN_ITER_ID, taskId: null, iterDir: planDir });
     const outcome = await this.invokeRuntime(planDir, PLAN_ITER_ID, this.config.prompts.planner);
     if ('errorStatus' in outcome) {
       return this.terminateAfter(PLAN_ITER_ID, null, outcome.errorStatus);
@@ -257,6 +259,7 @@ class LoopState {
     const planBefore = path.join(execDir, PLAN_BEFORE_FILENAME);
     const planAfter = path.join(execDir, PLAN_AFTER_FILENAME);
     await this.workspace.snapshotPlan(planBefore);
+    await this.config.onIterationStart?.({ iterId: execId, taskId: selected.id, iterDir: execDir });
 
     const feedback = await this.previousFeedback(n);
     const text =

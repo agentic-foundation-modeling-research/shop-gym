@@ -4,6 +4,7 @@ export {
   HarnessConfigError,
   type IterationEnd,
   type IterationOutcome,
+  type IterationStart,
   type PlanExecLoopConfig,
   type PlanExecLoopResult,
   type Prompts,
