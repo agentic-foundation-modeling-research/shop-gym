@@ -120,10 +120,11 @@ exercises its public surface end-to-end.
   every browser, so `navigate` opens a site path such as `/cart` on the
   storefront. The explore `snapshot` tool shows at most 50,000
   characters of the accessibility tree in one result. A longer tree comes
-  in parts of whole lines. The note after a cut part gives the `offset`
-  for the next part, and says that a scroll does not change the
-  snapshot. The other users of `@shop-gym/browser` keep the whole
-  snapshot.
+  in parts of whole lines. Only a line longer than the limit is cut
+  inside the line. The note after a cut part gives the `offset`
+  for the next part. It also says that a scroll does not change the
+  snapshot. An offset inside a line moves to the start of the next
+  line. The other users of `@shop-gym/browser` keep the whole snapshot.
 
 ---
 
