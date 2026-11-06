@@ -74,14 +74,28 @@ stop.
 ## 2. How to merge
 
 - Treat `Capabilities` as the **skeleton**: every truthy boolean / non-
-  empty list there must show up somewhere in the prose. If parts
-  contradict capabilities, prefer capabilities and silently drop the
-  contradicting sentence.
+  empty list there must show up somewhere in the prose. No sentence may
+  contradict it. If parts contradict capabilities, prefer capabilities
+  and silently drop the contradicting sentence. This also holds for a
+  sentence that reports what a page says about a later step: when
+  `checkout.has_discount_code` is `false`, do not write that a page
+  promises a code field at payment. A `null` field means that the run
+  did not see it: write it as unknown, not as absent.
 - Treat `Per-task parts` as the **source of qualitative detail**:
   layout descriptions, interaction order, edge cases. Lift their H3
-  element blocks into the right H2 area; do not rewrite or compress.
-  When two parts describe overlapping facts (e.g. trust badges), keep
-  the most detailed version once and drop the duplicate.
+  element blocks into the right H2 area. Do not compress them, and
+  rewrite only the words that break §4 or the other rules in this
+  section. When two parts describe overlapping facts (e.g. trust
+  badges), keep the most detailed version once and drop the duplicate.
+- **State only what the parts show.** Keep a claim only when a part
+  says that the run saw it. Drop guesses, comparisons with a page or a
+  state that no part describes, and advice on how to rebuild something
+  that no part saw (e.g. "show the suggestions as a dropdown list" when
+  no part saw the dropdown). Write a partial view as partial: "two menu
+  levels seen; deeper levels unknown", not "the menu has two levels".
+  When a part says that it did not see something, mark it as unknown
+  and do not fill it in: "The suggestion dropdown was not seen; its
+  layout is unknown."
 - If a task fragment is empty or trivially short (e.g. a `[!]` blocked
   task), drop it - note the gap implicitly by leaving that area thin,
   do not add `(blocked)` markers.
@@ -145,12 +159,27 @@ every rule below verbatim while merging:
   "a 4-bullet feature list".
 - **Image captions / alt text.** Describe the *role* of the image, not
   its specific subject beyond category-level facts.
+- **Site-specific lists.** Do not list what only this site has, such as
+  its own sister services, programs or partner sites. Give the shape
+  and the role instead: "a grid of about 20 two-line link tiles to
+  related services". Lists of generic catalog categories stay.
+- **Internal names.** Do not name request endpoints, query parameters,
+  response fields, element ids or CSS classes (e.g. `term_frag`,
+  `hintMode`). Say what the request or the element does: "the search
+  box asks for keyword suggestions while the shopper types".
+- **Feature names that the site made up.** Use the generic e-commerce
+  name of a page or a feature, not the site's own name for it, even
+  when that name comes from a URL path or a page title. A page at
+  `/basket/swift-tray` is "an add-to-cart confirmation page", not a
+  "swift-tray page" or a "swift-cart page".
 
 Soft rules that **stay**: currency symbols, locale codes, language
 tags, layout numerics (column count, section count, filter count),
-aggregated catalog statistics (totals, medians). Generic e-commerce
-terminology - "cart drawer", "predictive search", "mega menu" - is
-encouraged; that is the vocabulary of the capabilities schema.
+aggregated catalog statistics (totals, medians), and generic program
+types, such as a paid membership or a loyalty program, without their
+own names. Generic e-commerce terminology - "cart drawer", "predictive
+search", "mega menu" - is encouraged; that is the vocabulary of the
+capabilities schema.
 
 A reader of `manual.md` must be unable to identify the source shop.
 If you are unsure whether a sentence leaks identity, cut it.

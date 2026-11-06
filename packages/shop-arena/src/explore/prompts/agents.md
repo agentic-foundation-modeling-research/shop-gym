@@ -25,6 +25,18 @@ products, or copy.
 If a tradeoff appears between "more detail about this exact shop" and
 "transferable structural pattern", always pick the latter.
 
+Write only what you saw. Every claim in `parts/<task_id>.md` and every
+value in `parts/<task_id>.caps.json` must come from a page state that
+you saw in this task, in a snapshot or a screenshot. Do not guess, do
+not compare with a page that you did not open, and do not tell the
+generator how to rebuild a part that you did not see. When you could
+not see something, write "unknown" in the markdown and leave its
+capabilities field `null`. Use `false` only when you saw the place
+where the feature would be and it was not there. A count or a depth
+stays `null` when you saw only part of it; write what you saw in the
+markdown, for example "two menu levels opened; deeper levels not
+checked".
+
 ---
 
 ## 2. Anonymization rules (STRICT - apply at write time)

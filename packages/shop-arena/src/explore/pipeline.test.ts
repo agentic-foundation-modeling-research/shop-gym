@@ -296,6 +296,59 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(llm.requests[0]?.model).toEqual({ provider: 'anthropic', id: 'test-model' });
   });
 
+  it('tells every executor to write only what it saw and to mark the rest as unknown', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+
+    const shared = (runtime.requests[1]?.systemPrompt ?? '').replace(/\s+/g, ' ');
+    expect(shared).toContain('Write only what you saw.');
+    expect(shared).toContain('Do not guess, do not compare with a page that you did not open');
+    expect(shared).toContain(
+      'write "unknown" in the markdown and leave its capabilities field `null`',
+    );
+    expect(shared).toContain('Use `false` only when you saw the place where the feature would be');
+  });
+
+  it('tells the synthesizer to put site-specific names and lists into generic words', async () => {
+    const { llm } = await explore({ scripts: SCRIPTS });
+
+    const synthesizer = promptText(llm.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(synthesizer).toContain('rewrite only the words that break §4');
+    expect(synthesizer).toContain('Do not list what only this site has');
+    expect(synthesizer).toContain(
+      'Do not name request endpoints, query parameters, response fields',
+    );
+    expect(synthesizer).toContain(
+      "not the site's own name for it, even when that name comes from a URL path or a page title",
+    );
+    expect(synthesizer).toContain(
+      'generic program types, such as a paid membership or a loyalty program, without their own names',
+    );
+  });
+
+  it('tells the synthesizer to state only what the parts show and to mark the rest as unknown', async () => {
+    const { llm } = await explore({ scripts: SCRIPTS });
+
+    const synthesizer = promptText(llm.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(synthesizer).toContain('**State only what the parts show.**');
+    expect(synthesizer).toContain(
+      'Drop guesses, comparisons with a page or a state that no part describes',
+    );
+    expect(synthesizer).toContain(
+      'When a part says that it did not see something, mark it as unknown',
+    );
+  });
+
+  it('tells the synthesizer that no sentence may contradict the capabilities', async () => {
+    const { llm } = await explore({ scripts: SCRIPTS });
+
+    const synthesizer = promptText(llm.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(synthesizer).toContain('No sentence may contradict it');
+    expect(synthesizer).toContain('a sentence that reports what a page says about a later step');
+    expect(synthesizer).toContain(
+      'A `null` field means that the run did not see it: write it as unknown, not as absent',
+    );
+  });
+
   it('takes the shopify path when products.json returns a product list', async () => {
     const { result, runtime } = await explore({ scripts: SCRIPTS });
 

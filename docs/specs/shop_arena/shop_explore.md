@@ -125,6 +125,15 @@ exercises its public surface end-to-end.
   only) for brand tokens, brand terms and the host, and fails the
   `synthesize` step before it writes `manual.md`. `manifest.json` is not
   scanned, because it records the `domain` by design.
+- Observed facts only (2026-11-05): the shared executor instructions
+  (`AGENTS.md`) say to write only what the run saw. A field that the run
+  did not see stays `null`, and `false` means that the run saw the
+  feature is absent. The synthesis prompt keeps only what the parts
+  show, marks what a part did not see as unknown, lets no sentence
+  contradict `capabilities.json`, and puts site-specific lists, internal
+  request names and the site's own feature names into generic words.
+  These are prompt rules; the final scan matches only the brand markers
+  and the host.
 
 ---
 
