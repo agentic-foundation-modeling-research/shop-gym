@@ -117,8 +117,9 @@ Required structure:
   Number them `Section 1 - ...`, `Section 2 - ...` when ordering matters.
 
 For every `### <Element name>` block, fill the bullet template below.
-Mark a field `N/A` rather than skipping it - the schema makes gaps
-visible to the synthesis pass instead of letting them disappear.
+Mark a field `N/A` when it does not apply and `unknown` when you did
+not see it, rather than skipping it - the schema makes gaps visible to
+the synthesis pass instead of letting them disappear.
 
 ```markdown
 ### <Element name>
@@ -140,8 +141,8 @@ visible to the synthesis pass instead of letting them disappear.
 Close every part file with one `### Edge cases & gaps` block (use the
 same bullet template) summarizing surfaces you tried but could not
 exercise (popup didn't fire, variant out of stock, etc.). This is
-where the synthesis pass learns what is *absent* in addition to what
-is present.
+where the synthesis pass learns what the run could not see, so that it
+marks it as unknown, not as absent.
 
 Keep prose factual and structural - no marketing tone, no verbatim
 on-page copy, no brand or product names. The point is fidelity, not

@@ -574,6 +574,14 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(constitution).toContain('not the label text of the page');
   });
 
+  it('asks the executors to mark what they did not see as unknown', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const executor = promptText(runtime.requests[1]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(executor).toContain('`N/A` when it does not apply and `unknown` when you did not see it');
+    expect(executor).toContain('marks it as unknown, not as absent');
+  });
+
   it('publishes stats from the product observation fragments', async () => {
     const { result } = await explore({
       url: site.url,
