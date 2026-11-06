@@ -41,6 +41,18 @@ describe('parseExploreArgs', () => {
     });
   });
 
+  it('collects every --brand-term in order', () => {
+    expect(
+      parseExploreArgs([
+        'https://shop.example',
+        '--brand-term',
+        'Zephyr',
+        '--brand-term',
+        'Nova Pass',
+      ]).brandTerms,
+    ).toEqual(['Zephyr', 'Nova Pass']);
+  });
+
   it('rejects an unknown --from step with the allowed list', () => {
     expect(() => parseExploreArgs(['u', '--from', 'build'])).toThrow(
       '--from must be one of prefetch, explore, merge, synthesize, got "build"',

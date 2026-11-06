@@ -50,7 +50,7 @@ steps on the `@shop-gym/core` pipeline runner:
 | `prefetch` | the storefront over HTTP | `seed/prefetch/` (robots, homepage, sitemap, `prefetch.json`; on a Shopify shop also the Shopify JSON endpoints, policy and info pages, merged `products.json`) |
 | `explore` | `seed/prefetch/` | `run/` (harness workspace: `plan.md`, `iters/`, `artifact/{prefetch,parts,evidence}`, `run.json`) and `explore.json` |
 | `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json` | `capabilities.json`, `stats.json`, `manifest.json` |
-| `synthesize` | `capabilities.json`, `run/artifact/parts/*.md` | `manual.md` |
+| `synthesize` | `capabilities.json`, `stats.json`, `brand_terms.json`, `seed/prefetch/index.html`, `run/artifact/parts/*.md` | `manual.md`, only when the final Anonymization scan is clean |
 
 Prefetch decides the platform before it fetches the rest. First it
 fetches `robots.txt`, the homepage, `sitemap.xml` and one `/products.json`
@@ -85,6 +85,21 @@ domain, brand tokens from the prefetched homepage, absolute store URLs,
 and email addresses, and reopens the task with line-level feedback on a
 hit. A task gets at most two such reopens; the next hit blocks it with a
 note that names the fragment.
+
+Brand tokens come from the brand segment of the homepage `<title>` and
+from `og:site_name`. The title splits at ` | `, ` - `, ` : ` and similar
+separators, and after `.`, `!` or `?` that a space follows. The brand
+segment is the one that matches a hostname label when spaces and
+punctuation are removed; when no segment matches, every segment counts.
+The `brandTerms` option adds words or phrases, such as sub-brands, to
+the markers. A term of more than one word matches as a phrase. The terms
+are kept in `brand_terms.json` in `outDir`, outside the published files,
+and a later call without `brandTerms` uses them again. After synthesis,
+the final Anonymization scan (`publishedLeaks`) checks `manual.md`,
+`capabilities.json` and `stats.json` (only the values of the JSON files)
+for the same markers. A hit fails the `synthesize` step with an
+`AnonymizationLeakError` that lists each `file:line`, and `manual.md` is
+not written.
 
 ```ts
 import { loadCredentials } from '@shop-gym/core';

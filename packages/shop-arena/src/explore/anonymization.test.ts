@@ -4,7 +4,13 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { anonymizationVerifier, brandTokens, leakScanner } from './anonymization.js';
+import {
+  AnonymizationLeakError,
+  anonymizationVerifier,
+  brandTokens,
+  leakScanner,
+  publishedLeaks,
+} from './anonymization.js';
 
 const HOST = 'brand-leakcanary.example.com';
 const HTML = `<!doctype html><html><head>
@@ -52,14 +58,64 @@ afterEach(() => {
 });
 
 describe('brandTokens', () => {
-  it('derives tokens from the host, the title segments, and og:site_name', () => {
+  it('derives tokens from the host, the brand segment, and og:site_name', () => {
     const tokens = brandTokens(HOST, HTML);
     expect(tokens).toContain('brand-leakcanary');
     expect(tokens).toContain('leakcanary');
-    expect(tokens).toContain('brutalist');
     expect(tokens).toContain('brandleakcanary');
+    expect(tokens).not.toContain('brutalist');
     expect(tokens).not.toContain('www');
     expect(tokens).not.toContain('com');
+  });
+
+  const page = (title: string) => `<html><head><title>${title}</title></head></html>`;
+
+  it.each([
+    {
+      shape: 'brand segment, then a tagline of sentences',
+      host: 'fixturemart.localhost',
+      title: 'Fixture Mart. Spend less. Shop more.',
+      brand: ['fixture', 'mart', 'fixturemart'],
+      tagline: ['spend', 'less', 'more'],
+    },
+    {
+      shape: 'brand segment with the top-level domain',
+      host: 'www.fixturemart.com',
+      title: 'FixtureMart.com. Spend less. Shop more.',
+      brand: ['fixturemart', 'fixturemartcom'],
+      tagline: ['spend', 'less', 'more'],
+    },
+    {
+      shape: 'tagline first, brand segment after a separator',
+      host: 'www.fixture-mart.example',
+      title: 'Deals every day | Fixture Mart',
+      brand: ['fixture', 'mart', 'fixturemart'],
+      tagline: ['deals', 'every', 'day'],
+    },
+    {
+      shape: 'question and exclamation marks',
+      host: 'fixturemart.localhost',
+      title: 'Bored? Play more! Fixture Mart',
+      brand: ['fixture', 'mart'],
+      tagline: ['bored', 'play', 'more'],
+    },
+  ])('keeps only the brand segment: $shape', ({ host, title, brand, tagline }) => {
+    const tokens = brandTokens(host, page(title));
+    expect(tokens).toEqual(expect.arrayContaining(brand));
+    for (const word of tagline) expect(tokens).not.toContain(word);
+  });
+
+  it('uses every title segment when no segment matches a hostname label', () => {
+    const tokens = brandTokens('127.0.0.1', page('Fixture Mart. Spend less. Shop more.'));
+    expect(tokens).toEqual(expect.arrayContaining(['fixture', 'mart', 'spend', 'less', 'more']));
+  });
+
+  it('always takes og:site_name', () => {
+    const html = `<html><head><title>Fixture Mart. Spend less.</title>
+<meta property="og:site_name" content="Fixture Outlet"></head></html>`;
+    const tokens = brandTokens('fixturemart.localhost', html);
+    expect(tokens).toEqual(expect.arrayContaining(['fixture', 'outlet', 'fixtureoutlet']));
+    expect(tokens).not.toContain('spend');
   });
 });
 
@@ -77,7 +133,7 @@ describe('leakScanner', () => {
     'Brand Leakcanary',
     'brand leakcanary',
     'LeakCanary',
-    'LeakCanary01-Brutalist-Vase-Limited-Edition',
+    'LeakCanary-Brutalist-Vase-Limited-Edition',
     'support@example-shop.com',
   ])('flags %s with the file and line', (marker) => {
     const text = `${CLEAN_PART}\nSold exclusively at ${marker}.\n`;
@@ -89,6 +145,69 @@ describe('leakScanner', () => {
 
   it('does not flag words that merely contain a token', () => {
     expect(scan('p.md', 'a brutalistic font and a canary-yellow badge')).toEqual([]);
+  });
+
+  describe('with brand terms', () => {
+    const scanTerms = leakScanner(HOST, HTML, ['Nova Pass', 'Zephyr']);
+
+    it.each([
+      ['Nova Pass members', 'nova pass'],
+      ['nova-pass badge', 'nova pass'],
+      ['NOVA PASS', 'nova pass'],
+      ['Zephyr TV', 'zephyr'],
+    ])('flags %s as [%s]', (text, marker) => {
+      expect(scanTerms('p.md', text)).toEqual([{ file: 'p.md', line: 1, marker, text }]);
+    });
+
+    it.each(['a nova sale and a hall pass', 'pass nova', 'novapass', 'zephyrs'])(
+      'does not flag %s',
+      (text) => {
+        expect(scanTerms('p.md', text)).toEqual([]);
+      },
+    );
+
+    it('rejects a term with no letter or digit', () => {
+      expect(() => leakScanner(HOST, HTML, ['--'])).toThrow(/brand term "--"/);
+      expect(() => anonymizationVerifier(`https://${HOST}`, [' '])).toThrow(/brand term " "/);
+    });
+  });
+});
+
+describe('publishedLeaks', () => {
+  // With no hostname label in the title, every title word is a brand token.
+  const scan = leakScanner('127.0.0.1', '<title>Free Shipping Outlet</title>');
+
+  it('reads the values of a JSON file, not its keys', () => {
+    const capabilities = `${JSON.stringify(
+      { has_shipping_estimate: true, shop: { descriptor: 'free shipping on every order' } },
+      null,
+      2,
+    )}\n`;
+    expect(publishedLeaks(scan, { 'capabilities.json': capabilities })).toEqual([
+      {
+        file: 'capabilities.json',
+        line: 4,
+        marker: 'free',
+        text: '"descriptor": "free shipping on every order"',
+      },
+    ]);
+  });
+
+  it('reads every line of a markdown file', () => {
+    expect(publishedLeaks(scan, { 'manual.md': '# Manual\n\n## Shipping\n' })).toEqual([
+      { file: 'manual.md', line: 3, marker: 'shipping', text: '## Shipping' },
+    ]);
+  });
+
+  it('names every leak in the error message', () => {
+    const leaks = publishedLeaks(scan, { 'manual.md': 'Shipping\nOutlet\n' });
+    expect(new AnonymizationLeakError(leaks).message).toBe(
+      [
+        'the final anonymization scan found 2 leak(s) in the published files:',
+        '- manual.md:1 [shipping]: Shipping',
+        '- manual.md:2 [outlet]: Outlet',
+      ].join('\n'),
+    );
   });
 });
 

@@ -2,7 +2,7 @@
 
 import { EXPLORE_STEPS, type ExploreStep, exploreStorefront } from '@shop-gym/shop-arena';
 
-import { enumOption, flag, integerOption, parse, stringOption } from '../args.js';
+import { enumOption, flag, integerOption, parse, stringListOption, stringOption } from '../args.js';
 import { CliError, DEFAULT_MODEL, cliCredentials, findRepoRoot } from '../context.js';
 import { logEvent, logLine } from '../progress.js';
 
@@ -13,6 +13,7 @@ Explore a live storefront and write an anonymized Shop Manual.
 Options:
   --out <dir>          Run directory (default: outputs/shop_manuals/<domain>/<run_id>)
   --model <provider/id>  Model for the explore agent (default: ${DEFAULT_MODEL})
+  --brand-term <word>  Brand word or phrase the manual must not name (repeatable)
   --max-iters <n>      Executor iterations for the explore step
   --timeout <ms>       Per-iteration wall clock budget
   --from <step>        Rerun from this step: ${EXPLORE_STEPS.join(' | ')}
@@ -30,6 +31,7 @@ export interface ExploreArgs {
   readonly timeoutMs?: number;
   readonly from?: ExploreStep;
   readonly forceResume: boolean;
+  readonly brandTerms?: readonly string[];
 }
 
 export function parseExploreArgs(argv: readonly string[]): ExploreArgs {
@@ -40,6 +42,7 @@ export function parseExploreArgs(argv: readonly string[]): ExploreArgs {
     timeout: { type: 'string' },
     from: { type: 'string' },
     'force-resume': { type: 'boolean' },
+    'brand-term': { type: 'string', multiple: true },
     help: { type: 'boolean', short: 'h' },
   });
   if (flag(args, 'help')) {
@@ -56,6 +59,7 @@ export function parseExploreArgs(argv: readonly string[]): ExploreArgs {
   const maxIters = integerOption(args, 'max-iters');
   const timeoutMs = integerOption(args, 'timeout');
   const from = enumOption(args, 'from', EXPLORE_STEPS);
+  const brandTerms = stringListOption(args, 'brand-term');
   return {
     help: false,
     url,
@@ -65,6 +69,7 @@ export function parseExploreArgs(argv: readonly string[]): ExploreArgs {
     ...(maxIters !== undefined ? { maxIters } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     ...(from !== undefined ? { from } : {}),
+    ...(brandTerms.length > 0 ? { brandTerms } : {}),
   };
 }
 

@@ -85,6 +85,20 @@ Options: `--out <dir>`, `--max-iters <n>`, `--timeout <ms>`,
 `--from prefetch|explore|merge|synthesize`, `--force-resume`. Re-running with
 the same output directory resumes the unfinished step.
 
+Brand tokens come from the brand segment of the homepage title (the
+segment that matches a hostname label, such as "Fixture Mart" in
+"Fixture Mart. Spend less. Shop more.") and from `og:site_name`, so the
+words of a tagline do not become brand tokens. When no segment matches,
+every segment counts. Add sub-brands that the title does not name with
+a repeatable `--brand-term <word>`, for example
+`--brand-term Zephyr --brand-term "Nova Pass"`. A term of more than one
+word matches as a phrase. The run keeps the terms in `brand_terms.json`
+in the run directory; no published file holds them, and a rerun without
+`--brand-term` uses them again. The Anonymization verifier uses the
+terms. After synthesis, a final scan of `manual.md`, `capabilities.json`
+and `stats.json` fails the run on a brand token, a brand term or the
+storefront host, and `manual.md` is not written.
+
 The storefront does not have to be a Shopify shop. Prefetch decides the
 platform first. It fetches `robots.txt`, the homepage, `sitemap.xml` and
 one `/products.json` page as the probe: the platform is `shopify` when the

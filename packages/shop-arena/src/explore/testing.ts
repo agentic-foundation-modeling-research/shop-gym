@@ -38,11 +38,14 @@ export interface FixtureSite {
 }
 
 /**
- * Serves `pages(origin)` on a free local port. An unknown pathname gets a
- * 404 HTML page.
+ * Serves `pages(origin)` on a free local port of 127.0.0.1. An unknown
+ * pathname gets a 404 HTML page. `hostname` goes into `url` and the
+ * origin; a name under `localhost`, such as `GENERIC_SITE_HOSTNAME`,
+ * resolves to the loopback address.
  */
 export async function startFixtureSite(
   pages: (origin: string) => FixturePages,
+  hostname = '127.0.0.1',
 ): Promise<FixtureSite> {
   const requests: FixtureRequest[] = [];
   let routes: FixturePages = {};
@@ -57,7 +60,7 @@ export async function startFixtureSite(
     res.writeHead(page.status ?? 200, { 'content-type': page.contentType }).end(page.body);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const url = `http://${hostname}:${(server.address() as AddressInfo).port}`;
   routes = pages(url);
   return {
     url,
@@ -71,6 +74,12 @@ const NOT_FOUND = '<!doctype html><html><head><title>Page not found</title></hea
 
 /** The homepage title of the generic site: a brand segment, then a tagline. */
 const GENERIC_SITE_TITLE = 'Fixture Mart. Spend less. Shop more.';
+
+/**
+ * A hostname for the generic site whose label matches the brand segment
+ * of its title, as the hostname of a Live storefront does.
+ */
+export const GENERIC_SITE_HOSTNAME = 'fixturemart.localhost';
 
 interface FixtureProduct {
   readonly path: string;

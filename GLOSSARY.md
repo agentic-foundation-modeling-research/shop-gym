@@ -45,7 +45,7 @@ _Avoid_: manual (alone), seed manual, Seed Shop Manual
 One structured, schema-checked fact about one storefront feature, for example the cart type or the list of collection filters.
 
 **Anonymization**:
-The rule that a Shop Manual describes only structure and UX patterns, and contains no brand, domain, product name, or other text that identifies the Live storefront.
+The rule that a Shop Manual describes only structure and UX patterns, and contains no brand, domain, product name, or other text that identifies the Live storefront. The Anonymization verifier checks each Plan task fragment for the hostname, the brand tokens from the brand segment of the homepage title, and the brand terms that the person who runs exploration adds (`--brand-term`). After synthesis, the final scan checks the published Shop Manual files for the same markers and fails the run on a hit.
 
 **Shop generation**:
 The ShopArena process (`shopgym gen`) that turns one or more Shop Manuals into a SandboxShop.

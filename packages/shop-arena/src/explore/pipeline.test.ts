@@ -12,7 +12,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
 import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT } from './prefetch.js';
-import { type FixtureSite, genericSitePages, startFixtureSite } from './testing.js';
+import {
+  type FixtureSite,
+  GENERIC_SITE_HOSTNAME,
+  genericSitePages,
+  startFixtureSite,
+} from './testing.js';
 
 const CREDENTIALS = {} as const;
 const HOME =
@@ -199,6 +204,7 @@ function explore(options: {
   llm?: StubLlm;
   from?: 'prefetch' | 'explore' | 'merge' | 'synthesize';
   forceResume?: boolean;
+  brandTerms?: readonly string[];
 }) {
   const runtime = new FakeRuntime(options.scripts ?? []);
   const llm = options.llm ?? new StubLlm();
@@ -214,6 +220,7 @@ function explore(options: {
     llm,
     ...(options.from ? { from: options.from } : {}),
     ...(options.forceResume ? { forceResume: true } : {}),
+    ...(options.brandTerms ? { brandTerms: options.brandTerms } : {}),
   }).then((result) => ({ result, runtime, llm }));
 }
 
@@ -542,6 +549,127 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(stats.products_per_collection).toEqual({ avg: 0, median: 0, max: 0 });
     expect(readJson(result.manifestPath).coverage_gaps).toEqual([]);
     expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
+  });
+});
+
+/** Invented sub-brands of the generic site, as `--brand-term` gives them. */
+const BRAND_TERMS = ['Nova Pass', 'Zephyr'] as const;
+
+/** A homepage fragment with the words of the title's tagline in plain prose. */
+const TAGLINE_HOMEPAGE = `${GENERIC_HOMEPAGE}
+The hero headline asks the shopper to spend less and shop more.
+`;
+
+/** Planner, then one executor per Plan task; `product` is the product fragment(s) in order. */
+function brandScripts(
+  product: readonly string[],
+  homepageCaps: object = { homepage: { section_count: 2 } },
+): readonly FakeScript[] {
+  return [
+    { writeFiles: { 'plan.md': GENERIC_PLAN(' ', ' ') }, reply: 'planned' },
+    {
+      writeFiles: {
+        'artifact/parts/homepage_sections.md': TAGLINE_HOMEPAGE,
+        'artifact/parts/homepage_sections.caps.json': JSON.stringify(homepageCaps),
+        'plan.md': GENERIC_PLAN('x', ' '),
+      },
+      reply: 'homepage done',
+    },
+    ...product.map((fragment) => ({
+      writeFiles: {
+        'artifact/parts/product_variants.md': fragment,
+        'plan.md': GENERIC_PLAN('x', 'x'),
+      },
+      reply: 'product done',
+    })),
+  ];
+}
+
+describe('exploreStorefront anonymization with brand terms', { timeout: 60_000 }, () => {
+  let site: FixtureSite;
+
+  beforeEach(async () => {
+    site = await startFixtureSite(genericSitePages, GENERIC_SITE_HOSTNAME);
+  });
+
+  afterEach(async () => {
+    await site.close();
+  });
+
+  it('fails a brand term but not a tagline word, and publishes no brand term', async () => {
+    const { result, runtime } = await explore({
+      url: site.url,
+      brandTerms: BRAND_TERMS,
+      scripts: brandScripts([
+        `${GENERIC_PRODUCT}\nMembers of Nova Pass see a free delivery badge.\n`,
+        `${GENERIC_PRODUCT}\nMembers see a free delivery badge; a season pass and a nova-blue label sit next to the price.\n`,
+      ]),
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    // The tagline words pass; the phrase "Nova Pass" reopens the product
+    // task, and its words alone pass.
+    const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
+    expect(summary.verifierRuns.map((run) => [run.taskId, run.verdict])).toEqual([
+      ['homepage_sections', 'pass'],
+      ['product_variants', 'fail'],
+      ['product_variants', 'pass'],
+    ]);
+    const retry = promptText(runtime.requests[3]?.prompt ?? '');
+    expect(retry).toContain('Anonymization check failed');
+    expect(retry).toContain('[nova pass]: Members of Nova Pass see a free delivery badge.');
+
+    // The terms stay in the run directory, and no published file holds one.
+    expect(readJson(join(outDir, 'brand_terms.json'))).toEqual(BRAND_TERMS);
+    for (const path of [
+      result.manualPath,
+      result.capabilitiesPath,
+      result.statsPath,
+      result.manifestPath,
+    ]) {
+      const text = readFileSync(path, 'utf8').toLowerCase();
+      for (const term of BRAND_TERMS) expect(text, path).not.toContain(term.toLowerCase());
+    }
+  });
+
+  it('fails the final scan on a leak in a published file and publishes no manual', async () => {
+    const leakyManual = `${MANUAL}
+Members of Nova Pass get free delivery.
+Returns go through ${GENERIC_SITE_HOSTNAME}/help.
+`;
+    const run = explore({
+      url: site.url,
+      brandTerms: BRAND_TERMS,
+      scripts: brandScripts([GENERIC_PRODUCT], {
+        shop: { descriptor: 'Fixture Mart general marketplace' },
+      }),
+      llm: new StubLlm(leakyManual),
+    });
+
+    await expect(run).rejects.toSatisfy(
+      (error: unknown) => error instanceof StepFailedError && error.stepId === 'synthesize',
+    );
+    await expect(run).rejects.toThrow(/manual\.md:\d+ \[nova pass\]/);
+    await expect(run).rejects.toThrow(/manual\.md:\d+ \[fixturemart\.localhost\]/);
+    await expect(run).rejects.toThrow(/capabilities\.json:\d+ \[fixture\]/);
+    expect(existsSync(join(outDir, 'manual.md'))).toBe(false);
+  });
+
+  it('keeps the stored brand terms on a later call and scans again when they change', async () => {
+    await explore({
+      url: site.url,
+      brandTerms: ['Zephyr'],
+      scripts: brandScripts([GENERIC_PRODUCT]),
+    });
+
+    const again = await explore({ url: site.url });
+    expect(again.result.steps.every((step) => step.status === 'skipped')).toBe(true);
+    expect(readJson(join(outDir, 'brand_terms.json'))).toEqual(['Zephyr']);
+
+    // MANUAL names "Minimal Homeware", which is now a brand term.
+    await expect(
+      explore({ url: site.url, brandTerms: ['Zephyr', 'Minimal Homeware'] }),
+    ).rejects.toThrow(/manual\.md:1 \[minimal homeware\]/);
   });
 });
 

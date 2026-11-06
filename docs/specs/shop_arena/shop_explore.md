@@ -113,6 +113,18 @@ exercises its public surface end-to-end.
   at most twice; the next hit blocks the task with a note that names the
   fragment. The count per task is kept in
   `run/checks/anonymization_reopens.json`, so a resumed run keeps it.
+- Brand segment, brand terms and the final scan (2026-11-05): brand
+  tokens come only from the brand segment of the homepage title (the
+  segment that matches a hostname label) and from `og:site_name`; when
+  no segment matches, every segment counts. A repeatable
+  `--brand-term <word>` (option `brandTerms`) adds sub-brands; a term
+  of more than one word matches as a phrase. The terms are kept in
+  `<run_id>/brand_terms.json`, which Shop generation does not read, and
+  the `anonymization` verifier uses them. After synthesis, the final scan
+  checks `manual.md`, `capabilities.json` and `stats.json` (JSON values
+  only) for brand tokens, brand terms and the host, and fails the
+  `synthesize` step before it writes `manual.md`. `manifest.json` is not
+  scanned, because it records the `domain` by design.
 
 ---
 
