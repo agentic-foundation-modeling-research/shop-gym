@@ -62,9 +62,10 @@ tools (`read_file`, `write_file`, `list_dir`) that let the agent write
 browser has the storefront origin as its base URL, so `navigate` opens a
 site path such as `/cart`. `src/explore/browser.ts` also gives the agent
 its own `snapshot` tool. It shows at most 50,000 characters of the
-accessibility tree. A longer tree comes in parts that end at a line end,
-and the note after a part gives the `offset` of the next part.
-`@shop-gym/browser` itself keeps the whole snapshot. The planner
+accessibility tree. A longer tree comes in parts. A part ends at a line
+end; only a line longer than the limit is cut inside the line. The note
+after a part gives the `offset` of the next part. `@shop-gym/browser`
+itself keeps the whole snapshot. The planner
 emits a fixed canonical task list (homepage, header, cart, product,
 collection, search, checkout, account, footer, info pages, floating
 widgets); each executor iteration writes `parts/<task_id>.md` and

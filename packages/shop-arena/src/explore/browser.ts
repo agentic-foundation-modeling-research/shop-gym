@@ -227,7 +227,7 @@ function snapshotPart(snapshot: PageSnapshot, offset: number): string {
 
 /**
  * Where the part for `offset` starts. An offset inside a line moves to the
- * start of the next line. Thus a part does not start with half a ref, also
+ * start of the next line. Thus a part does not start with half a ref, even
  * when the page changed after the last part. An offset inside a line longer
  * than `SNAPSHOT_MAX_CHARS` does not move, because the parts cut such a line.
  */
