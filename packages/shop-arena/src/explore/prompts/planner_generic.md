@@ -45,9 +45,9 @@ Then spend <= 4 navigations on what static HTML cannot show:
 
 Put the start paths that a task needs into its brief, for example
 product pages for `product_variants` and a department or category
-landing page for `collection_filters`, inside the focus when the run has
-one. A search results page belongs to `search_results`, never to
-`collection_filters`. The executor has no catalog file to find them.
+landing page for `collection_filters`. A search results page belongs to
+`search_results`, never to `collection_filters`. The executor has no
+catalog file to find them.
 
 Skip `/admin`, `/checkout`, anything behind login. Dismiss
 cookie / age-gate / newsletter popups once and move on. If prefetch
@@ -71,13 +71,13 @@ keeps runs stable across shops and gives the synthesis pass a
 predictable input shape.
 
 ```
-- [ ] homepage_sections — capture every section below the hero; snapshot per section; fill the shop block (`shop`): descriptor, category, currency, tone [priority: 9]
+- [ ] homepage_sections — capture every section below the hero; snapshot per section; fill the shop block (`shop`): descriptor, category, currency code, tone [priority: 9]
 - [ ] header_navigation — header rows, sticky behavior, department menu + sub-levels (`departments`), mega menu / flyouts, search trigger, account / cart icons [priority: 8]
 - [ ] cart_drawer       — add 1 product; capture the cart surface (drawer, page or side sheet): empty, filled, qty change, remove [priority: 8]
 - [ ] product_variants  — pick 2 product pages (one with > 1 variant); capture gallery, variant selectors, qty stepper [priority: 7]
-- [ ] product_reviews   — scroll a product page to its review block; all-reviews page only if public; fill `product.has_rating_histogram`, `product.review_filters` [priority: 6]
+- [ ] product_reviews   — scroll a product page to its review block (`product.has_rating_histogram`, `product.review_filters`); skip all-reviews pages behind sign-in [priority: 6]
 - [ ] related_products  — on 2 product pages, capture each related-product block; list their kinds in `product.related_product_types` [priority: 5]
-- [ ] collection_filters — open the largest collection, department or category landing page, not a search results page; exercise filters + sort + pagination [priority: 7]
+- [ ] collection_filters — start on the largest collection, department or category landing page, not a search results page; exercise filters + sort + pagination [priority: 7]
 - [ ] search_predictive — type 2 prefixes into the search box; snapshot each suggestion dropdown; stay on storefront pages, no network or API capture [priority: 6]
 - [ ] search_results    — submit 1 query; capture the results layout, facets (`search.facets`), sort (`search.sort`), pagination, empty state [priority: 7]
 - [ ] checkout_flow     — from a filled cart, open checkout; capture guest option, shipping, payment, discount input; stop at the first sign-in or payment wall [priority: 6]
@@ -92,8 +92,9 @@ Three of them are marketplace areas: `product_reviews`,
 a claim about how the shop is built. Every brief uses platform-neutral
 words, so the same block fits any storefront: `cart_drawer` covers a
 cart page or side sheet too, and `collection_filters` covers a
-department or category landing page. A key in backticks (`departments`, `search.facets`, ...) names
-the `capabilities.json` fields that the task fills.
+department or category landing page. A key in backticks
+(`departments`, `search.facets`, ...) names the `capabilities.json`
+fields that the task fills.
 
 Priorities are advisory tie-breakers, not gates - every task above
 must appear in `## Tasks` with status `[ ]`.
@@ -164,7 +165,8 @@ consume them):
 ## 4. Brief format (after `—`)
 
 The trailer after `—` is the spec the executor follows. One line,
-<= 140 chars, imperative voice ("capture ...", "exercise ...", "visit ..."),
+<= 140 chars (the paths and queries that you add do not count),
+imperative voice ("capture ...", "exercise ...", "visit ..."),
 anchors concrete deliverables (states, pages, network capture if any).
 Do not name the shop or any product. The executor reads only this
 brief plus their per-task knowledge - make it self-sufficient.

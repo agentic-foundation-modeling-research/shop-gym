@@ -85,12 +85,12 @@ pages, floating widgets) and three marketplace ones (`product_reviews`,
 briefs use platform-neutral words (for example, `cart_drawer` covers
 any cart surface) and name the Capabilities that each task fills;
 `homepage_sections` fills the `shop` block. The briefs keep the executor
-on the storefront pages that a visitor sees: `collection_filters` opens a
-department or category landing page, not a search results page;
-`product_reviews` scrolls a product page to its review block and opens
-the all-reviews page only when it is public; `search_predictive`
-snapshots the suggestion dropdown and captures no network or API
-request. A brief that the planner makes more specific keeps these rules.
+on the storefront pages that a visitor sees: `collection_filters` starts
+on a department or category landing page, not a search results page;
+`product_reviews` scrolls a product page to its review block and skips
+an all-reviews page behind a sign-in; `search_predictive` snapshots the
+suggestion dropdown and captures no network or API request. A brief
+that the planner makes more specific keeps these rules.
 Each executor iteration writes `parts/<task_id>.md` and
 `parts/<task_id>.caps.json`. An `anonymization` verifier scans the parts
 after every iteration for the store domain, brand tokens from the

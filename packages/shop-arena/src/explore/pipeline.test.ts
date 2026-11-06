@@ -242,32 +242,38 @@ function constitutionSchema(systemPrompt: string | undefined): {
   return JSON.parse(block);
 }
 
+/** The `[ ]` task lines of a planner prompt as `[id, brief]` pairs, in prompt order. */
+function plannedTasks(prompt: string): [string | undefined, string | undefined][] {
+  return [...prompt.matchAll(/^- \[ \] ([a-z0-9_]+)\s+— (.*) \[priority: \d+\]$/gm)].map(
+    (match) => [match[1], match[2]],
+  );
+}
+
 /** The ids of the `[ ]` task lines in a planner prompt, in prompt order. */
 function plannedIds(prompt: string): (string | undefined)[] {
-  return [...prompt.matchAll(/^- \[ \] ([a-z0-9_]+)\s+— /gm)].map((match) => match[1]);
+  return plannedTasks(prompt).map(([id]) => id);
 }
 
 /** The brief of the `[ ]` task line `id` in a planner prompt. */
 function plannedBrief(prompt: string, id: string): string {
-  const brief = new RegExp(`^- \\[ \\] ${id}\\s+— (.*) \\[priority: \\d+\\]$`, 'm').exec(
-    prompt,
-  )?.[1];
+  const brief = plannedTasks(prompt).find(([taskId]) => taskId === id)?.[1];
   if (brief === undefined) throw new Error(`the planner prompt plans no ${id} task`);
   return brief;
 }
 
 /**
- * Checks the briefs that send the executor to a storefront page: the same
- * rules hold on every platform.
+ * Checks that the briefs keep the executor on the storefront pages that a
+ * visitor sees, also in a brief that the planner makes more specific. The
+ * same rules hold on every platform.
  */
 function expectStorefrontBriefs(planner: string): void {
-  expect(plannedBrief(planner, 'collection_filters')).toContain(
-    'department or category landing page, not a search results page',
+  expect(plannedBrief(planner, 'collection_filters')).toMatch(
+    /^start on .*department or category landing page, not a search results page; /,
   );
   // The product page shows the review block; the all-reviews page can ask for a sign-in.
   const reviews = plannedBrief(planner, 'product_reviews');
-  expect(reviews).toMatch(/^scroll a product page to its review block; /);
-  expect(reviews).toContain('all-reviews page only if public');
+  expect(reviews).toMatch(/^scroll a product page to its review block /);
+  expect(reviews).toContain('skip all-reviews pages behind sign-in');
   // The suggestion API can be on another host, so the evidence is the dropdown.
   const predictive = plannedBrief(planner, 'search_predictive');
   expect(predictive).toContain(
@@ -275,13 +281,16 @@ function expectStorefrontBriefs(planner: string): void {
   );
   expect(predictive).toContain('stay on storefront pages, no network or API capture');
   expect(predictive).not.toMatch(/network capture|suggest\.json/);
-  // One Plan task owns the shop block, so the block does not stay empty.
-  expect(plannedBrief(planner, 'homepage_sections')).toContain(
-    'fill the shop block (`shop`): descriptor, category, currency, tone',
-  );
   // The planner adds paths and queries to the briefs, and the rules above stay.
-  expect(planner.replace(/\s+/g, ' ')).toContain(
-    'A tweaked brief keeps every rule of its canonical brief',
+  const prose = planner.replace(/\s+/g, ' ');
+  expect(prose).toContain('A tweaked brief keeps every rule of its canonical brief');
+  expect(prose).toContain('the paths and queries that you add do not count');
+}
+
+/** Checks that one Plan task owns the shop block, so the block does not stay empty. */
+function expectShopBlockOwner(planner: string): void {
+  expect(plannedBrief(planner, 'homepage_sections')).toContain(
+    'fill the shop block (`shop`): descriptor, category, currency code, tone',
   );
 }
 
@@ -537,10 +546,16 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     });
   });
 
-  it('points the briefs at storefront pages and gives the shop block to homepage_sections', async () => {
+  it('keeps the fixed-area briefs on storefront pages', async () => {
     const { runtime } = await explore({ scripts: SCRIPTS });
 
     expectStorefrontBriefs(promptText(runtime.requests[0]?.prompt ?? ''));
+  });
+
+  it('gives the shop block to homepage_sections', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+
+    expectShopBlockOwner(promptText(runtime.requests[0]?.prompt ?? ''));
   });
 
   it('takes the shopify path when products.json returns a product list', async () => {
@@ -764,7 +779,7 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(planner).toContain('<= 4 `navigate` calls');
   });
 
-  it('points the briefs at storefront pages and gives the shop block to homepage_sections', async () => {
+  it('keeps the fixed-area briefs on storefront pages', async () => {
     const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
 
     const planner = promptText(runtime.requests[0]?.prompt ?? '');
@@ -774,6 +789,12 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(planner.replace(/\s+/g, ' ')).toContain(
       'a department or category landing page for `collection_filters`',
     );
+  });
+
+  it('gives the shop block to homepage_sections', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    expectShopBlockOwner(promptText(runtime.requests[0]?.prompt ?? ''));
   });
 });
 
