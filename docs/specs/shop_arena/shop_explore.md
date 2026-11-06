@@ -116,7 +116,14 @@ exercises its public surface end-to-end.
   `run/iters/<id>/start_state.json` as `{ url, cart, error }`. When the
   homepage or the cart cannot be read, `error` gives the reason, and the
   Iteration still runs. All browsers of a run send the same
-  `x-shopgym-episode` header.
+  `x-shopgym-episode` header. The storefront origin is the base URL of
+  every browser, so `navigate` opens a site path such as `/cart` on the
+  storefront. The explore `snapshot` tool shows at most 50,000
+  characters of the accessibility tree in one result. A longer tree comes
+  in parts of whole lines. The note after a cut part gives the `offset`
+  for the next part, and says that a scroll does not change the
+  snapshot. The other users of `@shop-gym/browser` keep the whole
+  snapshot.
 
 ---
 

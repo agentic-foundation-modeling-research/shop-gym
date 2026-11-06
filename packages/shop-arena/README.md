@@ -56,7 +56,10 @@ The explore step drives `runPlanExecLoop` from `@shop-gym/harness` with
 the pi runtime, a new headless `BrowserSession` for every iteration
 (`src/explore/browser.ts`; it opens the homepage, reads `/cart.js` when the
 shop serves it, and writes `run/iters/<id>/start_state.json`), the
-`browserTools` from `@shop-gym/browser`, and three run-dir-scoped file
+`browserTools` from `@shop-gym/browser` (`navigate` opens a site path such
+as `/cart` on the storefront; `snapshot` shows an accessibility tree longer
+than 50,000 characters in parts of whole lines, and the note after a cut
+part gives the `offset` of the next part), and three run-dir-scoped file
 tools (`read_file`, `write_file`, `list_dir`) that let the agent write
 `plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. The planner
 emits a fixed canonical task list (homepage, header, cart, product,
