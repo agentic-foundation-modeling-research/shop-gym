@@ -163,7 +163,9 @@ layout.
   access.
 - **SC5 — Coverage.** On the fixture set, every coverage-taxonomy area
   that prefetch evidence indicates is present (§5.7) appears as either
-  a planner task or a justified omission in `manifest.json`.
+  a done planner task or a justified omission in `manifest.json`. An
+  area whose planner task is pending, in progress, or blocked when the
+  run ends is listed in `manifest.json:coverage_gaps`.
 
 ---
 

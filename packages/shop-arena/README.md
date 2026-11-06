@@ -95,6 +95,12 @@ rendered from the zod schema at run time. Credentials come from
 `loadCredentials()` and are never written to disk. `shopgym explore <url>`
 wraps this function.
 
+The merge step writes `coverage_gaps` in `manifest.json`: each area that
+the prefetch shows on the storefront, but that no done (`[x]`) Plan task
+covers and the `## Omitted Areas` block of `plan.md` does not name. A Plan
+task that is pending, in progress or blocked when the run ends does not
+cover its area, so an unfinished, failed or skipped area is a gap.
+
 ## Gen
 
 `generateShop(config, deps)` (also under the `gen` namespace export)
