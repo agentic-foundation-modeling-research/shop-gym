@@ -51,6 +51,7 @@ import {
 } from './capabilities.js';
 import { coverageGaps, parsePlanCoverage } from './coverage.js';
 import { fileTools } from './files.js';
+import { productObservationJsonSchema, productObservationVerifier } from './observations.js';
 import {
   type Platform,
   type PrefetchReport,
@@ -58,7 +59,7 @@ import {
   prefetch,
   readPlatform,
 } from './prefetch.js';
-import { computeStats } from './stats.js';
+import { computeObservedStats, computeStats } from './stats.js';
 import { renderManual } from './synthesize.js';
 
 export const DEFAULT_MODEL = 'anthropic/claude-opus-4-7';
@@ -154,6 +155,8 @@ interface Prompts {
   /** The planner prompt for a site on the generic platform. */
   readonly plannerGeneric: string;
   readonly execute: string;
+  /** The executor prompt for a site on the generic platform. */
+  readonly executeGeneric: string;
   readonly manual: string;
 }
 
@@ -207,17 +210,23 @@ export function runId(url: string, runtimeName: string, now: Date = new Date()):
 function loadPrompts(): Prompts {
   const read = (name: string) => readFileSync(join(PROMPTS_DIR, name), 'utf8');
   return {
-    agents: read('agents.md').replace('{{CAPABILITIES_SCHEMA}}', capabilitiesJsonSchema()),
+    agents: read('agents.md')
+      .replace('{{CAPABILITIES_SCHEMA}}', capabilitiesJsonSchema())
+      // A replacer function, because the schema text contains `$`.
+      .replace('{{PRODUCT_OBSERVATION_SCHEMA}}', () => productObservationJsonSchema()),
     planner: read('planner.md'),
     plannerGeneric: read('planner_generic.md'),
     execute: read('execute.md'),
+    executeGeneric: read('execute_generic.md'),
     manual: read('synthesize_manual.md'),
   };
 }
 
-/** The planner prompt for a site on `platform`. */
-function plannerPrompt(prompts: Prompts, platform: Platform): string {
-  return platform === 'generic' ? prompts.plannerGeneric : prompts.planner;
+/** The planner and executor prompts for a site on `platform`. */
+function rolePrompts(prompts: Prompts, platform: Platform): { planner: string; execute: string } {
+  return platform === 'generic'
+    ? { planner: prompts.plannerGeneric, execute: prompts.executeGeneric }
+    : { planner: prompts.planner, execute: prompts.execute };
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -255,21 +264,24 @@ const exploreStep: Step<ExploreContext> = {
   outputs: [PATHS.explore],
   async run({ outDir, context, log }) {
     const runDir = join(outDir, PATHS.run);
-    const planner = plannerPrompt(context.prompts, readPlatform(join(outDir, PATHS.prefetch)));
+    const platform = readPlatform(join(outDir, PATHS.prefetch));
     const session = await BrowserSession.launch({ episodeId: basename(outDir) });
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
     try {
       summary = await runPlanExecLoop(
         {
           runDir,
-          prompts: { planner, execute: context.prompts.execute },
+          prompts: rolePrompts(context.prompts, platform),
           agentsMd: context.prompts.agents,
           artifactSeedDir: join(outDir, PATHS.seed),
           maxIters: context.maxIters,
           timeoutMs: context.timeoutMs,
           model: context.model,
           tools: [...browserTools(session), ...fileTools()],
-          verifiers: [anonymizationVerifier(context.url)],
+          verifiers:
+            platform === 'generic'
+              ? [anonymizationVerifier(context.url), productObservationVerifier()]
+              : [anonymizationVerifier(context.url)],
           ...(context.onEvent ? { onEvent: context.onEvent } : {}),
         },
         context.runtime,
@@ -299,12 +311,18 @@ const mergeStep: Step<ExploreContext> = {
     const prefetchDir = join(outDir, PATHS.prefetch);
     const outcome = readJson<ExploreOutcome>(join(outDir, PATHS.explore));
     const planMd = readFileSync(join(runDir, 'plan.md'), 'utf8');
+    const platform = readPlatform(prefetchDir);
 
     const { capabilities, conflicts } = existsSync(partsDir)
       ? mergeFragments(partsDir)
       : { capabilities: parseCapabilities({}), conflicts: [] };
     writeJson(join(outDir, PATHS.capabilities), capabilities);
-    writeJson(join(outDir, PATHS.stats), computeStats(prefetchDir, capabilities));
+    writeJson(
+      join(outDir, PATHS.stats),
+      platform === 'generic'
+        ? computeObservedStats(partsDir, capabilities)
+        : computeStats(prefetchDir, capabilities),
+    );
 
     const summary = readRunSummary(runDir);
     const tasks = summary?.tasksFinal ?? [];
@@ -317,7 +335,7 @@ const mergeStep: Step<ExploreContext> = {
       domain: new URL(context.url).hostname,
       runtime: context.runtime.name,
       model: context.modelName,
-      platform: readPlatform(prefetchDir),
+      platform,
       harness_status: outcome.final_status,
       iters: { plan: outcome.plan_iters, exec: outcome.exec_iters },
       plan_tasks_total: tasks.length,

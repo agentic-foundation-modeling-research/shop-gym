@@ -44,6 +44,9 @@ _Avoid_: manual (alone), seed manual, Seed Shop Manual
 **Capability**:
 One structured, schema-checked fact about one storefront feature, for example the cart type or the list of collection filters.
 
+**Product observation**:
+One schema-checked record of one product page that an executor opened on a generic site: the price, the currency, and the variant facts. It has no name, URL, seller or brand. On a generic site, `stats.json` comes from the Product observations (`source: observed_sample`).
+
 **Anonymization**:
 The rule that a Shop Manual describes only structure and UX patterns, and contains no brand, domain, product name, or other text that identifies the Live storefront.
 

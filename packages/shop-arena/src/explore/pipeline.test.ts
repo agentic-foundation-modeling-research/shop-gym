@@ -293,6 +293,16 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     );
   });
 
+  it('takes the Shopify stats from the catalog endpoints', async () => {
+    const { result, runtime } = await explore({ scripts: SCRIPTS });
+
+    const stats = readJson(result.statsPath);
+    expect(stats.source).toBe('catalog_endpoint');
+    expect(stats.sample_size).toBe(2);
+    // The Shopify executor prompt does not ask for product observations.
+    expect(promptText(runtime.requests[1]?.prompt ?? '')).not.toMatch(/product observation/i);
+  });
+
   it('skips every step on a second call with the same outDir', async () => {
     await explore({ scripts: SCRIPTS });
     const { result, runtime, llm } = await explore({});
@@ -391,6 +401,50 @@ const GENERIC_PRODUCT = `## Product Variants
 - **UX Notes:** none
 `;
 
+/** The product observation fragments of the three product pages of the generic site. */
+const OBSERVATIONS = {
+  'artifact/parts/product_variants.product-01.json': JSON.stringify({
+    price: 59.99,
+    currency: 'USD',
+    has_variants: true,
+    variant_axes: ['Edition', 'Platform'],
+  }),
+  'artifact/parts/product_variants.product-02.json': JSON.stringify({
+    price: 44.5,
+    currency: 'USD',
+    has_variants: true,
+    variant_axes: ['Color'],
+  }),
+  'artifact/parts/product_variants.product-03.json': JSON.stringify({
+    price: 79,
+    currency: 'USD',
+    has_variants: false,
+    variant_axes: [],
+  }),
+};
+
+/**
+ * The generic-site product executor: it opens the three product pages,
+ * writes `observations` next to its part, and marks its task done.
+ */
+function productExecutor(
+  siteUrl: string,
+  observations: Readonly<Record<string, string>>,
+): FakeScript {
+  return {
+    writeFiles: {
+      'artifact/parts/product_variants.md': GENERIC_PRODUCT,
+      ...observations,
+      'plan.md': GENERIC_PLAN('x', 'x'),
+    },
+    toolCalls: ['/p/fm-1001', '/p/fm-1002', '/p/fm-1003'].map((path) => ({
+      tool: 'navigate',
+      arguments: { url: `${siteUrl}${path}` },
+    })),
+    reply: 'product done',
+  };
+}
+
 /** Planner, homepage executor, and product executor scripts for the generic site. */
 function genericScripts(siteUrl: string): readonly FakeScript[] {
   return [
@@ -488,6 +542,78 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(stats.products_per_collection).toEqual({ avg: 0, median: 0, max: 0 });
     expect(readJson(result.manifestPath).coverage_gaps).toEqual([]);
     expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
+  });
+
+  it('asks the executors for product observations and shows their schema', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const executor = promptText(runtime.requests[1]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(executor).toContain(
+      'write one product observation fragment to `artifact/parts/<task_id>.product-<NN>.json`',
+    );
+    const constitution = runtime.requests[1]?.systemPrompt ?? '';
+    for (const field of ['"price"', '"currency"', '"has_variants"', '"variant_axes"']) {
+      expect(constitution).toContain(field);
+    }
+    expect(constitution).toContain('"pattern": "^[A-Z]{3}$"');
+  });
+
+  it('publishes stats from the product observation fragments', async () => {
+    const { result } = await explore({
+      url: site.url,
+      scripts: [...genericScripts(site.url).slice(0, 2), productExecutor(site.url, OBSERVATIONS)],
+    });
+
+    expect(result.finalStatus).toBe('completed');
+    const stats = readJson(result.statsPath);
+    expect(stats).toMatchObject({
+      source: 'observed_sample',
+      sample_size: 3,
+      price: { min: 44.5, max: 79, median: 59.99, currency: 'USD' },
+      variant_axes_observed: ['edition', 'platform', 'color'],
+      // The site shows no catalog totals, so they stay 0.
+      products_total: 0,
+      collections_total: 0,
+      products_per_collection: { avg: 0, median: 0, max: 0 },
+      homepage_section_count: 2,
+    });
+    expect(stats.products_with_variants_pct).toBeCloseTo(0.667, 3);
+  });
+
+  it('fails the Iteration of a fragment that does not match the schema', async () => {
+    const fragment = 'artifact/parts/product_variants.product-01.json';
+    const valid = { price: 59.99, currency: 'USD', has_variants: true, variant_axes: ['edition'] };
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 2),
+        // A product name and a lowercase currency do not match the schema.
+        productExecutor(site.url, {
+          [fragment]: JSON.stringify({ ...valid, currency: 'usd', title: 'Star Drifter' }),
+        }),
+        productExecutor(site.url, { [fragment]: JSON.stringify(valid) }),
+      ],
+    });
+
+    expect(result.finalStatus).toBe('completed');
+    const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
+    expect(
+      summary.verifierRuns
+        .filter((run) => run.name === 'product_observations')
+        .map((run) => [run.taskId, run.verdict]),
+    ).toEqual([
+      ['homepage_sections', 'pass'],
+      ['product_variants', 'fail'],
+      ['product_variants', 'pass'],
+    ]);
+    // The task reopens, and the next Iteration gets the feedback.
+    expect(runtime.requests).toHaveLength(4);
+    const retry = promptText(runtime.requests[3]?.prompt ?? '');
+    expect(retry).toContain('Product observation check failed');
+    expect(retry).toContain('parts/product_variants.product-01.json');
+    expect(retry).toContain('Unrecognized key: "title"');
+    expect(retry).toContain('currency');
+    expect(readJson(result.statsPath)).toMatchObject({ source: 'observed_sample', sample_size: 1 });
   });
 });
 

@@ -300,7 +300,8 @@ outputs/shop_manuals/<domain>/<run_id>/
     │   └── prefetch.json     # what we tried + outcome per URL
     ├── parts/                # written by executors
     │   ├── <task_id>.md
-    │   └── <task_id>.caps.json
+    │   ├── <task_id>.caps.json
+    │   └── <task_id>.product-<NN>.json  # generic sites only (§5.6)
     └── evidence/             # written by executors
         └── <task_id>/
             ├── snapshots/    # playwright `pw.js snapshot` a11y dumps
@@ -398,11 +399,32 @@ deep-merge with the rule: **last writer wins per leaf**, except lists
 
 ### 5.6 Stats schema
 
-`stats.json` is computed deterministically by `shop_arena.explore.stats` from
-`prefetch/` + `capabilities.json`. No LLM. Shape:
+`stats.json` is computed deterministically by `shop_arena.explore.stats`.
+No LLM. The source depends on the platform:
+
+- **`catalog_endpoint`** (Shopify). The stats come from `prefetch/` (the
+  Shopify catalog endpoints) + `capabilities.json`. `sample_size` is the
+  number of products read.
+- **`observed_sample`** (generic). The site has no catalog endpoint. Each
+  executor writes one product observation fragment,
+  `parts/<task_id>.product-<NN>.json`, for each product page that it opens.
+  The fragment holds only `price`, `currency`, `has_variants` and
+  `variant_axes`; the schema is closed, has no name, URL, seller or brand
+  field, and is shown in `AGENTS.md`. A `product_observations` Verifier
+  fails the executor Iteration of a fragment that does not match it. The
+  price stats use the fragments in the most frequent currency;
+  `products_with_variants_pct` and `variant_axes_observed` use all of
+  them. `sample_size` is the number of fragments. `products_total`,
+  `collections_total` and `products_per_collection` stay 0, because a
+  sample does not show them. Shop generation takes its totals from its
+  config targets either way.
+
+Shape:
 
 ```json
 {
+  "source": "catalog_endpoint",
+  "sample_size": 124,
   "products_total": 124,
   "collections_total": 12,
   "products_per_collection": {"avg": 18.2, "median": 14, "max": 60},
@@ -471,6 +493,9 @@ Three caller-owned files live under `packages/shop_arena/src/shop_arena/explore/
 - `execute.md` — instructions for one task iteration. References
   `AGENTS.md` for shared conventions; the harness prepends the
   `selected_task_id` control header.
+- `execute_generic.md` - the executor prompt on a generic site. It is
+  `execute.md` plus the rule to write one product observation fragment
+  for each product page that the executor opens (§5.6).
 
 Prompts are shipped as importable resources; not user-templated in
 v0.1.

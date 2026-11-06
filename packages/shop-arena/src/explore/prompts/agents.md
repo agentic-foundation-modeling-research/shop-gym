@@ -139,7 +139,8 @@ artifact/
 ├── prefetch/             # READ-ONLY for you. Seeded by the prefetch step.
 ├── parts/                # YOU WRITE these.
 │   ├── <task_id>.md
-│   └── <task_id>.caps.json
+│   ├── <task_id>.caps.json
+│   └── <task_id>.product-<NN>.json   # generic sites only (§6)
 └── evidence/<task_id>/   # YOU WRITE these.
     ├── snapshots/
     └── network.jsonl     # optional
@@ -206,7 +207,31 @@ future schema revision, not a silent leak.
 
 ---
 
-## 6. Don'ts
+## 6. Product observation fragments
+
+On a generic site (`artifact/prefetch/prefetch.json` records
+`"platform": "generic"`), the site has no catalog endpoint, so the
+catalog statistics in `stats.json` come from what the executors see.
+There the executor prompt asks you to write one product observation
+fragment, `parts/<task_id>.product-<NN>.json`, for each product page
+that you open. Write them only when your role prompt asks for them.
+
+A fragment is one JSON object that matches the closed schema below
+(rendered into this file at pipeline-time, so it cannot drift):
+
+```json
+{{PRODUCT_OBSERVATION_SCHEMA}}
+```
+
+The schema has no field for a product name, a URL, a seller or a
+brand, and it rejects every key that it does not name. After every
+executor iteration, a Verifier checks the fragments of your task. A
+fragment that is not valid JSON or does not match the schema reopens
+the task, and the feedback appears in your next prompt.
+
+---
+
+## 7. Don'ts
 
 - Don't crawl beyond the brief specified by your role prompt
   (planner: <= 4 pages; executor: scope of one task in `plan.md`).
