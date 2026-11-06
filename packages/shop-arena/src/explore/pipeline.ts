@@ -9,7 +9,7 @@
  * ```
  * seed/prefetch/        prefetch.json + saved bodies (seeded into the run)
  * run/                  harness workspace (plan.md, iters/, artifact/, run.json)
- * focus.json            the focus of the run, recorded on the first call
+ * focus.json            the focus that the planner got, written by the explore step
  * explore.json          harness outcome of the explore step
  * capabilities.json     merged, schema-validated capabilities
  * stats.json            catalog and feature statistics
@@ -258,24 +258,22 @@ function describeFocus(focus: string | null): string {
 }
 
 /**
- * Records `focus` in `<outDir>/focus.json` on the first call for `outDir`.
- * A later call must pass the same focus: a resumed harness run keeps the
- * plan of its first planner, so a new focus would not reach the plan.
+ * Checks `focus` against `<outDir>/focus.json`, which the explore step
+ * writes before the harness runs. A later call must pass the same focus:
+ * a resumed harness run keeps the plan of its first planner, so a new
+ * focus would not reach the plan.
  *
  * @throws Error when `focus` differs from the recorded focus.
  */
-function recordFocus(outDir: string, focus: string | null): void {
+function checkFocus(outDir: string, focus: string | null): void {
   const path = join(outDir, PATHS.focus);
-  if (!existsSync(path)) {
-    mkdirSync(outDir, { recursive: true });
-    writeJson(path, { focus });
-    return;
-  }
+  if (!existsSync(path)) return;
   const recorded = readJson<{ focus: string | null }>(path).focus;
   if (recorded !== focus) {
+    const want = describeFocus(recorded);
     const got = describeFocus(focus);
     throw new Error(
-      `${outDir} started with ${describeFocus(recorded)}, got ${got}; pass the same focus or a new outDir`,
+      `${outDir} started with ${want}, got ${got}; pass the same focus or a new outDir`,
     );
   }
 }
@@ -307,6 +305,7 @@ const exploreStep: Step<ExploreContext> = {
       readPlatform(join(outDir, PATHS.prefetch)),
       context.focus,
     );
+    writeJson(join(outDir, PATHS.focus), { focus: context.focus });
     const session = await BrowserSession.launch({ episodeId: basename(outDir) });
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
     try {
@@ -457,7 +456,7 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
     options.outDir ?? join(DEFAULT_OUTPUT_ROOT, domain, runId(base, runtime.name)),
   );
   const focus = options.focus ?? null;
-  recordFocus(outDir, focus);
+  checkFocus(outDir, focus);
   const context: ExploreContext = {
     url: base,
     model: parseModel(modelName),

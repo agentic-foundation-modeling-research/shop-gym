@@ -546,6 +546,22 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(runtime.requests[0]?.prompt).toBe(readPrompt('planner_generic.md'));
     expect(readJson(result.manifestPath).focus).toBeNull();
   });
+
+  it('records no focus when the run stops before the explore step', async () => {
+    const blocked = await startFixtureSite((origin) => ({
+      ...genericSitePages(origin),
+      '/': { status: 503, contentType: 'text/html', body: '' },
+    }));
+    try {
+      await expect(explore({ url: blocked.url, focus: 'Video Games' })).rejects.toThrow(
+        /unreachable/,
+      );
+    } finally {
+      await blocked.close();
+    }
+    // So a retry on the same outDir may take another focus.
+    expect(existsSync(join(outDir, 'focus.json'))).toBe(false);
+  });
 });
 
 describe('parseModel', () => {
