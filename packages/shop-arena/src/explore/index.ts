@@ -29,6 +29,7 @@ export {
   type ProductObservation,
   productObservationJsonSchema,
   productObservationSchema,
+  productObservationTool,
   productObservationVerifier,
   readObservations,
 } from './observations.js';

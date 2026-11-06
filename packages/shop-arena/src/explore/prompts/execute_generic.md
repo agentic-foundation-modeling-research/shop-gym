@@ -57,18 +57,20 @@ edit any other task's checkbox.
      skip the key.
 
 4. **Record each product page.** For each product page that you open
-   in this task, write one product observation fragment to
-   `artifact/parts/<task_id>.product-<NN>.json`, with `NN` counting
-   from `01` in the order you open the pages. It is one JSON object
-   that matches the product observation schema in AGENTS.md §6: the
-   price that the page shows for the selected variant, its ISO 4217
-   currency code, whether the page offers more than one variant, and
-   the names of the variant axes (e.g. `edition`, `platform`). Write
-   nothing else into it - no product name, URL, seller or brand. Skip
-   a page that shows no price. These fragments are the only catalog
-   statistics of this site, so record every product page you open,
-   also in a task that is not about products (e.g. the product you add
-   to the cart).
+   in this task, call `record_product_observation` while the page is
+   open, before you go to another page. Give your task id and the
+   facts of the product observation schema in AGENTS.md §6: the price
+   that the page shows for the selected variant, its ISO 4217 currency
+   code, whether the page offers more than one variant, and the names
+   of the variant axes. Name each axis with a short generic noun (e.g.
+   `size`, `color`, `edition`, `platform`), not with the label text of
+   the page. The tool adds a key of the page and writes the fragment
+   `artifact/parts/<task_id>.product-<key>.json`; do not write or edit
+   these files yourself. Skip a page that shows no price. These
+   fragments are the only catalog statistics of this site, so record
+   every product page you open, also in a task that is not about
+   products (e.g. the product you add to the cart). A page that
+   another task recorded too counts only once.
 
 5. **Mark `plan.md`.** Flip your task line to `[x]` on success or
    `[!]` if blocked / partial, keeping the `— <brief> [priority: N]`
@@ -151,8 +153,8 @@ brevity: a richer part is fine as long as every line is structural.
 
 - Both `parts/<task_id>.md` and `parts/<task_id>.caps.json` exist;
   the caps file parses as one JSON object (no envelope, no array).
-- One `parts/<task_id>.product-<NN>.json` for each product page you
-  opened, each one matching the product observation schema.
+- One `record_product_observation` call for each product page you
+  opened, made while that page was open.
 - >= 1 saved snapshot under `evidence/<task_id>/snapshots/`.
 - No store / brand / product names; no verbatim on-page copy.
 

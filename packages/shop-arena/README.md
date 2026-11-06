@@ -49,7 +49,7 @@ steps on the `@shop-gym/core` pipeline runner:
 | --- | --- | --- |
 | `prefetch` | the storefront over HTTP | `seed/prefetch/` (robots, homepage, sitemap, `prefetch.json`; on a Shopify shop also the Shopify JSON endpoints, policy and info pages, merged `products.json`) |
 | `explore` | `seed/prefetch/` | `run/` (harness workspace: `plan.md`, `iters/`, `artifact/{prefetch,parts,evidence}`, `run.json`) and `explore.json` |
-| `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json`; on a generic site also `run/artifact/parts/*.product-<NN>.json` | `capabilities.json`, `stats.json`, `manifest.json` |
+| `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json`; on a generic site also `run/artifact/parts/*.product-<key>.json` | `capabilities.json`, `stats.json`, `manifest.json` |
 | `synthesize` | `capabilities.json`, `run/artifact/parts/*.md` | `manual.md` |
 
 Prefetch decides the platform before it fetches the rest. First it
@@ -71,19 +71,28 @@ in place of `prompts/planner.md`. That prompt tells the planner to pick
 same-origin start URLs from the homepage links and the sitemap.
 
 On the generic path the executors use `prompts/execute_generic.md` in place
-of `prompts/execute.md`. That prompt tells each executor to write one
-product observation fragment, `parts/<task_id>.product-<NN>.json`, for each
-product page that it opens. A fragment holds only the price, the currency,
-`has_variants` and `variant_axes` (schema in `src/explore/observations.ts`,
-shown in `AGENTS.md`). A `product_observations` verifier fails an executor
-iteration whose fragments do not match the schema.
+of `prompts/execute.md`, and they get one more tool,
+`record_product_observation`. The prompt tells each executor to call it for
+each product page that it opens, while the page is open. The executor gives
+only the price, the currency, `has_variants` and `variant_axes` (schema in
+`src/explore/observations.ts`, shown in `AGENTS.md`), with the axes named as
+short generic nouns. The tool checks the facts against the schema, takes
+the page key from the open page, and writes the fragment
+`parts/<task_id>.product-<key>.json`. The key is the first 12 hex digits of
+the SHA-256 of the page URL without its query, and the URL is the
+`<link rel="canonical">` target when the page has one. So the key tells
+product pages apart without naming them, and two paths to one product page
+give one key. A `product_observations` verifier fails an executor iteration
+whose fragments do not match the schema.
 
 `stats.json` records its `source` and `sample_size`. On a Shopify shop
 `computeStats` reads the prefetched catalog: `source` is `catalog_endpoint`
 and `sample_size` is the number of products read. On a generic site
 `computeObservedStats` reads the fragments: `source` is `observed_sample`,
-`sample_size` is the number of fragments, and the price and variant stats
-come from the fragments. The prices use the most frequent currency. The
+`sample_size` is the number of distinct product pages, and the price and
+variant stats come from one fragment for each page. When more than one task
+recorded the same page, the first fragment in filename order counts. The
+prices use the most frequent currency, and the observed axes are sorted. The
 product and collection totals and the products per collection stay 0.
 
 The explore step drives `runPlanExecLoop` from `@shop-gym/harness` with

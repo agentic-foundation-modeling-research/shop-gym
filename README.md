@@ -97,9 +97,11 @@ and the sitemap. `manifest.json` records the `platform`.
 `stats.json` records its `source` and its `sample_size`. On a Shopify shop
 the source is `catalog_endpoint`: the stats come from the catalog that
 prefetch read. On a generic site the source is `observed_sample`: the
-executors write one product observation (price, currency, variant facts)
-for each product page that they open, and the price and variant stats come
-from these observations. The product and collection totals stay 0.
+executors record one product observation (price, currency, variant facts)
+for each product page that they open, with a tool that takes a key of the
+page from the browser. The price and variant stats come from these
+observations, and each product page counts once. The product and
+collection totals stay 0.
 
 ### 2. Generate a SandboxShop
 

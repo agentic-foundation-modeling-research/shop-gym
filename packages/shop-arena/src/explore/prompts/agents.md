@@ -112,6 +112,8 @@ Tools:
 - `read_file <path>` / `write_file <path> <content>` / `list_dir <path>`
   - the only file access you have. Paths are relative to the run
   directory and cannot escape it.
+- `record_product_observation` - generic sites only: record the
+  product page that is open as one product observation (§6).
 
 Conventions:
 
@@ -140,7 +142,7 @@ artifact/
 ├── parts/                # YOU WRITE these.
 │   ├── <task_id>.md
 │   ├── <task_id>.caps.json
-│   └── <task_id>.product-<NN>.json   # generic sites only (§6)
+│   └── <task_id>.product-<key>.json  # generic sites only, written by a tool (§6)
 └── evidence/<task_id>/   # YOU WRITE these.
     ├── snapshots/
     └── network.jsonl     # optional
@@ -212,22 +214,28 @@ future schema revision, not a silent leak.
 On a generic site (`artifact/prefetch/prefetch.json` records
 `"platform": "generic"`), the site has no catalog endpoint, so the
 catalog statistics in `stats.json` come from what the executors see.
-There the executor prompt asks you to write one product observation
-fragment, `parts/<task_id>.product-<NN>.json`, for each product page
-that you open. Write them only when your role prompt asks for them.
+There the executor prompt asks you to record each product page that
+you open with the `record_product_observation` tool. Use it only when
+your role prompt asks for it.
 
-A fragment is one JSON object that matches the closed schema below
-(rendered into this file at pipeline-time, so it cannot drift):
+The tool checks your facts against the closed schema below (rendered
+into this file at pipeline-time, so it cannot drift), takes a key of
+the open page from the page itself, and writes one fragment,
+`parts/<task_id>.product-<key>.json`. The key tells product pages
+apart without naming them, so a page that more than one task records
+counts once in `stats.json`. Do not write or edit these files with
+`write_file`.
 
 ```json
 {{PRODUCT_OBSERVATION_SCHEMA}}
 ```
 
 The schema has no field for a product name, a URL, a seller or a
-brand, and it rejects every key that it does not name. After every
-executor iteration, a Verifier checks the fragments of your task. A
-fragment that is not valid JSON or does not match the schema reopens
-the task, and the feedback appears in your next prompt.
+brand, and it rejects every key that it does not name. The tool
+refuses facts that do not match it. After every executor iteration, a
+Verifier checks the fragments of your task. A fragment that is not
+valid JSON or does not match the schema reopens the task, and the
+feedback appears in your next prompt.
 
 ---
 

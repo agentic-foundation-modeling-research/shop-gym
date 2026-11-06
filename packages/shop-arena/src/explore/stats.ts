@@ -179,10 +179,13 @@ function mainCurrency(observations: readonly ProductObservation[]): string | und
  * Computes `Stats` from the product observation fragments under `partsDir`
  * and `capabilities`, for a site with no catalog endpoint.
  *
- * Every fragment counts in `sample_size`, the variant share and the variant
- * axes. The price numbers use only the fragments in the main currency, so
- * that one currency labels them. Products total, collections total and
- * products per collection stay 0, because the site does not show them.
+ * The sample has one observation for each product page, so a page that
+ * more than one task recorded counts once. Every observation counts in
+ * `sample_size`, the variant share and the variant axes. The axes are
+ * sorted, because the sample has no page order. The price numbers use only
+ * the observations in the main currency, so that one currency labels them.
+ * Products total, collections total and products per collection stay 0,
+ * because the site does not show them.
  *
  * @throws Error when a fragment is not valid JSON or does not match the schema.
  */
@@ -201,7 +204,7 @@ export function computeObservedStats(partsDir: string, capabilities: Capabilitie
     products_per_collection: { avg: 0, median: 0, max: 0 },
     price: priceStats(prices, currency ?? capabilities.shop.currency ?? ''),
     products_with_variants_pct: observations.length === 0 ? 0 : withVariants / observations.length,
-    variant_axes_observed: normalizeAxes(observations.flatMap((o) => o.variant_axes)),
+    variant_axes_observed: normalizeAxes(observations.flatMap((o) => o.variant_axes)).sort(),
     ...capabilityCounts(capabilities),
   };
 }

@@ -51,7 +51,11 @@ import {
 } from './capabilities.js';
 import { coverageGaps, parsePlanCoverage } from './coverage.js';
 import { fileTools } from './files.js';
-import { productObservationJsonSchema, productObservationVerifier } from './observations.js';
+import {
+  productObservationJsonSchema,
+  productObservationTool,
+  productObservationVerifier,
+} from './observations.js';
 import {
   type Platform,
   type PrefetchReport,
@@ -265,6 +269,7 @@ const exploreStep: Step<ExploreContext> = {
   async run({ outDir, context, log }) {
     const runDir = join(outDir, PATHS.run);
     const platform = readPlatform(join(outDir, PATHS.prefetch));
+    const generic = platform === 'generic';
     const session = await BrowserSession.launch({ episodeId: basename(outDir) });
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
     try {
@@ -277,11 +282,15 @@ const exploreStep: Step<ExploreContext> = {
           maxIters: context.maxIters,
           timeoutMs: context.timeoutMs,
           model: context.model,
-          tools: [...browserTools(session), ...fileTools()],
-          verifiers:
-            platform === 'generic'
-              ? [anonymizationVerifier(context.url), productObservationVerifier()]
-              : [anonymizationVerifier(context.url)],
+          tools: [
+            ...browserTools(session),
+            ...fileTools(),
+            ...(generic ? [productObservationTool(session)] : []),
+          ],
+          verifiers: [
+            anonymizationVerifier(context.url),
+            ...(generic ? [productObservationVerifier()] : []),
+          ],
           ...(context.onEvent ? { onEvent: context.onEvent } : {}),
         },
         context.runtime,

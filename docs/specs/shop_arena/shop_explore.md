@@ -301,7 +301,7 @@ outputs/shop_manuals/<domain>/<run_id>/
     ├── parts/                # written by executors
     │   ├── <task_id>.md
     │   ├── <task_id>.caps.json
-    │   └── <task_id>.product-<NN>.json  # generic sites only (§5.6)
+    │   └── <task_id>.product-<key>.json # generic sites only (§5.6)
     └── evidence/             # written by executors
         └── <task_id>/
             ├── snapshots/    # playwright `pw.js snapshot` a11y dumps
@@ -406,18 +406,31 @@ No LLM. The source depends on the platform:
   Shopify catalog endpoints) + `capabilities.json`. `sample_size` is the
   number of products read.
 - **`observed_sample`** (generic). The site has no catalog endpoint. Each
-  executor writes one product observation fragment,
-  `parts/<task_id>.product-<NN>.json`, for each product page that it opens.
-  The fragment holds only `price`, `currency`, `has_variants` and
-  `variant_axes`; the schema is closed, has no name, URL, seller or brand
-  field, and is shown in `AGENTS.md`. A `product_observations` Verifier
-  fails the executor Iteration of a fragment that does not match it. The
-  price stats use the fragments in the most frequent currency;
-  `products_with_variants_pct` and `variant_axes_observed` use all of
-  them. `sample_size` is the number of fragments. `products_total`,
+  executor records each product page that it opens with the
+  `record_product_observation` tool, while the page is open. The
+  executor gives only `price`, `currency`, `has_variants` and
+  `variant_axes` (axes as short generic nouns, not the label text of the
+  page); the schema is closed, has no name, URL, seller or brand field,
+  and is shown in `AGENTS.md`. The tool refuses facts that do not match
+  the schema. It takes the page key from the open page, not from the
+  model: the first 12 hex digits of the SHA-256 of the page URL without
+  its query and fragment, where the URL is the `<link rel="canonical">`
+  target when the page has one. It writes the fragment
+  `parts/<task_id>.product-<key>.json`. A `product_observations` Verifier
+  fails the executor Iteration of a fragment that does not match the
+  schema. The sample has one fragment for each page key, so a product
+  page that more than one task records counts once (the first fragment in
+  filename order). The price stats use the fragments of the sample in the
+  most frequent currency; `products_with_variants_pct` and
+  `variant_axes_observed` (sorted) use all of them. `sample_size` is the
+  number of distinct product pages. `products_total`,
   `collections_total` and `products_per_collection` stay 0, because a
   sample does not show them. Shop generation takes its totals from its
-  config targets either way.
+  config targets either way. Limits of the key: a site that gives each
+  variant its own URL counts each variant page as one product, and a
+  call made after the executor left the product page keys the page that
+  is open then. The key is a hash, not the URL, but a person who already
+  knows a product URL can check if the run recorded it.
 
 Shape:
 
@@ -494,8 +507,8 @@ Three caller-owned files live under `packages/shop_arena/src/shop_arena/explore/
   `AGENTS.md` for shared conventions; the harness prepends the
   `selected_task_id` control header.
 - `execute_generic.md` - the executor prompt on a generic site. It is
-  `execute.md` plus the rule to write one product observation fragment
-  for each product page that the executor opens (§5.6).
+  `execute.md` plus the rule to record each product page that the
+  executor opens with the `record_product_observation` tool (§5.6).
 
 Prompts are shipped as importable resources; not user-templated in
 v0.1.
