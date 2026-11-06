@@ -189,7 +189,7 @@ The input files that the Harness copies into the `artifact/` directory of a run 
 _Avoid_: seed (alone), seeded subtree
 
 **Verifier**:
-A rule or an LLM judge that the caller gives the Harness to run after each executor Iteration. Its verdict is `pass`, `fail` (which reopens the Plan task), `advisory`, or `error`.
+A rule or an LLM judge that the caller gives the Harness to run after each executor Iteration. Its verdict is `pass`, `fail` (which reopens the Plan task, or blocks it when the Verifier adds a block note), `advisory`, or `error`.
 _Avoid_: check, grader
 
 ### Agent and browser

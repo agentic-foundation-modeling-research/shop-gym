@@ -448,7 +448,11 @@ The planner emits `plan.md` tasks of the form:
    - optional `network.jsonl` of relevant XHRs (e.g. predictive search
      suggestions).
 5. Write a markdown section to `artifact/parts/<task_id>.md`,
-   apply anonymization rules at write time.
+   apply anonymization rules at write time. The `anonymization`
+   verifier scans only this file of the selected task. A hit reopens
+   the task at most twice (the count per task is kept in
+   `run/checks/anonymization_reopens.json`); the next hit blocks the
+   task with a note that names the file.
 6. Write a JSON fragment to `artifact/parts/<task_id>.caps.json`
    containing only the capabilities-schema keys this task is
    responsible for.

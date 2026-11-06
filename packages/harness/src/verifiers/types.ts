@@ -9,7 +9,8 @@ import type { TaskList } from '../plan/tasks.js';
  * Outcome of one verifier invocation.
  *
  * - `pass`: the loop advances.
- * - `fail`: blocking; the selected task's `[x]` or `[!]` is rewritten to `[~]`.
+ * - `fail`: blocking; the selected task's `[x]` or `[!]` is rewritten to `[~]`,
+ *   or the task is blocked when the result has a `blockNote`.
  * - `advisory`: non-blocking; feedback is surfaced to the next iteration.
  * - `error`: set by the harness when `run` threw. Does not block.
  */
@@ -26,6 +27,14 @@ export interface VerifierResult {
   readonly images?: readonly string[];
   /** Structured payload persisted verbatim in the per-verifier file. */
   readonly details?: Readonly<Record<string, unknown>>;
+  /**
+   * Read only with `fail`. The harness then marks the selected task `[!]`
+   * with the note `<verifier name>: <blockNote>` in place of reopening it,
+   * because another attempt cannot help (for example, the verifier's own
+   * retry cap is spent). No later iteration works on the task, so the
+   * iteration's feedback is not shown to the next prompt.
+   */
+  readonly blockNote?: string;
 }
 
 /** State handed to each `Verifier.run` call. */
