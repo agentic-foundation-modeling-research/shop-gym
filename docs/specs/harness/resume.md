@@ -296,6 +296,9 @@ implies the workspace is in a bad state:
   on `run_plan_exec_loop` (CLI: `--force-resume`).
 - `timeout`, `budget_exhausted`: allow. These are clean "ran out
   of clock / budget" failures and the workspace is consistent.
+- `stopped`: allow. The caller ended the run between iterations
+  ([plan_exec_loop.md](plan_exec_loop.md) §5.10), so the workspace is
+  consistent.
 - `completed`: allow as no-op (executor loop exits immediately
   via `select_next is None`).
 

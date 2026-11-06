@@ -173,8 +173,12 @@ The roll-up of the Episode results of one evaluation into pass rates (overall, b
 ### Harness
 
 **Harness run**:
-One call of the Harness over one run directory, from the planner Iteration until the plan is done or the budget ends. A stopped Harness run can resume in the same directory.
+One call of the Harness over one run directory, from the planner Iteration until the plan is done, the budget ends, or a Caller stop ends it. A stopped Harness run can resume in the same directory.
 _Avoid_: run (alone)
+
+**Caller stop**:
+A request from the caller of the Harness, made after an Iteration, that the Harness run ends now, with a reason. The Harness starts no further Iteration and ends the run with the final status `stopped` and the reason. It never cuts an Agent run in the middle, and the run can resume in the same directory without force.
+_Avoid_: abort, cancel
 
 **Iteration**:
 One fresh-context Agent run inside a Harness run: the one planner iteration that writes `plan.md`, or one executor iteration that works on one Plan task.

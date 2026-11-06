@@ -18,6 +18,7 @@ export const FINAL_STATUSES: readonly FinalStatus[] = [
   'protocol_violation',
   'timeout',
   'runtime_error',
+  'stopped',
 ];
 
 /** One attempt (fresh run or resume) of a run dir. */
@@ -25,6 +26,7 @@ export const resumeAttemptSchema = z.object({
   startedAt: z.string(),
   endedAt: z.string(),
   finalStatus: z.enum(FINAL_STATUSES),
+  stopReason: z.string().optional(),
 });
 
 export type ResumeAttempt = z.infer<typeof resumeAttemptSchema>;
