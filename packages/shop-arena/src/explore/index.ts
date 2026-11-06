@@ -41,6 +41,7 @@ export {
   runId,
 } from './pipeline.js';
 export {
+  type Platform,
   type PrefetchEntry,
   type PrefetchOptions,
   type PrefetchReport,

@@ -4,13 +4,15 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
-import type { CompleteRequest, Completion, LlmClient } from '@shop-gym/agent';
+import { type CompleteRequest, type Completion, type LlmClient, promptText } from '@shop-gym/agent';
 import { FakeRuntime, type FakeScript } from '@shop-gym/agent/testing';
 import { StepFailedError } from '@shop-gym/core';
 import { ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
+import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT } from './prefetch.js';
+import { type FixtureSite, genericSitePages, startFixtureSite } from './testing.js';
 
 const CREDENTIALS = {} as const;
 const HOME =
@@ -181,6 +183,7 @@ afterEach(() => {
 });
 
 function explore(options: {
+  url?: string;
   scripts?: readonly FakeScript[];
   llm?: StubLlm;
   from?: 'prefetch' | 'explore' | 'merge' | 'synthesize';
@@ -189,7 +192,7 @@ function explore(options: {
   const runtime = new FakeRuntime(options.scripts ?? []);
   const llm = options.llm ?? new StubLlm();
   return exploreStorefront({
-    url: baseUrl,
+    url: options.url ?? baseUrl,
     outDir,
     model: 'anthropic/test-model',
     maxIters: 5,
@@ -275,6 +278,21 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(llm.requests[0]?.model).toEqual({ provider: 'anthropic', id: 'test-model' });
   });
 
+  it('takes the shopify path when products.json returns a product list', async () => {
+    const { result, runtime } = await explore({ scripts: SCRIPTS });
+
+    expect(readJson(result.manifestPath).platform).toBe('shopify');
+    const paths = readJson(join(result.prefetchDir, 'prefetch.json')).entries.map(
+      (entry: { path: string }) => entry.path,
+    );
+    expect(paths).toEqual(
+      expect.arrayContaining(['/collections.json?limit=50', '/cart.js', '/pages/faq']),
+    );
+    expect(runtime.requests[0]?.prompt).toBe(
+      readFileSync(new URL('./prompts/planner.md', import.meta.url), 'utf8'),
+    );
+  });
+
   it('skips every step on a second call with the same outDir', async () => {
     await explore({ scripts: SCRIPTS });
     const { result, runtime, llm } = await explore({});
@@ -331,6 +349,145 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(resumed.result.finalStatus).toBe('completed');
     expect(resumed.runtime.requests).toHaveLength(4);
     expect(readJson(resumed.result.manifestPath).plan_tasks_done).toBe(2);
+  });
+});
+
+const GENERIC_PLAN = (homepage: string, product: string) => `# Plan - General Marketplace
+
+A general marketplace with department menus, a search results page, and
+product pages with reviews.
+
+## Tasks
+
+- [${homepage}] homepage_sections — capture every section below the hero [priority: 9]
+- [${product}] product_variants — open /p/fm-1001 from the sitemap; capture the variant selectors [priority: 7]
+
+## Omitted Areas
+
+(none)
+`;
+
+const GENERIC_HOMEPAGE = `## Homepage Sections
+
+### Section 1 - Hero
+
+- **Type:** promotional banner with one call to action
+- **Layout:** single column
+- **Content:** headline and a link to a department
+- **Behavior:** static
+- **Styling:** light surface
+- **UX Notes:** none
+`;
+
+const GENERIC_PRODUCT = `## Product Variants
+
+### Variant selectors
+
+- **Type:** two rows of option buttons (edition, platform)
+- **Layout:** below the price
+- **Content:** one button per option
+- **Behavior:** a click selects the option
+- **Styling:** outlined buttons
+- **UX Notes:** none
+`;
+
+/** Planner, homepage executor, and product executor scripts for the generic site. */
+function genericScripts(siteUrl: string): readonly FakeScript[] {
+  return [
+    {
+      writeFiles: { 'plan.md': GENERIC_PLAN(' ', ' ') },
+      toolCalls: [{ tool: 'navigate', arguments: { url: `${siteUrl}/` } }],
+      reply: 'planned',
+    },
+    {
+      writeFiles: {
+        'artifact/parts/homepage_sections.md': GENERIC_HOMEPAGE,
+        'artifact/parts/homepage_sections.caps.json': JSON.stringify({
+          homepage: { section_types: ['hero', 'product_grid'], section_count: 2 },
+        }),
+        'plan.md': GENERIC_PLAN('x', ' '),
+      },
+      reply: 'homepage done',
+    },
+    {
+      writeFiles: {
+        'artifact/parts/product_variants.md': GENERIC_PRODUCT,
+        'artifact/parts/product_variants.caps.json': JSON.stringify({
+          product: { variant_selectors: ['option_button'], has_reviews: true },
+        }),
+        'plan.md': GENERIC_PLAN('x', 'x'),
+      },
+      toolCalls: [{ tool: 'navigate', arguments: { url: `${siteUrl}/p/fm-1001` } }],
+      reply: 'product done',
+    },
+  ];
+}
+
+describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
+  let site: FixtureSite;
+
+  beforeEach(async () => {
+    site = await startFixtureSite(genericSitePages);
+  });
+
+  afterEach(async () => {
+    await site.close();
+  });
+
+  it('takes the generic path on a site that is not a Shopify shop', async () => {
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: genericScripts(site.url),
+    });
+
+    expect(result.steps.map((step) => [step.id, step.status])).toEqual([
+      ['prefetch', 'ran'],
+      ['explore', 'ran'],
+      ['merge', 'ran'],
+      ['synthesize', 'ran'],
+    ]);
+    expect(result.finalStatus).toBe('completed');
+    expect(readJson(result.manifestPath).platform).toBe('generic');
+
+    // Prefetch reads robots.txt, the homepage and the sitemap. The one
+    // products.json request is the platform probe; no other Shopify
+    // endpoint is requested.
+    const prefetched = site.requests
+      .filter((request) => request.userAgent === DEFAULT_USER_AGENT)
+      .map((request) => request.path);
+    expect(prefetched).toEqual([
+      '/robots.txt',
+      '/',
+      '/sitemap.xml',
+      `/products.json?page=1&limit=${PRODUCTS_PAGE_LIMIT}`,
+    ]);
+    // The planner picks same-origin start URLs from the homepage links and the sitemap.
+    const planner = promptText(runtime.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(planner).toContain('Pick your start URLs from the links in `index.html`');
+    expect(planner).toContain('the `<loc>` entries of `sitemap.xml`');
+    expect(planner).toContain('Use only URLs on the same origin as the homepage');
+
+    // The scripted executor opened a product page with the real browser tools.
+    expect(
+      site.requests.some(
+        (request) => request.path === '/p/fm-1001' && request.userAgent !== DEFAULT_USER_AGENT,
+      ),
+    ).toBe(true);
+
+    // With no Shopify prefetch files, merge and synthesis still publish the
+    // manual, and the catalog counts stay 0.
+    for (const file of ['robots.txt', 'index.html', 'sitemap.xml', 'prefetch.json']) {
+      expect(existsSync(join(result.prefetchDir, file)), file).toBe(true);
+    }
+    for (const file of ['products.json', 'collections.json', 'cart.js']) {
+      expect(existsSync(join(result.prefetchDir, file)), file).toBe(false);
+    }
+    const stats = readJson(result.statsPath);
+    expect(stats.products_total).toBe(0);
+    expect(stats.collections_total).toBe(0);
+    expect(stats.products_per_collection).toEqual({ avg: 0, median: 0, max: 0 });
+    expect(readJson(result.manifestPath).coverage_gaps).toEqual([]);
+    expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
   });
 });
 
