@@ -80,13 +80,14 @@ stop.
   sentence that reports what a page says about a later step: when
   `checkout.has_discount_code` is `false`, do not write that a page
   promises a code field at payment. A `null` field means that the run
-  did not see it: write it as unknown, not as absent.
+  did not see it: when you write about it, write it as unknown, not as
+  absent.
 - Treat `Per-task parts` as the **source of qualitative detail**:
   layout descriptions, interaction order, edge cases. Lift their H3
   element blocks into the right H2 area. Do not compress them, and
-  rewrite only the words that break §4 or the other rules in this
-  section. When two parts describe overlapping facts (e.g. trust
-  badges), keep the most detailed version once and drop the duplicate.
+  rewrite only the words that break a rule of this prompt. When two
+  parts describe overlapping facts (e.g. trust badges), keep the most
+  detailed version once and drop the duplicate.
 - **State only what the parts show.** Keep a claim only when a part
   says that the run saw it. Drop guesses, comparisons with a page or a
   state that no part describes, and advice on how to rebuild something
@@ -160,9 +161,9 @@ every rule below verbatim while merging:
 - **Image captions / alt text.** Describe the *role* of the image, not
   its specific subject beyond category-level facts.
 - **Site-specific lists.** Do not list what only this site has, such as
-  its own sister services, programs or partner sites. Give the shape
-  and the role instead: "a grid of about 20 two-line link tiles to
-  related services". Lists of generic catalog categories stay.
+  its own named sister services, programs or partner sites. Give the
+  shape and the role instead: "a grid of about 20 two-line link tiles
+  to related services". Lists of generic catalog categories stay.
 - **Internal names.** Do not name request endpoints, query parameters,
   response fields, element ids or CSS classes (e.g. `term_frag`,
   `hintMode`). Say what the request or the element does: "the search

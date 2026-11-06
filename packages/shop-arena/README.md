@@ -103,8 +103,8 @@ not written.
 
 The scan matches only these markers. The prompts carry the other rules:
 the executors write only what they saw and leave the rest `null` or
-"unknown", and the synthesis prompt keeps only what the parts show,
-does not contradict `capabilities.json`, and puts site-specific lists,
+"unknown"; the synthesis prompt keeps only what the parts show and does
+not contradict `capabilities.json`; and both put site-specific lists,
 internal request names and the site's own feature names into generic
 words.
 

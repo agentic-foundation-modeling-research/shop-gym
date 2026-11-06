@@ -26,16 +26,16 @@ If a tradeoff appears between "more detail about this exact shop" and
 "transferable structural pattern", always pick the latter.
 
 Write only what you saw. Every claim in `parts/<task_id>.md` and every
-value in `parts/<task_id>.caps.json` must come from a page state that
-you saw in this task, in a snapshot or a screenshot. Do not guess, do
-not compare with a page that you did not open, and do not tell the
-generator how to rebuild a part that you did not see. When you could
-not see something, write "unknown" in the markdown and leave its
-capabilities field `null`. Use `false` only when you saw the place
-where the feature would be and it was not there. A count or a depth
-stays `null` when you saw only part of it; write what you saw in the
-markdown, for example "two menu levels opened; deeper levels not
-checked".
+value in `parts/<task_id>.caps.json` must come from what you saw in
+this task: a snapshot, a screenshot, or a prefetch file or a response
+that you read. Do not guess, do not compare with a page that you did
+not open, and do not tell the generator how to rebuild a part that you
+did not see. When you could not see something, write "unknown" in the
+markdown and leave its capabilities field `null`. Use `false` only
+when you saw the place where the feature would be and it was not
+there. A count or a depth stays `null` when you saw only part of it;
+write what you saw in the markdown, for example "two menu levels
+opened; deeper levels not checked".
 
 ---
 
@@ -70,6 +70,19 @@ Hard rules:
   ("a 1-2 sentence value-prop headline", "a 4-bullet feature list").
 - **Image captions / alt text.** Same rule - describe the *role* of
   the image, not its specific content beyond category-level facts.
+- **Site-specific lists.** Do not list what only this site has, such as
+  its own named sister services, programs or partner sites. Give the
+  shape and the role instead: "a grid of about 20 two-line link tiles
+  to related services". Lists of generic catalog categories stay.
+- **Internal names.** Do not name request endpoints, query parameters,
+  response fields, element ids or CSS classes (e.g. `term_frag`,
+  `hintMode`). Say what the request or the element does: "the search
+  box asks for keyword suggestions while the shopper types".
+- **Feature names that the site made up.** Use the generic e-commerce
+  name of a page or a feature, not the site's own name for it, even
+  when that name comes from a URL path or a page title. A page at
+  `/basket/swift-tray` is "an add-to-cart confirmation page", not a
+  "swift-tray page" or a "swift-cart page".
 
 Soft rules (apply when in doubt):
 
@@ -81,6 +94,8 @@ Soft rules (apply when in doubt):
 - Generic e-commerce terminology - "cart drawer", "predictive search",
   "mega menu" - is encouraged; that is the vocabulary of the
   capabilities schema.
+- Keep generic program types, such as a paid membership or a loyalty
+  program, without their own names.
 
 The goal is to capture **STRUCTURE and UX patterns**, not actual
 content. A reader of `manual.md` should be unable to identify the

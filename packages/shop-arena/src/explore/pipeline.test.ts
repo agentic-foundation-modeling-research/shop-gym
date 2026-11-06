@@ -301,28 +301,38 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
 
     const shared = (runtime.requests[1]?.systemPrompt ?? '').replace(/\s+/g, ' ');
     expect(shared).toContain('Write only what you saw.');
+    expect(shared).toContain(
+      'a snapshot, a screenshot, or a prefetch file or a response that you read',
+    );
     expect(shared).toContain('Do not guess, do not compare with a page that you did not open');
     expect(shared).toContain(
       'write "unknown" in the markdown and leave its capabilities field `null`',
     );
     expect(shared).toContain('Use `false` only when you saw the place where the feature would be');
+    expect(shared).toContain('A count or a depth stays `null` when you saw only part of it');
+    const executor = promptText(runtime.requests[1]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(executor).toContain(
+      'Mark a field `N/A` when it does not apply and `unknown` when you did not see it',
+    );
+    expect(executor).toContain('learns what the run could not see');
   });
 
-  it('tells the synthesizer to put site-specific names and lists into generic words', async () => {
-    const { llm } = await explore({ scripts: SCRIPTS });
+  it('tells the executors and the synthesizer to put site-specific names and lists into generic words', async () => {
+    const { runtime, llm } = await explore({ scripts: SCRIPTS });
 
+    const shared = (runtime.requests[1]?.systemPrompt ?? '').replace(/\s+/g, ' ');
     const synthesizer = promptText(llm.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
-    expect(synthesizer).toContain('rewrite only the words that break §4');
-    expect(synthesizer).toContain('Do not list what only this site has');
-    expect(synthesizer).toContain(
-      'Do not name request endpoints, query parameters, response fields',
-    );
-    expect(synthesizer).toContain(
-      "not the site's own name for it, even when that name comes from a URL path or a page title",
-    );
-    expect(synthesizer).toContain(
-      'generic program types, such as a paid membership or a loyalty program, without their own names',
-    );
+    for (const prompt of [shared, synthesizer]) {
+      expect(prompt).toContain('Do not list what only this site has');
+      expect(prompt).toContain('Do not name request endpoints, query parameters, response fields');
+      expect(prompt).toContain(
+        "not the site's own name for it, even when that name comes from a URL path or a page title",
+      );
+      expect(prompt).toContain(
+        'generic program types, such as a paid membership or a loyalty program, without their own names',
+      );
+    }
+    expect(synthesizer).toContain('rewrite only the words that break a rule of this prompt');
   });
 
   it('tells the synthesizer to state only what the parts show and to mark the rest as unknown', async () => {
@@ -333,6 +343,7 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(synthesizer).toContain(
       'Drop guesses, comparisons with a page or a state that no part describes',
     );
+    expect(synthesizer).toContain('Write a partial view as partial');
     expect(synthesizer).toContain(
       'When a part says that it did not see something, mark it as unknown',
     );
@@ -345,7 +356,7 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(synthesizer).toContain('No sentence may contradict it');
     expect(synthesizer).toContain('a sentence that reports what a page says about a later step');
     expect(synthesizer).toContain(
-      'A `null` field means that the run did not see it: write it as unknown, not as absent',
+      'A `null` field means that the run did not see it: when you write about it, write it as unknown, not as absent',
     );
   });
 

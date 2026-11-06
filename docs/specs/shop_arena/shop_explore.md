@@ -129,11 +129,11 @@ exercises its public surface end-to-end.
   (`AGENTS.md`) say to write only what the run saw. A field that the run
   did not see stays `null`, and `false` means that the run saw the
   feature is absent. The synthesis prompt keeps only what the parts
-  show, marks what a part did not see as unknown, lets no sentence
-  contradict `capabilities.json`, and puts site-specific lists, internal
-  request names and the site's own feature names into generic words.
-  These are prompt rules; the final scan matches only the brand markers
-  and the host.
+  show, marks what a part did not see as unknown, and lets no sentence
+  contradict `capabilities.json`. Both prompts put site-specific lists,
+  internal request names and the site's own feature names into generic
+  words. These are prompt rules; the final scan matches only the brand
+  markers and the host.
 
 ---
 
