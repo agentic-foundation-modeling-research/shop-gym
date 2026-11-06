@@ -192,14 +192,17 @@ function launchSession(options: IterationBrowserOptions): Promise<BrowserSession
 }
 
 /**
- * The snapshot text for the tree from `offset`. A tree that fits shows
- * whole. A longer tree shows at most `SNAPSHOT_MAX_CHARS` characters of
- * whole lines, so no element line or ref is split, and a note that tells
- * the agent the offset of the next part.
+ * The snapshot text for the tree from `offset`.
+ *
+ * A tree that fits shows whole. A longer tree shows in parts of at most
+ * `SNAPSHOT_MAX_CHARS` characters. A part ends at the end of a line, so it
+ * does not split an element line or a ref. Only a line longer than the
+ * limit is cut inside the line. A note after each part gives the range
+ * that the part shows and the offset of the next part.
  */
 function snapshotPart(snapshot: PageSnapshot, offset: number): string {
   const { aria } = snapshot;
-  const start = Math.min(offset, aria.length);
+  const start = partStart(aria, offset);
   if (start === 0 && aria.length <= SNAPSHOT_MAX_CHARS) {
     return formatSnapshot(snapshot);
   }
@@ -208,7 +211,7 @@ function snapshotPart(snapshot: PageSnapshot, offset: number): string {
     const part = formatSnapshot({ ...snapshot, aria: aria.slice(start) });
     return `${part}\n\n[Last part of the snapshot: characters ${start}-${aria.length} of ${aria.length}.]`;
   }
-  // Cut at the end of the last whole line; a single longer line is cut at the limit.
+  // Cut at the end of the last whole line. A line longer than the limit is cut at the limit.
   const newline = aria.lastIndexOf('\n', limit);
   const end = newline > start ? newline : limit;
   const next = newline > start ? newline + 1 : limit;
@@ -220,6 +223,23 @@ function snapshotPart(snapshot: PageSnapshot, offset: number): string {
     'Refs from every part stay valid until the page changes.',
   ].join(' ');
   return `${part}\n\n[${note}]`;
+}
+
+/**
+ * Where the part for `offset` starts. An offset inside a line moves to the
+ * start of the next line. Thus a part does not start with half a ref, also
+ * when the page changed after the last part. An offset inside a line longer
+ * than `SNAPSHOT_MAX_CHARS` does not move, because the parts cut such a line.
+ */
+function partStart(aria: string, offset: number): number {
+  const start = Math.min(offset, aria.length);
+  if (start === 0 || aria[start - 1] === '\n') {
+    return start;
+  }
+  const lineStart = aria.lastIndexOf('\n', start - 1) + 1;
+  const newline = aria.indexOf('\n', start);
+  const lineEnd = newline === -1 ? aria.length : newline;
+  return lineEnd - lineStart > SNAPSHOT_MAX_CHARS ? start : Math.min(lineEnd + 1, aria.length);
 }
 
 function toolsByName(session: BrowserSession): ReadonlyMap<string, Tool> {
