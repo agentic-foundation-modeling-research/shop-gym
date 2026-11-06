@@ -38,8 +38,8 @@ stop.
   H2 only when neither capabilities nor parts have any signal for it.
   1. `## Overview` - 2-4 sentences: vertical, scale signals from the
      `shop` block, customer-facing tone.
-  2. `## Site shell` - header, footer, mega menu, announcement bar
-     (mirror `site_shell`).
+  2. `## Site shell` - header, footer, mega menu, announcement bar,
+     department menu (mirror `site_shell` and `departments`).
   3. `## Homepage` - section taxonomy and ordering (`homepage`).
   4. `## Collections & navigation` - collection page UX, filters, sort,
      pagination (`collection`).

@@ -194,10 +194,10 @@ Schema (rendered into this file at pipeline-time, so it cannot drift):
 {{CAPABILITIES_SCHEMA}}
 ```
 
-The top-level groupings (`shop`, `site_shell`, `homepage`,
-`collection`, `product`, `cart`, `search`, `floating`, `intl`,
-`account`, `checkout`, `info_pages_present`) are the only valid keys
-for any `parts/<task_id>.caps.json` fragment.
+The top-level groupings (`shop`, `site_shell`, `departments`,
+`homepage`, `collection`, `product`, `cart`, `search`, `floating`,
+`intl`, `account`, `checkout`, `info_pages_present`) are the only valid
+keys for any `parts/<task_id>.caps.json` fragment.
 
 If your task observes a feature that does not fit the schema, do
 **not** invent a new key. Describe it in `parts/<task_id>.md` and

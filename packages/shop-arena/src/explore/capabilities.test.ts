@@ -115,7 +115,7 @@ describe('capabilitiesSchema', () => {
 
   it('defaults to nulls and empty lists', () => {
     const parsed = capabilitiesSchema.parse({});
-    expect(parsed.version).toBe('0.2');
+    expect(parsed.version).toBe('0.3');
     expect(parsed.shop).toEqual({ descriptor: null, category: null, currency: null, tone: [] });
     expect(parsed.info_pages_present).toEqual([]);
   });

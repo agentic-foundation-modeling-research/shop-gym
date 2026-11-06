@@ -4,6 +4,9 @@
  *
  * Every section is a closed object with nullable scalar fields and
  * empty-list defaults, so a fragment may carry any subset of keys. The
+ * defaults also let a schema 0.2 document parse: 0.3 adds the
+ * `departments` block, `search.facets` / `search.sort`, and the product
+ * rating histogram, review filters and related product types. The
  * merge is pure and order-stable: fragments are read in filename order,
  * objects merge recursively, lists union (first occurrence wins), and a
  * scalar written by two fragments takes the last writer while recording a
@@ -21,7 +24,7 @@ const nullableInt = () => z.number().int().nullable().default(null);
 const stringList = () => z.array(z.string()).default([]);
 
 export const capabilitiesSchema = z.strictObject({
-  version: z.string().default('0.2'),
+  version: z.string().default('0.3'),
   shop: z
     .strictObject({
       descriptor: nullableString(),
@@ -37,6 +40,13 @@ export const capabilitiesSchema = z.strictObject({
       has_mega_menu: nullableBool(),
       nav_depth: nullableInt(),
       footer_groups: nullableInt(),
+    })
+    .prefault({}),
+  departments: z
+    .strictObject({
+      has_department_menu: nullableBool(),
+      department_count: nullableInt(),
+      max_depth: nullableInt(),
     })
     .prefault({}),
   homepage: z
@@ -64,6 +74,9 @@ export const capabilitiesSchema = z.strictObject({
       has_reviews: nullableBool(),
       has_recommendations: nullableBool(),
       has_personalization: nullableBool(),
+      has_rating_histogram: nullableBool(),
+      review_filters: stringList(),
+      related_product_types: stringList(),
     })
     .prefault({}),
   cart: z
@@ -80,6 +93,8 @@ export const capabilitiesSchema = z.strictObject({
       has_predictive: nullableBool(),
       predictive_types: stringList(),
       results_layout: nullableString(),
+      facets: stringList(),
+      sort: stringList(),
     })
     .prefault({}),
   floating: z
