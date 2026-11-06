@@ -51,7 +51,13 @@ import {
 } from './capabilities.js';
 import { coverageGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
-import { type PrefetchReport, normalizeBase, prefetch } from './prefetch.js';
+import {
+  type Platform,
+  type PrefetchReport,
+  normalizeBase,
+  prefetch,
+  readPlatform,
+} from './prefetch.js';
 import { computeStats } from './stats.js';
 import { renderManual } from './synthesize.js';
 
@@ -121,6 +127,8 @@ export interface Manifest {
   readonly domain: string;
   readonly runtime: string;
   readonly model: string;
+  /** The prefetch path that the run took. */
+  readonly platform: Platform;
   readonly harness_status: FinalStatus;
   readonly iters: { plan: number; exec: number };
   readonly plan_tasks_total: number;
@@ -143,6 +151,8 @@ export interface Manifest {
 interface Prompts {
   readonly agents: string;
   readonly planner: string;
+  /** The planner prompt for a site on the generic platform. */
+  readonly plannerGeneric: string;
   readonly execute: string;
   readonly manual: string;
 }
@@ -199,9 +209,15 @@ function loadPrompts(): Prompts {
   return {
     agents: read('agents.md').replace('{{CAPABILITIES_SCHEMA}}', capabilitiesJsonSchema()),
     planner: read('planner.md'),
+    plannerGeneric: read('planner_generic.md'),
     execute: read('execute.md'),
     manual: read('synthesize_manual.md'),
   };
+}
+
+/** The planner prompt for a site on `platform`. */
+function plannerPrompt(prompts: Prompts, platform: Platform): string {
+  return platform === 'generic' ? prompts.plannerGeneric : prompts.planner;
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -227,7 +243,9 @@ const prefetchStep: Step<ExploreContext> = {
       join(outDir, PATHS.prefetch),
       context.rateLimitMs === undefined ? {} : { rateLimitMs: context.rateLimitMs },
     );
-    log(`prefetched ${report.entries.length} URLs from ${report.base_url}`);
+    log(
+      `prefetched ${report.entries.length} URLs from ${report.base_url} (platform: ${report.platform})`,
+    );
   },
 };
 
@@ -237,13 +255,14 @@ const exploreStep: Step<ExploreContext> = {
   outputs: [PATHS.explore],
   async run({ outDir, context, log }) {
     const runDir = join(outDir, PATHS.run);
+    const planner = plannerPrompt(context.prompts, readPlatform(join(outDir, PATHS.prefetch)));
     const session = await BrowserSession.launch({ episodeId: basename(outDir) });
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
     try {
       summary = await runPlanExecLoop(
         {
           runDir,
-          prompts: { planner: context.prompts.planner, execute: context.prompts.execute },
+          prompts: { planner, execute: context.prompts.execute },
           agentsMd: context.prompts.agents,
           artifactSeedDir: join(outDir, PATHS.seed),
           maxIters: context.maxIters,
@@ -299,6 +318,7 @@ const mergeStep: Step<ExploreContext> = {
       domain: new URL(context.url).hostname,
       runtime: context.runtime.name,
       model: context.modelName,
+      platform: readPlatform(prefetchDir),
       harness_status: outcome.final_status,
       iters: { plan: outcome.plan_iters, exec: outcome.exec_iters },
       plan_tasks_total: tasks.length,
