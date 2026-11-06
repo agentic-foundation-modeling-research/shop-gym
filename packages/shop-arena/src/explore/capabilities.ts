@@ -5,11 +5,11 @@
  * Every section is a closed object with nullable scalar fields and
  * empty-list defaults, so a fragment may carry any subset of keys. The
  * merge is pure and order-stable: fragments are read in filename order,
- * objects merge recursively, and lists union (first occurrence wins). A
- * `null` means unknown: it never replaces a value, and a later value fills
- * it, with no `Conflict` either way. A scalar written by two fragments with
- * different non-null values takes the last writer while recording a
- * `Conflict` for the manifest.
+ * objects merge recursively, and lists union (first occurrence wins). For a
+ * scalar field, `null` means unknown: it never replaces a value, and a later
+ * value fills it, with no `Conflict` either way. A scalar written by two
+ * fragments with different non-null values takes the last writer while
+ * recording a `Conflict` for the manifest.
  *
  * The same defaults let a schema 0.2 document parse. Schema 0.3 adds the
  * `departments` block, `search.facets` and `search.sort`, and the product
@@ -171,6 +171,11 @@ function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** True for a JSON string, number, boolean or `null`. */
+function isScalar(value: unknown): boolean {
+  return !isObject(value) && !Array.isArray(value);
+}
+
 /** Validates a full capabilities document. */
 export function parseCapabilities(value: unknown): Capabilities {
   const result = capabilitiesSchema.safeParse(value);
@@ -233,13 +238,13 @@ function deepMerge(
 ): void {
   for (const [key, value] of Object.entries(incoming)) {
     const childPath = path === '' ? key : `${path}.${key}`;
-    if (!(key in target) || target[key] === null) {
+    if (!(key in target) || (target[key] === null && isScalar(value))) {
       target[key] = value;
       seedSources(value, childPath, source, sources);
       continue;
     }
-    if (value === null) continue;
     const existing = target[key];
+    if (value === null && isScalar(existing)) continue;
     if (isObject(existing) && isObject(value)) {
       deepMerge(existing, value, source, childPath, sources, conflicts);
       continue;
