@@ -107,6 +107,12 @@ exercises its public surface end-to-end.
   `stats.json`, `manifest.json`) sit at `<run_id>/`; the harness
   workspace lives at `<run_id>/run/` and the prefetch seed at
   `<run_id>/seed/prefetch/`. The CLI binary is scheduled for M10.
+- Anonymization scope and reopen cap (2026-11-05): the `anonymization`
+  verifier scans only `parts/<task_id>.md` of the selected task, so a
+  leak in one fragment no longer reopens other tasks. It reopens a task
+  at most twice; the next hit blocks the task with a note that names the
+  fragment. The count per task is kept in
+  `run/checks/anonymization_reopens.json`, so a resumed run keeps it.
 
 ---
 

@@ -2,7 +2,9 @@
  * Anonymization verifier: a deterministic scan of the fragment
  * `parts/<task_id>.md` that the current Plan task wrote, for anything that
  * identifies the source storefront. Fragments of other tasks are not read,
- * so one bad fragment cannot reopen another task.
+ * so one bad fragment cannot reopen another task. The verifier finds the
+ * fragment by this name only, so a file that the executor writes under
+ * another name is not scanned.
  *
  * Leak markers are derived from the storefront URL and the prefetched
  * homepage: the host (with and without `www.`), absolute URLs on the host,
@@ -18,6 +20,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import type { Verifier, VerifierResult } from '@shop-gym/harness';
+import { z } from 'zod';
 
 /** Hostname labels shorter than this are too generic to be brand tokens. */
 const MIN_LABEL_LENGTH = 4;
@@ -44,6 +47,8 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 const MAX_ANONYMIZATION_REOPENS = 2;
 /** Run-dir-relative file with the reopen count of each Plan task. */
 const REOPENS_FILE = join('checks', 'anonymization_reopens.json');
+/** Shape of `REOPENS_FILE`: the reopen count of each Plan task id. */
+const REOPENS_SCHEMA = z.record(z.string(), z.number().int().nonnegative());
 
 export interface Leak {
   readonly file: string;
@@ -148,7 +153,7 @@ export function formatLeaks(leaks: readonly Leak[]): string {
 
 function readReopens(runDir: string): Record<string, number> {
   const path = join(runDir, REOPENS_FILE);
-  return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Record<string, number>) : {};
+  return existsSync(path) ? REOPENS_SCHEMA.parse(JSON.parse(readFileSync(path, 'utf8'))) : {};
 }
 
 function writeReopens(runDir: string, reopens: Readonly<Record<string, number>>): void {
@@ -193,7 +198,7 @@ export function anonymizationVerifier(storefrontUrl: string): Verifier {
         feedback: [
           formatLeaks(leaks),
           '',
-          `This task has used ${prior + 1} of ${MAX_ANONYMIZATION_REOPENS} reopens. A leak after the last reopen fails the task.`,
+          `This task has used ${prior + 1} of ${MAX_ANONYMIZATION_REOPENS} reopens. A leak after the last reopen blocks the task.`,
         ].join('\n'),
         details: { leaks: leaks.length, markers, reopens: prior + 1 },
       };

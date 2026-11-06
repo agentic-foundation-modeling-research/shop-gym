@@ -206,6 +206,7 @@ class VerifierResult(BaseModel, frozen=True, extra="forbid"):
     verdict: Verdict
     feedback: str = ""        # markdown; surfaced to next prompt on FAIL/ADVISORY
     details: dict[str, Any] = {}   # caller-defined; persisted verbatim
+    block_note: str | None = None  # FAIL only: block the task (TS: blockNote)
 
 class VerifierContext(BaseModel, frozen=True, extra="forbid"):
     run_dir: Path             # absolute

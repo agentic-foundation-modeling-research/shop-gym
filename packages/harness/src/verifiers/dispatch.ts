@@ -110,12 +110,12 @@ export async function dispatchVerifiers(input: DispatchInput): Promise<DispatchO
     }
   }
 
-  const blocked = blockNotes.length > 0;
-  if (sections.length > 0 && !blocked) {
+  const hasBlockNote = blockNotes.length > 0;
+  if (sections.length > 0 && !hasBlockNote) {
     const body = sections.map(([name, text]) => `## ${name}\n\n${text.trimEnd()}\n`).join('\n');
     await fs.writeFile(path.join(checksDir, FEEDBACK_FILENAME), body);
   }
-  if (images.length > 0 && !blocked) {
+  if (images.length > 0 && !hasBlockNote) {
     await fs.writeFile(
       path.join(checksDir, FEEDBACK_IMAGES_FILENAME),
       `${JSON.stringify(images, null, 2)}\n`,
@@ -123,7 +123,7 @@ export async function dispatchVerifiers(input: DispatchInput): Promise<DispatchO
   }
   if (blocking) {
     const text = await fs.readFile(input.planPath, 'utf-8');
-    const rewritten = blocked
+    const rewritten = hasBlockNote
       ? (blockTask(text, input.selectedTaskId, blockNotes.join('; ')) ?? text)
       : reopenTask(text, input.selectedTaskId);
     if (rewritten !== text) {

@@ -136,18 +136,30 @@ describe('anonymizationVerifier', () => {
     const second = await verifier.run(ctx());
     expect(second.blockNote).toBeUndefined();
     expect(second.feedback).toContain('2 of 2 reopens');
-
-    // A new verifier reads the same count, as a resumed run does.
-    const third = await anonymizationVerifier(`https://${HOST}`).run(ctx());
+    const third = await verifier.run(ctx());
     expect(third).toMatchObject({
       verdict: 'fail',
       blockNote: 'parts/cart_drawer.md still identifies the storefront after 2 reopens',
     });
     expect(third.feedback).toContain('parts/cart_drawer.md:24');
+  });
 
-    // The count belongs to one task.
+  it('keeps the reopen count for a new verifier, as a resumed run does', async () => {
+    writeFileSync(join(artifactDir, 'parts', 'cart_drawer.md'), leakyCart);
+    await verifier.run(ctx());
+    await verifier.run(ctx());
+    const resumed = await anonymizationVerifier(`https://${HOST}`).run(ctx());
+    expect(resumed.blockNote).toBeDefined();
+  });
+
+  it('counts the reopens of each task on its own', async () => {
+    writeFileSync(join(artifactDir, 'parts', 'cart_drawer.md'), leakyCart);
     writeFileSync(join(artifactDir, 'parts', 'footer.md'), leakyCart);
-    expect((await verifier.run(ctx('footer'))).blockNote).toBeUndefined();
+    await verifier.run(ctx());
+    await verifier.run(ctx());
+    const footer = await verifier.run(ctx('footer'));
+    expect(footer.blockNote).toBeUndefined();
+    expect(footer.feedback).toContain('1 of 2 reopens');
   });
 
   it('checks only the markdown fragment of the current task', async () => {

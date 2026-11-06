@@ -28,11 +28,11 @@ export interface VerifierResult {
   /** Structured payload persisted verbatim in the per-verifier file. */
   readonly details?: Readonly<Record<string, unknown>>;
   /**
-   * Read only with `fail`. The harness then marks the selected task `[!]`
-   * with the note `<verifier name>: <blockNote>` in place of reopening it,
-   * because another attempt cannot help (for example, the verifier's own
-   * retry cap is spent). No later iteration works on the task, so the
-   * iteration's feedback is not shown to the next prompt.
+   * The harness reads this field only when the verdict is `fail`. It then
+   * marks the selected task `[!]` with the note `<verifier name>: <blockNote>`
+   * in place of reopening it, because another attempt cannot help (for
+   * example, the verifier's own retry cap is spent). No later iteration works
+   * on the task, so the iteration's feedback is not shown to the next prompt.
    */
   readonly blockNote?: string;
 }
