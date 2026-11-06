@@ -78,7 +78,9 @@ to pick start URLs, product pages and search queries in the focus, to
 keep every canonical task, and to write the focus into the task briefs,
 which is how the executors get it. Navigation outside the focus is not
 blocked. With no focus the planner prompt is unchanged. `manifest.json`
-records `focus`, or `null`.
+records `focus`, or `null`. The first call on an `outDir` writes the focus
+to `focus.json`. A later call on that `outDir` with another focus fails,
+because a resumed harness run keeps the plan of its first planner.
 
 The explore step drives `runPlanExecLoop` from `@shop-gym/harness` with
 the pi runtime, one headless `BrowserSession` per harness run, the

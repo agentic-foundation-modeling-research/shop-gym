@@ -33,8 +33,9 @@ shopgym explore <url> [--out <dir>] [--model <ref>] [--max-iters <n>]
 
 `--from` must be one of `prefetch`, `explore`, `merge`, `synthesize`.
 `--focus` gives the planner a hint to explore one part of the site, for example
-`--focus "Video Games"`; `manifest.json` records it. Prints the manual path on
-stdout; exits 1 when the run does not finish with status `completed`.
+`--focus "Video Games"`; `manifest.json` records it, and a re-run on the same
+`--out` must pass the same focus. Prints the manual path on stdout; exits 1 when
+the run does not finish with status `completed`.
 
 ### `shopgym gen <manual_dir>... --name <name>`
 

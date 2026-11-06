@@ -57,6 +57,7 @@ describe('parseExploreArgs', () => {
     expect(() => parseExploreArgs(['a', '--max-iters', 'x'])).toThrow(
       '--max-iters must be a positive integer',
     );
+    expect(() => parseExploreArgs(['a', '--focus', ' '])).toThrow('--focus must not be blank');
   });
 
   it('returns help without validating positionals', () => {

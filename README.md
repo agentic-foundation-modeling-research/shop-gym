@@ -100,7 +100,8 @@ picks start URLs, product pages and search queries in that part, and it still
 plans the site-wide areas (header, footer, cart, checkout entry). It writes
 the focus into the task briefs, so the executors get it too. Navigation
 outside the focus is not blocked. `manifest.json` records the `focus`, or
-`null` when the run has none.
+`null` when the run has none. A resumed run keeps its plan, so a re-run on the
+same output directory must pass the same `--focus`.
 
 ### 2. Generate a SandboxShop
 

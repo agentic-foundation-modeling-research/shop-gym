@@ -17,7 +17,8 @@ Options:
   --timeout <ms>       Per-iteration wall clock budget
   --from <step>        Rerun from this step: ${EXPLORE_STEPS.join(' | ')}
   --force-resume       Resume a run that ended in a refused status
-  --focus <text>       Hint the planner to one part of the site, e.g. "Video Games"
+  --focus <text>       Give the planner a hint to explore one part of the site,
+                       e.g. "Video Games"; a resumed run needs the same focus
   -h, --help           Show this help
 
 Prints the manual path on the last line of stdout.`;
@@ -60,6 +61,9 @@ export function parseExploreArgs(argv: readonly string[]): ExploreArgs {
   const timeoutMs = integerOption(args, 'timeout');
   const from = enumOption(args, 'from', EXPLORE_STEPS);
   const focus = stringOption(args, 'focus');
+  if (focus?.trim() === '') {
+    throw new CliError('--focus must not be blank');
+  }
   return {
     help: false,
     url,

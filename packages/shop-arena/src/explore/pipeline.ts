@@ -9,6 +9,7 @@
  * ```
  * seed/prefetch/        prefetch.json + saved bodies (seeded into the run)
  * run/                  harness workspace (plan.md, iters/, artifact/, run.json)
+ * focus.json            the focus of the run, recorded on the first call
  * explore.json          harness outcome of the explore step
  * capabilities.json     merged, schema-validated capabilities
  * stats.json            catalog and feature statistics
@@ -21,7 +22,8 @@
  * step is skipped on a later call with the same `outDir`; `from` forces a
  * step and everything downstream. The harness workspace under `run/` is
  * never deleted by the pipeline: an interrupted or forced explore step
- * resumes it, so the same `outDir` continues the same exploration.
+ * resumes it, so the same `outDir` continues the same exploration. For
+ * the same reason a later call must pass the focus of the first call.
  */
 
 import { createHash } from 'node:crypto';
@@ -71,7 +73,6 @@ export const EXPLORE_STEPS = ['prefetch', 'explore', 'merge', 'synthesize'] as c
 const EXPLORE_VERSION = '1.1';
 const RUN_ID_HASH_LEN = 8;
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
-const FOCUS_PLACEHOLDER = '{{FOCUS}}';
 
 export type ExploreStep = (typeof EXPLORE_STEPS)[number];
 
@@ -188,6 +189,7 @@ const PATHS = {
   prefetch: join('seed', 'prefetch'),
   seed: 'seed',
   run: 'run',
+  focus: 'focus.json',
   explore: 'explore.json',
   capabilities: 'capabilities.json',
   stats: 'stats.json',
@@ -229,11 +231,12 @@ function loadPrompts(): Prompts {
   };
 }
 
-/** The planner prompt for a site on `platform`, followed by the focus hint when there is a focus. */
+/** The planner prompt for a site on `platform`, then the focus hint when there is a focus. */
 function plannerPrompt(prompts: Prompts, platform: Platform, focus: string | null): string {
   const planner = platform === 'generic' ? prompts.plannerGeneric : prompts.planner;
   if (focus === null) return planner;
-  return `${planner}\n${prompts.plannerFocus.replaceAll(FOCUS_PLACEHOLDER, () => focus)}`;
+  // A function replacement inserts the text as is, so `$&` in it is not a pattern.
+  return `${planner}\n${prompts.plannerFocus.replaceAll('{{FOCUS}}', () => focus)}`;
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -247,6 +250,34 @@ function readJson<T>(path: string): T {
 function readRunSummary(runDir: string): RunSummary | undefined {
   const path = join(runDir, 'run.json');
   return existsSync(path) ? readJson<RunSummary>(path) : undefined;
+}
+
+/** `focus "<text>"`, or `no focus`. */
+function describeFocus(focus: string | null): string {
+  return focus === null ? 'no focus' : `focus ${JSON.stringify(focus)}`;
+}
+
+/**
+ * Records `focus` in `<outDir>/focus.json` on the first call for `outDir`.
+ * A later call must pass the same focus: a resumed harness run keeps the
+ * plan of its first planner, so a new focus would not reach the plan.
+ *
+ * @throws Error when `focus` differs from the recorded focus.
+ */
+function recordFocus(outDir: string, focus: string | null): void {
+  const path = join(outDir, PATHS.focus);
+  if (!existsSync(path)) {
+    mkdirSync(outDir, { recursive: true });
+    writeJson(path, { focus });
+    return;
+  }
+  const recorded = readJson<{ focus: string | null }>(path).focus;
+  if (recorded !== focus) {
+    const got = describeFocus(focus);
+    throw new Error(
+      `${outDir} started with ${describeFocus(recorded)}, got ${got}; pass the same focus or a new outDir`,
+    );
+  }
 }
 
 const prefetchStep: Step<ExploreContext> = {
@@ -411,15 +442,12 @@ const STEPS: readonly Step<ExploreContext>[] = [
  * Calling again with the same `outDir` skips complete steps and resumes
  * an unfinished harness run; `from` forces a step and its dependents.
  *
- * @throws Error when `focus` is blank.
+ * @throws Error when `focus` differs from the focus that `outDir` started with.
  * @throws ShopUnreachableError when the prefetch gates reject the shop.
  * @throws ResumeRefusedError when the prior harness run ended in a
  *   refused status and `forceResume` is not set.
  */
 export async function exploreStorefront(options: ExploreOptions): Promise<ExploreResult> {
-  if (options.focus?.trim() === '') {
-    throw new Error('focus must not be blank');
-  }
   const base = normalizeBase(options.url);
   const runtime = options.runtime ?? new PiRuntime({ credentials: options.credentials });
   const llm = options.llm ?? new PiLlmClient({ credentials: options.credentials });
@@ -428,6 +456,8 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
   const outDir = resolve(
     options.outDir ?? join(DEFAULT_OUTPUT_ROOT, domain, runId(base, runtime.name)),
   );
+  const focus = options.focus ?? null;
+  recordFocus(outDir, focus);
   const context: ExploreContext = {
     url: base,
     model: parseModel(modelName),
@@ -436,7 +466,7 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     rateLimitMs: options.rateLimitMs,
     forceResume: options.forceResume ?? false,
-    focus: options.focus ?? null,
+    focus,
     runtime,
     llm,
     prompts: loadPrompts(),

@@ -373,11 +373,16 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(readJson(result.manifestPath).focus).toBe('Video Games');
   });
 
-  it('rejects a blank focus before any step runs', async () => {
-    await expect(explore({ scripts: SCRIPTS, focus: ' ' })).rejects.toThrow(
-      'focus must not be blank',
+  it('refuses to continue a run with a focus other than the one it started with', async () => {
+    await explore({ scripts: SCRIPTS, focus: 'Video Games' });
+
+    // A resumed harness run keeps its plan, so the focus cannot change.
+    await expect(explore({ from: 'merge', focus: 'Board Games' })).rejects.toThrow(
+      /started with focus "Video Games"/,
     );
-    expect(existsSync(outDir)).toBe(false);
+    await expect(explore({ from: 'merge' })).rejects.toThrow(/started with focus "Video Games"/);
+    const { result } = await explore({ from: 'merge', focus: 'Video Games' });
+    expect(readJson(result.manifestPath).focus).toBe('Video Games');
   });
 });
 
