@@ -3,7 +3,9 @@
  *
  * Each Iteration gets its own BrowserSession, so it starts with no cookies,
  * storage or cart from earlier Iterations. The Browser tools in `tools` act
- * on the browser of the current Iteration.
+ * on the browser of the current Iteration. Their `snapshot` shows a long
+ * accessibility tree in parts, so a few snapshots of a long page do not
+ * fill the model's context.
  *
  * After a tool call that loaded a page, the page is checked for bot-check
  * markers; on a bot check the tool result tells the agent not to try to
@@ -12,7 +14,14 @@
  */
 
 import type { Tool, ToolContext, ToolResult } from '@shop-gym/agent';
-import { BrowserSession, browserTools } from '@shop-gym/browser';
+import {
+  BrowserSession,
+  type PageSnapshot,
+  browserTools,
+  formatSnapshot,
+  snapshotPage,
+} from '@shop-gym/browser';
+import { Type } from '@sinclair/typebox';
 import { z } from 'zod';
 import { botCheckMarker } from './bot-check.js';
 
@@ -31,6 +40,18 @@ export interface BotCheck {
   /** The bot-check marker found in the page HTML. */
   readonly marker: string;
 }
+
+/** Characters of the accessibility tree that one `snapshot` result shows. */
+const SNAPSHOT_MAX_CHARS = 50_000;
+
+const SNAPSHOT_PARAMETERS = Type.Object({
+  offset: Type.Optional(
+    Type.Integer({
+      minimum: 0,
+      description: 'Character offset into the tree, from the note of a cut snapshot.',
+    }),
+  ),
+});
 
 const cartSchema = z.object({
   items: z.array(z.object({ variant_id: z.number(), quantity: z.number() })),
@@ -52,6 +73,8 @@ export interface StartState {
 export interface IterationBrowserOptions {
   /** Sent as `x-shopgym-episode` by every browser. */
   readonly episodeId: string;
+  /** The storefront origin. A site path given to `navigate`, such as `/cart`, opens on it. */
+  readonly baseUrl: string;
   /** The page that every Iteration starts on. */
   readonly startUrl: string;
   /** The shop's `/cart.js`, read at each start. Omit it when the shop does not serve one. */
@@ -91,12 +114,18 @@ export class IterationBrowser {
     this.session = session;
     this.sessionTools = toolsByName(session);
     this.watchPageLoads(session);
-    this.tools = [...this.sessionTools.values()].map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-      execute: (params, ctx) => this.execute(tool.name, params, ctx),
-    }));
+    this.tools = [...this.sessionTools.values()].map((tool) => {
+      const inner: Tool =
+        tool.name === 'snapshot'
+          ? this.snapshotTool(tool.description)
+          : {
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.parameters,
+              execute: (params, ctx) => this.currentTool(tool.name).execute(params, ctx),
+            };
+      return { ...inner, execute: (params, ctx) => this.execute(inner, params, ctx) };
+    });
   }
 
   /** Launches the browser of the first Iteration. */
@@ -151,13 +180,14 @@ export class IterationBrowser {
   }
 
   /**
-   * Runs one Browser tool call on the current browser. A `navigate` call at
-   * the cap is refused. A page action (`PAGE_ACTIONS`) on a bot-check page
+   * Runs one call of `tool`, a Browser tool that acts on the current
+   * browser. A `navigate` call at the cap is refused. A page action (`PAGE_ACTIONS`) on a bot-check page
    * is refused, and the result is the bot-check notice. A bot check on a
    * page that loaded since the last check adds the notice to the result.
    * The start page of an Iteration is checked at its first tool call.
    */
-  private async execute(name: string, params: unknown, ctx: ToolContext): Promise<ToolResult> {
+  private async execute(tool: Tool, params: unknown, ctx: ToolContext): Promise<ToolResult> {
+    const { name } = tool;
     if (name === 'navigate') {
       if (this.navigationCapReached) {
         return { content: [{ type: 'text', text: NAVIGATION_CAP_REFUSAL }], isError: true };
@@ -175,7 +205,7 @@ export class IterationBrowser {
         };
       }
     }
-    const result = await this.currentTool(name).execute(params, ctx);
+    const result = await tool.execute(params, ctx);
     const botCheck = this.pageLoaded ? await this.checkPage() : null;
     if (botCheck === null) {
       return result;
@@ -225,6 +255,11 @@ export class IterationBrowser {
     });
   }
 
+  /** The page of the browser of the current Iteration. */
+  get page(): BrowserSession['page'] {
+    return this.session.page;
+  }
+
   /** The cart of this browser's cookies, or why it could not be read. */
   private async readCart(cartUrl: string): Promise<Pick<StartState, 'cart' | 'error'>> {
     let ok: boolean;
@@ -247,6 +282,23 @@ export class IterationBrowser {
     return cart === null
       ? { cart: null, error: `${cartUrl} did not return a cart` }
       : { cart, error: null };
+  }
+
+  /** `snapshot` of the current page that shows a long tree in parts. */
+  private snapshotTool(description: string): Tool<typeof SNAPSHOT_PARAMETERS> {
+    return {
+      name: 'snapshot',
+      description: `${description} A tree longer than ${SNAPSHOT_MAX_CHARS} characters comes in parts; the note after a part gives the offset of the next one.`,
+      parameters: SNAPSHOT_PARAMETERS,
+      execute: async ({ offset }) => {
+        try {
+          const snapshot = await snapshotPage(this.session.page);
+          return { content: [{ type: 'text', text: snapshotPart(snapshot, offset ?? 0) }] };
+        } catch (error) {
+          return { content: [{ type: 'text', text: `Error: ${firstLine(error)}` }], isError: true };
+        }
+      },
+    };
   }
 
   private currentTool(name: string): Tool {
@@ -290,7 +342,58 @@ const NAVIGATION_CAP_REFUSAL = [
 ].join('\n');
 
 function launchSession(options: IterationBrowserOptions): Promise<BrowserSession> {
-  return BrowserSession.launch({ episodeId: options.episodeId });
+  return BrowserSession.launch({ episodeId: options.episodeId, baseUrl: options.baseUrl });
+}
+
+/**
+ * The snapshot text for the tree from `offset`.
+ *
+ * A tree that fits shows whole. A longer tree shows in parts of at most
+ * `SNAPSHOT_MAX_CHARS` characters. A part ends at the end of a line, so it
+ * does not split an element line or a ref. Only a line longer than the
+ * limit is cut inside the line. A note after each part gives the range
+ * that the part shows and the offset of the next part.
+ */
+function snapshotPart(snapshot: PageSnapshot, offset: number): string {
+  const { aria } = snapshot;
+  const start = partStart(aria, offset);
+  if (start === 0 && aria.length <= SNAPSHOT_MAX_CHARS) {
+    return formatSnapshot(snapshot);
+  }
+  const limit = start + SNAPSHOT_MAX_CHARS;
+  if (limit >= aria.length) {
+    const part = formatSnapshot({ ...snapshot, aria: aria.slice(start) });
+    return `${part}\n\n[Last part of the snapshot: characters ${start}-${aria.length} of ${aria.length}.]`;
+  }
+  // Cut at the end of the last whole line. A line longer than the limit is cut at the limit.
+  const newline = aria.lastIndexOf('\n', limit);
+  const end = newline > start ? newline : limit;
+  const next = newline > start ? newline + 1 : limit;
+  const part = formatSnapshot({ ...snapshot, aria: aria.slice(start, end) });
+  const note = [
+    `Snapshot cut: this part shows characters ${start}-${end} of ${aria.length}.`,
+    `To see the rest, call snapshot with offset ${next}.`,
+    'Scrolling does not change the snapshot, because it always covers the whole page.',
+    'Refs from every part stay valid until the page changes.',
+  ].join(' ');
+  return `${part}\n\n[${note}]`;
+}
+
+/**
+ * Where the part for `offset` starts. An offset inside a line moves to the
+ * start of the next line. Thus a part does not start with half a ref, even
+ * when the page changed after the last part. An offset inside a line longer
+ * than `SNAPSHOT_MAX_CHARS` does not move, because the parts cut such a line.
+ */
+function partStart(aria: string, offset: number): number {
+  const start = Math.min(offset, aria.length);
+  if (start === 0 || aria[start - 1] === '\n') {
+    return start;
+  }
+  const lineStart = aria.lastIndexOf('\n', start - 1) + 1;
+  const newline = aria.indexOf('\n', start);
+  const lineEnd = newline === -1 ? aria.length : newline;
+  return lineEnd - lineStart > SNAPSHOT_MAX_CHARS ? start : Math.min(lineEnd + 1, aria.length);
 }
 
 function toolsByName(session: BrowserSession): ReadonlyMap<string, Tool> {

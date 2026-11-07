@@ -11,9 +11,41 @@ import { type Tiebreaker, mergeCapabilities } from './capabilities.js';
 import { parseManualSections } from './prose.js';
 import { MANUAL_PARTS, splitManual } from './split.js';
 import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from './standard_sub_manual.js';
-import { mergeStats } from './stats.js';
+import { mergeStats, statsSchema } from './stats.js';
 
 const seed = (overrides: Record<string, unknown>) => capabilitiesSchema.parse(overrides);
+
+/** A `capabilities.json` that Storefront exploration published at schema 0.2. */
+const CAPABILITIES_0_2 = {
+  version: '0.2',
+  shop: { descriptor: 'Minimal Homeware Shop', category: null, currency: 'USD', tone: ['calm'] },
+  cart: { type: 'drawer', has_promo_input: true, has_upsells: null, has_shipping_estimate: null },
+  search: {
+    trigger: 'icon',
+    has_predictive: true,
+    predictive_types: ['products'],
+    results_layout: null,
+  },
+};
+
+/** The marketplace Capabilities of schema 0.3. */
+const MARKETPLACE = {
+  departments: { has_department_menu: true, department_count: 24, max_depth: 3 },
+  search: { facets: ['brand', 'price', 'rating'], sort: ['featured', 'price_asc', 'newest'] },
+  product: {
+    has_rating_histogram: true,
+    review_filters: ['star_rating', 'verified_purchase'],
+    related_product_types: ['bought_together', 'also_viewed', 'sponsored'],
+  },
+};
+
+/** A `manual.md` whose sections the Shop Manual fixture does not have, so no prose merge runs. */
+const MARKETPLACE_MANUAL_MD = `# Shop Manual - Minimal Homeware Shop
+
+## Search
+
+A full results page with facets on the left and a sort menu above the grid.
+`;
 
 describe('mergeCapabilities', () => {
   it('returns the single seed unchanged', async () => {
@@ -81,6 +113,35 @@ describe('mergeCapabilities', () => {
     expect(conflicts.find((c) => c.path === 'collection.layout')?.tiebreak).toBe('llm');
   });
 
+  it('unions the marketplace flags and lists, and takes the deepest department menu', async () => {
+    const { capabilities } = await mergeCapabilities([
+      seed({
+        departments: { has_department_menu: false, department_count: 12, max_depth: 2 },
+        search: { facets: ['brand', 'price'], sort: ['featured'] },
+        product: { has_rating_histogram: false, review_filters: ['star_rating'] },
+      }),
+      seed({
+        departments: { has_department_menu: true, department_count: 30, max_depth: 4 },
+        search: { facets: ['price', 'rating'], sort: ['newest'] },
+        product: { has_rating_histogram: true, related_product_types: ['also_viewed'] },
+      }),
+    ]);
+    expect(capabilities.departments).toEqual({
+      has_department_menu: true,
+      department_count: 12,
+      max_depth: 4,
+    });
+    expect(capabilities.search).toMatchObject({
+      facets: ['brand', 'price', 'rating'],
+      sort: ['featured', 'newest'],
+    });
+    expect(capabilities.product).toMatchObject({
+      has_rating_histogram: true,
+      review_filters: ['star_rating'],
+      related_product_types: ['also_viewed'],
+    });
+  });
+
   it('throws when descriptors differ and no tiebreaker is given', async () => {
     await expect(
       mergeCapabilities([seed({ shop: { descriptor: 'A' } }), seed({ shop: { descriptor: 'B' } })]),
@@ -145,6 +206,60 @@ describe('mergeStats', () => {
     expect(merged.navigation_depth_max).toBe(2);
     expect(merged.homepage_section_count).toBe(4);
   });
+
+  // A stats.json from before `source` and `sample_size`: the Shopify catalog endpoints.
+  const catalogSeed = () =>
+    statsSchema.parse({
+      products_total: 40,
+      collections_total: 4,
+      products_per_collection: { avg: 10, median: 10, max: 12 },
+      price: { min: 10, max: 120, median: 35, currency: 'USD' },
+      products_with_variants_pct: 0.5,
+      variant_axes_observed: ['size'],
+      navigation_depth_max: 1,
+      homepage_section_count: 2,
+      info_pages_count: 2,
+      feature_count: 4,
+    });
+  // A site with no catalog endpoint shows no totals, so they are 0.
+  const observedSeed = {
+    source: 'observed_sample',
+    sample_size: 3,
+    products_total: 0,
+    collections_total: 0,
+    products_per_collection: { avg: 0, median: 0, max: 0 },
+    price: { min: 44.5, max: 79, median: 59, currency: 'USD' },
+    products_with_variants_pct: 0.5,
+    variant_axes_observed: ['edition', 'color'],
+    navigation_depth_max: 3,
+    homepage_section_count: 6,
+    info_pages_count: 0,
+    feature_count: 12,
+  };
+
+  it('reads a seed without source and sample size as a catalog seed of its products', () => {
+    expect(mergeStats([catalogSeed()], seed({}))).toMatchObject({
+      source: 'catalog_endpoint',
+      sample_size: 40,
+    });
+  });
+
+  it('keeps the zero totals of an observed sample out of the merged totals', () => {
+    const merged = mergeStats([catalogSeed(), statsSchema.parse(observedSeed)], seed({}));
+    expect(merged).toMatchObject({
+      source: 'observed_sample',
+      sample_size: 43,
+      products_total: 40,
+      collections_total: 4,
+      products_per_collection: { avg: 10, median: 10, max: 12 },
+      price: { min: 10, max: 120, median: 47, currency: 'USD' },
+      variant_axes_observed: ['size', 'edition', 'color'],
+    });
+  });
+
+  it('rejects a seed with an unknown source', () => {
+    expect(() => statsSchema.parse({ ...observedSeed, source: 'guess' })).toThrow();
+  });
 });
 
 describe('runManualMerge', () => {
@@ -196,6 +311,45 @@ describe('runManualMerge', () => {
   it('lists the Standard sub-manual as a step input, so an edit to it reruns the step', async () => {
     const { manualMergeStep } = await import('./index.js');
     expect(manualMergeStep([path.join(root, 'seed')]).inputs).toContain(STANDARD_SUB_MANUAL_PATH);
+  });
+
+  it('merges a 0.2 manual with a 0.3 marketplace manual and keeps the marketplace Capabilities', async () => {
+    const { ScriptedFusionLlm, writeManualFixture } = await import('../testing.js');
+    const { manualMergeStep } = await import('./index.js');
+    const oldSeed = await writeManualFixture(path.join(root, 'seed_0_2'));
+    await fs.writeFile(path.join(oldSeed, 'capabilities.json'), JSON.stringify(CAPABILITIES_0_2));
+    const marketplaceSeed = await writeManualFixture(path.join(root, 'seed_0_3'));
+    await fs.writeFile(
+      path.join(marketplaceSeed, 'capabilities.json'),
+      JSON.stringify({
+        version: '0.3',
+        shop: { descriptor: 'Minimal Homeware Shop', currency: 'USD' },
+        ...MARKETPLACE,
+      }),
+    );
+    await fs.writeFile(path.join(marketplaceSeed, 'manual.md'), MARKETPLACE_MANUAL_MD);
+    const outDir = path.join(root, 'shop');
+    await fs.mkdir(outDir);
+    const llm = new ScriptedFusionLlm();
+
+    await manualMergeStep([oldSeed, marketplaceSeed]).run({
+      outDir,
+      context: mergeContext([oldSeed, marketplaceSeed], llm),
+      log: () => undefined,
+      signal: new AbortController().signal,
+    });
+
+    expect(llm.requests).toEqual([]);
+    const merged = JSON.parse(
+      await fs.readFile(path.join(outDir, 'manual', 'capabilities.json'), 'utf-8'),
+    );
+    expect(merged.version).toBe('0.3');
+    expect(merged).toMatchObject(MARKETPLACE);
+    expect(merged.cart).toMatchObject({ type: 'drawer', has_promo_input: true });
+    expect(merged.search).toMatchObject({ trigger: 'icon', predictive_types: ['products'] });
+    expect(await fs.readFile(path.join(outDir, 'manual', 'manual.md'), 'utf-8')).toContain(
+      'facets on the left',
+    );
   });
 
   describe('fusion of observed Account and Checkout notes', () => {

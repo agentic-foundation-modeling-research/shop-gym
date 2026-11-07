@@ -19,6 +19,8 @@ describe('parseExploreArgs', () => {
         '--from',
         'merge',
         '--force-resume',
+        '--focus',
+        'Video Games',
       ]),
     ).toEqual({
       help: false,
@@ -29,6 +31,7 @@ describe('parseExploreArgs', () => {
       timeoutMs: 1000,
       from: 'merge',
       forceResume: true,
+      focus: 'Video Games',
     });
   });
 
@@ -39,6 +42,18 @@ describe('parseExploreArgs', () => {
       model: DEFAULT_MODEL,
       forceResume: false,
     });
+  });
+
+  it('collects every --brand-term in order', () => {
+    expect(
+      parseExploreArgs([
+        'https://shop.example',
+        '--brand-term',
+        'Zephyr',
+        '--brand-term',
+        'Nova Pass',
+      ]).brandTerms,
+    ).toEqual(['Zephyr', 'Nova Pass']);
   });
 
   it('rejects an unknown --from step with the allowed list', () => {
@@ -54,6 +69,7 @@ describe('parseExploreArgs', () => {
     expect(() => parseExploreArgs(['a', '--max-iters', 'x'])).toThrow(
       '--max-iters must be a positive integer',
     );
+    expect(() => parseExploreArgs(['a', '--focus', ' '])).toThrow('--focus must not be blank');
   });
 
   it('returns help without validating positionals', () => {

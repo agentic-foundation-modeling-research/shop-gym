@@ -25,6 +25,18 @@ products, or copy.
 If a tradeoff appears between "more detail about this exact shop" and
 "transferable structural pattern", always pick the latter.
 
+Write only what you saw. Every claim in `parts/<task_id>.md` and every
+value in `parts/<task_id>.caps.json` must come from what you saw in
+this task: a snapshot, a screenshot, or a prefetch file or a response
+that you read. Do not guess, do not compare with a page that you did
+not open, and do not tell the generator how to rebuild a part that you
+did not see. When you could not see something, write "unknown" in the
+markdown and leave its capabilities field `null`. Use `false` only
+when you saw the place where the feature would be and it was not
+there. A count or a depth stays `null` when you saw only part of it;
+write what you saw in the markdown, for example "two menu levels
+opened; deeper levels not checked".
+
 ---
 
 ## 2. Anonymization rules (STRICT - apply at write time)
@@ -58,6 +70,19 @@ Hard rules:
   ("a 1-2 sentence value-prop headline", "a 4-bullet feature list").
 - **Image captions / alt text.** Same rule - describe the *role* of
   the image, not its specific content beyond category-level facts.
+- **Site-specific lists.** Do not list what only this site has, such as
+  its own named sister services, programs or partner sites. Give the
+  shape and the role instead: "a grid of about 20 two-line link tiles
+  to related services". Lists of generic catalog categories stay.
+- **Internal names.** Do not name request endpoints, query parameters,
+  response fields, element ids or CSS classes (e.g. `term_frag`,
+  `hintMode`). Say what the request or the element does: "the search
+  box asks for keyword suggestions while the shopper types".
+- **Feature names that the site made up.** Use the generic e-commerce
+  name of a page or a feature, not the site's own name for it, even
+  when that name comes from a URL path or a page title. A page at
+  `/basket/swift-tray` is "an add-to-cart confirmation page", not a
+  "swift-tray page" or a "swift-cart page".
 
 Soft rules (apply when in doubt):
 
@@ -69,16 +94,19 @@ Soft rules (apply when in doubt):
 - Generic e-commerce terminology - "cart drawer", "predictive search",
   "mega menu" - is encouraged; that is the vocabulary of the
   capabilities schema.
+- Keep generic program types, such as a paid membership or a loyalty
+  program, without their own names.
 
 The goal is to capture **STRUCTURE and UX patterns**, not actual
 content. A reader of `manual.md` should be unable to identify the
 source shop.
 
-An automated anonymization verifier scans `artifact/parts/*.md` after
-every executor iteration for the store domain, brand tokens, absolute
-store URLs, and email addresses. A hit reopens the task and its feedback
-appears in your next prompt - but the rules above are the primary
-defense and you are expected to apply them at write time.
+An automated anonymization verifier scans this task's
+`artifact/parts/<task_id>.md` after every executor iteration for the
+store domain, brand tokens, absolute store URLs, and email addresses. A
+hit reopens the task and its feedback appears in your next prompt. After
+two reopens, the next hit blocks the task for good. The rules above are
+the primary defense and you are expected to apply them at write time.
 
 ---
 
@@ -113,6 +141,8 @@ Tools:
 - `read_file <path>` / `write_file <path> <content>` / `list_dir <path>`
   - the only file access you have. Paths are relative to the run
   directory and cannot escape it.
+- `record_product_observation` - generic sites only: record the
+  product page that is open as one product observation (§6).
 
 Conventions:
 
@@ -140,7 +170,8 @@ artifact/
 ├── prefetch/             # READ-ONLY for you. Seeded by the prefetch step.
 ├── parts/                # YOU WRITE these.
 │   ├── <task_id>.md
-│   └── <task_id>.caps.json
+│   ├── <task_id>.caps.json
+│   └── <task_id>.product-<key>.json  # generic sites only, written by a tool (§6)
 └── evidence/<task_id>/   # YOU WRITE these.
     ├── snapshots/
     └── network.jsonl     # optional
@@ -165,8 +196,10 @@ element. Reference your evidence inline by relative path, e.g.
 `parts/<task_id>.caps.json` - a JSON object containing **only** the
 top-level capabilities-schema keys this task is responsible for. The
 schema is closed (extra fields rejected at merge time); do not invent
-keys. Lists are deduplicated and order-preserved at merge time. Do
-**not** wrap your fragment in any envelope - just the partial object.
+keys. Lists are deduplicated and order-preserved at merge time. For a
+scalar field, `null` means unknown: it never replaces a value that another
+task wrote. Do **not** wrap your fragment in any envelope - just the
+partial object.
 
 `evidence/<task_id>/snapshots/NN-<state>.md` - accessibility snapshots
 (the text returned by `snapshot`), one per distinct page state,
@@ -174,8 +207,8 @@ numbered for ordering.
 
 `evidence/<task_id>/network.jsonl` - optional; append one JSON object
 per observed request. Use only when the request itself is the evidence
-(predictive search suggestions, cart updates) and you can read it from
-the page (e.g. a JSON endpoint opened with `navigate`).
+(cart updates) and you can read it from the page (e.g. a JSON endpoint
+opened with `navigate`).
 
 Final action of any executor iteration: rewrite `plan.md` with
 `write_file` so that this task's line reads `[x]` (success) or
@@ -195,10 +228,10 @@ Schema (rendered into this file at pipeline-time, so it cannot drift):
 {{CAPABILITIES_SCHEMA}}
 ```
 
-The top-level groupings (`shop`, `site_shell`, `homepage`,
-`collection`, `product`, `cart`, `search`, `floating`, `intl`,
-`account`, `checkout`, `info_pages_present`) are the only valid keys
-for any `parts/<task_id>.caps.json` fragment.
+The top-level groupings (`shop`, `site_shell`, `departments`,
+`homepage`, `collection`, `product`, `cart`, `search`, `floating`,
+`intl`, `account`, `checkout`, `info_pages_present`) are the only valid
+keys for any `parts/<task_id>.caps.json` fragment.
 
 If your task observes a feature that does not fit the schema, do
 **not** invent a new key. Describe it in `parts/<task_id>.md` and
@@ -207,14 +240,44 @@ future schema revision, not a silent leak.
 
 ---
 
-## 6. Don'ts
+## 6. Product observation fragments
+
+On a generic site (`artifact/prefetch/prefetch.json` records
+`"platform": "generic"`), the site has no catalog endpoint, so the
+catalog statistics in `stats.json` come from what the executors see.
+There the executor prompt asks you to record each product page that
+you open with the `record_product_observation` tool. Use it only when
+your role prompt asks for it.
+
+The tool checks your facts against the closed schema below (rendered
+into this file at pipeline-time, so it cannot drift), takes a key of
+the open page from the page itself, and writes one fragment,
+`parts/<task_id>.product-<key>.json`. The key tells product pages
+apart without naming them, so a page that more than one task records
+counts once in `stats.json`. Do not write or edit these files with
+`write_file`.
+
+```json
+{{PRODUCT_OBSERVATION_SCHEMA}}
+```
+
+The schema has no field for a product name, a URL, a seller or a
+brand, and it rejects every key that it does not name. The tool
+refuses facts that do not match it. After every executor iteration, a
+Verifier checks the fragments of your task. A fragment that is not
+valid JSON or does not match the schema reopens the task, and the
+feedback appears in your next prompt.
+
+---
+
+## 7. Don'ts
 
 - Don't crawl beyond the brief specified by your role prompt
   (planner: <= 4 pages; executor: scope of one task in `plan.md`).
 - Don't hit `/admin` or anything behind a login. We are an
   unauthenticated UX explorer: the `account_pages` task looks only at
-  the public login / signup / password-reset surfaces, and the
-  `checkout_flow` task stops at the first checkout step. Never create
+  the public sign-in and sign-up entries, and the `checkout_flow` task
+  stops at the first sign-in or payment wall. Never create
   an account, submit credentials, enter payment details, or place an
   order.
 - Don't mutate `artifact/prefetch/` - it is the immutable seed.

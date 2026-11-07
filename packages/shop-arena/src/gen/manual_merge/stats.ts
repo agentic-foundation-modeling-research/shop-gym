@@ -3,9 +3,16 @@
 import { z } from 'zod';
 
 import type { Capabilities } from '../../explore/capabilities.js';
-import type { Stats } from '../../explore/stats.js';
+import { STATS_SOURCES, type Stats } from '../../explore/stats.js';
 
+/**
+ * A seed `stats.json`. A file from before `source` and `sample_size` has
+ * neither field; it came from the Shopify catalog endpoints and read
+ * `products_total` products.
+ */
 export const statsSchema = z.object({
+  source: z.enum(STATS_SOURCES).optional(),
+  sample_size: z.number().int().nonnegative().optional(),
   products_total: z.number(),
   collections_total: z.number(),
   products_per_collection: z.object({ avg: z.number(), median: z.number(), max: z.number() }),
@@ -17,6 +24,8 @@ export const statsSchema = z.object({
   info_pages_count: z.number(),
   feature_count: z.number(),
 });
+
+export type SeedStats = z.infer<typeof statsSchema>;
 
 function median(values: readonly number[]): number {
   if (values.length === 0) return 0;
@@ -41,20 +50,33 @@ function countFeatures(value: unknown): number {
   return 0;
 }
 
-export function mergeStats(seeds: readonly Stats[], capabilities: Capabilities): Stats {
+/**
+ * Merges the seed stats into one `Stats`.
+ *
+ * The totals and the products per collection come only from the seeds
+ * that read a catalog endpoint, because an observed-sample seed shows 0
+ * for the counts its site does not show. The merged `source` is
+ * `observed_sample` when any seed is, and `sample_size` adds up the seeds.
+ *
+ * @throws Error when `seeds` is empty.
+ */
+export function mergeStats(seeds: readonly SeedStats[], capabilities: Capabilities): Stats {
   if (seeds.length === 0) {
     throw new Error('mergeStats requires at least one seed');
   }
+  const catalog = seeds.filter((s) => s.source !== 'observed_sample');
   const priced = seeds.filter((s) => s.price.max > 0);
   const currency =
     capabilities.shop.currency ?? seeds.find((s) => s.price.currency !== '')?.price.currency ?? '';
   return {
-    products_total: Math.round(median(seeds.map((s) => s.products_total))),
-    collections_total: Math.round(median(seeds.map((s) => s.collections_total))),
+    source: catalog.length === seeds.length ? 'catalog_endpoint' : 'observed_sample',
+    sample_size: seeds.reduce((sum, s) => sum + (s.sample_size ?? s.products_total), 0),
+    products_total: Math.round(median(catalog.map((s) => s.products_total))),
+    collections_total: Math.round(median(catalog.map((s) => s.collections_total))),
     products_per_collection: {
-      avg: mean(seeds.map((s) => s.products_per_collection.avg)),
-      median: median(seeds.map((s) => s.products_per_collection.median)),
-      max: Math.max(...seeds.map((s) => s.products_per_collection.max)),
+      avg: mean(catalog.map((s) => s.products_per_collection.avg)),
+      median: median(catalog.map((s) => s.products_per_collection.median)),
+      max: Math.max(0, ...catalog.map((s) => s.products_per_collection.max)),
     },
     price:
       priced.length === 0

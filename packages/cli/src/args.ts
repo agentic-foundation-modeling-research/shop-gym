@@ -10,7 +10,7 @@ import { CliError } from './context.js';
 type OptionsConfig = NonNullable<ParseArgsConfig['options']>;
 
 export interface ParsedArgs {
-  readonly values: Record<string, string | boolean | undefined>;
+  readonly values: Record<string, string | boolean | string[] | undefined>;
   readonly positionals: readonly string[];
 }
 
@@ -27,7 +27,7 @@ export function parse(argv: readonly string[], options: OptionsConfig): ParsedAr
       allowPositionals: true,
       strict: true,
     });
-    return { values: values as Record<string, string | boolean | undefined>, positionals };
+    return { values: values as ParsedArgs['values'], positionals };
   } catch (error) {
     if (error instanceof TypeError) {
       throw new CliError(error.message);
@@ -40,6 +40,12 @@ export function parse(argv: readonly string[], options: OptionsConfig): ParsedAr
 export function stringOption(args: ParsedArgs, name: string): string | undefined {
   const value = args.values[name];
   return typeof value === 'string' ? value : undefined;
+}
+
+/** Every value of a repeatable `--name`, in order; empty when absent. */
+export function stringListOption(args: ParsedArgs, name: string): string[] {
+  const value = args.values[name];
+  return Array.isArray(value) ? value : [];
 }
 
 /** `true` when `--name` was passed. */

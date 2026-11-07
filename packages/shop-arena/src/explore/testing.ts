@@ -38,11 +38,14 @@ export interface FixtureSite {
 }
 
 /**
- * Serves `pages(origin)` on a free local port. An unknown pathname gets a
- * 404 HTML page.
+ * Serves `pages(origin)` on a free local port of 127.0.0.1. An unknown
+ * pathname gets a 404 HTML page. `hostname` goes into `url` and the
+ * origin; a name under `localhost`, such as `GENERIC_SITE_HOSTNAME`,
+ * resolves to the loopback address.
  */
 export async function startFixtureSite(
   pages: (origin: string) => FixturePages,
+  hostname = '127.0.0.1',
 ): Promise<FixtureSite> {
   const requests: FixtureRequest[] = [];
   let routes: FixturePages = {};
@@ -57,7 +60,7 @@ export async function startFixtureSite(
     res.writeHead(page.status ?? 200, { 'content-type': page.contentType }).end(page.body);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const url = `http://${hostname}:${(server.address() as AddressInfo).port}`;
   routes = pages(url);
   return {
     url,
@@ -71,6 +74,12 @@ const NOT_FOUND = '<!doctype html><html><head><title>Page not found</title></hea
 
 /** The homepage title of the generic site: a brand segment, then a tagline. */
 const GENERIC_SITE_TITLE = 'Fixture Mart. Spend less. Shop more.';
+
+/**
+ * A hostname for the generic site whose label matches the brand segment
+ * of its title, as the hostname of a Live storefront does.
+ */
+export const GENERIC_SITE_HOSTNAME = 'fixturemart.localhost';
 
 interface FixtureProduct {
   readonly path: string;
@@ -137,14 +146,17 @@ function subDepartmentLinks(department: Department): string {
     .join('');
 }
 
-function layout(title: string, main: string): string {
+/** A page of the site; `canonical` is the path of its `<link rel="canonical">`, when it has one. */
+function layout(title: string, main: string, canonical?: string): string {
   const departments = DEPARTMENTS.map(
     (department) =>
       `<li><a href="${department.path}">${department.name}</a><ul>${subDepartmentLinks(department)}</ul></li>`,
   ).join('');
   return `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>${title}</title></head>
+<head><meta charset="utf-8"><title>${title}</title>${
+    canonical === undefined ? '' : `<link rel="canonical" href="${canonical}">`
+  }</head>
 <body>
 <header>
   <a href="/">Fixture Mart</a>
@@ -247,6 +259,7 @@ ${selectors}
 </section>
 <section aria-label="Frequently bought together"><h2>Frequently bought together</h2><ul>${related}</ul></section>
 <section aria-label="Customers also viewed"><h2>Customers also viewed</h2><ul>${related}</ul></section>`,
+    product.path,
   );
 }
 
@@ -334,8 +347,8 @@ ${paths.map((path) => `  <url><loc>${origin}${path}</loc></url>`).join('\n')}
  * tagline title, sitemap.xml, a department page, a search results page
  * (`/search`, any query), one page per product, and the bot-check pages
  * `/bot-check` (`BOT_CHECK_PAGE`), `/interstitial` (`INTERSTITIAL_PAGE`)
- * and `/rate-limit` (`RATE_LIMIT_PAGE`). No other page links to a
- * bot-check page.
+ * and `/rate-limit` (`RATE_LIMIT_PAGE`). A product page has a canonical
+ * link to its own path. No other page links to a bot-check page.
  */
 export function genericSitePages(origin: string): FixturePages {
   const html = (body: string): FixturePage => ({ contentType: HTML, body });

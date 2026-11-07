@@ -49,8 +49,8 @@ steps on the `@shop-gym/core` pipeline runner:
 | --- | --- | --- |
 | `prefetch` | the storefront over HTTP | `seed/prefetch/` (robots, homepage, sitemap, `prefetch.json`; on a Shopify shop also the Shopify JSON endpoints, policy and info pages, merged `products.json`) |
 | `explore` | `seed/prefetch/` | `run/` (harness workspace: `plan.md`, `iters/`, `artifact/{prefetch,parts,evidence}`, `run.json`) and `explore.json` |
-| `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json` | `capabilities.json`, `stats.json`, `manifest.json` |
-| `synthesize` | `capabilities.json`, `run/artifact/parts/*.md` | `manual.md` |
+| `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json`; on a generic site also `run/artifact/parts/*.product-<key>.json` | `capabilities.json`, `stats.json`, `manifest.json` |
+| `synthesize` | `capabilities.json`, `stats.json`, `brand_terms.json`, `seed/prefetch/`, `run/artifact/parts/*.md` | `manual.md`, only when the final Anonymization scan is clean |
 
 Prefetch decides the platform before it fetches the rest. First it
 fetches `robots.txt`, the homepage, `sitemap.xml` and one `/products.json`
@@ -68,8 +68,44 @@ The robots gate, the homepage status gate, the Cloudflare markers and the
 rate limit apply on both paths. `prefetch.json` and `manifest.json` record
 `platform`. On the generic path the planner uses `prompts/planner_generic.md`
 in place of `prompts/planner.md`. That prompt tells the planner to pick
-same-origin start URLs from the homepage links and the sitemap. Stats
-count 0 products and 0 collections when the Shopify files are missing.
+same-origin start URLs from the homepage links and the sitemap.
+
+On the generic path the executors use `prompts/execute_generic.md` in place
+of `prompts/execute.md`, and they get one more tool,
+`record_product_observation`. The prompt tells each executor to call it for
+each product page that it opens, while the page is open. The executor gives
+only the price, the currency, `has_variants` and `variant_axes` (schema in
+`src/explore/observations.ts`, shown in `AGENTS.md`), with the axes named as
+short generic nouns. The tool checks the facts against the schema, takes
+the page key from the open page, and writes the fragment
+`parts/<task_id>.product-<key>.json`. The key is the first 12 hex digits of
+the SHA-256 of the page URL without its query and fragment, and the URL is
+the `<link rel="canonical">` target when the page has one. So the key tells
+product pages apart without naming them, and two paths to one product page
+give one key. A `product_observations` verifier fails an executor iteration
+whose fragments do not match the schema.
+
+`stats.json` records its `source` and `sample_size`. On a Shopify shop
+`computeStats` reads the prefetched catalog: `source` is `catalog_endpoint`
+and `sample_size` is the number of products read. On a generic site
+`computeObservedStats` reads the fragments: `source` is `observed_sample`,
+`sample_size` is the number of distinct product pages, and the price and
+variant stats come from one fragment for each page. When more than one task
+recorded the same page, the first fragment in filename order counts. The
+prices use the most frequent currency, and the observed axes are sorted. The
+product and collection totals and the products per collection stay 0.
+
+With a `focus` (for example `"Video Games"`), the explore step adds
+`prompts/planner_focus.md` after the planner prompt of either platform,
+with `{{FOCUS}}` replaced by the focus text. That hint tells the planner
+to pick start URLs, product pages and search queries in the focus, to
+keep every canonical task, and to write the focus into the task briefs,
+which is how the executors get it. Navigation outside the focus is not
+blocked. With no focus the planner prompt is unchanged. `manifest.json`
+records `focus`, or `null`. The explore step writes the focus to
+`focus.json` before the harness runs. A later call on that `outDir` with
+another focus fails, because a resumed harness run keeps the plan of its
+first planner.
 
 The explore step drives `runPlanExecLoop` from `@shop-gym/harness` with
 the pi runtime, a new headless `BrowserSession` for every iteration
@@ -77,14 +113,58 @@ the pi runtime, a new headless `BrowserSession` for every iteration
 shop serves it, and writes `run/iters/<id>/start_state.json`), the
 `browserTools` from `@shop-gym/browser`, and three run-dir-scoped file
 tools (`read_file`, `write_file`, `list_dir`) that let the agent write
-`plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. The planner
-emits a fixed canonical task list (homepage, header, cart, product,
-collection, search, checkout, account, footer, info pages, floating
-widgets); each executor iteration writes `parts/<task_id>.md` and
-`parts/<task_id>.caps.json`. An `anonymization` verifier scans the parts
-after every iteration for the store domain, brand tokens from the
-prefetched homepage, absolute store URLs, and email addresses, and
-reopens the task with line-level feedback on a hit.
+`plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. Every iteration
+browser has the storefront origin as its base URL, so `navigate` opens a
+site path such as `/cart`. `src/explore/browser.ts` also gives the agent
+its own `snapshot` tool. It shows at most 50,000 characters of the
+accessibility tree. A longer tree comes in parts. A part ends at a line
+end; only a line longer than the limit is cut inside the line. The note
+after a part gives the `offset` of the next part. `@shop-gym/browser`
+itself keeps the whole snapshot. The planner
+emits the same 14 canonical Plan tasks, the fixed areas
+(`FIXED_AREAS`), in every run on every platform: 11 for the surfaces
+that every storefront has (homepage, header and departments, cart,
+product, collection, predictive search, checkout, account, footer, info
+pages, floating widgets) and three marketplace ones (`product_reviews`,
+`related_products`, `search_results`). Their
+briefs use platform-neutral words (for example, `cart_drawer` covers
+any cart surface) and name the Capabilities that each task fills;
+`homepage_sections` fills the `shop` block. The briefs keep the executor
+on the storefront pages that a visitor sees: `collection_filters` starts
+on a department or category landing page, not a search results page;
+`product_reviews` scrolls a product page to its review block and skips
+an all-reviews page behind a sign-in; `search_predictive` snapshots the
+suggestion dropdown and captures no network or API request. A brief
+that the planner makes more specific keeps these rules.
+Each executor iteration writes `parts/<task_id>.md` and
+`parts/<task_id>.caps.json`. An `anonymization` verifier scans the
+current task's `parts/<task_id>.md` after every iteration for the store
+domain, brand tokens from the prefetched homepage, absolute store URLs,
+and email addresses, and reopens the task with line-level feedback on a
+hit. A task gets at most two such reopens; the next hit blocks it with a
+note that names the fragment.
+
+Brand tokens come from the brand segment of the homepage `<title>` and
+from `og:site_name`. The title splits at ` | `, ` - `, ` : ` and similar
+separators, and after `.`, `!` or `?` that a space follows. The brand
+segment is the one that matches a hostname label when spaces and
+punctuation are removed; when no segment matches, every segment counts.
+The `brandTerms` option adds words or phrases, such as sub-brands, to
+the markers. A term of more than one word matches as a phrase. The terms
+are kept in `brand_terms.json` in `outDir`, outside the published files,
+and a later call without `brandTerms` uses them again. After synthesis,
+the final Anonymization scan (`publishedLeaks`) checks `manual.md`,
+`capabilities.json` and `stats.json` (only the values of the JSON files)
+for the same markers. A hit fails the `synthesize` step with an
+`AnonymizationLeakError` that lists each `file:line`, and `manual.md` is
+not written.
+
+The scan matches only these markers. The prompts carry the other rules:
+the executors write only what they saw and leave the rest `null` or
+"unknown"; the synthesis prompt keeps only what the parts show and does
+not contradict `capabilities.json`; and both put site-specific lists,
+internal request names and the site's own feature names into generic
+words.
 
 ```ts
 import { loadCredentials } from '@shop-gym/core';
@@ -104,6 +184,7 @@ Options: `outDir` (defaults to `outputs/shop_manuals/<domain>/<run_id>/`),
 `model`, `maxIters`, `timeoutMs`, `rateLimitMs`, `from` (force a step and
 its dependents: `prefetch` | `explore` | `merge` | `synthesize`),
 `forceResume` (resume a harness run that ended in a refused status),
+`focus` (a hint that keeps the planner in one part of the site),
 `runtime` / `llm` (inject an `AgentRuntime` / `LlmClient`, used by tests),
 `onEvent`, `log`, `signal`.
 
@@ -124,6 +205,13 @@ blocked when the run ends does not cover its area, so an unfinished,
 failed or skipped area is a gap. When the plan has a Plan task with the
 area's own name (for example `header_navigation`), only that task can
 cover the area.
+
+The merge step also writes `fixed_area_gaps`: one `{ area, reason }`
+entry for each fixed area whose Plan task did not end done, whatever the
+prefetch shows. The reason is one line: `not in the plan`, `not started
+when the run ended`, `in progress when the run ended`, or `blocked:`
+with the text that the executor added after the brief that the planner
+wrote.
 
 Storefront exploration never tries to pass a bot check. Prefetch stops
 with `ShopUnreachableError` reason `bot_check` when the homepage is a
@@ -161,7 +249,7 @@ pipeline runner; `GEN_STEPS` lists them in order:
 
 | Step | Reads | Writes |
 | --- | --- | --- |
-| `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json`; the checked-in Standard sub-manual `src/gen/manual_merge/standard_sub_manual.md` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section); `parts/` holds the six Sub-manuals cut from `manual.md` and the shop's copy of the Standard sub-manual as `parts/standard.md`. Fusion: for each observed `## Account` or `## Checkout` section in `manual.md`, one LLM call fuses the notes into the copy. Observed labels and layout win. Unsupported behavior and the labels that the browser steps check keep the standard text. With no observed notes, the copy is unchanged and there is no LLM call |
+| `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json`; the checked-in Standard sub-manual `src/gen/manual_merge/standard_sub_manual.md` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section); `parts/` holds the six Sub-manuals cut from `manual.md` and the shop's copy of the Standard sub-manual as `parts/standard.md`. Fusion: for each observed `## Account` or `## Checkout` section in `manual.md`, one LLM call fuses the notes into the copy. Observed labels and layout win. Unsupported behavior and the labels that the browser steps check keep the standard text. With no observed notes, the copy is unchanged and there is no LLM call. Merged stats take the totals only from the `catalog_endpoint` seeds; the merged `source` is `observed_sample` when any seed is, and `sample_size` adds up the seeds |
 | `data_synth` | `manual/`; with `sourceDataDir` (`--data`), also `products.json`, `collections.json` and `images/` of that Dataset | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce`, `reviews` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
 | `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity that includes the product and variant of each Review, valid Discount codes, seeded order totals and discounts that follow the backend pricing rules, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
 | `build` | `data/`, `manual/`, `data_validation.json` | `runs/build/` via `build.runBuildLoop` (seed staged in `.shop_gen/build_seed/`); a final status other than `completed` fails the step so the next run resumes it |
