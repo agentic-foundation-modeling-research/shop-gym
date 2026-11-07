@@ -37,6 +37,14 @@ _Avoid_: real shop, source storefront, original shop
 The ShopArena process (`shopgym explore`) that browses one Live storefront and writes one Shop Manual.
 _Avoid_: ShopExplore, explore (alone)
 
+**Bot check**:
+A page that a site shows in place of the page that was asked for, to find out whether the visitor is a person, for example a Cloudflare challenge, a captcha page, an interstitial page with one button to go on, or a rate-limit page served with HTTP 503. Storefront exploration finds it by markers in the page HTML and never tries to pass it: its Browser tools refuse to click, type, select or press on it. A bot-check homepage stops prefetch. In a Harness run, the Plan task that meets a Bot check is marked blocked with the note "bot check", and two Iterations in a row with a Bot check end the run with a Caller stop.
+_Avoid_: captcha (for all kinds), block page
+
+**Navigation cap**:
+The fixed number of `navigate` calls (200) that one run of the explore step may make, over all its Iterations. It is a constant, not an option, and a resumed run starts a new count. At the cap, `navigate` refuses, and the run ends with a Caller stop after that Iteration.
+_Avoid_: page budget, navigation limit
+
 **Shop Manual**:
 The anonymized description of one storefront's structure, features, and UX: prose in `manual.md`, Capabilities in `capabilities.json`, and catalog statistics in `stats.json`.
 _Avoid_: manual (alone), seed manual, Seed Shop Manual

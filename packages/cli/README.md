@@ -35,8 +35,10 @@ shopgym explore <url> [--out <dir>] [--model <ref>] [--max-iters <n>]
 `--from` must be one of `prefetch`, `explore`, `merge`, `synthesize`.
 `--focus` gives the planner a hint to explore one part of the site, for example
 `--focus "Video Games"`; `manifest.json` records it, and a re-run on the same
-`--out` must pass the same focus. Prints the manual path on stdout; exits 1 when
-the run does not finish with status `completed`.
+`--out` must pass the same focus. Prints the manual path on stdout. Exits 0
+when the run finishes with status `completed`, or with `stopped` (exploration
+stopped it on bot checks or at the navigation cap and still wrote the manual);
+exits 1 for any other status.
 
 `--brand-term` is repeatable. Each one adds a brand word or phrase, such
 as a sub-brand, that the manual must not name. The Anonymization

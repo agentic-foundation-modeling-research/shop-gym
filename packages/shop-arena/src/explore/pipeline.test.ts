@@ -16,13 +16,17 @@ import { StepFailedError } from '@shop-gym/core';
 import { NOTE_PREFIX, ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { NAVIGATION_CAP } from './browser.js';
 import type { FixedAreaGap } from './coverage.js';
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
 import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
 import {
+  BOT_CHECK_PAGE,
   type FixturePage,
   type FixtureSite,
   GENERIC_SITE_HOSTNAME,
+  INTERSTITIAL_PAGE,
+  RATE_LIMIT_PAGE,
   genericSitePages,
   startFixtureSite,
 } from './testing.js';
@@ -1062,6 +1066,74 @@ function genericScripts(siteUrl: string): readonly FakeScript[] {
   ];
 }
 
+/** The Plan tasks of the bot-check plan, highest priority first. */
+const BOT_CHECK_PLAN_TASKS = [
+  ['homepage_sections', 'capture every section below the hero', 9],
+  ['product_variants', 'open a product page; capture the variant selectors', 8],
+  ['header_navigation', 'capture the department menu and its sub-levels', 7],
+  ['footer', 'capture the footer link groups', 6],
+] as const;
+
+type BotCheckTaskId = (typeof BOT_CHECK_PLAN_TASKS)[number][0];
+
+/**
+ * `plan.md` with four Plan tasks. A task in `done` is `[x]`; a task in
+ * `botChecked` is `[!]` with the note "bot check", as the executor writes
+ * it after a bot check; every other task is pending.
+ */
+function botCheckPlan(
+  done: readonly BotCheckTaskId[],
+  botChecked: readonly BotCheckTaskId[] = [],
+): string {
+  const lines = BOT_CHECK_PLAN_TASKS.map(([id, brief, priority]) => {
+    if (botChecked.includes(id)) {
+      return `- [!] ${id} ${NOTE_PREFIX} ${brief}; bot check [priority: ${priority}]`;
+    }
+    return `- [${done.includes(id) ? 'x' : ' '}] ${id} ${NOTE_PREFIX} ${brief} [priority: ${priority}]`;
+  });
+  return `# Plan - General Marketplace
+
+A general marketplace with department menus and product pages.
+
+## Tasks
+
+${lines.join('\n')}
+
+## Omitted Areas
+
+(none)
+`;
+}
+
+/** The part of `id`, written by an executor that finished it. */
+function finishedPart(id: BotCheckTaskId): Record<string, string> {
+  return { [`artifact/parts/${id}.md`]: GENERIC_HOMEPAGE.replace('Homepage Sections', id) };
+}
+
+/** The tool results of one Iteration, in call order. */
+async function toolResults(runDir: string, iterId: string): Promise<string[]> {
+  const { steps } = await readTrajectory(join(runDir, 'iters', iterId, 'trajectory.json'));
+  return steps.flatMap((step) => (step.kind === 'tool_result' ? [step.output] : []));
+}
+
+/**
+ * The tool results of a run on `url` with one executor Iteration: it makes
+ * `toolCalls` and marks its Plan task blocked with the note "bot check".
+ */
+async function blockedIterationResults(
+  url: string,
+  toolCalls: NonNullable<FakeScript['toolCalls']>,
+): Promise<string[]> {
+  const { result } = await explore({
+    url,
+    maxIters: 1,
+    scripts: [
+      { writeFiles: { 'plan.md': botCheckPlan([]) } },
+      { writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) }, toolCalls },
+    ],
+  });
+  return toolResults(result.runDir, 'exec-0001');
+}
 describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
   let site: FixtureSite;
 
@@ -1395,6 +1467,283 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
 
     expectShopBlockOwner(promptText(runtime.requests[0]?.prompt ?? ''));
+  });
+
+  it.each([
+    ['a captcha page (HTTP 200)', BOT_CHECK_PAGE],
+    ['a captcha page (HTTP 503)', { ...BOT_CHECK_PAGE, status: 503 }],
+    ['an interstitial page', INTERSTITIAL_PAGE],
+    ['a rate-limit page', RATE_LIMIT_PAGE],
+  ])('stops prefetch with bot_check when the homepage is %s', async (_, homepage) => {
+    const blocked = await startFixtureSite((origin) => ({
+      ...genericSitePages(origin),
+      '/': homepage,
+    }));
+    const runtime = new FakeRuntime(genericScripts(blocked.url));
+    try {
+      await expect(
+        exploreStorefront({
+          url: blocked.url,
+          outDir,
+          model: 'anthropic/test-model',
+          rateLimitMs: 0,
+          credentials: CREDENTIALS,
+          runtime,
+          llm: new StubLlm(),
+        }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof StepFailedError &&
+          error.cause instanceof ShopUnreachableError &&
+          error.cause.reason === 'bot_check',
+      );
+    } finally {
+      await blocked.close();
+    }
+    expect(runtime.requests).toHaveLength(0);
+    expect(existsSync(join(outDir, 'run'))).toBe(false);
+  });
+
+  it('blocks a Plan task that meets a bot check and goes on with the run', async () => {
+    const botCheck = { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } };
+    const product = { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001` } };
+    // Bot checks in exec-0001 and exec-0003 are not in a row, so the run does not stop.
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: [
+        { writeFiles: { 'plan.md': botCheckPlan([]) } },
+        {
+          writeFiles: { 'plan.md': botCheckPlan([], ['homepage_sections']) },
+          toolCalls: [botCheck],
+        },
+        {
+          writeFiles: {
+            ...finishedPart('product_variants'),
+            'plan.md': botCheckPlan(['product_variants'], ['homepage_sections']),
+          },
+          toolCalls: [product],
+        },
+        {
+          writeFiles: {
+            'plan.md': botCheckPlan(
+              ['product_variants'],
+              ['homepage_sections', 'header_navigation'],
+            ),
+          },
+          toolCalls: [botCheck],
+        },
+        {
+          writeFiles: {
+            ...finishedPart('footer'),
+            'plan.md': botCheckPlan(
+              ['product_variants', 'footer'],
+              ['homepage_sections', 'header_navigation'],
+            ),
+          },
+          toolCalls: [product],
+        },
+      ],
+    });
+
+    expect(result.finalStatus).toBe('completed');
+    expect(runtime.requests).toHaveLength(5);
+    const [notice] = await toolResults(result.runDir, 'exec-0001');
+    expect(notice).toContain('this page is a bot check');
+    expect(notice).toContain('Do not try to pass it');
+    expect(notice).toContain('`[!]`');
+    expect(notice).toContain('"bot check"');
+    expect(await toolResults(result.runDir, 'exec-0002')).not.toEqual(
+      expect.arrayContaining([expect.stringContaining('bot check')]),
+    );
+    const manifest = readJson(result.manifestPath);
+    expect(manifest).toMatchObject({
+      harness_status: 'completed',
+      plan_tasks_done: 2,
+      plan_tasks_blocked: 2,
+      stop: null,
+    });
+  });
+
+  it('stops the run after two Iterations in a row with a bot check and still publishes the manual', async () => {
+    const botCheck = { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } };
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: [
+        { writeFiles: { 'plan.md': botCheckPlan([]) } },
+        {
+          writeFiles: {
+            ...finishedPart('homepage_sections'),
+            'plan.md': botCheckPlan(['homepage_sections']),
+          },
+          toolCalls: [{ tool: 'snapshot', arguments: {} }],
+        },
+        {
+          writeFiles: { 'plan.md': botCheckPlan(['homepage_sections'], ['product_variants']) },
+          toolCalls: [botCheck],
+        },
+        {
+          writeFiles: {
+            'plan.md': botCheckPlan(
+              ['homepage_sections'],
+              ['product_variants', 'header_navigation'],
+            ),
+          },
+          toolCalls: [botCheck],
+        },
+        { writeFiles: { ...finishedPart('footer') }, reply: 'never runs' },
+      ],
+    });
+
+    expect(runtime.requests).toHaveLength(4);
+    expect(result.finalStatus).toBe('stopped');
+    expect(result.stop).toEqual({ reason: 'bot_check', iteration: 'exec-0003' });
+    expect(readJson(join(result.runDir, 'run.json'))).toMatchObject({
+      finalStatus: 'stopped',
+      stopReason: 'bot_check',
+    });
+    expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
+    const manifest = readJson(result.manifestPath);
+    expect(manifest).toMatchObject({
+      harness_status: 'stopped',
+      plan_tasks_done: 1,
+      plan_tasks_blocked: 2,
+      coverage_gaps: ['footer', 'header_navigation'],
+      stop: {
+        reason: 'bot_check',
+        iteration: 'exec-0003',
+        blocked_tasks: ['product_variants', 'header_navigation'],
+      },
+    });
+  });
+
+  it('finds a bot check after a browser action other than navigate', async () => {
+    const [, product, back] = await blockedIterationResults(site.url, [
+      { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } },
+      { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001` } },
+      { tool: 'back', arguments: {} },
+    ]);
+    expect(product).not.toContain('bot check');
+    expect(back).toContain('Went back');
+    expect(back).toContain('this page is a bot check');
+  });
+
+  it.each([
+    ['a Shopify shop', () => ({ url: baseUrl, scripts: SCRIPTS })],
+    ['a generic site', () => ({ url: site.url, scripts: genericScripts(site.url) })],
+  ])(
+    'tells the planner and the executor on %s never to act on a bot-check page',
+    async (_, options) => {
+      const { runtime } = await explore(options());
+
+      const [planner, executor] = runtime.requests.map((request) =>
+        promptText(request.prompt).replace(/\s+/g, ' '),
+      );
+      const rule = 'Never click, type or submit on an interstitial or bot-check page';
+      expect(planner).toContain(rule);
+      expect(planner).toContain('plan only from the pages that you could read');
+      expect(executor).toContain(rule);
+      expect(executor).toContain('Mark your task `[!]` with the reason "bot check"');
+    },
+  );
+
+  it('refuses page actions on a bot-check page and allows them again after back', async () => {
+    const [, , press, click, type, select, back, pressAfterBack] = await blockedIterationResults(
+      site.url,
+      [
+        { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001` } },
+        { tool: 'navigate', arguments: { url: `${site.url}/bot-check` } },
+        { tool: 'press', arguments: { key: 'Enter' } },
+        { tool: 'click', arguments: { ref: 'e1' } },
+        { tool: 'type', arguments: { ref: 'e1', text: 'abc', submit: true } },
+        { tool: 'select', arguments: { ref: 'e1', value: 'abc' } },
+        { tool: 'back', arguments: {} },
+        { tool: 'press', arguments: { key: 'Tab' } },
+      ],
+    );
+    for (const [tool, output] of [
+      ['press', press],
+      ['click', click],
+      ['type', type],
+      ['select', select],
+    ]) {
+      expect(output).toContain(`${tool} refused`);
+      expect(output).toContain('this page is a bot check');
+    }
+    // The focused captcha input would send the form on Enter.
+    expect(site.requests.some((request) => request.path.startsWith('/errors/'))).toBe(false);
+    expect(back).toContain('Went back');
+    expect(back).not.toContain('bot check');
+    expect(pressAfterBack).toContain('Pressed Tab');
+  });
+
+  it.each([
+    ['an interstitial page', '/interstitial'],
+    ['a rate-limit page served with HTTP 503', '/rate-limit'],
+  ])('finds a bot check on %s', async (_, path) => {
+    const [navigate] = await blockedIterationResults(site.url, [
+      { tool: 'navigate', arguments: { url: `${site.url}${path}` } },
+    ]);
+    expect(navigate).toContain('this page is a bot check');
+  });
+
+  it('does not take a normal error page for a rate-limit page', async () => {
+    const errors = await startFixtureSite((origin) => ({
+      ...genericSitePages(origin),
+      '/server-error': { ...RATE_LIMIT_PAGE, status: 500 },
+      '/unavailable': {
+        status: 503,
+        contentType: 'text/html',
+        body: '<!doctype html><html><head><title>Back soon</title></head><body>Down for maintenance.</body></html>',
+      },
+    }));
+    try {
+      const [serverError, unavailable] = await blockedIterationResults(errors.url, [
+        { tool: 'navigate', arguments: { url: `${errors.url}/server-error` } },
+        { tool: 'navigate', arguments: { url: `${errors.url}/unavailable` } },
+      ]);
+      expect(serverError).toContain('Title: Sorry! Something went wrong!');
+      expect(serverError).not.toContain('bot check');
+      expect(unavailable).toContain('Title: Back soon');
+      expect(unavailable).not.toContain('bot check');
+    } finally {
+      await errors.close();
+    }
+  });
+
+  it('refuses navigate at the navigation cap and stops the run', async () => {
+    const search = { tool: 'navigate', arguments: { url: `${site.url}/search?q=cap` } };
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: [
+        { writeFiles: { 'plan.md': botCheckPlan([]) } },
+        {
+          writeFiles: {
+            ...finishedPart('homepage_sections'),
+            'plan.md': botCheckPlan(['homepage_sections']),
+          },
+          toolCalls: Array.from({ length: NAVIGATION_CAP + 1 }, () => search),
+        },
+        { writeFiles: { ...finishedPart('footer') }, reply: 'never runs' },
+      ],
+    });
+
+    const results = await toolResults(result.runDir, 'exec-0001');
+    expect(results).toHaveLength(NAVIGATION_CAP + 1);
+    expect(results.at(-2)).toContain('Navigated to');
+    expect(results.at(-1)).toContain(
+      `navigate refused: this run has made its cap of ${NAVIGATION_CAP}`,
+    );
+    expect(site.requests.filter((request) => request.path === '/search?q=cap')).toHaveLength(
+      NAVIGATION_CAP,
+    );
+    expect(runtime.requests).toHaveLength(2);
+    expect(result.finalStatus).toBe('stopped');
+    expect(result.stop).toEqual({ reason: 'navigation_cap', iteration: 'exec-0001' });
+    expect(readJson(result.manifestPath)).toMatchObject({
+      harness_status: 'stopped',
+      plan_tasks_done: 1,
+      stop: { reason: 'navigation_cap', iteration: 'exec-0001', blocked_tasks: [] },
+    });
   });
 });
 

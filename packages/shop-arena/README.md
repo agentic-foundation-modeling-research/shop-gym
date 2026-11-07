@@ -213,6 +213,33 @@ when the run ended`, `in progress when the run ended`, or `blocked:`
 with the text that the executor added after the brief that the planner
 wrote.
 
+Storefront exploration never tries to pass a bot check. Prefetch stops
+with `ShopUnreachableError` reason `bot_check` when the homepage is a
+captcha, interstitial or rate-limit page (markers in
+`src/explore/bot-check.ts`; a rate-limit marker counts only with HTTP
+503, so a normal error page with the same words is not a bot check); a
+Cloudflare challenge homepage keeps the reason `cloudflare_challenge`. In
+the explore step, after each Browser tool call that loaded a page (not
+only `navigate`), the page HTML and the HTTP status of the page are
+checked for the same markers. On a bot check, the tool result tells the
+executor not to try to pass the page and to mark its Plan task blocked
+(`[!]`) with the note "bot check". While the page is a bot check,
+`click`, `type`, `select` and `press` are refused with the same notice,
+and the page does not change; `navigate` and `back` stay allowed. The
+planner and executor prompts have the same rule. After two
+Iterations in a row with a bot check (the planner Iteration counts too),
+the explore step ends the harness run with a caller stop and the reason
+`bot_check`. `navigate` refuses after `NAVIGATION_CAP` (200) calls in one
+run of the explore step, and the run then stops after that Iteration with
+the reason `navigation_cap`. A resume with `from: 'explore'` starts a new
+count, as it gets a new iteration budget. A stopped
+run has the final status `stopped`. Merge and synthesize still run on the
+finished parts, the unfinished areas are coverage gaps, and
+`manifest.json` records `stop: { reason, iteration, blocked_tasks }`
+(`null` when the run did not stop early). `ExploreResult.stop` gives the
+reason and the Iteration, and `shopgym explore` exits 0 for `completed`
+and `stopped`.
+
 ## Gen
 
 `generateShop(config, deps)` (also under the `gen` namespace export)

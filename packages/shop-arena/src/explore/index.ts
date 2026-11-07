@@ -51,6 +51,8 @@ export {
   type ExploreOutcome,
   type ExploreResult,
   type ExploreStep,
+  type ExploreStop,
+  type ExploreStopReason,
   type Manifest,
   exploreStorefront,
   parseModel,

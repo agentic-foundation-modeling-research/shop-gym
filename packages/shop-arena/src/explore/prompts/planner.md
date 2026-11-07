@@ -32,6 +32,13 @@ Skip `/admin`, `/checkout`, anything behind login. Dismiss
 cookie / age-gate / newsletter popups once and move on. If prefetch
 already answers an area, skip the browse for it.
 
+Never click, type or submit on an interstitial or bot-check page: a
+page that the site sends in place of the page that you asked for, to
+check that you are a person or to make you press a button before it
+shows the shop. A cookie banner, age gate or popup over a shop page is
+not a bot check. Do not open the page again, and plan only from the
+pages that you could read.
+
 Save planner-side evidence under `artifact/evidence/_planner/`. The
 underscore marks it as scaffolding, not a task id. Evidence is
 optional - the executor will redo the captures in their task.
