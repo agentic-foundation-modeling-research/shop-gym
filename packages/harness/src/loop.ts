@@ -3,11 +3,12 @@
  *
  * One planner iteration writes `plan.md`; executor iterations then take the
  * highest-priority pending task one at a time until the plan drains, the
- * budget runs out, or a terminal failure occurs. Every iteration leaves a
- * `trajectory.json`, `metadata.json`, `plan.before.md` and `plan.after.md`
- * under `iters/<iterId>/`, and `run.json` is rewritten after each one. The
- * caller's `onIterationEnd` then hears whether the iteration was kept or
- * abandoned.
+ * budget runs out, a terminal failure occurs, or the caller stops the run.
+ * Every iteration leaves a `trajectory.json`, `metadata.json`,
+ * `plan.before.md` and `plan.after.md` under `iters/<iterId>/`, and
+ * `run.json` is rewritten after each one. The caller's `onIterationEnd` then
+ * hears whether the iteration was kept or abandoned, and can return a stop
+ * request that ends the run before the next iteration.
  *
  * Mode is inferred from `runDir`: empty or absent starts fresh, populated
  * resumes. Resume skips the planner when its trajectory exists, quarantines
@@ -145,6 +146,7 @@ class LoopState {
   private execIterBaseline = 0;
   private trajectoryPaths: string[] = [];
   private finalStatus: FinalStatus | undefined;
+  private stopReason: string | undefined;
   private readonly verifierRuns: VerifierRun[] = [];
   /** Tasks that timed out or violated protocol in this attempt; never re-selected. */
   private readonly skipped = new Set<string>();
@@ -170,7 +172,7 @@ class LoopState {
     this.trajectoryPaths = [...scan.trajectoryPaths];
   }
 
-  /** Run the planner. Returns false on terminal failure. */
+  /** Run the planner. Returns false when the run ends: a terminal failure or a caller stop. */
   async runPlanner(): Promise<boolean> {
     const planDir = iterDirPath(this.workspace.itersDir, PLAN_ITER_ID);
     await fs.mkdir(planDir);
@@ -211,8 +213,7 @@ class LoopState {
       throw error;
     }
     await this.rewriteRunSummary();
-    await this.endIteration(PLAN_ITER_ID, null, 'kept');
-    return true;
+    return this.endIteration(PLAN_ITER_ID, null, 'kept');
   }
 
   async runExecutorLoop(): Promise<void> {
@@ -243,7 +244,8 @@ class LoopState {
   }
 
   /**
-   * One executor iteration. Returns false on terminal failure.
+   * One executor iteration. Returns false when the run ends: a terminal
+   * failure or a caller stop.
    *
    * A timeout quarantines the iteration dir and leaves the task pending for
    * a future resume. A protocol violation or an unparseable plan restores
@@ -272,8 +274,7 @@ class LoopState {
       this.skipped.add(selected.id);
       this.hadTimeout = true;
       await this.rewriteRunSummary();
-      await this.endIteration(execId, selected.id, 'timeout');
-      return true;
+      return this.endIteration(execId, selected.id, 'timeout');
     }
     await this.workspace.snapshotPlan(planAfter);
     await writeTrajectory(path.join(execDir, TRAJECTORY_FILENAME), outcome.trajectory);
@@ -290,8 +291,7 @@ class LoopState {
         throw error;
       }
       await this.forceBlock(planBefore, planAfter, selected.id, `invalid_plan: ${error.message}`);
-      await this.endIteration(execId, selected.id, 'invalid_plan');
-      return true;
+      return this.endIteration(execId, selected.id, 'invalid_plan');
     }
 
     const protocol = mergeProtocolResults(execId, [
@@ -324,12 +324,10 @@ class LoopState {
     if (!protocol.passed) {
       const note = `protocol_violation: ${protocol.violations.join(', ')}`;
       await this.forceBlock(planBefore, planAfter, selected.id, note);
-      await this.endIteration(execId, selected.id, 'protocol_violation');
-      return true;
+      return this.endIteration(execId, selected.id, 'protocol_violation');
     }
     await this.rewriteRunSummary();
-    await this.endIteration(execId, selected.id, 'kept');
-    return true;
+    return this.endIteration(execId, selected.id, 'kept');
   }
 
   /**
@@ -429,23 +427,36 @@ class LoopState {
     return false;
   }
 
-  /** End the run because iteration `iterId` failed with `status`, then report that iteration. */
+  /**
+   * End the run because iteration `iterId` failed with `status`, then report
+   * that iteration. A stop the caller returns here is ignored: the failure
+   * status stands.
+   */
   private async terminateAfter(
     iterId: string,
     taskId: string | null,
     status: Exclude<IterationOutcome, 'kept'>,
   ): Promise<false> {
     await this.terminate(status);
-    await this.endIteration(iterId, taskId, status);
+    await this.config.onIterationEnd?.({ iterId, taskId, outcome: status });
     return false;
   }
 
+  /**
+   * Report an iteration after which the run continues. Returns false when
+   * the caller asks to stop; the run then ends as `stopped` with its reason.
+   */
   private async endIteration(
     iterId: string,
     taskId: string | null,
     outcome: IterationOutcome,
-  ): Promise<void> {
-    await this.config.onIterationEnd?.({ iterId, taskId, outcome });
+  ): Promise<boolean> {
+    const request = await this.config.onIterationEnd?.({ iterId, taskId, outcome });
+    if (request === undefined) {
+      return true;
+    }
+    this.stopReason = request.stopReason;
+    return this.terminate('stopped');
   }
 
   async finalize(): Promise<PlanExecLoopResult> {
@@ -463,9 +474,11 @@ class LoopState {
         throw error;
       }
     }
+    const stopField = this.stopReason === undefined ? {} : { stopReason: this.stopReason };
     const result: PlanExecLoopResult = {
       runDir: this.workspace.runDir,
       finalStatus,
+      ...stopField,
       planIterCount: this.planIterCount,
       execIterCount: this.execIterCount,
       trajectoryPaths: [...this.trajectoryPaths],
@@ -485,7 +498,12 @@ class LoopState {
         verifiers: (this.config.verifiers ?? []).map((verifier) => verifier.name),
         resumeHistory: [
           ...this.priorHistory,
-          { startedAt: this.attemptStartedAt, endedAt: new Date().toISOString(), finalStatus },
+          {
+            startedAt: this.attemptStartedAt,
+            endedAt: new Date().toISOString(),
+            finalStatus,
+            ...stopField,
+          },
         ],
       },
     });

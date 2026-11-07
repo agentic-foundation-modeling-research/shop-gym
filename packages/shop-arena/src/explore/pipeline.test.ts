@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -118,6 +118,50 @@ const SCRIPTS: readonly FakeScript[] = [
     reply: 'cart done',
   },
 ];
+
+/** A fragment with every marketplace Capability of schema 0.3. */
+const MARKETPLACE_CAPS = {
+  departments: { has_department_menu: true, department_count: 24, max_depth: 3 },
+  search: { facets: ['brand', 'price', 'rating'], sort: ['featured', 'price_asc', 'newest'] },
+  product: {
+    has_rating_histogram: true,
+    review_filters: ['star_rating', 'verified_purchase'],
+    related_product_types: ['bought_together', 'also_viewed', 'sponsored'],
+  },
+};
+
+const MARKETPLACE_SCRIPTS: readonly FakeScript[] = [
+  { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+  {
+    writeFiles: {
+      'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+      'artifact/parts/homepage_sections.caps.json': JSON.stringify(MARKETPLACE_CAPS),
+      'plan.md': PLAN('x', ' '),
+    },
+    reply: 'homepage done',
+  },
+  {
+    writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') },
+    reply: 'cart done',
+  },
+];
+
+/** A `capabilities.json` that Storefront exploration published at schema 0.2. */
+const CAPABILITIES_0_2 = {
+  version: '0.2',
+  shop: { descriptor: 'Minimal Homeware Shop', category: null, currency: 'USD', tone: [] },
+  cart: { type: 'drawer', has_promo_input: true, has_upsells: null, has_shipping_estimate: null },
+  search: { trigger: 'icon', has_predictive: true, predictive_types: [], results_layout: null },
+};
+
+/** The capabilities JSON Schema that the agent constitution shows. */
+function constitutionSchema(systemPrompt: string | undefined): {
+  properties: Record<string, { default?: unknown; properties?: Record<string, unknown> }>;
+} {
+  const block = /```json\n([\s\S]*?)\n```/.exec(systemPrompt ?? '')?.[1];
+  if (block === undefined) throw new Error('the constitution has no JSON Schema block');
+  return JSON.parse(block);
+}
 
 class StubLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
@@ -301,6 +345,46 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
       'product_detail',
       'search_results',
     ]);
+  });
+
+  it('shows the 0.3 schema to the agent and publishes the marketplace Capabilities', async () => {
+    const { result, runtime } = await explore({ scripts: MARKETPLACE_SCRIPTS });
+
+    const schema = constitutionSchema(runtime.requests[0]?.systemPrompt);
+    expect(schema.properties.version?.default).toBe('0.3');
+    expect(Object.keys(schema.properties.departments?.properties ?? {})).toEqual([
+      'has_department_menu',
+      'department_count',
+      'max_depth',
+    ]);
+    expect(Object.keys(schema.properties.search?.properties ?? {})).toEqual(
+      expect.arrayContaining(['facets', 'sort']),
+    );
+    expect(Object.keys(schema.properties.product?.properties ?? {})).toEqual(
+      expect.arrayContaining(['has_rating_histogram', 'review_filters', 'related_product_types']),
+    );
+
+    expect(result.steps.map((step) => step.status)).toEqual(['ran', 'ran', 'ran', 'ran']);
+    const capabilities = readJson(result.capabilitiesPath);
+    expect(capabilities.version).toBe('0.3');
+    expect(capabilities).toMatchObject(MARKETPLACE_CAPS);
+  });
+
+  it('synthesizes again from a capabilities.json at schema 0.2', async () => {
+    await explore({ scripts: SCRIPTS });
+    writeFileSync(join(outDir, 'capabilities.json'), JSON.stringify(CAPABILITIES_0_2));
+
+    const { result, llm } = await explore({ from: 'synthesize' });
+    expect(result.steps.map((step) => step.status)).toEqual([
+      'skipped',
+      'skipped',
+      'skipped',
+      'ran',
+    ]);
+    const prompt = String(llm.requests[0]?.prompt);
+    expect(prompt).toContain('"version": "0.2"');
+    expect(prompt).toContain('"has_department_menu": null');
+    expect(prompt).toContain('"facets": []');
   });
 
   it('skips every step on a second call with the same outDir', async () => {

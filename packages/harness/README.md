@@ -31,6 +31,9 @@ the model; the runtime executes each iteration in-process.
   harness kept it or abandoned it (timeout, invalid plan, protocol
   violation, runtime error). The harness never rolls back `artifact/`
   itself; a caller that wants abandoned edits gone does it in the hook.
+  The hook can return `{ stopReason }` to end the run before the next
+  iteration: the run ends with final status `stopped`, `run.json` records
+  the reason, and a later call resumes it without `force`.
 - `telemetry/` - iteration ids, `metadata.json` schema, secret scrubbing,
   atomic `run.json` writes, and `reconstruct(runDir)` for crashed runs.
 - `trace.ts` - `renderIterDir(iterDir)` renders an iteration's
