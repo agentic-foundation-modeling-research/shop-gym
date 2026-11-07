@@ -184,6 +184,46 @@ describe('mergeFragments', () => {
     ]);
   });
 
+  it('keeps a value when a later fragment writes null for it, without a conflict', () => {
+    fragment('a_footer.caps.json', { site_shell: { footer_groups: 6 } });
+    fragment('b_header.caps.json', { site_shell: { has_mega_menu: true, footer_groups: null } });
+    const { capabilities, conflicts } = mergeFragments(partsDir);
+    expect(capabilities.site_shell.footer_groups).toBe(6);
+    expect(capabilities.site_shell.has_mega_menu).toBe(true);
+    expect(conflicts).toEqual([]);
+  });
+
+  it('still rejects a later null for a list field', () => {
+    fragment('a_results.caps.json', { search: { facets: ['price', 'rating'] } });
+    fragment('b_header.caps.json', { search: { facets: null } });
+    expect(() => mergeFragments(partsDir)).toThrow(CapabilitiesValidationError);
+  });
+
+  it('fills a null with a later value without a conflict', () => {
+    fragment('a_header.caps.json', { search: { has_predictive: null } });
+    fragment('b_predictive.caps.json', { search: { has_predictive: true } });
+    const { capabilities, conflicts } = mergeFragments(partsDir);
+    expect(capabilities.search.has_predictive).toBe(true);
+    expect(conflicts).toEqual([]);
+  });
+
+  it('names the fragment that filled a null as the previous source of a later conflict', () => {
+    fragment('a_header.caps.json', { search: { has_predictive: null } });
+    fragment('b_predictive.caps.json', { search: { has_predictive: true } });
+    fragment('c_results.caps.json', { search: { has_predictive: false } });
+    const { capabilities, conflicts } = mergeFragments(partsDir);
+    expect(capabilities.search.has_predictive).toBe(false);
+    expect(conflicts).toEqual([
+      {
+        path: 'search.has_predictive',
+        previous_value: true,
+        previous_source: 'b_predictive.caps.json',
+        new_value: false,
+        new_source: 'c_results.caps.json',
+      },
+    ]);
+  });
+
   it('does not record a conflict when both fragments agree', () => {
     fragment('a.caps.json', { cart: { type: 'drawer' } });
     fragment('b.caps.json', { cart: { type: 'drawer' } });

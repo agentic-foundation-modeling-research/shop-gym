@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { anonymizationVerifier, brandTokens, leakScanner, scanParts } from './anonymization.js';
+import { anonymizationVerifier, brandTokens, leakScanner } from './anonymization.js';
 
 const HOST = 'brand-leakcanary.example.com';
 const HTML = `<!doctype html><html><head>
@@ -36,17 +36,19 @@ evidence/cart_drawer/snapshots/01-empty.md.
 - **UX Notes:** shipping estimate was not reachable without a region
 `;
 
+let runDir: string;
 let artifactDir: string;
 
 beforeEach(() => {
-  artifactDir = mkdtempSync(join(tmpdir(), 'anon-'));
-  mkdirSync(join(artifactDir, 'prefetch'));
+  runDir = mkdtempSync(join(tmpdir(), 'anon-'));
+  artifactDir = join(runDir, 'artifact');
+  mkdirSync(join(artifactDir, 'prefetch'), { recursive: true });
   mkdirSync(join(artifactDir, 'parts'));
   writeFileSync(join(artifactDir, 'prefetch', 'index.html'), HTML);
 });
 
 afterEach(() => {
-  rmSync(artifactDir, { recursive: true, force: true });
+  rmSync(runDir, { recursive: true, force: true });
 });
 
 describe('brandTokens', () => {
@@ -92,13 +94,14 @@ describe('leakScanner', () => {
 
 describe('anonymizationVerifier', () => {
   const verifier = anonymizationVerifier(`https://${HOST}`);
-  const ctx = () => ({
-    runDir: join(artifactDir, '..'),
+  const ctx = (selectedTaskId = 'cart_drawer') => ({
+    runDir,
     iterId: 'exec-0001',
-    selectedTaskId: 'cart_drawer',
+    selectedTaskId,
     plan: [],
     artifactDir,
   });
+  const leakyCart = `${CLEAN_PART}\nSee https://${HOST}/cart for details.\n`;
 
   it('is named and applies to every task', () => {
     expect(verifier.name).toBe('anonymization');
@@ -124,11 +127,49 @@ describe('anonymizationVerifier', () => {
     expect(result.details).toMatchObject({ leaks: 2 });
   });
 
-  it('scans only markdown parts', () => {
+  it('blocks the task and names its fragment after two reopens', async () => {
+    writeFileSync(join(artifactDir, 'parts', 'cart_drawer.md'), leakyCart);
+    const first = await verifier.run(ctx());
+    expect(first.verdict).toBe('fail');
+    expect(first.blockNote).toBeUndefined();
+    expect(first.feedback).toContain('1 of 2 reopens');
+    const second = await verifier.run(ctx());
+    expect(second.blockNote).toBeUndefined();
+    expect(second.feedback).toContain('2 of 2 reopens');
+    const third = await verifier.run(ctx());
+    expect(third).toMatchObject({
+      verdict: 'fail',
+      blockNote: 'parts/cart_drawer.md still identifies the storefront after 2 reopens',
+    });
+    expect(third.feedback).toContain('parts/cart_drawer.md:24');
+  });
+
+  it('keeps the reopen count for a new verifier, as a resumed run does', async () => {
+    writeFileSync(join(artifactDir, 'parts', 'cart_drawer.md'), leakyCart);
+    await verifier.run(ctx());
+    await verifier.run(ctx());
+    const resumed = await anonymizationVerifier(`https://${HOST}`).run(ctx());
+    expect(resumed.blockNote).toBeDefined();
+  });
+
+  it('counts the reopens of each task on its own', async () => {
+    writeFileSync(join(artifactDir, 'parts', 'cart_drawer.md'), leakyCart);
+    writeFileSync(join(artifactDir, 'parts', 'footer.md'), leakyCart);
+    await verifier.run(ctx());
+    await verifier.run(ctx());
+    const footer = await verifier.run(ctx('footer'));
+    expect(footer.blockNote).toBeUndefined();
+    expect(footer.feedback).toContain('1 of 2 reopens');
+  });
+
+  it('checks only the markdown fragment of the current task', async () => {
+    writeFileSync(join(artifactDir, 'parts', 'cart_drawer.md'), CLEAN_PART);
     writeFileSync(
-      join(artifactDir, 'parts', 'cart.caps.json'),
+      join(artifactDir, 'parts', 'cart_drawer.caps.json'),
       `{"shop":{"descriptor":"${HOST}"}}`,
     );
-    expect(scanParts(join(artifactDir, 'parts'), leakScanner(HOST, HTML))).toEqual([]);
+    writeFileSync(join(artifactDir, 'parts', 'footer.md'), `## Footer\n\nMade by ${HOST}.\n`);
+    await expect(verifier.run(ctx())).resolves.toEqual({ verdict: 'pass' });
+    expect((await verifier.run(ctx('footer'))).verdict).toBe('fail');
   });
 });

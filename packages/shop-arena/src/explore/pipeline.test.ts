@@ -4,15 +4,21 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
-import { type CompleteRequest, type Completion, type LlmClient, promptText } from '@shop-gym/agent';
+import {
+  type CompleteRequest,
+  type Completion,
+  type LlmClient,
+  promptText,
+  readTrajectory,
+} from '@shop-gym/agent';
 import { FakeRuntime, type FakeScript } from '@shop-gym/agent/testing';
 import { StepFailedError } from '@shop-gym/core';
-import { ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
+import { NOTE_PREFIX, ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { FixedAreaGap } from './coverage.js';
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
-import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT } from './prefetch.js';
+import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
 import { type FixtureSite, genericSitePages, startFixtureSite } from './testing.js';
 
 const CREDENTIALS = {} as const;
@@ -121,6 +127,17 @@ const SCRIPTS: readonly FakeScript[] = [
     reply: 'cart done',
   },
 ];
+
+/** An executor that writes the leaky homepage fragment again and marks it done. */
+const LEAKY_HOMEPAGE_ATTEMPT: FakeScript = {
+  writeFiles: {
+    'artifact/parts/homepage_sections.md': LEAKY_HOMEPAGE,
+    'plan.md': PLAN('x', ' '),
+  },
+  reply: 'homepage done (leaky)',
+};
+
+const HOMEPAGE_BLOCKED = `- [!] homepage_sections [priority: 9] ${NOTE_PREFIX} anonymization: parts/homepage_sections.md still identifies the storefront after 2 reopens`;
 
 /** A fragment with every marketplace Capability of schema 0.3. */
 const MARKETPLACE_CAPS = {
@@ -310,6 +327,13 @@ class StubLlm implements LlmClient {
   }
 }
 
+/** The fixture's guest carts, keyed by the `cart` cookie. */
+const carts = new Map<string, { variant_id: number; quantity: number }[]>();
+
+function cartToken(req: http.IncomingMessage): string | undefined {
+  return /(?:^|;\s*)cart=([^;]+)/.exec(req.headers.cookie ?? '')?.[1];
+}
+
 let server: http.Server;
 let baseUrl = '';
 let root: string;
@@ -329,8 +353,18 @@ beforeAll(async () => {
         return json(url.searchParams.get('page') === '1' ? PRODUCTS : { products: [] });
       case '/collections.json':
         return json(COLLECTIONS);
+      case '/cart/add': {
+        // A guest cart lives on the server, found by the `cart` cookie.
+        const token = cartToken(req) ?? `cart-${carts.size + 1}`;
+        const lines = carts.get(token) ?? [];
+        lines.push({ variant_id: Number(url.searchParams.get('id')), quantity: 1 });
+        carts.set(token, lines);
+        return res
+          .writeHead(200, { 'content-type': 'text/html', 'set-cookie': `cart=${token}; Path=/` })
+          .end('<html><head><title>Cart</title></head><body>Added</body></html>');
+      }
       case '/cart.js':
-        return json({ currency: 'USD', items: [] });
+        return json({ currency: 'USD', items: carts.get(cartToken(req) ?? '') ?? [] });
       case '/cart':
       case '/search':
         return res.writeHead(200, { 'content-type': 'text/html' }).end('<html>page</html>');
@@ -452,6 +486,91 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(llm.requests[0]?.model).toEqual({ provider: 'anthropic', id: 'test-model' });
   });
 
+  it('takes the shopify path when products.json returns a product list', async () => {
+    const { result, runtime } = await explore({ scripts: SCRIPTS });
+
+    expect(readJson(result.manifestPath).platform).toBe('shopify');
+    const paths = readJson(join(result.prefetchDir, 'prefetch.json')).entries.map(
+      (entry: { path: string }) => entry.path,
+    );
+    expect(paths).toEqual(
+      expect.arrayContaining(['/collections.json?limit=50', '/cart.js', '/pages/faq']),
+    );
+    expect(runtime.requests[0]?.prompt).toBe(
+      readFileSync(new URL('./prompts/planner.md', import.meta.url), 'utf8'),
+    );
+  });
+
+  it('reopens a leaking task twice, then blocks it without touching the other task', async () => {
+    const { result, runtime } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        LEAKY_HOMEPAGE_ATTEMPT,
+        LEAKY_HOMEPAGE_ATTEMPT,
+        LEAKY_HOMEPAGE_ATTEMPT,
+        {
+          writeFiles: {
+            'artifact/parts/cart_drawer.md': CART_PART,
+            'plan.md': PLAN('x', 'x').replace(/^- \[x\] homepage_sections .*$/m, HOMEPAGE_BLOCKED),
+          },
+          reply: 'cart done',
+        },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    // Planner, three homepage attempts, one cart attempt.
+    expect(runtime.requests).toHaveLength(5);
+    expect(runtime.requests[2]?.prompt).toContain('1 of 2 reopens');
+    expect(runtime.requests[3]?.prompt).toContain('2 of 2 reopens');
+    const planBeforeCart = readFileSync(join(outDir, 'run/iters/exec-0004/plan.before.md'), 'utf8');
+    expect(planBeforeCart).toContain(HOMEPAGE_BLOCKED);
+
+    // The leaky homepage fragment is still on disk: the cart task passes and
+    // does not see the homepage feedback.
+    expect(runtime.requests[4]?.prompt).toContain('selected_task_id: cart_drawer');
+    expect(runtime.requests[4]?.prompt).not.toContain('Anonymization check failed');
+    const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
+    expect(summary.verifierRuns.map((run) => [run.taskId, run.verdict])).toEqual([
+      ['homepage_sections', 'fail'],
+      ['homepage_sections', 'fail'],
+      ['homepage_sections', 'fail'],
+      ['cart_drawer', 'pass'],
+    ]);
+    expect(readJson(result.manifestPath)).toMatchObject({
+      plan_tasks_total: 2,
+      plan_tasks_done: 1,
+      plan_tasks_blocked: 1,
+    });
+  });
+
+  it('reports the area of an unfinished Plan task as a coverage gap', async () => {
+    // The budget ends after the homepage iteration, so cart_drawer stays pending.
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          reply: 'homepage done',
+        },
+      ],
+      maxIters: 1,
+    });
+
+    expect(result.finalStatus).toBe('budget_exhausted');
+    const manifest = readJson(result.manifestPath);
+    expect(manifest).toMatchObject({ plan_tasks_total: 2, plan_tasks_done: 1 });
+    expect(manifest.coverage_gaps).toEqual([
+      'cart',
+      'collection',
+      'product_detail',
+      'search_results',
+    ]);
+  });
+
   it('shows the 0.3 schema to the agent and publishes the marketplace Capabilities', async () => {
     const { result, runtime } = await explore({ scripts: MARKETPLACE_SCRIPTS });
 
@@ -490,33 +609,6 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(prompt).toContain('"version": "0.2"');
     expect(prompt).toContain('"has_department_menu": null');
     expect(prompt).toContain('"facets": []');
-  });
-
-  it('reports the area of an unfinished Plan task as a coverage gap', async () => {
-    // The budget ends after the homepage iteration, so cart_drawer stays pending.
-    const { result } = await explore({
-      scripts: [
-        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
-        {
-          writeFiles: {
-            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
-            'plan.md': PLAN('x', ' '),
-          },
-          reply: 'homepage done',
-        },
-      ],
-      maxIters: 1,
-    });
-
-    expect(result.finalStatus).toBe('budget_exhausted');
-    const manifest = readJson(result.manifestPath);
-    expect(manifest).toMatchObject({ plan_tasks_total: 2, plan_tasks_done: 1 });
-    expect(manifest.coverage_gaps).toEqual([
-      'cart',
-      'collection',
-      'product_detail',
-      'search_results',
-    ]);
   });
 
   it('plans the 14 fixed areas within 4 navigations and records each unfinished one as a gap with a reason', async () => {
@@ -558,21 +650,6 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expectShopBlockOwner(promptText(runtime.requests[0]?.prompt ?? ''));
   });
 
-  it('takes the shopify path when products.json returns a product list', async () => {
-    const { result, runtime } = await explore({ scripts: SCRIPTS });
-
-    expect(readJson(result.manifestPath).platform).toBe('shopify');
-    const paths = readJson(join(result.prefetchDir, 'prefetch.json')).entries.map(
-      (entry: { path: string }) => entry.path,
-    );
-    expect(paths).toEqual(
-      expect.arrayContaining(['/collections.json?limit=50', '/cart.js', '/pages/faq']),
-    );
-    expect(runtime.requests[0]?.prompt).toBe(
-      readFileSync(new URL('./prompts/planner.md', import.meta.url), 'utf8'),
-    );
-  });
-
   it('skips every step on a second call with the same outDir', async () => {
     await explore({ scripts: SCRIPTS });
     const { result, runtime, llm } = await explore({});
@@ -610,6 +687,120 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     ).rejects.toThrow(/manual response too short/);
     expect(existsSync(join(outDir, 'manual.md'))).toBe(false);
     expect(existsSync(join(outDir, 'capabilities.json'))).toBe(true);
+  });
+
+  it('starts every Iteration in a fresh browser, so a cart made in one is not in the next', async () => {
+    const readCart = [
+      { tool: 'navigate', arguments: { url: `${baseUrl}/cart.js` } },
+      { tool: 'snapshot', arguments: {} },
+    ];
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') } },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          toolCalls: [
+            { tool: 'navigate', arguments: { url: `${baseUrl}/cart/add?id=101` } },
+            ...readCart,
+          ],
+        },
+        {
+          writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') },
+          toolCalls: readCart,
+        },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    const cartSnapshot = async (iterId: string): Promise<string | undefined> => {
+      const { steps } = await readTrajectory(
+        join(result.runDir, 'iters', iterId, 'trajectory.json'),
+      );
+      return steps.flatMap((step) => (step.kind === 'tool_result' ? [step.output] : [])).at(-1);
+    };
+    // The snapshot shows the `/cart.js` body: one line, then no lines.
+    expect(await cartSnapshot('exec-0001')).toContain('variant_id');
+    expect(await cartSnapshot('exec-0002')).not.toContain('variant_id');
+  });
+
+  it('records where the browser of every Iteration started', async () => {
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') } },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+        },
+        { writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') } },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    for (const iterId of ['plan', 'exec-0001', 'exec-0002']) {
+      expect(readJson(join(result.runDir, 'iters', iterId, 'start_state.json')), iterId).toEqual({
+        url: `${baseUrl}/`,
+        cart: { items: [] },
+        error: null,
+      });
+    }
+  });
+
+  it('opens a site path from navigate on the storefront', async () => {
+    const { result } = await explore({
+      scripts: [
+        {
+          writeFiles: { 'plan.md': PLAN(' ', ' ') },
+          toolCalls: [{ tool: 'navigate', arguments: { url: '/cart' } }],
+        },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+        },
+        { writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') } },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    const { steps } = await readTrajectory(join(result.runDir, 'iters', 'plan', 'trajectory.json'));
+    expect(steps.find((step) => step.kind === 'tool_result')).toMatchObject({
+      isError: false,
+      output: expect.stringContaining(`Navigated to ${baseUrl}/cart\n`),
+    });
+  });
+
+  it('stops at the prefetch gates before any Iteration starts', async () => {
+    const gated = http.createServer((_req, res) =>
+      res.writeHead(200).end('User-agent: *\nDisallow: /\n'),
+    );
+    await new Promise<void>((resolve) => gated.listen(0, '127.0.0.1', resolve));
+    const runtime = new FakeRuntime(SCRIPTS);
+    try {
+      await expect(
+        exploreStorefront({
+          url: `http://127.0.0.1:${(gated.address() as AddressInfo).port}`,
+          outDir,
+          model: 'anthropic/test-model',
+          rateLimitMs: 0,
+          credentials: CREDENTIALS,
+          runtime,
+          llm: new StubLlm(),
+        }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof StepFailedError && error.cause instanceof ShopUnreachableError,
+      );
+    } finally {
+      await new Promise<void>((resolve) => gated.close(() => resolve()));
+    }
+    expect(runtime.requests).toHaveLength(0);
+    expect(existsSync(join(outDir, 'run'))).toBe(false);
   });
 
   it('resumes a refused harness run only with forceResume', async () => {
