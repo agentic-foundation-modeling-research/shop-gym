@@ -1,18 +1,26 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
-import { type CompleteRequest, type Completion, type LlmClient, promptText } from '@shop-gym/agent';
+import {
+  type CompleteRequest,
+  type Completion,
+  type LlmClient,
+  promptText,
+  readTrajectory,
+} from '@shop-gym/agent';
 import { FakeRuntime, type FakeScript } from '@shop-gym/agent/testing';
 import { StepFailedError } from '@shop-gym/core';
 import { NOTE_PREFIX, ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import type { FixedAreaGap } from './coverage.js';
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
-import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT } from './prefetch.js';
+import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
 import {
+  type FixturePage,
   type FixtureSite,
   GENERIC_SITE_HOSTNAME,
   genericSitePages,
@@ -137,6 +145,178 @@ const LEAKY_HOMEPAGE_ATTEMPT: FakeScript = {
 
 const HOMEPAGE_BLOCKED = `- [!] homepage_sections [priority: 9] ${NOTE_PREFIX} anonymization: parts/homepage_sections.md still identifies the storefront after 2 reopens`;
 
+/** A fragment with every marketplace Capability of schema 0.3. */
+const MARKETPLACE_CAPS = {
+  departments: { has_department_menu: true, department_count: 24, max_depth: 3 },
+  search: { facets: ['brand', 'price', 'rating'], sort: ['featured', 'price_asc', 'newest'] },
+  product: {
+    has_rating_histogram: true,
+    review_filters: ['star_rating', 'verified_purchase'],
+    related_product_types: ['bought_together', 'also_viewed', 'sponsored'],
+  },
+};
+
+const MARKETPLACE_SCRIPTS: readonly FakeScript[] = [
+  { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+  {
+    writeFiles: {
+      'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+      'artifact/parts/homepage_sections.caps.json': JSON.stringify(MARKETPLACE_CAPS),
+      'plan.md': PLAN('x', ' '),
+    },
+    reply: 'homepage done',
+  },
+  {
+    writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') },
+    reply: 'cart done',
+  },
+];
+
+/** The 14 canonical Plan task ids, in planner order, that every run must plan. */
+const EXPECTED_FIXED_AREAS = [
+  'homepage_sections',
+  'header_navigation',
+  'cart_drawer',
+  'product_variants',
+  'product_reviews',
+  'related_products',
+  'collection_filters',
+  'search_predictive',
+  'search_results',
+  'checkout_flow',
+  'account_pages',
+  'footer',
+  'info_pages',
+  'floating_widgets',
+];
+
+/**
+ * A plan with every fixed area at one priority. Ties go to source order,
+ * so the executor takes `search_results`, then `product_reviews`.
+ */
+function fixedPlan(lines: Readonly<Record<string, string>> = {}): string {
+  const first = ['search_results', 'product_reviews'];
+  const tasks = [...first, ...EXPECTED_FIXED_AREAS.filter((area) => !first.includes(area))].map(
+    (id) => lines[id] ?? `- [ ] ${id} — open the area; capture it [priority: 5]`,
+  );
+  return `# Plan - Minimal Homeware Shop
+
+A small homeware storefront with a single collection.
+
+## Tasks
+
+${tasks.join('\n')}
+
+## Omitted Areas
+
+(none)
+`;
+}
+
+const SEARCH_RESULTS_PART = `## Search Results
+
+### Results grid
+
+- **Type:** full-page results grid
+- **Layout:** facet column beside a product grid
+- **Content:** product cards with price and rating
+- **Behavior:** facets refine the grid in place
+- **Styling:** light surface
+- **UX Notes:** none
+`;
+
+const FIXED_AREA_SCRIPTS: readonly FakeScript[] = [
+  { writeFiles: { 'plan.md': fixedPlan() }, reply: 'planned' },
+  {
+    writeFiles: {
+      'artifact/parts/search_results.md': SEARCH_RESULTS_PART,
+      'plan.md': fixedPlan({
+        search_results: '- [x] search_results — open the area; capture it [priority: 5]',
+      }),
+    },
+    reply: 'search results done',
+  },
+  {
+    writeFiles: {
+      'plan.md': fixedPlan({
+        search_results: '- [x] search_results — open the area; capture it [priority: 5]',
+        product_reviews:
+          '- [!] product_reviews — open the area; capture it; reviews need a sign-in; none is public [priority: 5]',
+      }),
+    },
+    reply: 'product reviews blocked',
+  },
+];
+
+/** A `capabilities.json` that Storefront exploration published at schema 0.2. */
+const CAPABILITIES_0_2 = {
+  version: '0.2',
+  shop: { descriptor: 'Minimal Homeware Shop', category: null, currency: 'USD', tone: [] },
+  cart: { type: 'drawer', has_promo_input: true, has_upsells: null, has_shipping_estimate: null },
+  search: { trigger: 'icon', has_predictive: true, predictive_types: [], results_layout: null },
+};
+
+/** The capabilities JSON Schema that the agent constitution shows. */
+function constitutionSchema(systemPrompt: string | undefined): {
+  properties: Record<string, { default?: unknown; properties?: Record<string, unknown> }>;
+} {
+  const block = /```json\n([\s\S]*?)\n```/.exec(systemPrompt ?? '')?.[1];
+  if (block === undefined) throw new Error('the constitution has no JSON Schema block');
+  return JSON.parse(block);
+}
+
+/** The `[ ]` task lines of a planner prompt as `[id, brief]` pairs, in prompt order. */
+function plannedTasks(prompt: string): [string | undefined, string | undefined][] {
+  return [...prompt.matchAll(/^- \[ \] ([a-z0-9_]+)\s+— (.*) \[priority: \d+\]$/gm)].map(
+    (match) => [match[1], match[2]],
+  );
+}
+
+/** The ids of the `[ ]` task lines in a planner prompt, in prompt order. */
+function plannedIds(prompt: string): (string | undefined)[] {
+  return plannedTasks(prompt).map(([id]) => id);
+}
+
+/** The brief of the `[ ]` task line `id` in a planner prompt. */
+function plannedBrief(prompt: string, id: string): string {
+  const brief = plannedTasks(prompt).find(([taskId]) => taskId === id)?.[1];
+  if (brief === undefined) throw new Error(`the planner prompt plans no ${id} task`);
+  return brief;
+}
+
+/**
+ * Checks that the briefs keep the executor on the storefront pages that a
+ * visitor sees, also in a brief that the planner makes more specific. The
+ * same rules hold on every platform.
+ */
+function expectStorefrontBriefs(planner: string): void {
+  expect(plannedBrief(planner, 'collection_filters')).toMatch(
+    /^start on .*department or category landing page, not a search results page; /,
+  );
+  // The product page shows the review block; the all-reviews page can ask for a sign-in.
+  const reviews = plannedBrief(planner, 'product_reviews');
+  expect(reviews).toMatch(/^scroll a product page to its review block /);
+  expect(reviews).toContain('skip all-reviews pages behind sign-in');
+  // The suggestion API can be on another host, so the evidence is the dropdown.
+  const predictive = plannedBrief(planner, 'search_predictive');
+  expect(predictive).toContain(
+    'type 2 prefixes into the search box; snapshot each suggestion dropdown',
+  );
+  expect(predictive).toContain('stay on storefront pages, no network or API capture');
+  expect(predictive).not.toMatch(/network capture|suggest\.json/);
+  // The planner adds paths and queries to the briefs, and the rules above stay.
+  const prose = planner.replace(/\s+/g, ' ');
+  expect(prose).toContain('A tweaked brief keeps every rule of its canonical brief');
+  expect(prose).toContain('the paths and queries that you add do not count');
+}
+
+/** Checks that one Plan task owns the shop block, so the block does not stay empty. */
+function expectShopBlockOwner(planner: string): void {
+  expect(plannedBrief(planner, 'homepage_sections')).toContain(
+    'fill the shop block (`shop`): descriptor, category, currency code, tone',
+  );
+}
+
 class StubLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
 
@@ -151,6 +331,13 @@ class StubLlm implements LlmClient {
       usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
     };
   }
+}
+
+/** The fixture's guest carts, keyed by the `cart` cookie. */
+const carts = new Map<string, { variant_id: number; quantity: number }[]>();
+
+function cartToken(req: http.IncomingMessage): string | undefined {
+  return /(?:^|;\s*)cart=([^;]+)/.exec(req.headers.cookie ?? '')?.[1];
 }
 
 let server: http.Server;
@@ -172,8 +359,18 @@ beforeAll(async () => {
         return json(url.searchParams.get('page') === '1' ? PRODUCTS : { products: [] });
       case '/collections.json':
         return json(COLLECTIONS);
+      case '/cart/add': {
+        // A guest cart lives on the server, found by the `cart` cookie.
+        const token = cartToken(req) ?? `cart-${carts.size + 1}`;
+        const lines = carts.get(token) ?? [];
+        lines.push({ variant_id: Number(url.searchParams.get('id')), quantity: 1 });
+        carts.set(token, lines);
+        return res
+          .writeHead(200, { 'content-type': 'text/html', 'set-cookie': `cart=${token}; Path=/` })
+          .end('<html><head><title>Cart</title></head><body>Added</body></html>');
+      }
       case '/cart.js':
-        return json({ currency: 'USD', items: [] });
+        return json({ currency: 'USD', items: carts.get(cartToken(req) ?? '') ?? [] });
       case '/cart':
       case '/search':
         return res.writeHead(200, { 'content-type': 'text/html' }).end('<html>page</html>');
@@ -204,6 +401,8 @@ function explore(options: {
   llm?: StubLlm;
   from?: 'prefetch' | 'explore' | 'merge' | 'synthesize';
   forceResume?: boolean;
+  maxIters?: number;
+  focus?: string;
   brandTerms?: readonly string[];
 }) {
   const runtime = new FakeRuntime(options.scripts ?? []);
@@ -212,7 +411,7 @@ function explore(options: {
     url: options.url ?? baseUrl,
     outDir,
     model: 'anthropic/test-model',
-    maxIters: 5,
+    maxIters: options.maxIters ?? 5,
     timeoutMs: 60_000,
     rateLimitMs: 0,
     credentials: CREDENTIALS,
@@ -220,11 +419,14 @@ function explore(options: {
     llm,
     ...(options.from ? { from: options.from } : {}),
     ...(options.forceResume ? { forceResume: true } : {}),
+    ...(options.focus !== undefined ? { focus: options.focus } : {}),
     ...(options.brandTerms ? { brandTerms: options.brandTerms } : {}),
   }).then((result) => ({ result, runtime, llm }));
 }
 
 const readJson = (path: string) => JSON.parse(readFileSync(path, 'utf8'));
+const readPrompt = (name: string) =>
+  readFileSync(new URL(`./prompts/${name}`, import.meta.url), 'utf8');
 
 describe('exploreStorefront', { timeout: 60_000 }, () => {
   it('runs every step and publishes the manual, capabilities, stats, and manifest', async () => {
@@ -375,6 +577,22 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     );
   });
 
+  it('takes the Shopify stats from the catalog endpoints', async () => {
+    const { result } = await explore({ scripts: SCRIPTS });
+
+    const stats = readJson(result.statsPath);
+    expect(stats.source).toBe('catalog_endpoint');
+    expect(stats.sample_size).toBe(2);
+  });
+
+  it('does not ask the Shopify executors for product observations', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+    expect(promptText(runtime.requests[1]?.prompt ?? '')).not.toMatch(/product observation/i);
+    expect(runtime.requests[1]?.tools.map((tool) => tool.name)).not.toContain(
+      'record_product_observation',
+    );
+  });
+
   it('reopens a leaking task twice, then blocks it without touching the other task', async () => {
     const { result, runtime } = await explore({
       scripts: [
@@ -418,6 +636,112 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     });
   });
 
+  it('reports the area of an unfinished Plan task as a coverage gap', async () => {
+    // The budget ends after the homepage iteration, so cart_drawer stays pending.
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          reply: 'homepage done',
+        },
+      ],
+      maxIters: 1,
+    });
+
+    expect(result.finalStatus).toBe('budget_exhausted');
+    const manifest = readJson(result.manifestPath);
+    expect(manifest).toMatchObject({ plan_tasks_total: 2, plan_tasks_done: 1 });
+    expect(manifest.coverage_gaps).toEqual([
+      'cart',
+      'collection',
+      'product_detail',
+      'search_results',
+    ]);
+  });
+
+  it('shows the 0.3 schema to the agent and publishes the marketplace Capabilities', async () => {
+    const { result, runtime } = await explore({ scripts: MARKETPLACE_SCRIPTS });
+
+    const schema = constitutionSchema(runtime.requests[0]?.systemPrompt);
+    expect(schema.properties.version?.default).toBe('0.3');
+    expect(Object.keys(schema.properties.departments?.properties ?? {})).toEqual([
+      'has_department_menu',
+      'department_count',
+      'max_depth',
+    ]);
+    expect(Object.keys(schema.properties.search?.properties ?? {})).toEqual(
+      expect.arrayContaining(['facets', 'sort']),
+    );
+    expect(Object.keys(schema.properties.product?.properties ?? {})).toEqual(
+      expect.arrayContaining(['has_rating_histogram', 'review_filters', 'related_product_types']),
+    );
+
+    expect(result.steps.map((step) => step.status)).toEqual(['ran', 'ran', 'ran', 'ran']);
+    const capabilities = readJson(result.capabilitiesPath);
+    expect(capabilities.version).toBe('0.3');
+    expect(capabilities).toMatchObject(MARKETPLACE_CAPS);
+  });
+
+  it('synthesizes again from a capabilities.json at schema 0.2', async () => {
+    await explore({ scripts: SCRIPTS });
+    writeFileSync(join(outDir, 'capabilities.json'), JSON.stringify(CAPABILITIES_0_2));
+
+    const { result, llm } = await explore({ from: 'synthesize' });
+    expect(result.steps.map((step) => step.status)).toEqual([
+      'skipped',
+      'skipped',
+      'skipped',
+      'ran',
+    ]);
+    const prompt = String(llm.requests[0]?.prompt);
+    expect(prompt).toContain('"version": "0.2"');
+    expect(prompt).toContain('"has_department_menu": null');
+    expect(prompt).toContain('"facets": []');
+  });
+
+  it('plans the 14 fixed areas within 4 navigations and records each unfinished one as a gap with a reason', async () => {
+    // The budget ends after two executor iterations: search_results is
+    // done, product_reviews is blocked, and the other areas stay pending.
+    const { result, runtime } = await explore({ scripts: FIXED_AREA_SCRIPTS, maxIters: 2 });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    expect(plannedIds(planner)).toEqual(EXPECTED_FIXED_AREAS);
+    expect(planner).toContain('<= 4 `navigate` calls');
+
+    expect(result.finalStatus).toBe('budget_exhausted');
+    const manifest = readJson(result.manifestPath);
+    expect(manifest.coverage_gaps).not.toContain('search_results');
+    const gaps: FixedAreaGap[] = manifest.fixed_area_gaps;
+    expect(gaps.map((gap) => gap.area)).toEqual(
+      EXPECTED_FIXED_AREAS.filter((area) => area !== 'search_results'),
+    );
+    // The reason is the text after the planned brief, `;` included.
+    expect(gaps).toContainEqual({
+      area: 'product_reviews',
+      reason: 'blocked: reviews need a sign-in; none is public',
+    });
+    expect(gaps).toContainEqual({
+      area: 'related_products',
+      reason: 'not started when the run ended',
+    });
+  });
+
+  it('keeps the fixed-area briefs on storefront pages', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+
+    expectStorefrontBriefs(promptText(runtime.requests[0]?.prompt ?? ''));
+  });
+
+  it('gives the shop block to homepage_sections', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+
+    expectShopBlockOwner(promptText(runtime.requests[0]?.prompt ?? ''));
+  });
+
   it('skips every step on a second call with the same outDir', async () => {
     await explore({ scripts: SCRIPTS });
     const { result, runtime, llm } = await explore({});
@@ -457,6 +781,120 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(existsSync(join(outDir, 'capabilities.json'))).toBe(true);
   });
 
+  it('starts every Iteration in a fresh browser, so a cart made in one is not in the next', async () => {
+    const readCart = [
+      { tool: 'navigate', arguments: { url: `${baseUrl}/cart.js` } },
+      { tool: 'snapshot', arguments: {} },
+    ];
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') } },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          toolCalls: [
+            { tool: 'navigate', arguments: { url: `${baseUrl}/cart/add?id=101` } },
+            ...readCart,
+          ],
+        },
+        {
+          writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') },
+          toolCalls: readCart,
+        },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    const cartSnapshot = async (iterId: string): Promise<string | undefined> => {
+      const { steps } = await readTrajectory(
+        join(result.runDir, 'iters', iterId, 'trajectory.json'),
+      );
+      return steps.flatMap((step) => (step.kind === 'tool_result' ? [step.output] : [])).at(-1);
+    };
+    // The snapshot shows the `/cart.js` body: one line, then no lines.
+    expect(await cartSnapshot('exec-0001')).toContain('variant_id');
+    expect(await cartSnapshot('exec-0002')).not.toContain('variant_id');
+  });
+
+  it('records where the browser of every Iteration started', async () => {
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') } },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+        },
+        { writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') } },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    for (const iterId of ['plan', 'exec-0001', 'exec-0002']) {
+      expect(readJson(join(result.runDir, 'iters', iterId, 'start_state.json')), iterId).toEqual({
+        url: `${baseUrl}/`,
+        cart: { items: [] },
+        error: null,
+      });
+    }
+  });
+
+  it('opens a site path from navigate on the storefront', async () => {
+    const { result } = await explore({
+      scripts: [
+        {
+          writeFiles: { 'plan.md': PLAN(' ', ' ') },
+          toolCalls: [{ tool: 'navigate', arguments: { url: '/cart' } }],
+        },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+        },
+        { writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') } },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    const { steps } = await readTrajectory(join(result.runDir, 'iters', 'plan', 'trajectory.json'));
+    expect(steps.find((step) => step.kind === 'tool_result')).toMatchObject({
+      isError: false,
+      output: expect.stringContaining(`Navigated to ${baseUrl}/cart\n`),
+    });
+  });
+
+  it('stops at the prefetch gates before any Iteration starts', async () => {
+    const gated = http.createServer((_req, res) =>
+      res.writeHead(200).end('User-agent: *\nDisallow: /\n'),
+    );
+    await new Promise<void>((resolve) => gated.listen(0, '127.0.0.1', resolve));
+    const runtime = new FakeRuntime(SCRIPTS);
+    try {
+      await expect(
+        exploreStorefront({
+          url: `http://127.0.0.1:${(gated.address() as AddressInfo).port}`,
+          outDir,
+          model: 'anthropic/test-model',
+          rateLimitMs: 0,
+          credentials: CREDENTIALS,
+          runtime,
+          llm: new StubLlm(),
+        }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof StepFailedError && error.cause instanceof ShopUnreachableError,
+      );
+    } finally {
+      await new Promise<void>((resolve) => gated.close(() => resolve()));
+    }
+    expect(runtime.requests).toHaveLength(0);
+    expect(existsSync(join(outDir, 'run'))).toBe(false);
+  });
+
   it('resumes a refused harness run only with forceResume', async () => {
     const first = await explore({
       scripts: [{ writeFiles: { 'plan.md': PLAN(' ', ' ') }, status: 'error', error: 'boom' }],
@@ -474,6 +912,36 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(resumed.result.finalStatus).toBe('completed');
     expect(resumed.runtime.requests).toHaveLength(4);
     expect(readJson(resumed.result.manifestPath).plan_tasks_done).toBe(2);
+  });
+
+  it('gives the planner the focus as a hint and records it in manifest.json', async () => {
+    const { result, runtime } = await explore({ scripts: SCRIPTS, focus: 'Video Games' });
+
+    // The hint follows the unchanged planner prompt.
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    const prompt = readPrompt('planner.md');
+    expect(planner.startsWith(prompt)).toBe(true);
+    const hint = planner.slice(prompt.length).replace(/\s+/g, ' ');
+    expect(hint).toContain('## Focus hint');
+    expect(hint).toContain('"Video Games"');
+    expect(hint).toContain('Keep every canonical task');
+    // Executors get the focus only through the task briefs in plan.md.
+    for (const request of runtime.requests.slice(1)) {
+      expect(promptText(request.prompt)).not.toContain('Video Games');
+    }
+    expect(readJson(result.manifestPath).focus).toBe('Video Games');
+  });
+
+  it('refuses to continue a run with a focus other than the one it started with', async () => {
+    await explore({ scripts: SCRIPTS, focus: 'Video Games' });
+
+    // A resumed harness run keeps its plan, so the focus cannot change.
+    await expect(explore({ from: 'merge', focus: 'Board Games' })).rejects.toThrow(
+      /started with focus "Video Games"/,
+    );
+    await expect(explore({ from: 'merge' })).rejects.toThrow(/started with focus "Video Games"/);
+    const { result } = await explore({ from: 'merge', focus: 'Video Games' });
+    expect(readJson(result.manifestPath).focus).toBe('Video Games');
   });
 });
 
@@ -515,6 +983,52 @@ const GENERIC_PRODUCT = `## Product Variants
 - **Styling:** outlined buttons
 - **UX Notes:** none
 `;
+
+/** The product observation facts of the three product pages of the generic site. */
+const OBSERVED = {
+  '/p/fm-1001': {
+    price: 59.99,
+    currency: 'USD',
+    has_variants: true,
+    variant_axes: ['Edition', 'Platform'],
+  },
+  '/p/fm-1002': { price: 44.5, currency: 'USD', has_variants: true, variant_axes: ['Color'] },
+  '/p/fm-1003': { price: 79, currency: 'USD', has_variants: false, variant_axes: [] },
+} as const;
+
+/** Tool calls that open `path` and record `facts` for it as a product observation of `taskId`. */
+function observe(
+  siteUrl: string,
+  taskId: string,
+  path: string,
+  facts: Readonly<Record<string, unknown>>,
+): NonNullable<FakeScript['toolCalls']> {
+  return [
+    { tool: 'navigate', arguments: { url: `${siteUrl}${path}` } },
+    { tool: 'record_product_observation', arguments: { task_id: taskId, ...facts } },
+  ];
+}
+
+/**
+ * The generic-site product executor: it opens each page of `observed`,
+ * records its facts with the product observation tool, writes its part,
+ * and marks its task done.
+ */
+function productExecutor(
+  siteUrl: string,
+  observed: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+): FakeScript {
+  return {
+    writeFiles: {
+      'artifact/parts/product_variants.md': GENERIC_PRODUCT,
+      'plan.md': GENERIC_PLAN('x', 'x'),
+    },
+    toolCalls: Object.entries(observed).flatMap(([path, facts]) =>
+      observe(siteUrl, 'product_variants', path, facts),
+    ),
+    reply: 'product done',
+  };
+}
 
 /** Planner, homepage executor, and product executor scripts for the generic site. */
 function genericScripts(siteUrl: string): readonly FakeScript[] {
@@ -614,6 +1128,274 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(readJson(result.manifestPath).coverage_gaps).toEqual([]);
     expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
   });
+
+  it('asks the executors for product observations and shows their schema', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    expect(runtime.requests[1]?.tools.map((tool) => tool.name)).toContain(
+      'record_product_observation',
+    );
+    const executor = promptText(runtime.requests[1]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(executor).toContain('call `record_product_observation` while the page is open');
+    const constitution = runtime.requests[1]?.systemPrompt ?? '';
+    for (const field of ['"price"', '"currency"', '"has_variants"', '"variant_axes"']) {
+      expect(constitution).toContain(field);
+    }
+    expect(constitution).toContain('"pattern": "^[A-Z]{3}$"');
+    // Axis names are generic nouns, so that no site label reaches `stats.json`.
+    expect(constitution).toContain('not the label text of the page');
+  });
+
+  it('asks the executors to mark what they did not see as unknown', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const executor = promptText(runtime.requests[1]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(executor).toContain(
+      '`N/A` when it does not apply and `unknown` when you did not see it',
+    );
+    expect(executor).toContain('marks it as unknown, not as absent');
+  });
+
+  it('publishes stats from the product observation fragments', async () => {
+    const { result } = await explore({
+      url: site.url,
+      scripts: [...genericScripts(site.url).slice(0, 2), productExecutor(site.url, OBSERVED)],
+    });
+
+    expect(result.finalStatus).toBe('completed');
+    const stats = readJson(result.statsPath);
+    expect(stats).toMatchObject({
+      source: 'observed_sample',
+      sample_size: 3,
+      price: { min: 44.5, max: 79, median: 59.99, currency: 'USD' },
+      variant_axes_observed: ['color', 'edition', 'platform'],
+      // The site shows no catalog totals, so they stay 0.
+      products_total: 0,
+      collections_total: 0,
+      products_per_collection: { avg: 0, median: 0, max: 0 },
+      homepage_section_count: 2,
+    });
+    expect(stats.products_with_variants_pct).toBeCloseTo(0.667, 3);
+  });
+
+  it('counts a product page once when two tasks record it', async () => {
+    const { result } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 1),
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': GENERIC_HOMEPAGE,
+            'plan.md': GENERIC_PLAN('x', ' '),
+          },
+          toolCalls: observe(site.url, 'homepage_sections', '/p/fm-1001', OBSERVED['/p/fm-1001']),
+          reply: 'homepage done',
+        },
+        productExecutor(site.url, OBSERVED),
+      ],
+    });
+
+    expect(result.finalStatus).toBe('completed');
+    const stats = readJson(result.statsPath);
+    expect(stats.sample_size).toBe(3);
+    expect(stats.products_with_variants_pct).toBeCloseTo(0.667, 3);
+  });
+
+  it('counts a product page once when two paths open it', async () => {
+    const aliased = await startFixtureSite((origin) => {
+      const pages = genericSitePages(origin);
+      // The first product page also answers at a longer path, as on a site
+      // that puts a name slug in its product URLs. The fixture has the page.
+      return { ...pages, '/p/fm-1001/star-drifter': pages['/p/fm-1001'] as FixturePage };
+    });
+    try {
+      const { result } = await explore({
+        url: aliased.url,
+        scripts: [
+          ...genericScripts(aliased.url).slice(0, 2),
+          productExecutor(aliased.url, {
+            '/p/fm-1001': OBSERVED['/p/fm-1001'],
+            '/p/fm-1001/star-drifter?ref=search': OBSERVED['/p/fm-1001'],
+            '/p/fm-1002': OBSERVED['/p/fm-1002'],
+          }),
+        ],
+      });
+
+      expect(result.finalStatus).toBe('completed');
+      expect(readJson(result.statsPath).sample_size).toBe(2);
+    } finally {
+      await aliased.close();
+    }
+  });
+
+  it('takes the prices only from the fragments in the most frequent currency', async () => {
+    const facts = (price: number, currency: string) => ({
+      price,
+      currency,
+      has_variants: false,
+      variant_axes: [],
+    });
+    const { result } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 2),
+        productExecutor(site.url, {
+          '/p/fm-1001': facts(40, 'USD'),
+          '/p/fm-1002': facts(15, 'EUR'),
+          '/p/fm-1003': facts(60, 'USD'),
+        }),
+      ],
+    });
+
+    expect(readJson(result.statsPath)).toMatchObject({
+      sample_size: 3,
+      price: { min: 40, max: 60, median: 50, currency: 'USD' },
+    });
+  });
+
+  it('refuses a product observation that does not match the schema', async () => {
+    const { result } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 2),
+        {
+          writeFiles: {
+            'artifact/parts/product_variants.md': GENERIC_PRODUCT,
+            'plan.md': GENERIC_PLAN('x', 'x'),
+          },
+          toolCalls: [
+            // A lowercase currency does not match the schema.
+            ...observe(site.url, 'product_variants', '/p/fm-1001', {
+              ...OBSERVED['/p/fm-1001'],
+              currency: 'usd',
+            }),
+            // A task id must be a plan task id, so it cannot name a path.
+            ...observe(site.url, '../product_variants', '/p/fm-1002', OBSERVED['/p/fm-1002']),
+          ],
+          reply: 'product done',
+        },
+      ],
+    });
+
+    const trajectory = readJson(join(outDir, 'run', 'iters', 'exec-0002', 'trajectory.json'));
+    const refusals = (trajectory.steps as { kind: string; output?: string; isError?: boolean }[])
+      .filter((step) => step.kind === 'tool_result' && step.isError === true)
+      .map((step) => step.output);
+    expect(refusals).toEqual([
+      expect.stringContaining('currency'),
+      expect.stringContaining('invalid task id'),
+    ]);
+    expect(readJson(result.statsPath).sample_size).toBe(0);
+  });
+
+  it('fails the Iteration of a fragment that does not match the schema', async () => {
+    // The executor edits a fragment by hand with `write_file`.
+    const fragment = 'artifact/parts/product_variants.product-0123456789ab.json';
+    const valid = { price: 59.99, currency: 'USD', has_variants: true, variant_axes: ['edition'] };
+    const handWritten = (content: unknown): FakeScript => ({
+      writeFiles: {
+        'artifact/parts/product_variants.md': GENERIC_PRODUCT,
+        [fragment]: JSON.stringify(content),
+        'plan.md': GENERIC_PLAN('x', 'x'),
+      },
+      reply: 'product done',
+    });
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 2),
+        // A product name and a lowercase currency do not match the schema.
+        handWritten({ ...valid, currency: 'usd', title: 'Star Drifter' }),
+        handWritten(valid),
+      ],
+    });
+
+    expect(result.finalStatus).toBe('completed');
+    const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
+    expect(
+      summary.verifierRuns
+        .filter((run) => run.name === 'product_observations')
+        .map((run) => [run.taskId, run.verdict]),
+    ).toEqual([
+      ['homepage_sections', 'pass'],
+      ['product_variants', 'fail'],
+      ['product_variants', 'pass'],
+    ]);
+    // The task reopens, and the next Iteration gets the feedback.
+    expect(runtime.requests).toHaveLength(4);
+    const retry = promptText(runtime.requests[3]?.prompt ?? '');
+    expect(retry).toContain('Product observation check failed');
+    expect(retry).toContain('parts/product_variants.product-0123456789ab.json');
+    expect(retry).toContain('Unrecognized key: "title"');
+    expect(retry).toContain('currency');
+    expect(readJson(result.statsPath)).toMatchObject({ source: 'observed_sample', sample_size: 1 });
+  });
+
+  it('gives the generic planner the focus as a hint', async () => {
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: genericScripts(site.url),
+      focus: 'Video Games',
+    });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    const prompt = readPrompt('planner_generic.md');
+    expect(planner.startsWith(prompt)).toBe(true);
+    const hint = planner.slice(prompt.length).replace(/\s+/g, ' ');
+    expect(hint).toContain('## Focus hint');
+    expect(hint).toContain('"Video Games"');
+    expect(readJson(result.manifestPath).focus).toBe('Video Games');
+  });
+
+  it('adds no hint and records a null focus when the run has no focus', async () => {
+    const { result, runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    expect(runtime.requests[0]?.prompt).toBe(readPrompt('planner_generic.md'));
+    expect(readJson(result.manifestPath).focus).toBeNull();
+  });
+
+  it('records no focus when the run stops before the explore step', async () => {
+    const blocked = await startFixtureSite((origin) => ({
+      ...genericSitePages(origin),
+      '/': { status: 503, contentType: 'text/html', body: '' },
+    }));
+    try {
+      await expect(explore({ url: blocked.url, focus: 'Video Games' })).rejects.toThrow(
+        /unreachable/,
+      );
+    } finally {
+      await blocked.close();
+    }
+    // So a retry on the same outDir may take another focus.
+    expect(existsSync(join(outDir, 'focus.json'))).toBe(false);
+  });
+
+  it('asks the generic planner for the 14 fixed areas within 4 navigations', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    expect(planner).toContain('explore planner for a generic site');
+    expect(plannedIds(planner)).toEqual(EXPECTED_FIXED_AREAS);
+    expect(planner).toContain('<= 4 `navigate` calls');
+  });
+
+  it('keeps the fixed-area briefs on storefront pages', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    expectStorefrontBriefs(planner);
+    // The planner picks the listing page of collection_filters, and the
+    // search results page is not one.
+    expect(planner.replace(/\s+/g, ' ')).toContain(
+      'a department or category landing page for `collection_filters`',
+    );
+  });
+
+  it('gives the shop block to homepage_sections', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    expectShopBlockOwner(promptText(runtime.requests[0]?.prompt ?? ''));
+  });
 });
 
 /** Invented sub-brands of the generic site, as `--brand-term` gives them. */
@@ -674,7 +1456,11 @@ describe('exploreStorefront anonymization with brand terms', { timeout: 60_000 }
     // The tagline words pass; the phrase "Nova Pass" reopens the product
     // task, and its words alone pass.
     const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
-    expect(summary.verifierRuns.map((run) => [run.taskId, run.verdict])).toEqual([
+    expect(
+      summary.verifierRuns
+        .filter((run) => run.name === 'anonymization')
+        .map((run) => [run.taskId, run.verdict]),
+    ).toEqual([
       ['homepage_sections', 'pass'],
       ['product_variants', 'fail'],
       ['product_variants', 'pass'],

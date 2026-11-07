@@ -19,7 +19,6 @@ import type { Step, StepContext } from '@shop-gym/core';
 import { z } from 'zod';
 
 import { parseCapabilities } from '../../explore/capabilities.js';
-import type { Stats } from '../../explore/stats.js';
 import type { GenContext } from '../context.js';
 import { readJsonFile, writeJsonFile, writeTextFile } from '../io.js';
 import { type LlmCall, completeText, loadPrompt } from '../llm.js';
@@ -28,7 +27,7 @@ import { fuseStandardSubManual } from './fusion.js';
 import { mergeManualProse, seedBlocks } from './prose.js';
 import { MANUAL_PARTS, splitManual } from './split.js';
 import { STANDARD_SUB_MANUAL_FILE, STANDARD_SUB_MANUAL_PATH } from './standard_sub_manual.js';
-import { mergeStats, statsSchema } from './stats.js';
+import { type SeedStats, mergeStats, statsSchema } from './stats.js';
 
 export {
   type CapabilitiesMerge,
@@ -42,7 +41,7 @@ export { fuseStandardSubManual } from './fusion.js';
 export { CANONICAL_SECTIONS, mergeManualProse, parseManualSections } from './prose.js';
 export { MANUAL_PARTS, type ManualPart, splitManual } from './split.js';
 export { FUSED_SECTIONS } from './standard_sub_manual.js';
-export { mergeStats, statsSchema } from './stats.js';
+export { type SeedStats, mergeStats, statsSchema } from './stats.js';
 
 export const MANUAL_DIR = 'manual';
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
@@ -108,7 +107,7 @@ async function mergeManuals(
         }),
       ),
   );
-  const seedStats: Stats[] = await Promise.all(
+  const seedStats: SeedStats[] = await Promise.all(
     dirs.map((dir) => readJsonFile(path.join(dir, 'stats.json'), statsSchema)),
   );
   await writeJsonFile(path.join(manualDir, 'capabilities.json'), capabilities);

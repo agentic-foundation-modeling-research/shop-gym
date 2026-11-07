@@ -24,8 +24,23 @@ export {
   mergeFragments,
   parseCapabilities,
 } from './capabilities.js';
-export { coverageGaps, evidencedAreas, parsePlanCoverage } from './coverage.js';
+export {
+  type FixedAreaGap,
+  FIXED_AREAS,
+  coverageGaps,
+  evidencedAreas,
+  fixedAreaGaps,
+  parseOmittedAreas,
+} from './coverage.js';
 export { fileTools } from './files.js';
+export {
+  type ProductObservation,
+  productObservationJsonSchema,
+  productObservationSchema,
+  productObservationTool,
+  productObservationVerifier,
+  readObservations,
+} from './observations.js';
 export {
   DEFAULT_MAX_ITERS,
   DEFAULT_MODEL,
@@ -52,7 +67,13 @@ export {
   prefetch,
   robotsDisallowsRoot,
 } from './prefetch.js';
-export { type Stats, computeStats } from './stats.js';
+export {
+  STATS_SOURCES,
+  type Stats,
+  type StatsSource,
+  computeObservedStats,
+  computeStats,
+} from './stats.js';
 export {
   MANUAL_MIN_CHARS,
   ManualRenderError,

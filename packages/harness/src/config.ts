@@ -20,7 +20,9 @@ export type FinalStatus =
   | 'invalid_plan'
   | 'protocol_violation'
   | 'timeout'
-  | 'runtime_error';
+  | 'runtime_error'
+  /** The caller returned a `StopRequest` from `onIterationEnd`. */
+  | 'stopped';
 
 /**
  * How one iteration ended. `kept`: its edits stand. Any other value is the
@@ -32,12 +34,30 @@ export type IterationOutcome =
   | 'kept'
   | Extract<FinalStatus, 'timeout' | 'invalid_plan' | 'protocol_violation' | 'runtime_error'>;
 
+export interface IterationStart {
+  /** `plan` or `exec-NNNN`. A timed-out executor id is used again by the next iteration. */
+  readonly iterId: string;
+  /** The executor's selected task; `null` for the planner. */
+  readonly taskId: string | null;
+  /**
+   * `iters/<iterId>/`, which exists. The harness writes the iteration's
+   * telemetry here, and moves the directory aside when the iteration times out.
+   */
+  readonly iterDir: string;
+}
+
 export interface IterationEnd {
   /** `plan` or `exec-NNNN`. A timed-out executor id is used again by the next iteration. */
   readonly iterId: string;
   /** The executor's selected task; `null` for the planner. */
   readonly taskId: string | null;
   readonly outcome: IterationOutcome;
+}
+
+/** Returned from `onIterationEnd` to end the run after that iteration. */
+export interface StopRequest {
+  /** Why the caller stops the run; recorded as `stopReason` in `run.json`. */
+  readonly stopReason: string;
 }
 
 export interface PlanExecLoopConfig {
@@ -59,11 +79,25 @@ export interface PlanExecLoopConfig {
   readonly verifierFeedbackMaxChars?: number;
   readonly onEvent?: (iterId: string, event: AgentEvent) => void;
   /**
+   * Awaited once before each planner and executor iteration, after its
+   * directory exists and before its Agent run starts. A caller uses it to give
+   * each iteration fresh resources, for example a new browser. An error thrown
+   * here rejects `runPlanExecLoop`.
+   */
+  readonly onIterationStart?: (start: IterationStart) => Promise<void>;
+  /**
    * Awaited once after each planner and executor iteration, when the harness
    * has recorded it (verifiers, `plan.md` repair, `run.json`) and before the
    * next iteration starts. An error thrown here rejects `runPlanExecLoop`.
+   *
+   * Return a `StopRequest` to end the run now: the harness starts no further
+   * iteration and finishes with final status `stopped`, which a later call
+   * resumes without `force`. After an iteration that already ended the run
+   * (a failed planner or a `runtime_error`), the request is ignored and the
+   * run keeps its failure status.
    */
-  readonly onIterationEnd?: (end: IterationEnd) => Promise<void>;
+  // biome-ignore lint/suspicious/noConfusingVoidType: a hook that never stops keeps its Promise<void> type.
+  readonly onIterationEnd?: (end: IterationEnd) => Promise<void | StopRequest>;
 }
 
 export const DEFAULT_VERIFIER_FEEDBACK_MAX_CHARS = 4000;
@@ -71,6 +105,8 @@ export const DEFAULT_VERIFIER_FEEDBACK_MAX_CHARS = 4000;
 export interface PlanExecLoopResult {
   readonly runDir: string;
   readonly finalStatus: FinalStatus;
+  /** The caller's reason; present only when `finalStatus` is `stopped`. */
+  readonly stopReason?: string;
   /** 0 or 1. */
   readonly planIterCount: number;
   readonly execIterCount: number;

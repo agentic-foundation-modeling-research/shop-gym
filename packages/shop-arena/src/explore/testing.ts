@@ -146,14 +146,17 @@ function subDepartmentLinks(department: Department): string {
     .join('');
 }
 
-function layout(title: string, main: string): string {
+/** A page of the site; `canonical` is the path of its `<link rel="canonical">`, when it has one. */
+function layout(title: string, main: string, canonical?: string): string {
   const departments = DEPARTMENTS.map(
     (department) =>
       `<li><a href="${department.path}">${department.name}</a><ul>${subDepartmentLinks(department)}</ul></li>`,
   ).join('');
   return `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>${title}</title></head>
+<head><meta charset="utf-8"><title>${title}</title>${
+    canonical === undefined ? '' : `<link rel="canonical" href="${canonical}">`
+  }</head>
 <body>
 <header>
   <a href="/">Fixture Mart</a>
@@ -256,6 +259,7 @@ ${selectors}
 </section>
 <section aria-label="Frequently bought together"><h2>Frequently bought together</h2><ul>${related}</ul></section>
 <section aria-label="Customers also viewed"><h2>Customers also viewed</h2><ul>${related}</ul></section>`,
+    product.path,
   );
 }
 
@@ -276,7 +280,8 @@ ${paths.map((path) => `  <url><loc>${origin}${path}</loc></url>`).join('\n')}
  * The pages of the generic fixture site: a marketplace with no Shopify
  * marker and no JSON endpoints. It has robots.txt, a homepage with a
  * tagline title, sitemap.xml, a department page, a search results page
- * (`/search`, any query), and one page per product.
+ * (`/search`, any query), and one page per product. A product page has
+ * a canonical link to its own path.
  */
 export function genericSitePages(origin: string): FixturePages {
   const html = (body: string): FixturePage => ({ contentType: HTML, body });

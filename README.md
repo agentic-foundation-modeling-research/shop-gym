@@ -82,8 +82,8 @@ shopgym explore https://example-shop.com
 ```
 
 Options: `--out <dir>`, `--max-iters <n>`, `--timeout <ms>`,
-`--from prefetch|explore|merge|synthesize`, `--force-resume`. Re-running with
-the same output directory resumes the unfinished step.
+`--from prefetch|explore|merge|synthesize`, `--force-resume`, `--focus <text>`.
+Re-running with the same output directory resumes the unfinished step.
 
 Brand tokens come from the brand segment of the homepage title (the
 segment that matches a hostname label, such as "Fixture Mart" in
@@ -107,6 +107,24 @@ homepage has a Shopify marker or the probe returns a product list, else
 Shopify JSON endpoints and the policy pages. On a generic site it fetches
 nothing more, and the planner picks its start URLs from the homepage links
 and the sitemap. `manifest.json` records the `platform`.
+
+`stats.json` records its `source` and its `sample_size`. On a Shopify shop
+the source is `catalog_endpoint`: the stats come from the catalog that
+prefetch read. On a generic site the source is `observed_sample`: the
+executors record one product observation (price, currency, variant facts)
+for each product page that they open, with a tool that takes a key of the
+page from the browser. The price and variant stats come from these
+observations, and each product page counts once. The product and
+collection totals stay 0.
+
+On a large site, `--focus "<text>"` keeps the run in one part of the site,
+for example `--focus "Video Games"`. The planner gets the focus as a hint: it
+picks start URLs, product pages and search queries in that part, and it still
+plans the site-wide areas (header, footer, cart, checkout entry). It writes
+the focus into the task briefs, so the executors get it too. Navigation
+outside the focus is not blocked. `manifest.json` records the `focus`, or
+`null` when the run has none. A resumed run keeps its plan, so a re-run on the
+same output directory must pass the same `--focus`.
 
 ### 2. Generate a SandboxShop
 

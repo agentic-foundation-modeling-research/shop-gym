@@ -296,6 +296,9 @@ implies the workspace is in a bad state:
   on `run_plan_exec_loop` (CLI: `--force-resume`).
 - `timeout`, `budget_exhausted`: allow. These are clean "ran out
   of clock / budget" failures and the workspace is consistent.
+- `stopped`: allow. The caller ended the run between iterations
+  ([plan_exec_loop.md](plan_exec_loop.md) §5.10), so the workspace is
+  consistent.
 - `completed`: allow as no-op (executor loop exits immediately
   via `select_next is None`).
 
@@ -337,9 +340,12 @@ Extend `run.json`'s `config_snapshot` with one new optional field:
 Each entry records one attempt. The list is appended to (never
 rewritten in place) by reading the prior `run.json` on resume,
 appending one entry, and writing the rewritten file atomically as
-today. A fresh run produces a single-entry history.
+today. A fresh run produces a single-entry history. An attempt that
+ended with a caller stop also records its `stopReason`, in its entry and
+at the top level of `run.json` (see
+[plan_exec_loop.md](plan_exec_loop.md) §5.10).
 
-This is the only persistent change to `run.json`; iteration counts
+Resume makes no other persistent change to `run.json`; iteration counts
 and trajectory paths continue to be the union across all attempts
 since the iter directories are dense.
 
