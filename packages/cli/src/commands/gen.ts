@@ -82,7 +82,7 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
   const concurrency = integerOption(args, 'concurrency');
   const collections = integerOption(args, 'collections');
   const productsPerCollection = integerOption(args, 'products-per-collection');
-  const imagesPerProduct = imagesOption(args.values['images-per-product']);
+  const imagesPerProduct = imagesOption(stringOption(args, 'images-per-product'));
   return {
     help: false,
     config: {

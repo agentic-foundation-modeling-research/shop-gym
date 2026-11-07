@@ -4,12 +4,14 @@
  */
 
 export {
+  AnonymizationLeakError,
   type Leak,
   type LeakScanner,
   anonymizationVerifier,
   brandTokens,
   formatLeaks,
   leakScanner,
+  publishedLeaks,
 } from './anonymization.js';
 export {
   CAPABILITY_KEYS,

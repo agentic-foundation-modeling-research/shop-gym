@@ -51,7 +51,10 @@ One of the 14 canonical Plan tasks that Storefront exploration plans in every ru
 One schema-checked record of one product page that an executor opened on a generic site: the price, the currency, and the variant facts. It has no name, URL, seller or brand. On a generic site, `stats.json` comes from the Product observations (`source: observed_sample`), and each product page counts once.
 
 **Anonymization**:
-The rule that a Shop Manual describes only structure and UX patterns, and contains no brand, domain, product name, or other text that identifies the Live storefront.
+The rule that a Shop Manual describes only structure and UX patterns, and contains no brand, domain, product name, or other text that identifies the Live storefront. The Anonymization verifier checks each Plan task fragment for the hostname, the brand tokens from the brand segment of the homepage title, and the Brand terms. After synthesis, the final scan checks the published Shop Manual files for the same markers and fails the run on a hit.
+
+**Brand term**:
+A word or phrase, such as a sub-brand, that the person who runs exploration adds with `--brand-term` because the homepage title does not name it. Anonymization treats it as a brand marker; a term of more than one word matches as a phrase. The run keeps the terms in its run directory, and no published file holds them.
 
 **Shop generation**:
 The ShopArena process (`shopgym gen`) that turns one or more Shop Manuals into a SandboxShop.

@@ -16,6 +16,7 @@
  * stats.json            catalog and feature statistics
  * manifest.json         counts, omissions, conflicts, coverage and fixed area gaps, paths
  * manual.md             the synthesized shop manual
+ * brand_terms.json      the brand terms of the run (never published)
  * .pipeline/            step records of the pipeline runner
  * ```
  *
@@ -25,6 +26,11 @@
  * never deleted by the pipeline: an interrupted or forced explore step
  * resumes it, so the same `outDir` continues the same exploration. For
  * the same reason a later call must pass the focus of the first call.
+ *
+ * The synthesize step ends with the final Anonymization scan of the
+ * published files (`manual.md`, `capabilities.json`, `stats.json`): a
+ * brand token, a brand term or the storefront host in them fails the
+ * step, and `manual.md` is not written.
  */
 
 import { createHash } from 'node:crypto';
@@ -51,8 +57,15 @@ import {
   parse,
   runPlanExecLoop,
 } from '@shop-gym/harness';
+import { z } from 'zod';
 
-import { anonymizationVerifier } from './anonymization.js';
+import {
+  AnonymizationLeakError,
+  anonymizationVerifier,
+  checkBrandTerms,
+  leakScanner,
+  publishedLeaks,
+} from './anonymization.js';
 import { IterationBrowser, parseCart } from './browser.js';
 import {
   type Capabilities,
@@ -115,6 +128,13 @@ export interface ExploreOptions {
    * Navigation outside the focus is not blocked.
    */
   readonly focus?: string;
+  /**
+   * Brand words or phrases, such as sub-brands, that the Shop Manual must
+   * not name, in addition to the brand tokens from the homepage. They
+   * replace the terms that a prior call stored in `outDir`; when not given,
+   * the stored terms are used again.
+   */
+  readonly brandTerms?: readonly string[];
   readonly credentials: Credentials;
   /** Overrides the pi runtime (tests). */
   readonly runtime?: AgentRuntime;
@@ -198,6 +218,7 @@ interface ExploreContext {
   readonly rateLimitMs: number | undefined;
   readonly forceResume: boolean;
   readonly focus: string | null;
+  readonly brandTerms: readonly string[];
   readonly runtime: AgentRuntime;
   readonly llm: LlmClient;
   readonly prompts: Prompts;
@@ -214,9 +235,13 @@ const PATHS = {
   stats: 'stats.json',
   manifest: 'manifest.json',
   manual: 'manual.md',
+  brandTerms: 'brand_terms.json',
 } as const;
 /** Written into each Iteration's directory when the Iteration starts. */
 const START_STATE_FILENAME = 'start_state.json';
+
+/** Shape of `brand_terms.json`. */
+const BRAND_TERMS_SCHEMA = z.array(z.string());
 
 /** Splits `provider/model-id` into a `ModelRef`. */
 export function parseModel(model: string): ModelRef {
@@ -372,7 +397,7 @@ const exploreStep: Step<ExploreContext> = {
             ...(generic ? [productObservationTool(browser)] : []),
           ],
           verifiers: [
-            anonymizationVerifier(context.url),
+            anonymizationVerifier(context.url, context.brandTerms),
             ...(generic ? [productObservationVerifier()] : []),
           ],
           ...(context.onEvent ? { onEvent: context.onEvent } : {}),
@@ -478,7 +503,7 @@ function omissionReason(planMd: string, area: string): string {
 
 const synthesizeStep: Step<ExploreContext> = {
   id: 'synthesize',
-  inputs: [PATHS.capabilities],
+  inputs: [PATHS.capabilities, PATHS.stats, PATHS.brandTerms, PATHS.prefetch],
   outputs: [PATHS.manual],
   async run({ outDir, context, log, signal }) {
     const partsDir = join(outDir, PATHS.run, 'artifact', 'parts');
@@ -494,10 +519,43 @@ const synthesizeStep: Step<ExploreContext> = {
       partsDir,
       signal,
     );
+    // Prefetch saves no homepage when `/` answers with an empty body or a
+    // success status other than 200; then no title gives brand tokens.
+    const homepagePath = join(outDir, PATHS.prefetch, 'index.html');
+    const scan = leakScanner(
+      new URL(context.url).hostname,
+      existsSync(homepagePath) ? readFileSync(homepagePath, 'utf8') : '',
+      context.brandTerms,
+    );
+    const leaks = publishedLeaks(scan, {
+      [PATHS.manual]: manual,
+      [PATHS.capabilities]: readFileSync(join(outDir, PATHS.capabilities), 'utf8'),
+      [PATHS.stats]: readFileSync(join(outDir, PATHS.stats), 'utf8'),
+    });
+    if (leaks.length > 0) throw new AnonymizationLeakError(leaks);
     writeFileSync(join(outDir, PATHS.manual), manual);
     log(`wrote manual.md (${manual.length} chars)`);
   },
 };
+
+/**
+ * The brand terms of a run: `given`, or else the terms that a prior call
+ * kept in `<outDir>/brand_terms.json`, so a resumed run keeps them. Writes
+ * the result back to that file, which is outside the published files.
+ *
+ * @throws Error when a term has no letter or digit.
+ */
+function resolveBrandTerms(
+  outDir: string,
+  given: readonly string[] | undefined,
+): readonly string[] {
+  const path = join(outDir, PATHS.brandTerms);
+  const terms = given ?? (existsSync(path) ? BRAND_TERMS_SCHEMA.parse(readJson(path)) : []);
+  checkBrandTerms(terms);
+  mkdirSync(outDir, { recursive: true });
+  writeJson(path, terms);
+  return terms;
+}
 
 const STEPS: readonly Step<ExploreContext>[] = [
   prefetchStep,
@@ -513,9 +571,13 @@ const STEPS: readonly Step<ExploreContext>[] = [
  * an unfinished harness run; `from` forces a step and its dependents.
  *
  * @throws Error when `focus` differs from the focus that `outDir` started with.
+ * @throws Error when a brand term has no letter or digit.
  * @throws ShopUnreachableError when the prefetch gates reject the shop.
  * @throws ResumeRefusedError when the prior harness run ended in a
  *   refused status and `forceResume` is not set.
+ * @throws StepFailedError for the synthesize step, with an
+ *   AnonymizationLeakError cause, when the final Anonymization scan finds
+ *   a leak in a published file.
  */
 export async function exploreStorefront(options: ExploreOptions): Promise<ExploreResult> {
   const base = normalizeBase(options.url);
@@ -537,6 +599,7 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
     rateLimitMs: options.rateLimitMs,
     forceResume: options.forceResume ?? false,
     focus,
+    brandTerms: resolveBrandTerms(outDir, options.brandTerms),
     runtime,
     llm,
     prompts: loadPrompts(),

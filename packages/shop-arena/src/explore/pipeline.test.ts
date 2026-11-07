@@ -22,6 +22,7 @@ import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from '.
 import {
   type FixturePage,
   type FixtureSite,
+  GENERIC_SITE_HOSTNAME,
   genericSitePages,
   startFixtureSite,
 } from './testing.js';
@@ -402,6 +403,7 @@ function explore(options: {
   forceResume?: boolean;
   maxIters?: number;
   focus?: string;
+  brandTerms?: readonly string[];
 }) {
   const runtime = new FakeRuntime(options.scripts ?? []);
   const llm = options.llm ?? new StubLlm();
@@ -418,6 +420,7 @@ function explore(options: {
     ...(options.from ? { from: options.from } : {}),
     ...(options.forceResume ? { forceResume: true } : {}),
     ...(options.focus !== undefined ? { focus: options.focus } : {}),
+    ...(options.brandTerms ? { brandTerms: options.brandTerms } : {}),
   }).then((result) => ({ result, runtime, llm }));
 }
 
@@ -493,6 +496,70 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(llm.requests[0]?.prompt).toContain('## Capabilities');
     expect(llm.requests[0]?.prompt).toContain('### Filled state');
     expect(llm.requests[0]?.model).toEqual({ provider: 'anthropic', id: 'test-model' });
+  });
+
+  it('tells every executor to write only what it saw and to mark the rest as unknown', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+
+    const shared = (runtime.requests[1]?.systemPrompt ?? '').replace(/\s+/g, ' ');
+    expect(shared).toContain('Write only what you saw.');
+    expect(shared).toContain(
+      'a snapshot, a screenshot, or a prefetch file or a response that you read',
+    );
+    expect(shared).toContain('Do not guess, do not compare with a page that you did not open');
+    expect(shared).toContain(
+      'write "unknown" in the markdown and leave its capabilities field `null`',
+    );
+    expect(shared).toContain('Use `false` only when you saw the place where the feature would be');
+    expect(shared).toContain('A count or a depth stays `null` when you saw only part of it');
+    const executor = promptText(runtime.requests[1]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(executor).toContain(
+      'Mark a field `N/A` when it does not apply and `unknown` when you did not see it',
+    );
+    expect(executor).toContain('learns what the run could not see');
+  });
+
+  it('tells the executors and the synthesizer to put site-specific names and lists into generic words', async () => {
+    const { runtime, llm } = await explore({ scripts: SCRIPTS });
+
+    const shared = (runtime.requests[1]?.systemPrompt ?? '').replace(/\s+/g, ' ');
+    const synthesizer = promptText(llm.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
+    for (const prompt of [shared, synthesizer]) {
+      expect(prompt).toContain('Do not list what only this site has');
+      expect(prompt).toContain('Do not name request endpoints, query parameters, response fields');
+      expect(prompt).toContain(
+        "not the site's own name for it, even when that name comes from a URL path or a page title",
+      );
+      expect(prompt).toContain(
+        'generic program types, such as a paid membership or a loyalty program, without their own names',
+      );
+    }
+    expect(synthesizer).toContain('rewrite only the words that break a rule of this prompt');
+  });
+
+  it('tells the synthesizer to state only what the parts show and to mark the rest as unknown', async () => {
+    const { llm } = await explore({ scripts: SCRIPTS });
+
+    const synthesizer = promptText(llm.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(synthesizer).toContain('**State only what the parts show.**');
+    expect(synthesizer).toContain(
+      'Drop guesses, comparisons with a page or a state that no part describes',
+    );
+    expect(synthesizer).toContain('Write a partial view as partial');
+    expect(synthesizer).toContain(
+      'When a part says that it did not see something, mark it as unknown',
+    );
+  });
+
+  it('tells the synthesizer that no sentence may contradict the capabilities', async () => {
+    const { llm } = await explore({ scripts: SCRIPTS });
+
+    const synthesizer = promptText(llm.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(synthesizer).toContain('No sentence may contradict it');
+    expect(synthesizer).toContain('a sentence that reports what a page says about a later step');
+    expect(synthesizer).toContain(
+      'A `null` field means that the run did not see it: when you write about it, write it as unknown, not as absent',
+    );
   });
 
   it('takes the shopify path when products.json returns a product list', async () => {
@@ -1328,6 +1395,131 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
 
     expectShopBlockOwner(promptText(runtime.requests[0]?.prompt ?? ''));
+  });
+});
+
+/** Invented sub-brands of the generic site, as `--brand-term` gives them. */
+const BRAND_TERMS = ['Nova Pass', 'Zephyr'] as const;
+
+/** A homepage fragment with the words of the title's tagline in plain prose. */
+const TAGLINE_HOMEPAGE = `${GENERIC_HOMEPAGE}
+The hero headline asks the shopper to spend less and shop more.
+`;
+
+/** Planner, then one executor per Plan task; `product` is the product fragment(s) in order. */
+function brandScripts(
+  product: readonly string[],
+  homepageCaps: object = { homepage: { section_count: 2 } },
+): readonly FakeScript[] {
+  return [
+    { writeFiles: { 'plan.md': GENERIC_PLAN(' ', ' ') }, reply: 'planned' },
+    {
+      writeFiles: {
+        'artifact/parts/homepage_sections.md': TAGLINE_HOMEPAGE,
+        'artifact/parts/homepage_sections.caps.json': JSON.stringify(homepageCaps),
+        'plan.md': GENERIC_PLAN('x', ' '),
+      },
+      reply: 'homepage done',
+    },
+    ...product.map((fragment) => ({
+      writeFiles: {
+        'artifact/parts/product_variants.md': fragment,
+        'plan.md': GENERIC_PLAN('x', 'x'),
+      },
+      reply: 'product done',
+    })),
+  ];
+}
+
+describe('exploreStorefront anonymization with brand terms', { timeout: 60_000 }, () => {
+  let site: FixtureSite;
+
+  beforeEach(async () => {
+    site = await startFixtureSite(genericSitePages, GENERIC_SITE_HOSTNAME);
+  });
+
+  afterEach(async () => {
+    await site.close();
+  });
+
+  it('fails a brand term but not a tagline word, and publishes no brand term', async () => {
+    const { result, runtime } = await explore({
+      url: site.url,
+      brandTerms: BRAND_TERMS,
+      scripts: brandScripts([
+        `${GENERIC_PRODUCT}\nMembers of Nova Pass see a free delivery badge.\n`,
+        `${GENERIC_PRODUCT}\nMembers see a free delivery badge; a season pass and a nova-blue label sit next to the price.\n`,
+      ]),
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    // The tagline words pass; the phrase "Nova Pass" reopens the product
+    // task, and its words alone pass.
+    const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
+    expect(
+      summary.verifierRuns
+        .filter((run) => run.name === 'anonymization')
+        .map((run) => [run.taskId, run.verdict]),
+    ).toEqual([
+      ['homepage_sections', 'pass'],
+      ['product_variants', 'fail'],
+      ['product_variants', 'pass'],
+    ]);
+    const retry = promptText(runtime.requests[3]?.prompt ?? '');
+    expect(retry).toContain('Anonymization check failed');
+    expect(retry).toContain('[nova pass]: Members of Nova Pass see a free delivery badge.');
+
+    // The terms stay in the run directory, and no published file holds one.
+    expect(readJson(join(outDir, 'brand_terms.json'))).toEqual(BRAND_TERMS);
+    for (const path of [
+      result.manualPath,
+      result.capabilitiesPath,
+      result.statsPath,
+      result.manifestPath,
+    ]) {
+      const text = readFileSync(path, 'utf8').toLowerCase();
+      for (const term of BRAND_TERMS) expect(text, path).not.toContain(term.toLowerCase());
+    }
+  });
+
+  it('fails the final scan on a leak in a published file and publishes no manual', async () => {
+    const leakyManual = `${MANUAL}
+Members of Nova Pass get free delivery.
+Returns go through ${GENERIC_SITE_HOSTNAME}/help.
+`;
+    const run = explore({
+      url: site.url,
+      brandTerms: BRAND_TERMS,
+      scripts: brandScripts([GENERIC_PRODUCT], {
+        shop: { descriptor: 'Fixture Mart general marketplace' },
+      }),
+      llm: new StubLlm(leakyManual),
+    });
+
+    await expect(run).rejects.toSatisfy(
+      (error: unknown) => error instanceof StepFailedError && error.stepId === 'synthesize',
+    );
+    await expect(run).rejects.toThrow(/manual\.md:\d+ \[nova pass\]/);
+    await expect(run).rejects.toThrow(/manual\.md:\d+ \[fixturemart\.localhost\]/);
+    await expect(run).rejects.toThrow(/capabilities\.json:\d+ \[fixture\]/);
+    expect(existsSync(join(outDir, 'manual.md'))).toBe(false);
+  });
+
+  it('keeps the stored brand terms on a later call and scans again when they change', async () => {
+    await explore({
+      url: site.url,
+      brandTerms: ['Zephyr'],
+      scripts: brandScripts([GENERIC_PRODUCT]),
+    });
+
+    const again = await explore({ url: site.url });
+    expect(again.result.steps.every((step) => step.status === 'skipped')).toBe(true);
+    expect(readJson(join(outDir, 'brand_terms.json'))).toEqual(['Zephyr']);
+
+    // MANUAL names "Minimal Homeware", which is now a brand term.
+    await expect(
+      explore({ url: site.url, brandTerms: ['Zephyr', 'Minimal Homeware'] }),
+    ).rejects.toThrow(/manual\.md:1 \[minimal homeware\]/);
   });
 });
 

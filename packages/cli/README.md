@@ -29,6 +29,7 @@ Explores a live storefront and writes a shop manual.
 shopgym explore <url> [--out <dir>] [--model <ref>] [--max-iters <n>]
                       [--timeout <ms>] [--from <step>] [--force-resume]
                       [--focus <text>]
+                      [--brand-term <word>]...
 ```
 
 `--from` must be one of `prefetch`, `explore`, `merge`, `synthesize`.
@@ -36,6 +37,13 @@ shopgym explore <url> [--out <dir>] [--model <ref>] [--max-iters <n>]
 `--focus "Video Games"`; `manifest.json` records it, and a re-run on the same
 `--out` must pass the same focus. Prints the manual path on stdout; exits 1 when
 the run does not finish with status `completed`.
+
+`--brand-term` is repeatable. Each one adds a brand word or phrase, such
+as a sub-brand, that the manual must not name. The Anonymization
+verifier and the final scan of the published files use the terms. The
+run keeps them in `brand_terms.json` in the run directory, and a rerun
+without `--brand-term` uses them again. To drop the stored terms, delete
+that file.
 
 ### `shopgym gen <manual_dir>... --name <name>`
 
