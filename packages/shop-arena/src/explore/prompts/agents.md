@@ -74,11 +74,12 @@ The goal is to capture **STRUCTURE and UX patterns**, not actual
 content. A reader of `manual.md` should be unable to identify the
 source shop.
 
-An automated anonymization verifier scans `artifact/parts/*.md` after
-every executor iteration for the store domain, brand tokens, absolute
-store URLs, and email addresses. A hit reopens the task and its feedback
-appears in your next prompt - but the rules above are the primary
-defense and you are expected to apply them at write time.
+An automated anonymization verifier scans this task's
+`artifact/parts/<task_id>.md` after every executor iteration for the
+store domain, brand tokens, absolute store URLs, and email addresses. A
+hit reopens the task and its feedback appears in your next prompt. After
+two reopens, the next hit blocks the task for good. The rules above are
+the primary defense and you are expected to apply them at write time.
 
 ---
 
@@ -89,10 +90,11 @@ All browsing - for both planner and executor - goes through the
 issue raw HTTP requests; the prefetch step has already done that for
 the URLs we need, and there is no shell.
 
-The harness has already opened a headless browser for you. One page is
-shared across the whole run, so the page you leave at the end of an
-iteration is the page the next iteration starts on - begin every task
-with `navigate`.
+The harness opens a new headless browser for every iteration. It starts
+on the storefront homepage with no cookies, storage or cart from earlier
+iterations, so a cart that an earlier task filled is empty again. Set up
+the state your task needs (for example, add a product before you open
+the cart) and begin every task with `navigate`.
 
 Tools:
 
@@ -164,8 +166,10 @@ element. Reference your evidence inline by relative path, e.g.
 `parts/<task_id>.caps.json` - a JSON object containing **only** the
 top-level capabilities-schema keys this task is responsible for. The
 schema is closed (extra fields rejected at merge time); do not invent
-keys. Lists are deduplicated and order-preserved at merge time. Do
-**not** wrap your fragment in any envelope - just the partial object.
+keys. Lists are deduplicated and order-preserved at merge time. For a
+scalar field, `null` means unknown: it never replaces a value that another
+task wrote. Do **not** wrap your fragment in any envelope - just the
+partial object.
 
 `evidence/<task_id>/snapshots/NN-<state>.md` - accessibility snapshots
 (the text returned by `snapshot`), one per distinct page state,
@@ -173,8 +177,8 @@ numbered for ordering.
 
 `evidence/<task_id>/network.jsonl` - optional; append one JSON object
 per observed request. Use only when the request itself is the evidence
-(predictive search suggestions, cart updates) and you can read it from
-the page (e.g. a JSON endpoint opened with `navigate`).
+(cart updates) and you can read it from the page (e.g. a JSON endpoint
+opened with `navigate`).
 
 Final action of any executor iteration: rewrite `plan.md` with
 `write_file` so that this task's line reads `[x]` (success) or
@@ -194,10 +198,10 @@ Schema (rendered into this file at pipeline-time, so it cannot drift):
 {{CAPABILITIES_SCHEMA}}
 ```
 
-The top-level groupings (`shop`, `site_shell`, `homepage`,
-`collection`, `product`, `cart`, `search`, `floating`, `intl`,
-`account`, `checkout`, `info_pages_present`) are the only valid keys
-for any `parts/<task_id>.caps.json` fragment.
+The top-level groupings (`shop`, `site_shell`, `departments`,
+`homepage`, `collection`, `product`, `cart`, `search`, `floating`,
+`intl`, `account`, `checkout`, `info_pages_present`) are the only valid
+keys for any `parts/<task_id>.caps.json` fragment.
 
 If your task observes a feature that does not fit the schema, do
 **not** invent a new key. Describe it in `parts/<task_id>.md` and
@@ -212,8 +216,8 @@ future schema revision, not a silent leak.
   (planner: <= 4 pages; executor: scope of one task in `plan.md`).
 - Don't hit `/admin` or anything behind a login. We are an
   unauthenticated UX explorer: the `account_pages` task looks only at
-  the public login / signup / password-reset surfaces, and the
-  `checkout_flow` task stops at the first checkout step. Never create
+  the public sign-in and sign-up entries, and the `checkout_flow` task
+  stops at the first sign-in or payment wall. Never create
   an account, submit credentials, enter payment details, or place an
   order.
 - Don't mutate `artifact/prefetch/` - it is the immutable seed.

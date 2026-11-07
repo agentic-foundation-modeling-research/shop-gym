@@ -9,11 +9,12 @@
  * ```
  * seed/prefetch/        prefetch.json + saved bodies (seeded into the run)
  * run/                  harness workspace (plan.md, iters/, artifact/, run.json)
+ * run/iters/<id>/start_state.json   where the Iteration's fresh browser started
  * focus.json            the focus that the planner got, written by the explore step
  * explore.json          harness outcome of the explore step
  * capabilities.json     merged, schema-validated capabilities
  * stats.json            catalog and feature statistics
- * manifest.json         counts, omissions, conflicts, coverage gaps, paths
+ * manifest.json         counts, omissions, conflicts, coverage and fixed area gaps, paths
  * manual.md             the synthesized shop manual
  * .pipeline/            step records of the pipeline runner
  * ```
@@ -39,11 +40,20 @@ import {
   PiLlmClient,
   PiRuntime,
 } from '@shop-gym/agent';
-import { BrowserSession, browserTools } from '@shop-gym/browser';
 import { type Credentials, type Step, type StepReport, runPipeline } from '@shop-gym/core';
-import { type FinalStatus, type RunSummary, runPlanExecLoop } from '@shop-gym/harness';
+import {
+  type FinalStatus,
+  InvalidPlanError,
+  PLAN_ITER_ID,
+  type RunSummary,
+  type TaskList,
+  iterDirPath,
+  parse,
+  runPlanExecLoop,
+} from '@shop-gym/harness';
 
 import { anonymizationVerifier } from './anonymization.js';
+import { IterationBrowser, parseCart } from './browser.js';
 import {
   type Capabilities,
   type Conflict,
@@ -51,7 +61,7 @@ import {
   mergeFragments,
   parseCapabilities,
 } from './capabilities.js';
-import { coverageGaps, parsePlanCoverage } from './coverage.js';
+import { type FixedAreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
 import {
   type Platform,
@@ -70,7 +80,7 @@ export const DEFAULT_OUTPUT_ROOT = join('outputs', 'shop_manuals');
 export const EXPLORE_STEPS = ['prefetch', 'explore', 'merge', 'synthesize'] as const;
 
 /** Bumped when the prompts or the output contract change shape. */
-const EXPLORE_VERSION = '1.1';
+const EXPLORE_VERSION = '1.2';
 const RUN_ID_HASH_LEN = 8;
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
 
@@ -148,6 +158,8 @@ export interface Manifest {
   readonly omitted_areas: readonly { area: string; reason: string }[];
   readonly capability_conflicts: readonly Conflict[];
   readonly coverage_gaps: readonly string[];
+  /** Each fixed area whose Plan task did not end done, with a one-line reason. */
+  readonly fixed_area_gaps: readonly FixedAreaGap[];
   readonly merged_at: string;
   readonly paths: {
     manual: string;
@@ -196,6 +208,8 @@ const PATHS = {
   manifest: 'manifest.json',
   manual: 'manual.md',
 } as const;
+/** Written into each Iteration's directory when the Iteration starts. */
+const START_STATE_FILENAME = 'start_state.json';
 
 /** Splits `provider/model-id` into a `ModelRef`. */
 export function parseModel(model: string): ModelRef {
@@ -278,6 +292,21 @@ function checkFocus(outDir: string, focus: string | null): void {
   }
 }
 
+/**
+ * The Plan tasks as the planner wrote them: the `plan.after.md` snapshot
+ * of the planner iteration. Empty when the planner wrote no valid plan.
+ */
+function readPlannedTasks(runDir: string): TaskList {
+  const path = join(iterDirPath(join(runDir, 'iters'), PLAN_ITER_ID), 'plan.after.md');
+  if (!existsSync(path)) return [];
+  try {
+    return parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    if (error instanceof InvalidPlanError) return [];
+    throw error;
+  }
+}
+
 const prefetchStep: Step<ExploreContext> = {
   id: 'prefetch',
   inputs: [],
@@ -306,7 +335,12 @@ const exploreStep: Step<ExploreContext> = {
       context.focus,
     );
     writeJson(join(outDir, PATHS.focus), { focus: context.focus });
-    const session = await BrowserSession.launch({ episodeId: basename(outDir) });
+    const browser = await IterationBrowser.launch({
+      episodeId: basename(outDir),
+      baseUrl: context.url,
+      startUrl: `${context.url}/`,
+      ...(servesCart(join(outDir, PATHS.prefetch)) ? { cartUrl: `${context.url}/cart.js` } : {}),
+    });
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
     try {
       summary = await runPlanExecLoop(
@@ -318,15 +352,17 @@ const exploreStep: Step<ExploreContext> = {
           maxIters: context.maxIters,
           timeoutMs: context.timeoutMs,
           model: context.model,
-          tools: [...browserTools(session), ...fileTools()],
+          tools: [...browser.tools, ...fileTools()],
           verifiers: [anonymizationVerifier(context.url)],
           ...(context.onEvent ? { onEvent: context.onEvent } : {}),
+          onIterationStart: async ({ iterDir }) =>
+            writeJson(join(iterDir, START_STATE_FILENAME), await browser.start()),
         },
         context.runtime,
         { force: context.forceResume },
       );
     } finally {
-      await session.close();
+      await browser.close();
     }
     log(`harness finished: ${summary.finalStatus} (${summary.execIterCount} executor iterations)`);
     const outcome: ExploreOutcome = {
@@ -338,6 +374,12 @@ const exploreStep: Step<ExploreContext> = {
     writeJson(join(outDir, PATHS.explore), outcome);
   },
 };
+
+/** True when prefetch saved a `/cart.js` body that parses as a cart. */
+function servesCart(prefetchDir: string): boolean {
+  const path = join(prefetchDir, 'cart.js');
+  return existsSync(path) && parseCart(readFileSync(path, 'utf8')) !== null;
+}
 
 const mergeStep: Step<ExploreContext> = {
   id: 'merge',
@@ -358,7 +400,8 @@ const mergeStep: Step<ExploreContext> = {
 
     const summary = readRunSummary(runDir);
     const tasks = summary?.tasksFinal ?? [];
-    const omitted = [...parsePlanCoverage(planMd).omitted].map((entry) => ({
+    const omittedAreas = parseOmittedAreas(planMd);
+    const omitted = [...omittedAreas].map((entry) => ({
       area: entry,
       reason: omissionReason(planMd, entry),
     }));
@@ -376,7 +419,8 @@ const mergeStep: Step<ExploreContext> = {
       plan_tasks_blocked: tasks.filter((task) => task.status === 'blocked').length,
       omitted_areas: omitted,
       capability_conflicts: conflicts,
-      coverage_gaps: coverageGaps(prefetchDir, planMd),
+      coverage_gaps: coverageGaps(prefetchDir, tasks, omittedAreas),
+      fixed_area_gaps: fixedAreaGaps(tasks, readPlannedTasks(runDir)),
       merged_at: new Date().toISOString(),
       paths: {
         manual: PATHS.manual,

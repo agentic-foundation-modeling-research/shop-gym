@@ -1,17 +1,24 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
-import { type CompleteRequest, type Completion, type LlmClient, promptText } from '@shop-gym/agent';
+import {
+  type CompleteRequest,
+  type Completion,
+  type LlmClient,
+  promptText,
+  readTrajectory,
+} from '@shop-gym/agent';
 import { FakeRuntime, type FakeScript } from '@shop-gym/agent/testing';
 import { StepFailedError } from '@shop-gym/core';
-import { ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
+import { NOTE_PREFIX, ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import type { FixedAreaGap } from './coverage.js';
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
-import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT } from './prefetch.js';
+import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
 import { type FixtureSite, genericSitePages, startFixtureSite } from './testing.js';
 
 const CREDENTIALS = {} as const;
@@ -121,6 +128,189 @@ const SCRIPTS: readonly FakeScript[] = [
   },
 ];
 
+/** An executor that writes the leaky homepage fragment again and marks it done. */
+const LEAKY_HOMEPAGE_ATTEMPT: FakeScript = {
+  writeFiles: {
+    'artifact/parts/homepage_sections.md': LEAKY_HOMEPAGE,
+    'plan.md': PLAN('x', ' '),
+  },
+  reply: 'homepage done (leaky)',
+};
+
+const HOMEPAGE_BLOCKED = `- [!] homepage_sections [priority: 9] ${NOTE_PREFIX} anonymization: parts/homepage_sections.md still identifies the storefront after 2 reopens`;
+
+/** A fragment with every marketplace Capability of schema 0.3. */
+const MARKETPLACE_CAPS = {
+  departments: { has_department_menu: true, department_count: 24, max_depth: 3 },
+  search: { facets: ['brand', 'price', 'rating'], sort: ['featured', 'price_asc', 'newest'] },
+  product: {
+    has_rating_histogram: true,
+    review_filters: ['star_rating', 'verified_purchase'],
+    related_product_types: ['bought_together', 'also_viewed', 'sponsored'],
+  },
+};
+
+const MARKETPLACE_SCRIPTS: readonly FakeScript[] = [
+  { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+  {
+    writeFiles: {
+      'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+      'artifact/parts/homepage_sections.caps.json': JSON.stringify(MARKETPLACE_CAPS),
+      'plan.md': PLAN('x', ' '),
+    },
+    reply: 'homepage done',
+  },
+  {
+    writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') },
+    reply: 'cart done',
+  },
+];
+
+/** The 14 canonical Plan task ids, in planner order, that every run must plan. */
+const EXPECTED_FIXED_AREAS = [
+  'homepage_sections',
+  'header_navigation',
+  'cart_drawer',
+  'product_variants',
+  'product_reviews',
+  'related_products',
+  'collection_filters',
+  'search_predictive',
+  'search_results',
+  'checkout_flow',
+  'account_pages',
+  'footer',
+  'info_pages',
+  'floating_widgets',
+];
+
+/**
+ * A plan with every fixed area at one priority. Ties go to source order,
+ * so the executor takes `search_results`, then `product_reviews`.
+ */
+function fixedPlan(lines: Readonly<Record<string, string>> = {}): string {
+  const first = ['search_results', 'product_reviews'];
+  const tasks = [...first, ...EXPECTED_FIXED_AREAS.filter((area) => !first.includes(area))].map(
+    (id) => lines[id] ?? `- [ ] ${id} — open the area; capture it [priority: 5]`,
+  );
+  return `# Plan - Minimal Homeware Shop
+
+A small homeware storefront with a single collection.
+
+## Tasks
+
+${tasks.join('\n')}
+
+## Omitted Areas
+
+(none)
+`;
+}
+
+const SEARCH_RESULTS_PART = `## Search Results
+
+### Results grid
+
+- **Type:** full-page results grid
+- **Layout:** facet column beside a product grid
+- **Content:** product cards with price and rating
+- **Behavior:** facets refine the grid in place
+- **Styling:** light surface
+- **UX Notes:** none
+`;
+
+const FIXED_AREA_SCRIPTS: readonly FakeScript[] = [
+  { writeFiles: { 'plan.md': fixedPlan() }, reply: 'planned' },
+  {
+    writeFiles: {
+      'artifact/parts/search_results.md': SEARCH_RESULTS_PART,
+      'plan.md': fixedPlan({
+        search_results: '- [x] search_results — open the area; capture it [priority: 5]',
+      }),
+    },
+    reply: 'search results done',
+  },
+  {
+    writeFiles: {
+      'plan.md': fixedPlan({
+        search_results: '- [x] search_results — open the area; capture it [priority: 5]',
+        product_reviews:
+          '- [!] product_reviews — open the area; capture it; reviews need a sign-in; none is public [priority: 5]',
+      }),
+    },
+    reply: 'product reviews blocked',
+  },
+];
+
+/** A `capabilities.json` that Storefront exploration published at schema 0.2. */
+const CAPABILITIES_0_2 = {
+  version: '0.2',
+  shop: { descriptor: 'Minimal Homeware Shop', category: null, currency: 'USD', tone: [] },
+  cart: { type: 'drawer', has_promo_input: true, has_upsells: null, has_shipping_estimate: null },
+  search: { trigger: 'icon', has_predictive: true, predictive_types: [], results_layout: null },
+};
+
+/** The capabilities JSON Schema that the agent constitution shows. */
+function constitutionSchema(systemPrompt: string | undefined): {
+  properties: Record<string, { default?: unknown; properties?: Record<string, unknown> }>;
+} {
+  const block = /```json\n([\s\S]*?)\n```/.exec(systemPrompt ?? '')?.[1];
+  if (block === undefined) throw new Error('the constitution has no JSON Schema block');
+  return JSON.parse(block);
+}
+
+/** The `[ ]` task lines of a planner prompt as `[id, brief]` pairs, in prompt order. */
+function plannedTasks(prompt: string): [string | undefined, string | undefined][] {
+  return [...prompt.matchAll(/^- \[ \] ([a-z0-9_]+)\s+— (.*) \[priority: \d+\]$/gm)].map(
+    (match) => [match[1], match[2]],
+  );
+}
+
+/** The ids of the `[ ]` task lines in a planner prompt, in prompt order. */
+function plannedIds(prompt: string): (string | undefined)[] {
+  return plannedTasks(prompt).map(([id]) => id);
+}
+
+/** The brief of the `[ ]` task line `id` in a planner prompt. */
+function plannedBrief(prompt: string, id: string): string {
+  const brief = plannedTasks(prompt).find(([taskId]) => taskId === id)?.[1];
+  if (brief === undefined) throw new Error(`the planner prompt plans no ${id} task`);
+  return brief;
+}
+
+/**
+ * Checks that the briefs keep the executor on the storefront pages that a
+ * visitor sees, also in a brief that the planner makes more specific. The
+ * same rules hold on every platform.
+ */
+function expectStorefrontBriefs(planner: string): void {
+  expect(plannedBrief(planner, 'collection_filters')).toMatch(
+    /^start on .*department or category landing page, not a search results page; /,
+  );
+  // The product page shows the review block; the all-reviews page can ask for a sign-in.
+  const reviews = plannedBrief(planner, 'product_reviews');
+  expect(reviews).toMatch(/^scroll a product page to its review block /);
+  expect(reviews).toContain('skip all-reviews pages behind sign-in');
+  // The suggestion API can be on another host, so the evidence is the dropdown.
+  const predictive = plannedBrief(planner, 'search_predictive');
+  expect(predictive).toContain(
+    'type 2 prefixes into the search box; snapshot each suggestion dropdown',
+  );
+  expect(predictive).toContain('stay on storefront pages, no network or API capture');
+  expect(predictive).not.toMatch(/network capture|suggest\.json/);
+  // The planner adds paths and queries to the briefs, and the rules above stay.
+  const prose = planner.replace(/\s+/g, ' ');
+  expect(prose).toContain('A tweaked brief keeps every rule of its canonical brief');
+  expect(prose).toContain('the paths and queries that you add do not count');
+}
+
+/** Checks that one Plan task owns the shop block, so the block does not stay empty. */
+function expectShopBlockOwner(planner: string): void {
+  expect(plannedBrief(planner, 'homepage_sections')).toContain(
+    'fill the shop block (`shop`): descriptor, category, currency code, tone',
+  );
+}
+
 class StubLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
 
@@ -135,6 +325,13 @@ class StubLlm implements LlmClient {
       usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
     };
   }
+}
+
+/** The fixture's guest carts, keyed by the `cart` cookie. */
+const carts = new Map<string, { variant_id: number; quantity: number }[]>();
+
+function cartToken(req: http.IncomingMessage): string | undefined {
+  return /(?:^|;\s*)cart=([^;]+)/.exec(req.headers.cookie ?? '')?.[1];
 }
 
 let server: http.Server;
@@ -156,8 +353,18 @@ beforeAll(async () => {
         return json(url.searchParams.get('page') === '1' ? PRODUCTS : { products: [] });
       case '/collections.json':
         return json(COLLECTIONS);
+      case '/cart/add': {
+        // A guest cart lives on the server, found by the `cart` cookie.
+        const token = cartToken(req) ?? `cart-${carts.size + 1}`;
+        const lines = carts.get(token) ?? [];
+        lines.push({ variant_id: Number(url.searchParams.get('id')), quantity: 1 });
+        carts.set(token, lines);
+        return res
+          .writeHead(200, { 'content-type': 'text/html', 'set-cookie': `cart=${token}; Path=/` })
+          .end('<html><head><title>Cart</title></head><body>Added</body></html>');
+      }
       case '/cart.js':
-        return json({ currency: 'USD', items: [] });
+        return json({ currency: 'USD', items: carts.get(cartToken(req) ?? '') ?? [] });
       case '/cart':
       case '/search':
         return res.writeHead(200, { 'content-type': 'text/html' }).end('<html>page</html>');
@@ -188,6 +395,7 @@ function explore(options: {
   llm?: StubLlm;
   from?: 'prefetch' | 'explore' | 'merge' | 'synthesize';
   forceResume?: boolean;
+  maxIters?: number;
   focus?: string;
 }) {
   const runtime = new FakeRuntime(options.scripts ?? []);
@@ -196,7 +404,7 @@ function explore(options: {
     url: options.url ?? baseUrl,
     outDir,
     model: 'anthropic/test-model',
-    maxIters: 5,
+    maxIters: options.maxIters ?? 5,
     timeoutMs: 60_000,
     rateLimitMs: 0,
     credentials: CREDENTIALS,
@@ -297,6 +505,155 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     );
   });
 
+  it('reopens a leaking task twice, then blocks it without touching the other task', async () => {
+    const { result, runtime } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        LEAKY_HOMEPAGE_ATTEMPT,
+        LEAKY_HOMEPAGE_ATTEMPT,
+        LEAKY_HOMEPAGE_ATTEMPT,
+        {
+          writeFiles: {
+            'artifact/parts/cart_drawer.md': CART_PART,
+            'plan.md': PLAN('x', 'x').replace(/^- \[x\] homepage_sections .*$/m, HOMEPAGE_BLOCKED),
+          },
+          reply: 'cart done',
+        },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    // Planner, three homepage attempts, one cart attempt.
+    expect(runtime.requests).toHaveLength(5);
+    expect(runtime.requests[2]?.prompt).toContain('1 of 2 reopens');
+    expect(runtime.requests[3]?.prompt).toContain('2 of 2 reopens');
+    const planBeforeCart = readFileSync(join(outDir, 'run/iters/exec-0004/plan.before.md'), 'utf8');
+    expect(planBeforeCart).toContain(HOMEPAGE_BLOCKED);
+
+    // The leaky homepage fragment is still on disk: the cart task passes and
+    // does not see the homepage feedback.
+    expect(runtime.requests[4]?.prompt).toContain('selected_task_id: cart_drawer');
+    expect(runtime.requests[4]?.prompt).not.toContain('Anonymization check failed');
+    const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
+    expect(summary.verifierRuns.map((run) => [run.taskId, run.verdict])).toEqual([
+      ['homepage_sections', 'fail'],
+      ['homepage_sections', 'fail'],
+      ['homepage_sections', 'fail'],
+      ['cart_drawer', 'pass'],
+    ]);
+    expect(readJson(result.manifestPath)).toMatchObject({
+      plan_tasks_total: 2,
+      plan_tasks_done: 1,
+      plan_tasks_blocked: 1,
+    });
+  });
+
+  it('reports the area of an unfinished Plan task as a coverage gap', async () => {
+    // The budget ends after the homepage iteration, so cart_drawer stays pending.
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          reply: 'homepage done',
+        },
+      ],
+      maxIters: 1,
+    });
+
+    expect(result.finalStatus).toBe('budget_exhausted');
+    const manifest = readJson(result.manifestPath);
+    expect(manifest).toMatchObject({ plan_tasks_total: 2, plan_tasks_done: 1 });
+    expect(manifest.coverage_gaps).toEqual([
+      'cart',
+      'collection',
+      'product_detail',
+      'search_results',
+    ]);
+  });
+
+  it('shows the 0.3 schema to the agent and publishes the marketplace Capabilities', async () => {
+    const { result, runtime } = await explore({ scripts: MARKETPLACE_SCRIPTS });
+
+    const schema = constitutionSchema(runtime.requests[0]?.systemPrompt);
+    expect(schema.properties.version?.default).toBe('0.3');
+    expect(Object.keys(schema.properties.departments?.properties ?? {})).toEqual([
+      'has_department_menu',
+      'department_count',
+      'max_depth',
+    ]);
+    expect(Object.keys(schema.properties.search?.properties ?? {})).toEqual(
+      expect.arrayContaining(['facets', 'sort']),
+    );
+    expect(Object.keys(schema.properties.product?.properties ?? {})).toEqual(
+      expect.arrayContaining(['has_rating_histogram', 'review_filters', 'related_product_types']),
+    );
+
+    expect(result.steps.map((step) => step.status)).toEqual(['ran', 'ran', 'ran', 'ran']);
+    const capabilities = readJson(result.capabilitiesPath);
+    expect(capabilities.version).toBe('0.3');
+    expect(capabilities).toMatchObject(MARKETPLACE_CAPS);
+  });
+
+  it('synthesizes again from a capabilities.json at schema 0.2', async () => {
+    await explore({ scripts: SCRIPTS });
+    writeFileSync(join(outDir, 'capabilities.json'), JSON.stringify(CAPABILITIES_0_2));
+
+    const { result, llm } = await explore({ from: 'synthesize' });
+    expect(result.steps.map((step) => step.status)).toEqual([
+      'skipped',
+      'skipped',
+      'skipped',
+      'ran',
+    ]);
+    const prompt = String(llm.requests[0]?.prompt);
+    expect(prompt).toContain('"version": "0.2"');
+    expect(prompt).toContain('"has_department_menu": null');
+    expect(prompt).toContain('"facets": []');
+  });
+
+  it('plans the 14 fixed areas within 4 navigations and records each unfinished one as a gap with a reason', async () => {
+    // The budget ends after two executor iterations: search_results is
+    // done, product_reviews is blocked, and the other areas stay pending.
+    const { result, runtime } = await explore({ scripts: FIXED_AREA_SCRIPTS, maxIters: 2 });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    expect(plannedIds(planner)).toEqual(EXPECTED_FIXED_AREAS);
+    expect(planner).toContain('<= 4 `navigate` calls');
+
+    expect(result.finalStatus).toBe('budget_exhausted');
+    const manifest = readJson(result.manifestPath);
+    expect(manifest.coverage_gaps).not.toContain('search_results');
+    const gaps: FixedAreaGap[] = manifest.fixed_area_gaps;
+    expect(gaps.map((gap) => gap.area)).toEqual(
+      EXPECTED_FIXED_AREAS.filter((area) => area !== 'search_results'),
+    );
+    // The reason is the text after the planned brief, `;` included.
+    expect(gaps).toContainEqual({
+      area: 'product_reviews',
+      reason: 'blocked: reviews need a sign-in; none is public',
+    });
+    expect(gaps).toContainEqual({
+      area: 'related_products',
+      reason: 'not started when the run ended',
+    });
+  });
+
+  it('keeps the fixed-area briefs on storefront pages', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+
+    expectStorefrontBriefs(promptText(runtime.requests[0]?.prompt ?? ''));
+  });
+
+  it('gives the shop block to homepage_sections', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+
+    expectShopBlockOwner(promptText(runtime.requests[0]?.prompt ?? ''));
+  });
+
   it('skips every step on a second call with the same outDir', async () => {
     await explore({ scripts: SCRIPTS });
     const { result, runtime, llm } = await explore({});
@@ -334,6 +691,120 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     ).rejects.toThrow(/manual response too short/);
     expect(existsSync(join(outDir, 'manual.md'))).toBe(false);
     expect(existsSync(join(outDir, 'capabilities.json'))).toBe(true);
+  });
+
+  it('starts every Iteration in a fresh browser, so a cart made in one is not in the next', async () => {
+    const readCart = [
+      { tool: 'navigate', arguments: { url: `${baseUrl}/cart.js` } },
+      { tool: 'snapshot', arguments: {} },
+    ];
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') } },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          toolCalls: [
+            { tool: 'navigate', arguments: { url: `${baseUrl}/cart/add?id=101` } },
+            ...readCart,
+          ],
+        },
+        {
+          writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') },
+          toolCalls: readCart,
+        },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    const cartSnapshot = async (iterId: string): Promise<string | undefined> => {
+      const { steps } = await readTrajectory(
+        join(result.runDir, 'iters', iterId, 'trajectory.json'),
+      );
+      return steps.flatMap((step) => (step.kind === 'tool_result' ? [step.output] : [])).at(-1);
+    };
+    // The snapshot shows the `/cart.js` body: one line, then no lines.
+    expect(await cartSnapshot('exec-0001')).toContain('variant_id');
+    expect(await cartSnapshot('exec-0002')).not.toContain('variant_id');
+  });
+
+  it('records where the browser of every Iteration started', async () => {
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') } },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+        },
+        { writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') } },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    for (const iterId of ['plan', 'exec-0001', 'exec-0002']) {
+      expect(readJson(join(result.runDir, 'iters', iterId, 'start_state.json')), iterId).toEqual({
+        url: `${baseUrl}/`,
+        cart: { items: [] },
+        error: null,
+      });
+    }
+  });
+
+  it('opens a site path from navigate on the storefront', async () => {
+    const { result } = await explore({
+      scripts: [
+        {
+          writeFiles: { 'plan.md': PLAN(' ', ' ') },
+          toolCalls: [{ tool: 'navigate', arguments: { url: '/cart' } }],
+        },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+        },
+        { writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') } },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    const { steps } = await readTrajectory(join(result.runDir, 'iters', 'plan', 'trajectory.json'));
+    expect(steps.find((step) => step.kind === 'tool_result')).toMatchObject({
+      isError: false,
+      output: expect.stringContaining(`Navigated to ${baseUrl}/cart\n`),
+    });
+  });
+
+  it('stops at the prefetch gates before any Iteration starts', async () => {
+    const gated = http.createServer((_req, res) =>
+      res.writeHead(200).end('User-agent: *\nDisallow: /\n'),
+    );
+    await new Promise<void>((resolve) => gated.listen(0, '127.0.0.1', resolve));
+    const runtime = new FakeRuntime(SCRIPTS);
+    try {
+      await expect(
+        exploreStorefront({
+          url: `http://127.0.0.1:${(gated.address() as AddressInfo).port}`,
+          outDir,
+          model: 'anthropic/test-model',
+          rateLimitMs: 0,
+          credentials: CREDENTIALS,
+          runtime,
+          llm: new StubLlm(),
+        }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof StepFailedError && error.cause instanceof ShopUnreachableError,
+      );
+    } finally {
+      await new Promise<void>((resolve) => gated.close(() => resolve()));
+    }
+    expect(runtime.requests).toHaveLength(0);
+    expect(existsSync(join(outDir, 'run'))).toBe(false);
   });
 
   it('resumes a refused harness run only with forceResume', async () => {
@@ -561,6 +1032,33 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     }
     // So a retry on the same outDir may take another focus.
     expect(existsSync(join(outDir, 'focus.json'))).toBe(false);
+  });
+
+  it('asks the generic planner for the 14 fixed areas within 4 navigations', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    expect(planner).toContain('explore planner for a generic site');
+    expect(plannedIds(planner)).toEqual(EXPECTED_FIXED_AREAS);
+    expect(planner).toContain('<= 4 `navigate` calls');
+  });
+
+  it('keeps the fixed-area briefs on storefront pages', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const planner = promptText(runtime.requests[0]?.prompt ?? '');
+    expectStorefrontBriefs(planner);
+    // The planner picks the listing page of collection_filters, and the
+    // search results page is not one.
+    expect(planner.replace(/\s+/g, ' ')).toContain(
+      'a department or category landing page for `collection_filters`',
+    );
+  });
+
+  it('gives the shop block to homepage_sections', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    expectShopBlockOwner(promptText(runtime.requests[0]?.prompt ?? ''));
   });
 });
 

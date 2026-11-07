@@ -1,10 +1,13 @@
 /**
- * Coverage check: which storefront areas the prefetch evidenced but the
- * plan neither explored nor explicitly omitted.
+ * Coverage check: which storefront areas the prefetch evidenced but no
+ * done Plan task explored and the plan did not explicitly omit, and which
+ * fixed areas, planned in every run, did not end done.
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+
+import { type Task, type TaskList, taskById } from '@shop-gym/harness';
 
 interface Area {
   readonly name: string;
@@ -104,34 +107,18 @@ export function evidencedAreas(prefetchDir: string): Set<string> {
   return areas;
 }
 
-export interface PlanCoverage {
-  readonly taskIds: Set<string>;
-  readonly omitted: Set<string>;
-}
-
-/** Task ids under `## Tasks` and omitted slugs under `## Omitted*`. */
-export function parsePlanCoverage(planMd: string): PlanCoverage {
-  const taskIds = new Set<string>();
+/** Slugs listed under `## Omitted*` in `plan.md`. */
+export function parseOmittedAreas(planMd: string): Set<string> {
   const omitted = new Set<string>();
-  let section: 'tasks' | 'omitted' | null = null;
+  let inOmitted = false;
   for (const line of planMd.split(/\r?\n/)) {
     const heading = /^##\s+(.*)$/.exec(line);
     if (heading !== null) {
-      const title = (heading[1] ?? '').trim().toLowerCase();
-      section = title.startsWith('tasks')
-        ? 'tasks'
-        : title.startsWith('omitted')
-          ? 'omitted'
-          : null;
+      inOmitted = (heading[1] ?? '').trim().toLowerCase().startsWith('omitted');
       continue;
     }
     const stripped = line.trim();
-    if (section === 'tasks' && stripped.startsWith('- [')) {
-      const close = stripped.indexOf(']');
-      const rest = stripped.slice(close + 1).trim();
-      const id = rest.split(/\s+/)[0] ?? '';
-      if (id !== '') taskIds.add(id);
-    } else if (section === 'omitted' && stripped.startsWith('- ')) {
+    if (inOmitted && stripped.startsWith('- ')) {
       const slug =
         stripped
           .slice(2)
@@ -140,22 +127,119 @@ export function parsePlanCoverage(planMd: string): PlanCoverage {
       if (slug !== '') omitted.add(slug);
     }
   }
-  return { taskIds, omitted };
+  return omitted;
 }
 
-/** Evidenced areas with neither a task nor an omission in `plan.md`. */
-export function coverageGaps(prefetchDir: string, planMd: string): string[] {
-  const { taskIds, omitted } = parsePlanCoverage(planMd);
+/** Whether a done Plan task covers `spec`, by the rule of `coverageGaps`. */
+function coveredByTask(spec: Area, tasks: TaskList): boolean {
+  const own = taskById(tasks, spec.name);
+  if (own !== undefined) return own.status === 'done';
+  return tasks.some((task) => task.status === 'done' && spec.taskIds.includes(task.id));
+}
+
+/**
+ * Evidenced areas that no done Plan task covers and `omitted` does not
+ * name.
+ *
+ * Only a done Plan task covers an area, so a pending, in-progress, or
+ * blocked task (an area left unfinished, failed, or skipped) leaves it a
+ * gap. When the plan has a Plan task with the area's own name, only that
+ * task can cover the area. Otherwise any done task of the area can.
+ */
+export function coverageGaps(
+  prefetchDir: string,
+  tasks: TaskList,
+  omitted: ReadonlySet<string>,
+): string[] {
   const gaps: string[] = [];
   for (const area of evidencedAreas(prefetchDir)) {
     const spec = AREAS.find((candidate) => candidate.name === area);
     if (spec === undefined) continue;
     const covered =
-      taskIds.has(area) ||
-      spec.taskIds.some((id) => taskIds.has(id)) ||
+      coveredByTask(spec, tasks) ||
       omitted.has(area) ||
       spec.omissionAliases.some((alias) => omitted.has(alias));
     if (!covered) gaps.push(area);
   }
   return gaps.sort();
+}
+
+/**
+ * The canonical Plan task ids that the planner emits in every run, on
+ * every platform, in the order of the planner prompt: 11 for the surfaces
+ * that every storefront has, and three marketplace ids
+ * (`product_reviews`, `related_products`, `search_results`).
+ */
+export const FIXED_AREAS: readonly string[] = [
+  'homepage_sections',
+  'header_navigation',
+  'cart_drawer',
+  'product_variants',
+  'product_reviews',
+  'related_products',
+  'collection_filters',
+  'search_predictive',
+  'search_results',
+  'checkout_flow',
+  'account_pages',
+  'footer',
+  'info_pages',
+  'floating_widgets',
+];
+
+/** A fixed area that did not end done, with a one-line reason. */
+export interface FixedAreaGap {
+  readonly area: string;
+  readonly reason: string;
+}
+
+/**
+ * The fixed areas whose Plan task did not end done, in `FIXED_AREAS`
+ * order, each with a one-line reason.
+ *
+ * Prefetch evidence and plan omissions do not matter here, because every
+ * run plans every fixed area. A fixed area that the plan does not have
+ * is a gap too.
+ *
+ * @param tasks The Plan tasks when the run ended.
+ * @param planned The Plan tasks as the planner wrote them. The executor
+ *   that blocks a task appends its reason to the planned brief, so the
+ *   reason is the text after that brief.
+ */
+export function fixedAreaGaps(tasks: TaskList, planned: TaskList): FixedAreaGap[] {
+  return FIXED_AREAS.flatMap((area) => {
+    const reason = gapReason(taskById(tasks, area), taskById(planned, area)?.note ?? null);
+    return reason === undefined ? [] : [{ area, reason }];
+  });
+}
+
+/**
+ * Why `task` leaves its fixed area a gap, or `undefined` when it is done.
+ * `brief` is the note of the task as the planner wrote it.
+ */
+function gapReason(task: Task | undefined, brief: string | null): string | undefined {
+  if (task === undefined) return 'not in the plan';
+  switch (task.status) {
+    case 'done':
+      return undefined;
+    case 'pending':
+      return 'not started when the run ended';
+    case 'in_progress':
+      return 'in progress when the run ended';
+    case 'blocked':
+      return `blocked: ${blockedReason(task.note, brief)}`;
+  }
+}
+
+/**
+ * The reason of a blocked Plan task: the text that follows its planned
+ * `brief` in its `note`, without the `;` that starts it. A note that does
+ * not start with the brief, such as the note of a protocol violation that
+ * the harness writes in place of the brief, is the reason as a whole.
+ */
+function blockedReason(note: string | null, brief: string | null): string {
+  const text = note ?? '';
+  const appended = brief !== null && text.startsWith(brief) ? text.slice(brief.length) : text;
+  const reason = appended.replace(/^\s*;/, '').trim();
+  return reason === '' ? 'no reason given' : reason;
 }
