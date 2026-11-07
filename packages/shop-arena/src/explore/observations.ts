@@ -196,12 +196,14 @@ function errorResult(error: unknown): ToolResult {
 /**
  * The `record_product_observation` tool for executors on a generic site.
  * The model gives its task id and the facts of the product page that is
- * open in `session`. The tool checks the facts against the schema, takes
+ * open in `browser`. The tool checks the facts against the schema, takes
  * the page key from the open page, and writes the fragment to
  * `artifact/parts/<task_id>.product-<key>.json` under the run directory.
  * A second call on the same page in the same task replaces the fragment.
+ * Each call reads `browser.page` again, so the tool follows a browser that
+ * changes its page, such as a new browser for each Iteration.
  */
-export function productObservationTool(session: BrowserSession): Tool {
+export function productObservationTool(browser: Pick<BrowserSession, 'page'>): Tool {
   const parameters = Type.Object({
     task_id: Type.String({
       pattern: TASK_ID.source,
@@ -228,7 +230,7 @@ export function productObservationTool(session: BrowserSession): Tool {
         );
       }
       try {
-        const { key, path } = await keyOfOpenPage(session.page);
+        const { key, path } = await keyOfOpenPage(browser.page);
         const name = `${taskId}.product-${key}.json`;
         const partsDir = join(ctx.cwd, 'artifact', 'parts');
         mkdirSync(partsDir, { recursive: true });

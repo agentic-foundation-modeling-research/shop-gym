@@ -1428,7 +1428,7 @@ Legacy modules deleted by the v2 migration:
 | `*.<list>` (filters, sort)  | Union, dedup, preserve any seed's relative order for the prefix.        |
 | `*.layout` / `*.style` enums | Majority; ties → LLM picks the most consistent with `descriptor`.       |
 | `homepage.section_types`    | Union, capped at `max(seed.section_count)` to avoid sprawl.             |
-| `nav_depth`                 | Max.                                                                    |
+| `nav_depth`, `departments.max_depth` | Max.                                                           |
 
 ### 9.3 Reference materials
 

@@ -290,6 +290,66 @@ describe('runPlanExecLoop: blocked-and-continue', () => {
   });
 });
 
+describe('runPlanExecLoop: onIterationStart', () => {
+  const PLAN_AB = '## Tasks\n\n- [ ] a [priority: 2]\n- [ ] b [priority: 1]\n';
+
+  it('runs before each Agent run with the iteration id and task', async () => {
+    const log: string[] = [];
+    const runtime = new FakeRuntime([
+      planner(PLAN_AB),
+      exec(PLAN_AB.replace('[ ] a', '[x] a')),
+      exec(PLAN_AB.replace('[ ] a', '[x] a').replace('[ ] b', '[x] b')),
+    ]);
+    await runPlanExecLoop(
+      config({
+        onIterationStart: async (start) => {
+          log.push(`${start.iterId} ${start.taskId} after ${runtime.requests.length} runs`);
+        },
+      }),
+      runtime,
+    );
+    expect(log).toEqual([
+      'plan null after 0 runs',
+      'exec-0001 a after 1 runs',
+      'exec-0002 b after 2 runs',
+    ]);
+  });
+
+  it('gives the iteration directory, which a timeout moves aside with its files', async () => {
+    const runtime = new FakeRuntime([
+      planner(PLAN_AB),
+      { status: 'aborted' },
+      exec(PLAN_AB.replace('[ ] b', '[x] b')),
+    ]);
+    await runPlanExecLoop(
+      config({
+        onIterationStart: async (start) => {
+          await fs.writeFile(
+            path.join(start.iterDir, 'start.txt'),
+            `${start.iterId} ${start.taskId}`,
+          );
+        },
+      }),
+      runtime,
+    );
+    expect(await read('iters/plan/start.txt')).toBe('plan null');
+    // The timed-out iteration's id is used again by the next iteration.
+    expect(await read('iters/exec-0001.aborted-1/start.txt')).toBe('exec-0001 a');
+    expect(await read('iters/exec-0001/start.txt')).toBe('exec-0001 b');
+  });
+
+  it('rejects the run before the Agent run when the hook throws', async () => {
+    const runtime = new FakeRuntime([planner()]);
+    const onIterationStart = async (): Promise<void> => {
+      throw new Error('browser did not start');
+    };
+    await expect(runPlanExecLoop(config({ onIterationStart }), runtime)).rejects.toThrow(
+      'browser did not start',
+    );
+    expect(runtime.requests).toHaveLength(0);
+  });
+});
+
 describe('runPlanExecLoop: onIterationEnd', () => {
   const PLAN_ABCD =
     '## Tasks\n\n- [ ] a [priority: 4]\n- [ ] b [priority: 3]\n- [ ] c [priority: 2]\n- [ ] d [priority: 1]\n';
@@ -355,6 +415,83 @@ describe('runPlanExecLoop: onIterationEnd', () => {
       'checkpoint failed',
     );
     expect(runtime.requests).toHaveLength(1);
+  });
+});
+
+describe('runPlanExecLoop: caller stop', () => {
+  it('a stop after the planner starts no executor and ends the run as stopped', async () => {
+    const ends: string[] = [];
+    const runtime = new FakeRuntime([planner(), exec(PLAN_A_DONE)]);
+    const result = await runPlanExecLoop(
+      config({
+        onIterationEnd: async (end) => {
+          ends.push(end.iterId);
+          return { stopReason: 'bot_check' };
+        },
+      }),
+      runtime,
+    );
+    expect(result.finalStatus).toBe('stopped');
+    expect(result.stopReason).toBe('bot_check');
+    expect(result.planIterCount).toBe(1);
+    expect(result.execIterCount).toBe(0);
+    expect(result.tasksFinal.map((t) => [t.id, t.status])).toEqual([
+      ['a', 'pending'],
+      ['b', 'pending'],
+    ]);
+    expect(runtime.requests).toHaveLength(1);
+    expect(ends).toEqual(['plan']);
+    expect(await listIters()).toEqual(['plan']);
+    const summary = await readJson('run.json');
+    expect(summary).toMatchObject({ finalStatus: 'stopped', stopReason: 'bot_check' });
+    expect((summary.configSnapshot as { resumeHistory: unknown[] }).resumeHistory).toMatchObject([
+      { finalStatus: 'stopped', stopReason: 'bot_check' },
+    ]);
+  });
+
+  it('a stop after an executor iteration starts no further iteration', async () => {
+    const PLAN_ABC = '## Tasks\n\n- [ ] a [priority: 3]\n- [ ] b [priority: 2]\n- [ ] c\n';
+    const ends: string[] = [];
+    const runtime = new FakeRuntime([
+      planner(PLAN_ABC),
+      exec(PLAN_ABC.replace('[ ] a', '[x] a')),
+      exec(PLAN_ABC.replace('[ ] a', '[x] a').replace('[ ] b', '[x] b')),
+      exec(PLAN_ABC.replaceAll('[ ]', '[x]')),
+    ]);
+    const result = await runPlanExecLoop(
+      config({
+        onIterationEnd: async (end) => {
+          ends.push(`${end.iterId} ${end.outcome}`);
+          return end.iterId === 'exec-0002' ? { stopReason: 'navigation_cap' } : undefined;
+        },
+      }),
+      runtime,
+    );
+    expect(result.finalStatus).toBe('stopped');
+    expect(result.stopReason).toBe('navigation_cap');
+    expect(result.execIterCount).toBe(2);
+    expect(result.tasksFinal.map((t) => [t.id, t.status])).toEqual([
+      ['a', 'done'],
+      ['b', 'done'],
+      ['c', 'pending'],
+    ]);
+    expect(runtime.requests).toHaveLength(3);
+    expect(ends).toEqual(['plan kept', 'exec-0001 kept', 'exec-0002 kept']);
+    expect(await listIters()).toEqual(['exec-0001', 'exec-0002', 'plan']);
+    expect(await readJson('run.json')).toMatchObject({
+      finalStatus: 'stopped',
+      stopReason: 'navigation_cap',
+      execIterCount: 2,
+    });
+  });
+
+  it('a stop after the iteration that ended the run keeps the failure status', async () => {
+    const stopAlways = config({ onIterationEnd: async () => ({ stopReason: 'bot_check' }) });
+    const result = await runPlanExecLoop(stopAlways, new ThrowingRuntime());
+    expect(result.finalStatus).toBe('runtime_error');
+    expect(result.stopReason).toBeUndefined();
+    expect((await readJson('run.json')).stopReason).toBeUndefined();
+    await expect(runPlanExecLoop(config(), new FakeRuntime())).rejects.toThrow(ResumeRefusedError);
   });
 });
 
@@ -548,6 +685,32 @@ describe('runPlanExecLoop: resume', () => {
     );
     expect(r2.finalStatus).toBe('completed');
     expect(r2.execIterCount).toBe(2);
+  });
+
+  it('continues after a caller stop without force and keeps the stop in the history', async () => {
+    const stopAfterA = config({
+      onIterationEnd: async (end) => (end.taskId === 'a' ? { stopReason: 'bot_check' } : undefined),
+    });
+    const r1 = await runPlanExecLoop(stopAfterA, new FakeRuntime([planner(), exec(PLAN_A_DONE)]));
+    expect(r1.finalStatus).toBe('stopped');
+    expect(r1.execIterCount).toBe(1);
+
+    const second = new FakeRuntime([exec(PLAN_AB_DONE)]);
+    const r2 = await runPlanExecLoop(config(), second);
+    expect(r2.finalStatus).toBe('completed');
+    expect(r2.stopReason).toBeUndefined();
+    expect(r2.planIterCount).toBe(1);
+    expect(r2.execIterCount).toBe(2);
+    expect(second.requests).toHaveLength(1);
+    expect(second.requests[0]?.prompt).toContain('selected_task_id: b');
+    const summary = await readJson('run.json');
+    expect(summary.stopReason).toBeUndefined();
+    const history = (summary.configSnapshot as { resumeHistory: Record<string, unknown>[] })
+      .resumeHistory;
+    expect(history.map(({ finalStatus, stopReason }) => [finalStatus, stopReason])).toEqual([
+      ['stopped', 'bot_check'],
+      ['completed', undefined],
+    ]);
   });
 
   it('rejects a resume with drifted prompts', async () => {

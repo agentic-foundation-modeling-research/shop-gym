@@ -38,17 +38,18 @@ stop.
   H2 only when neither capabilities nor parts have any signal for it.
   1. `## Overview` - 2-4 sentences: vertical, scale signals from the
      `shop` block, customer-facing tone.
-  2. `## Site shell` - header, footer, mega menu, announcement bar
-     (mirror `site_shell`).
+  2. `## Site shell` - header, footer, mega menu, announcement bar,
+     department menu (mirror `site_shell` and `departments`).
   3. `## Homepage` - section taxonomy and ordering (`homepage`).
   4. `## Collections & navigation` - collection page UX, filters, sort,
      pagination (`collection`).
   5. `## Product page` - gallery, variant axes, options UX, swatches,
-     stock signals (`product`).
+     stock signals, reviews (rating histogram, review filters), related
+     product blocks (`product`).
   6. `## Cart` - drawer vs page, line-item controls, upsells, surfaces
      (`cart`).
-  7. `## Search` - predictive vs full-page, suggestion grouping, empty
-     state (`search`).
+  7. `## Search` - predictive vs full-page, suggestion grouping, results
+     page facets and sort, empty state (`search`).
   8. `## Checkout` - guest option, shipping options, payment methods,
      discount input (`checkout`).
   9. `## Account` - login, signup, profile, addresses, order history

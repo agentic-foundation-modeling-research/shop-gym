@@ -39,7 +39,7 @@ edit any other task's checkbox.
    - `snapshots/NN-<state>.md` - the `snapshot` text per distinct
      state, saved with `write_file`.
    - `network.jsonl` - only when the request *itself* is the evidence
-     (predictive search, cart updates, filter responses).
+     (cart updates, filter responses).
    Use `screenshot` when you need to interpret visual layout; the
    runtime keeps those images under the iteration directory for you.
 

@@ -107,6 +107,30 @@ exercises its public surface end-to-end.
   `stats.json`, `manifest.json`) sit at `<run_id>/`; the harness
   workspace lives at `<run_id>/run/` and the prefetch seed at
   `<run_id>/seed/prefetch/`. The CLI binary is scheduled for M10.
+- Fresh browser per Iteration (2026-11-05): the explore step gives every
+  planner and executor Iteration a new headless browser through the
+  harness `onIterationStart` hook, so no cookies, storage or cart carry
+  over from an earlier Iteration. Each new browser opens the storefront
+  homepage. When the prefetched `cart.js` parses as a cart, the browser
+  also reads `/cart.js`. The explore step writes the result to
+  `run/iters/<id>/start_state.json` as `{ url, cart, error }`. When the
+  homepage or the cart cannot be read, `error` gives the reason, and the
+  Iteration still runs. All browsers of a run send the same
+  `x-shopgym-episode` header. The storefront origin is the base URL of
+  every browser, so `navigate` opens a site path such as `/cart` on the
+  storefront. The explore `snapshot` tool shows at most 50,000
+  characters of the accessibility tree in one result. A longer tree comes
+  in parts of whole lines. Only a line longer than the limit is cut
+  inside the line. The note after a cut part gives the `offset`
+  for the next part. It also says that a scroll does not change the
+  snapshot. An offset inside a line moves to the start of the next
+  line. The other users of `@shop-gym/browser` keep the whole snapshot.
+- Anonymization scope and reopen cap (2026-11-05): the `anonymization`
+  verifier scans only `parts/<task_id>.md` of the selected task, so a
+  leak in one fragment no longer reopens other tasks. It reopens a task
+  at most twice; the next hit blocks the task with a note that names the
+  fragment. The count per task is kept in
+  `run/checks/anonymization_reopens.json`, so a resumed run keeps it.
 
 ---
 
@@ -163,7 +187,16 @@ layout.
   access.
 - **SC5 — Coverage.** On the fixture set, every coverage-taxonomy area
   that prefetch evidence indicates is present (§5.7) appears as either
-  a planner task or a justified omission in `manifest.json`.
+  a done planner task or a justified omission in `manifest.json`. A
+  pending, in-progress, or blocked task does not cover its area. When
+  the plan has a task with the area's own name, only that task can cover
+  the area. Each evidenced area that nothing covers is listed in
+  `manifest.json:coverage_gaps`. Apart from the evidence, each of the
+  14 fixed areas (the canonical Plan tasks that the planner emits in
+  every run: 11 for the surfaces of every storefront and
+  `product_reviews`, `related_products`, `search_results`) that does
+  not end done is listed in
+  `manifest.json:fixed_area_gaps` with a one-line reason.
 
 ---
 
@@ -394,7 +427,10 @@ so schema drift is loud. Top-level shape:
 Each executor writes a fragment matching one or more top-level keys to
 `parts/<task_id>.caps.json`. The post-loop merge is a deterministic
 deep-merge with the rule: **last writer wins per leaf**, except lists
-(union, deduplicated, order-preserving). Conflicts are recorded in
+(union, deduplicated, order-preserving) and `null`. For a scalar field,
+`null` means unknown: it never replaces a non-null value, and a later
+non-null value fills it. Neither case is a conflict. Conflicts (two
+different non-null values for one leaf) are recorded in
 `manifest.json:capability_conflicts`.
 
 ### 5.6 Stats schema
@@ -480,10 +516,13 @@ The planner emits `plan.md` tasks of the form:
    - one a11y `snapshot.md` per distinct page state,
    - one full-page PNG per distinct page state (use playwright's
      `--full-page`),
-   - optional `network.jsonl` of relevant XHRs (e.g. predictive search
-     suggestions).
+   - optional `network.jsonl` of relevant XHRs (e.g. cart updates).
 5. Write a markdown section to `artifact/parts/<task_id>.md`,
-   apply anonymization rules at write time.
+   apply anonymization rules at write time. The `anonymization`
+   verifier scans only this file of the selected task. A hit reopens
+   the task at most twice (the count per task is kept in
+   `run/checks/anonymization_reopens.json`); the next hit blocks the
+   task with a note that names the file.
 6. Write a JSON fragment to `artifact/parts/<task_id>.caps.json`
    containing only the capabilities-schema keys this task is
    responsible for.
@@ -575,7 +614,8 @@ runs (no further harness involvement):
 4. **Manifest** (deterministic). Write `manifest.json`:
    `{domain, run_id, runtime, started_at, finished_at, harness_status,
      iters, plan_tasks_total, plan_tasks_done, plan_tasks_blocked,
-     omitted_areas, capability_conflicts, paths}`.
+     omitted_areas, capability_conflicts, coverage_gaps, fixed_area_gaps,
+     paths}`.
 
 Synthesis failure modes (loud — no silent fallback):
 

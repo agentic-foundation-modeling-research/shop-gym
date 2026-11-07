@@ -95,18 +95,54 @@ recorded the same page, the first fragment in filename order counts. The
 prices use the most frequent currency, and the observed axes are sorted. The
 product and collection totals and the products per collection stay 0.
 
+With a `focus` (for example `"Video Games"`), the explore step adds
+`prompts/planner_focus.md` after the planner prompt of either platform,
+with `{{FOCUS}}` replaced by the focus text. That hint tells the planner
+to pick start URLs, product pages and search queries in the focus, to
+keep every canonical task, and to write the focus into the task briefs,
+which is how the executors get it. Navigation outside the focus is not
+blocked. With no focus the planner prompt is unchanged. `manifest.json`
+records `focus`, or `null`. The explore step writes the focus to
+`focus.json` before the harness runs. A later call on that `outDir` with
+another focus fails, because a resumed harness run keeps the plan of its
+first planner.
+
 The explore step drives `runPlanExecLoop` from `@shop-gym/harness` with
-the pi runtime, one headless `BrowserSession` per harness run, the
+the pi runtime, a new headless `BrowserSession` for every iteration
+(`src/explore/browser.ts`; it opens the homepage, reads `/cart.js` when the
+shop serves it, and writes `run/iters/<id>/start_state.json`), the
 `browserTools` from `@shop-gym/browser`, and three run-dir-scoped file
 tools (`read_file`, `write_file`, `list_dir`) that let the agent write
-`plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. The planner
-emits a fixed canonical task list (homepage, header, cart, product,
-collection, search, checkout, account, footer, info pages, floating
-widgets); each executor iteration writes `parts/<task_id>.md` and
-`parts/<task_id>.caps.json`. An `anonymization` verifier scans the parts
-after every iteration for the store domain, brand tokens from the
-prefetched homepage, absolute store URLs, and email addresses, and
-reopens the task with line-level feedback on a hit.
+`plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. Every iteration
+browser has the storefront origin as its base URL, so `navigate` opens a
+site path such as `/cart`. `src/explore/browser.ts` also gives the agent
+its own `snapshot` tool. It shows at most 50,000 characters of the
+accessibility tree. A longer tree comes in parts. A part ends at a line
+end; only a line longer than the limit is cut inside the line. The note
+after a part gives the `offset` of the next part. `@shop-gym/browser`
+itself keeps the whole snapshot. The planner
+emits the same 14 canonical Plan tasks, the fixed areas
+(`FIXED_AREAS`), in every run on every platform: 11 for the surfaces
+that every storefront has (homepage, header and departments, cart,
+product, collection, predictive search, checkout, account, footer, info
+pages, floating widgets) and three marketplace ones (`product_reviews`,
+`related_products`, `search_results`). Their
+briefs use platform-neutral words (for example, `cart_drawer` covers
+any cart surface) and name the Capabilities that each task fills;
+`homepage_sections` fills the `shop` block. The briefs keep the executor
+on the storefront pages that a visitor sees: `collection_filters` starts
+on a department or category landing page, not a search results page;
+`product_reviews` scrolls a product page to its review block and skips
+an all-reviews page behind a sign-in; `search_predictive` snapshots the
+suggestion dropdown and captures no network or API request. A brief
+that the planner makes more specific keeps these rules.
+Each executor iteration writes `parts/<task_id>.md` and
+`parts/<task_id>.caps.json`. An `anonymization` verifier scans the
+current task's `parts/<task_id>.md` after every iteration for the store
+domain, brand tokens from the prefetched homepage, absolute store URLs,
+and email addresses, and reopens the task with line-level feedback on a
+hit. A task gets at most two such reopens; the next hit blocks it with a
+note that names the fragment.
 
 ```ts
 import { loadCredentials } from '@shop-gym/core';
@@ -126,6 +162,7 @@ Options: `outDir` (defaults to `outputs/shop_manuals/<domain>/<run_id>/`),
 `model`, `maxIters`, `timeoutMs`, `rateLimitMs`, `from` (force a step and
 its dependents: `prefetch` | `explore` | `merge` | `synthesize`),
 `forceResume` (resume a harness run that ended in a refused status),
+`focus` (a hint that keeps the planner in one part of the site),
 `runtime` / `llm` (inject an `AgentRuntime` / `LlmClient`, used by tests),
 `onEvent`, `log`, `signal`.
 
@@ -137,6 +174,22 @@ budget. Prompts live in `src/explore/prompts/*.md` and are copied into
 rendered from the zod schema at run time. Credentials come from
 `loadCredentials()` and are never written to disk. `shopgym explore <url>`
 wraps this function.
+
+The merge step writes `coverage_gaps` in `manifest.json`. It lists each
+area that the prefetch shows on the storefront and that nothing covers. A
+done (`[x]`) Plan task or an entry in the `## Omitted Areas` block of
+`plan.md` covers an area. A Plan task that is pending, in progress or
+blocked when the run ends does not cover its area, so an unfinished,
+failed or skipped area is a gap. When the plan has a Plan task with the
+area's own name (for example `header_navigation`), only that task can
+cover the area.
+
+The merge step also writes `fixed_area_gaps`: one `{ area, reason }`
+entry for each fixed area whose Plan task did not end done, whatever the
+prefetch shows. The reason is one line: `not in the plan`, `not started
+when the run ended`, `in progress when the run ended`, or `blocked:`
+with the text that the executor added after the brief that the planner
+wrote.
 
 ## Gen
 

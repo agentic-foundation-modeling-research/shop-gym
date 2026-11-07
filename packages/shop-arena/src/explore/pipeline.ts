@@ -9,10 +9,12 @@
  * ```
  * seed/prefetch/        prefetch.json + saved bodies (seeded into the run)
  * run/                  harness workspace (plan.md, iters/, artifact/, run.json)
+ * run/iters/<id>/start_state.json   where the Iteration's fresh browser started
+ * focus.json            the focus that the planner got, written by the explore step
  * explore.json          harness outcome of the explore step
  * capabilities.json     merged, schema-validated capabilities
  * stats.json            catalog and feature statistics
- * manifest.json         counts, omissions, conflicts, coverage gaps, paths
+ * manifest.json         counts, omissions, conflicts, coverage and fixed area gaps, paths
  * manual.md             the synthesized shop manual
  * .pipeline/            step records of the pipeline runner
  * ```
@@ -21,7 +23,8 @@
  * step is skipped on a later call with the same `outDir`; `from` forces a
  * step and everything downstream. The harness workspace under `run/` is
  * never deleted by the pipeline: an interrupted or forced explore step
- * resumes it, so the same `outDir` continues the same exploration.
+ * resumes it, so the same `outDir` continues the same exploration. For
+ * the same reason a later call must pass the focus of the first call.
  */
 
 import { createHash } from 'node:crypto';
@@ -37,11 +40,20 @@ import {
   PiLlmClient,
   PiRuntime,
 } from '@shop-gym/agent';
-import { BrowserSession, browserTools } from '@shop-gym/browser';
 import { type Credentials, type Step, type StepReport, runPipeline } from '@shop-gym/core';
-import { type FinalStatus, type RunSummary, runPlanExecLoop } from '@shop-gym/harness';
+import {
+  type FinalStatus,
+  InvalidPlanError,
+  PLAN_ITER_ID,
+  type RunSummary,
+  type TaskList,
+  iterDirPath,
+  parse,
+  runPlanExecLoop,
+} from '@shop-gym/harness';
 
 import { anonymizationVerifier } from './anonymization.js';
+import { IterationBrowser, parseCart } from './browser.js';
 import {
   type Capabilities,
   type Conflict,
@@ -49,7 +61,7 @@ import {
   mergeFragments,
   parseCapabilities,
 } from './capabilities.js';
-import { coverageGaps, parsePlanCoverage } from './coverage.js';
+import { type FixedAreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
 import {
   productObservationJsonSchema,
@@ -73,7 +85,7 @@ export const DEFAULT_OUTPUT_ROOT = join('outputs', 'shop_manuals');
 export const EXPLORE_STEPS = ['prefetch', 'explore', 'merge', 'synthesize'] as const;
 
 /** Bumped when the prompts or the output contract change shape. */
-const EXPLORE_VERSION = '1.1';
+const EXPLORE_VERSION = '1.2';
 const RUN_ID_HASH_LEN = 8;
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
 
@@ -96,6 +108,13 @@ export interface ExploreOptions {
   readonly from?: ExploreStep;
   /** Resume a harness run that ended in a refused status. */
   readonly forceResume?: boolean;
+  /**
+   * One part of the site to explore, for example the department "Video
+   * Games". The planner gets it as a hint for its start URLs, product
+   * pages and search queries, and still plans the site-wide areas.
+   * Navigation outside the focus is not blocked.
+   */
+  readonly focus?: string;
   readonly credentials: Credentials;
   /** Overrides the pi runtime (tests). */
   readonly runtime?: AgentRuntime;
@@ -134,6 +153,8 @@ export interface Manifest {
   readonly model: string;
   /** The prefetch path that the run took. */
   readonly platform: Platform;
+  /** The focus hint of the run, or `null` when the run has none. */
+  readonly focus: string | null;
   readonly harness_status: FinalStatus;
   readonly iters: { plan: number; exec: number };
   readonly plan_tasks_total: number;
@@ -142,6 +163,8 @@ export interface Manifest {
   readonly omitted_areas: readonly { area: string; reason: string }[];
   readonly capability_conflicts: readonly Conflict[];
   readonly coverage_gaps: readonly string[];
+  /** Each fixed area whose Plan task did not end done, with a one-line reason. */
+  readonly fixed_area_gaps: readonly FixedAreaGap[];
   readonly merged_at: string;
   readonly paths: {
     manual: string;
@@ -158,6 +181,8 @@ interface Prompts {
   readonly planner: string;
   /** The planner prompt for a site on the generic platform. */
   readonly plannerGeneric: string;
+  /** The hint added to either planner prompt when the run has a focus. */
+  readonly plannerFocus: string;
   readonly execute: string;
   /** The executor prompt for a site on the generic platform. */
   readonly executeGeneric: string;
@@ -172,6 +197,7 @@ interface ExploreContext {
   readonly timeoutMs: number;
   readonly rateLimitMs: number | undefined;
   readonly forceResume: boolean;
+  readonly focus: string | null;
   readonly runtime: AgentRuntime;
   readonly llm: LlmClient;
   readonly prompts: Prompts;
@@ -182,12 +208,15 @@ const PATHS = {
   prefetch: join('seed', 'prefetch'),
   seed: 'seed',
   run: 'run',
+  focus: 'focus.json',
   explore: 'explore.json',
   capabilities: 'capabilities.json',
   stats: 'stats.json',
   manifest: 'manifest.json',
   manual: 'manual.md',
 } as const;
+/** Written into each Iteration's directory when the Iteration starts. */
+const START_STATE_FILENAME = 'start_state.json';
 
 /** Splits `provider/model-id` into a `ModelRef`. */
 export function parseModel(model: string): ModelRef {
@@ -220,17 +249,24 @@ function loadPrompts(): Prompts {
       .replace('{{PRODUCT_OBSERVATION_SCHEMA}}', () => productObservationJsonSchema()),
     planner: read('planner.md'),
     plannerGeneric: read('planner_generic.md'),
+    plannerFocus: read('planner_focus.md'),
     execute: read('execute.md'),
     executeGeneric: read('execute_generic.md'),
     manual: read('synthesize_manual.md'),
   };
 }
 
-/** The planner and executor prompts for a site on `platform`. */
-function rolePrompts(prompts: Prompts, platform: Platform): { planner: string; execute: string } {
-  return platform === 'generic'
-    ? { planner: prompts.plannerGeneric, execute: prompts.executeGeneric }
-    : { planner: prompts.planner, execute: prompts.execute };
+/** The planner prompt for a site on `platform`, then the focus hint when there is a focus. */
+function plannerPrompt(prompts: Prompts, platform: Platform, focus: string | null): string {
+  const planner = platform === 'generic' ? prompts.plannerGeneric : prompts.planner;
+  if (focus === null) return planner;
+  // A function replacement inserts the text as is, so `$&` in it is not a pattern.
+  return `${planner}\n${prompts.plannerFocus.replaceAll('{{FOCUS}}', () => focus)}`;
+}
+
+/** The executor prompt for a site on `platform`. */
+function executePrompt(prompts: Prompts, platform: Platform): string {
+  return platform === 'generic' ? prompts.executeGeneric : prompts.execute;
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -244,6 +280,47 @@ function readJson<T>(path: string): T {
 function readRunSummary(runDir: string): RunSummary | undefined {
   const path = join(runDir, 'run.json');
   return existsSync(path) ? readJson<RunSummary>(path) : undefined;
+}
+
+/** `focus "<text>"`, or `no focus`. */
+function describeFocus(focus: string | null): string {
+  return focus === null ? 'no focus' : `focus ${JSON.stringify(focus)}`;
+}
+
+/**
+ * Checks `focus` against `<outDir>/focus.json`, which the explore step
+ * writes before the harness runs. A later call must pass the same focus:
+ * a resumed harness run keeps the plan of its first planner, so a new
+ * focus would not reach the plan.
+ *
+ * @throws Error when `focus` differs from the recorded focus.
+ */
+function checkFocus(outDir: string, focus: string | null): void {
+  const path = join(outDir, PATHS.focus);
+  if (!existsSync(path)) return;
+  const recorded = readJson<{ focus: string | null }>(path).focus;
+  if (recorded !== focus) {
+    const want = describeFocus(recorded);
+    const got = describeFocus(focus);
+    throw new Error(
+      `${outDir} started with ${want}, got ${got}; pass the same focus or a new outDir`,
+    );
+  }
+}
+
+/**
+ * The Plan tasks as the planner wrote them: the `plan.after.md` snapshot
+ * of the planner iteration. Empty when the planner wrote no valid plan.
+ */
+function readPlannedTasks(runDir: string): TaskList {
+  const path = join(iterDirPath(join(runDir, 'iters'), PLAN_ITER_ID), 'plan.after.md');
+  if (!existsSync(path)) return [];
+  try {
+    return parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    if (error instanceof InvalidPlanError) return [];
+    throw error;
+  }
 }
 
 const prefetchStep: Step<ExploreContext> = {
@@ -270,34 +347,43 @@ const exploreStep: Step<ExploreContext> = {
     const runDir = join(outDir, PATHS.run);
     const platform = readPlatform(join(outDir, PATHS.prefetch));
     const generic = platform === 'generic';
-    const session = await BrowserSession.launch({ episodeId: basename(outDir) });
+    const planner = plannerPrompt(context.prompts, platform, context.focus);
+    writeJson(join(outDir, PATHS.focus), { focus: context.focus });
+    const browser = await IterationBrowser.launch({
+      episodeId: basename(outDir),
+      baseUrl: context.url,
+      startUrl: `${context.url}/`,
+      ...(servesCart(join(outDir, PATHS.prefetch)) ? { cartUrl: `${context.url}/cart.js` } : {}),
+    });
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
     try {
       summary = await runPlanExecLoop(
         {
           runDir,
-          prompts: rolePrompts(context.prompts, platform),
+          prompts: { planner, execute: executePrompt(context.prompts, platform) },
           agentsMd: context.prompts.agents,
           artifactSeedDir: join(outDir, PATHS.seed),
           maxIters: context.maxIters,
           timeoutMs: context.timeoutMs,
           model: context.model,
           tools: [
-            ...browserTools(session),
+            ...browser.tools,
             ...fileTools(),
-            ...(generic ? [productObservationTool(session)] : []),
+            ...(generic ? [productObservationTool(browser)] : []),
           ],
           verifiers: [
             anonymizationVerifier(context.url),
             ...(generic ? [productObservationVerifier()] : []),
           ],
           ...(context.onEvent ? { onEvent: context.onEvent } : {}),
+          onIterationStart: async ({ iterDir }) =>
+            writeJson(join(iterDir, START_STATE_FILENAME), await browser.start()),
         },
         context.runtime,
         { force: context.forceResume },
       );
     } finally {
-      await session.close();
+      await browser.close();
     }
     log(`harness finished: ${summary.finalStatus} (${summary.execIterCount} executor iterations)`);
     const outcome: ExploreOutcome = {
@@ -309,6 +395,12 @@ const exploreStep: Step<ExploreContext> = {
     writeJson(join(outDir, PATHS.explore), outcome);
   },
 };
+
+/** True when prefetch saved a `/cart.js` body that parses as a cart. */
+function servesCart(prefetchDir: string): boolean {
+  const path = join(prefetchDir, 'cart.js');
+  return existsSync(path) && parseCart(readFileSync(path, 'utf8')) !== null;
+}
 
 const mergeStep: Step<ExploreContext> = {
   id: 'merge',
@@ -335,7 +427,8 @@ const mergeStep: Step<ExploreContext> = {
 
     const summary = readRunSummary(runDir);
     const tasks = summary?.tasksFinal ?? [];
-    const omitted = [...parsePlanCoverage(planMd).omitted].map((entry) => ({
+    const omittedAreas = parseOmittedAreas(planMd);
+    const omitted = [...omittedAreas].map((entry) => ({
       area: entry,
       reason: omissionReason(planMd, entry),
     }));
@@ -345,6 +438,7 @@ const mergeStep: Step<ExploreContext> = {
       runtime: context.runtime.name,
       model: context.modelName,
       platform,
+      focus: context.focus,
       harness_status: outcome.final_status,
       iters: { plan: outcome.plan_iters, exec: outcome.exec_iters },
       plan_tasks_total: tasks.length,
@@ -352,7 +446,8 @@ const mergeStep: Step<ExploreContext> = {
       plan_tasks_blocked: tasks.filter((task) => task.status === 'blocked').length,
       omitted_areas: omitted,
       capability_conflicts: conflicts,
-      coverage_gaps: coverageGaps(prefetchDir, planMd),
+      coverage_gaps: coverageGaps(prefetchDir, tasks, omittedAreas),
+      fixed_area_gaps: fixedAreaGaps(tasks, readPlannedTasks(runDir)),
       merged_at: new Date().toISOString(),
       paths: {
         manual: PATHS.manual,
@@ -417,6 +512,7 @@ const STEPS: readonly Step<ExploreContext>[] = [
  * Calling again with the same `outDir` skips complete steps and resumes
  * an unfinished harness run; `from` forces a step and its dependents.
  *
+ * @throws Error when `focus` differs from the focus that `outDir` started with.
  * @throws ShopUnreachableError when the prefetch gates reject the shop.
  * @throws ResumeRefusedError when the prior harness run ended in a
  *   refused status and `forceResume` is not set.
@@ -430,6 +526,8 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
   const outDir = resolve(
     options.outDir ?? join(DEFAULT_OUTPUT_ROOT, domain, runId(base, runtime.name)),
   );
+  const focus = options.focus ?? null;
+  checkFocus(outDir, focus);
   const context: ExploreContext = {
     url: base,
     model: parseModel(modelName),
@@ -438,6 +536,7 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     rateLimitMs: options.rateLimitMs,
     forceResume: options.forceResume ?? false,
+    focus,
     runtime,
     llm,
     prompts: loadPrompts(),

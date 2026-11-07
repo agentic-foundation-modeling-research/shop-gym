@@ -44,6 +44,9 @@ _Avoid_: manual (alone), seed manual, Seed Shop Manual
 **Capability**:
 One structured, schema-checked fact about one storefront feature, for example the cart type or the list of collection filters.
 
+**Fixed area**:
+One of the 14 canonical Plan tasks that Storefront exploration plans in every run, on every platform: 11 for the surfaces that every storefront has, such as `homepage_sections` and `cart_drawer`, and the three marketplace areas `product_reviews`, `related_products` and `search_results`. Each one ends done, or `manifest.json` lists it in `fixed_area_gaps` with a one-line reason.
+
 **Product observation**:
 One schema-checked record of one product page that an executor opened on a generic site: the price, the currency, and the variant facts. It has no name, URL, seller or brand. On a generic site, `stats.json` comes from the Product observations (`source: observed_sample`), and each product page counts once.
 
@@ -176,8 +179,12 @@ The roll-up of the Episode results of one evaluation into pass rates (overall, b
 ### Harness
 
 **Harness run**:
-One call of the Harness over one run directory, from the planner Iteration until the plan is done or the budget ends. A stopped Harness run can resume in the same directory.
+One call of the Harness over one run directory, from the planner Iteration until the plan is done, the budget ends, or a Caller stop ends it. A Harness run that ends before the plan is done can resume in the same directory.
 _Avoid_: run (alone)
+
+**Caller stop**:
+A request from the caller of the Harness to end the Harness run now. The caller makes it after an Iteration and gives a reason. The Harness starts no further Iteration and ends the run with the final status `stopped` and the reason. A Caller stop never cuts an Agent run in the middle. The run can resume in the same directory without force.
+_Avoid_: abort, cancel
 
 **Iteration**:
 One fresh-context Agent run inside a Harness run: the one planner iteration that writes `plan.md`, or one executor iteration that works on one Plan task.
@@ -192,7 +199,7 @@ The input files that the Harness copies into the `artifact/` directory of a run 
 _Avoid_: seed (alone), seeded subtree
 
 **Verifier**:
-A rule or an LLM judge that the caller gives the Harness to run after each executor Iteration. Its verdict is `pass`, `fail` (which reopens the Plan task), `advisory`, or `error`.
+A rule or an LLM judge that the caller gives the Harness to run after each executor Iteration. Its verdict is `pass`, `fail` (which reopens the Plan task, or blocks it when the Verifier adds a block note), `advisory`, or `error`.
 _Avoid_: check, grader
 
 ### Agent and browser

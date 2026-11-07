@@ -19,6 +19,8 @@ describe('parseExploreArgs', () => {
         '--from',
         'merge',
         '--force-resume',
+        '--focus',
+        'Video Games',
       ]),
     ).toEqual({
       help: false,
@@ -29,6 +31,7 @@ describe('parseExploreArgs', () => {
       timeoutMs: 1000,
       from: 'merge',
       forceResume: true,
+      focus: 'Video Games',
     });
   });
 
@@ -54,6 +57,7 @@ describe('parseExploreArgs', () => {
     expect(() => parseExploreArgs(['a', '--max-iters', 'x'])).toThrow(
       '--max-iters must be a positive integer',
     );
+    expect(() => parseExploreArgs(['a', '--focus', ' '])).toThrow('--focus must not be blank');
   });
 
   it('returns help without validating positionals', () => {
