@@ -7,7 +7,7 @@ import { basename, join } from 'node:path';
 import type { CompleteRequest, Completion, LlmClient } from '@shop-gym/agent';
 import { FakeRuntime, type FakeScript } from '@shop-gym/agent/testing';
 import { StepFailedError } from '@shop-gym/core';
-import { ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
+import { NOTE_PREFIX, ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
@@ -118,6 +118,17 @@ const SCRIPTS: readonly FakeScript[] = [
     reply: 'cart done',
   },
 ];
+
+/** An executor that writes the leaky homepage fragment again and marks it done. */
+const LEAKY_HOMEPAGE_ATTEMPT: FakeScript = {
+  writeFiles: {
+    'artifact/parts/homepage_sections.md': LEAKY_HOMEPAGE,
+    'plan.md': PLAN('x', ' '),
+  },
+  reply: 'homepage done (leaky)',
+};
+
+const HOMEPAGE_BLOCKED = `- [!] homepage_sections [priority: 9] ${NOTE_PREFIX} anonymization: parts/homepage_sections.md still identifies the storefront after 2 reopens`;
 
 /** A fragment with every marketplace Capability of schema 0.3. */
 const MARKETPLACE_CAPS = {
@@ -318,6 +329,49 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(llm.requests[0]?.prompt).toContain('## Capabilities');
     expect(llm.requests[0]?.prompt).toContain('### Filled state');
     expect(llm.requests[0]?.model).toEqual({ provider: 'anthropic', id: 'test-model' });
+  });
+
+  it('reopens a leaking task twice, then blocks it without touching the other task', async () => {
+    const { result, runtime } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        LEAKY_HOMEPAGE_ATTEMPT,
+        LEAKY_HOMEPAGE_ATTEMPT,
+        LEAKY_HOMEPAGE_ATTEMPT,
+        {
+          writeFiles: {
+            'artifact/parts/cart_drawer.md': CART_PART,
+            'plan.md': PLAN('x', 'x').replace(/^- \[x\] homepage_sections .*$/m, HOMEPAGE_BLOCKED),
+          },
+          reply: 'cart done',
+        },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    // Planner, three homepage attempts, one cart attempt.
+    expect(runtime.requests).toHaveLength(5);
+    expect(runtime.requests[2]?.prompt).toContain('1 of 2 reopens');
+    expect(runtime.requests[3]?.prompt).toContain('2 of 2 reopens');
+    const planBeforeCart = readFileSync(join(outDir, 'run/iters/exec-0004/plan.before.md'), 'utf8');
+    expect(planBeforeCart).toContain(HOMEPAGE_BLOCKED);
+
+    // The leaky homepage fragment is still on disk: the cart task passes and
+    // does not see the homepage feedback.
+    expect(runtime.requests[4]?.prompt).toContain('selected_task_id: cart_drawer');
+    expect(runtime.requests[4]?.prompt).not.toContain('Anonymization check failed');
+    const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
+    expect(summary.verifierRuns.map((run) => [run.taskId, run.verdict])).toEqual([
+      ['homepage_sections', 'fail'],
+      ['homepage_sections', 'fail'],
+      ['homepage_sections', 'fail'],
+      ['cart_drawer', 'pass'],
+    ]);
+    expect(readJson(result.manifestPath)).toMatchObject({
+      plan_tasks_total: 2,
+      plan_tasks_done: 1,
+      plan_tasks_blocked: 1,
+    });
   });
 
   it('reports the area of an unfinished Plan task as a coverage gap', async () => {

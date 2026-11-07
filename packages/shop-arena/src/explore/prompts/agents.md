@@ -74,11 +74,12 @@ The goal is to capture **STRUCTURE and UX patterns**, not actual
 content. A reader of `manual.md` should be unable to identify the
 source shop.
 
-An automated anonymization verifier scans `artifact/parts/*.md` after
-every executor iteration for the store domain, brand tokens, absolute
-store URLs, and email addresses. A hit reopens the task and its feedback
-appears in your next prompt - but the rules above are the primary
-defense and you are expected to apply them at write time.
+An automated anonymization verifier scans this task's
+`artifact/parts/<task_id>.md` after every executor iteration for the
+store domain, brand tokens, absolute store URLs, and email addresses. A
+hit reopens the task and its feedback appears in your next prompt. After
+two reopens, the next hit blocks the task for good. The rules above are
+the primary defense and you are expected to apply them at write time.
 
 ---
 

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { parse } from '../plan/parser.js';
+import { NOTE_PREFIX, parse } from '../plan/parser.js';
 import { dispatchVerifiers, readFeedbackImages, renderFeedbackForPrompt } from './dispatch.js';
 import type { Verifier, VerifierResult } from './types.js';
 
@@ -80,6 +80,35 @@ describe('dispatchVerifiers', () => {
       'utf-8',
     );
     expect(feedback).toBe('## lint\n\nbroken\n\n## hint\n\nconsider x\n');
+  });
+
+  it('blocks the task with the block note of a fail and writes no feedback', async () => {
+    const outcome = await dispatch([
+      verifier('lint', { verdict: 'fail', feedback: 'broken' }),
+      verifier('leak', {
+        verdict: 'fail',
+        feedback: 'still leaks',
+        images: ['/a.png'],
+        blockNote: 'parts/a.md still leaks\nafter 2 reopens',
+      }),
+    ]);
+    expect(outcome.blocking).toBe(true);
+    expect(await fs.readFile(planPath, 'utf-8')).toBe(
+      `## Tasks\n- [!] a ${NOTE_PREFIX} leak: parts/a.md still leaks after 2 reopens\n- [ ] b\n`,
+    );
+    const checks = path.join(iterDir, 'checks', 'verifiers');
+    await expect(fs.stat(path.join(checks, 'feedback.md'))).rejects.toThrow();
+    await expect(fs.stat(path.join(checks, 'feedback_images.json'))).rejects.toThrow();
+    const record = JSON.parse(await fs.readFile(path.join(checks, 'leak.json'), 'utf-8'));
+    expect(record).toMatchObject({ verdict: 'fail', feedback: 'still leaks' });
+  });
+
+  it('ignores the block note of a verdict other than fail', async () => {
+    const outcome = await dispatch([
+      verifier('hint', { verdict: 'advisory', feedback: 'consider x', blockNote: 'no' }),
+    ]);
+    expect(outcome.blocking).toBe(false);
+    expect(await fs.readFile(planPath, 'utf-8')).toBe('## Tasks\n- [x] a\n- [ ] b\n');
   });
 
   it('records the images of failing and advisory verifiers next to the feedback', async () => {
