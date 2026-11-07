@@ -19,7 +19,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { FixedAreaGap } from './coverage.js';
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
 import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
-import { type FixtureSite, genericSitePages, startFixtureSite } from './testing.js';
+import {
+  type FixturePage,
+  type FixtureSite,
+  genericSitePages,
+  startFixtureSite,
+} from './testing.js';
 
 const CREDENTIALS = {} as const;
 const HOME =
@@ -505,6 +510,22 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     );
   });
 
+  it('takes the Shopify stats from the catalog endpoints', async () => {
+    const { result } = await explore({ scripts: SCRIPTS });
+
+    const stats = readJson(result.statsPath);
+    expect(stats.source).toBe('catalog_endpoint');
+    expect(stats.sample_size).toBe(2);
+  });
+
+  it('does not ask the Shopify executors for product observations', async () => {
+    const { runtime } = await explore({ scripts: SCRIPTS });
+    expect(promptText(runtime.requests[1]?.prompt ?? '')).not.toMatch(/product observation/i);
+    expect(runtime.requests[1]?.tools.map((tool) => tool.name)).not.toContain(
+      'record_product_observation',
+    );
+  });
+
   it('reopens a leaking task twice, then blocks it without touching the other task', async () => {
     const { result, runtime } = await explore({
       scripts: [
@@ -896,6 +917,52 @@ const GENERIC_PRODUCT = `## Product Variants
 - **UX Notes:** none
 `;
 
+/** The product observation facts of the three product pages of the generic site. */
+const OBSERVED = {
+  '/p/fm-1001': {
+    price: 59.99,
+    currency: 'USD',
+    has_variants: true,
+    variant_axes: ['Edition', 'Platform'],
+  },
+  '/p/fm-1002': { price: 44.5, currency: 'USD', has_variants: true, variant_axes: ['Color'] },
+  '/p/fm-1003': { price: 79, currency: 'USD', has_variants: false, variant_axes: [] },
+} as const;
+
+/** Tool calls that open `path` and record `facts` for it as a product observation of `taskId`. */
+function observe(
+  siteUrl: string,
+  taskId: string,
+  path: string,
+  facts: Readonly<Record<string, unknown>>,
+): NonNullable<FakeScript['toolCalls']> {
+  return [
+    { tool: 'navigate', arguments: { url: `${siteUrl}${path}` } },
+    { tool: 'record_product_observation', arguments: { task_id: taskId, ...facts } },
+  ];
+}
+
+/**
+ * The generic-site product executor: it opens each page of `observed`,
+ * records its facts with the product observation tool, writes its part,
+ * and marks its task done.
+ */
+function productExecutor(
+  siteUrl: string,
+  observed: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+): FakeScript {
+  return {
+    writeFiles: {
+      'artifact/parts/product_variants.md': GENERIC_PRODUCT,
+      'plan.md': GENERIC_PLAN('x', 'x'),
+    },
+    toolCalls: Object.entries(observed).flatMap(([path, facts]) =>
+      observe(siteUrl, 'product_variants', path, facts),
+    ),
+    reply: 'product done',
+  };
+}
+
 /** Planner, homepage executor, and product executor scripts for the generic site. */
 function genericScripts(siteUrl: string): readonly FakeScript[] {
   return [
@@ -993,6 +1060,208 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     expect(stats.products_per_collection).toEqual({ avg: 0, median: 0, max: 0 });
     expect(readJson(result.manifestPath).coverage_gaps).toEqual([]);
     expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
+  });
+
+  it('asks the executors for product observations and shows their schema', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    expect(runtime.requests[1]?.tools.map((tool) => tool.name)).toContain(
+      'record_product_observation',
+    );
+    const executor = promptText(runtime.requests[1]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(executor).toContain('call `record_product_observation` while the page is open');
+    const constitution = runtime.requests[1]?.systemPrompt ?? '';
+    for (const field of ['"price"', '"currency"', '"has_variants"', '"variant_axes"']) {
+      expect(constitution).toContain(field);
+    }
+    expect(constitution).toContain('"pattern": "^[A-Z]{3}$"');
+    // Axis names are generic nouns, so that no site label reaches `stats.json`.
+    expect(constitution).toContain('not the label text of the page');
+  });
+
+  it('asks the executors to mark what they did not see as unknown', async () => {
+    const { runtime } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    const executor = promptText(runtime.requests[1]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(executor).toContain(
+      '`N/A` when it does not apply and `unknown` when you did not see it',
+    );
+    expect(executor).toContain('marks it as unknown, not as absent');
+  });
+
+  it('publishes stats from the product observation fragments', async () => {
+    const { result } = await explore({
+      url: site.url,
+      scripts: [...genericScripts(site.url).slice(0, 2), productExecutor(site.url, OBSERVED)],
+    });
+
+    expect(result.finalStatus).toBe('completed');
+    const stats = readJson(result.statsPath);
+    expect(stats).toMatchObject({
+      source: 'observed_sample',
+      sample_size: 3,
+      price: { min: 44.5, max: 79, median: 59.99, currency: 'USD' },
+      variant_axes_observed: ['color', 'edition', 'platform'],
+      // The site shows no catalog totals, so they stay 0.
+      products_total: 0,
+      collections_total: 0,
+      products_per_collection: { avg: 0, median: 0, max: 0 },
+      homepage_section_count: 2,
+    });
+    expect(stats.products_with_variants_pct).toBeCloseTo(0.667, 3);
+  });
+
+  it('counts a product page once when two tasks record it', async () => {
+    const { result } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 1),
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': GENERIC_HOMEPAGE,
+            'plan.md': GENERIC_PLAN('x', ' '),
+          },
+          toolCalls: observe(site.url, 'homepage_sections', '/p/fm-1001', OBSERVED['/p/fm-1001']),
+          reply: 'homepage done',
+        },
+        productExecutor(site.url, OBSERVED),
+      ],
+    });
+
+    expect(result.finalStatus).toBe('completed');
+    const stats = readJson(result.statsPath);
+    expect(stats.sample_size).toBe(3);
+    expect(stats.products_with_variants_pct).toBeCloseTo(0.667, 3);
+  });
+
+  it('counts a product page once when two paths open it', async () => {
+    const aliased = await startFixtureSite((origin) => {
+      const pages = genericSitePages(origin);
+      // The first product page also answers at a longer path, as on a site
+      // that puts a name slug in its product URLs. The fixture has the page.
+      return { ...pages, '/p/fm-1001/star-drifter': pages['/p/fm-1001'] as FixturePage };
+    });
+    try {
+      const { result } = await explore({
+        url: aliased.url,
+        scripts: [
+          ...genericScripts(aliased.url).slice(0, 2),
+          productExecutor(aliased.url, {
+            '/p/fm-1001': OBSERVED['/p/fm-1001'],
+            '/p/fm-1001/star-drifter?ref=search': OBSERVED['/p/fm-1001'],
+            '/p/fm-1002': OBSERVED['/p/fm-1002'],
+          }),
+        ],
+      });
+
+      expect(result.finalStatus).toBe('completed');
+      expect(readJson(result.statsPath).sample_size).toBe(2);
+    } finally {
+      await aliased.close();
+    }
+  });
+
+  it('takes the prices only from the fragments in the most frequent currency', async () => {
+    const facts = (price: number, currency: string) => ({
+      price,
+      currency,
+      has_variants: false,
+      variant_axes: [],
+    });
+    const { result } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 2),
+        productExecutor(site.url, {
+          '/p/fm-1001': facts(40, 'USD'),
+          '/p/fm-1002': facts(15, 'EUR'),
+          '/p/fm-1003': facts(60, 'USD'),
+        }),
+      ],
+    });
+
+    expect(readJson(result.statsPath)).toMatchObject({
+      sample_size: 3,
+      price: { min: 40, max: 60, median: 50, currency: 'USD' },
+    });
+  });
+
+  it('refuses a product observation that does not match the schema', async () => {
+    const { result } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 2),
+        {
+          writeFiles: {
+            'artifact/parts/product_variants.md': GENERIC_PRODUCT,
+            'plan.md': GENERIC_PLAN('x', 'x'),
+          },
+          toolCalls: [
+            // A lowercase currency does not match the schema.
+            ...observe(site.url, 'product_variants', '/p/fm-1001', {
+              ...OBSERVED['/p/fm-1001'],
+              currency: 'usd',
+            }),
+            // A task id must be a plan task id, so it cannot name a path.
+            ...observe(site.url, '../product_variants', '/p/fm-1002', OBSERVED['/p/fm-1002']),
+          ],
+          reply: 'product done',
+        },
+      ],
+    });
+
+    const trajectory = readJson(join(outDir, 'run', 'iters', 'exec-0002', 'trajectory.json'));
+    const refusals = (trajectory.steps as { kind: string; output?: string; isError?: boolean }[])
+      .filter((step) => step.kind === 'tool_result' && step.isError === true)
+      .map((step) => step.output);
+    expect(refusals).toEqual([
+      expect.stringContaining('currency'),
+      expect.stringContaining('invalid task id'),
+    ]);
+    expect(readJson(result.statsPath).sample_size).toBe(0);
+  });
+
+  it('fails the Iteration of a fragment that does not match the schema', async () => {
+    // The executor edits a fragment by hand with `write_file`.
+    const fragment = 'artifact/parts/product_variants.product-0123456789ab.json';
+    const valid = { price: 59.99, currency: 'USD', has_variants: true, variant_axes: ['edition'] };
+    const handWritten = (content: unknown): FakeScript => ({
+      writeFiles: {
+        'artifact/parts/product_variants.md': GENERIC_PRODUCT,
+        [fragment]: JSON.stringify(content),
+        'plan.md': GENERIC_PLAN('x', 'x'),
+      },
+      reply: 'product done',
+    });
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: [
+        ...genericScripts(site.url).slice(0, 2),
+        // A product name and a lowercase currency do not match the schema.
+        handWritten({ ...valid, currency: 'usd', title: 'Star Drifter' }),
+        handWritten(valid),
+      ],
+    });
+
+    expect(result.finalStatus).toBe('completed');
+    const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
+    expect(
+      summary.verifierRuns
+        .filter((run) => run.name === 'product_observations')
+        .map((run) => [run.taskId, run.verdict]),
+    ).toEqual([
+      ['homepage_sections', 'pass'],
+      ['product_variants', 'fail'],
+      ['product_variants', 'pass'],
+    ]);
+    // The task reopens, and the next Iteration gets the feedback.
+    expect(runtime.requests).toHaveLength(4);
+    const retry = promptText(runtime.requests[3]?.prompt ?? '');
+    expect(retry).toContain('Product observation check failed');
+    expect(retry).toContain('parts/product_variants.product-0123456789ab.json');
+    expect(retry).toContain('Unrecognized key: "title"');
+    expect(retry).toContain('currency');
+    expect(readJson(result.statsPath)).toMatchObject({ source: 'observed_sample', sample_size: 1 });
   });
 
   it('gives the generic planner the focus as a hint', async () => {

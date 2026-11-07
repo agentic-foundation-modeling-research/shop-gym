@@ -49,7 +49,7 @@ steps on the `@shop-gym/core` pipeline runner:
 | --- | --- | --- |
 | `prefetch` | the storefront over HTTP | `seed/prefetch/` (robots, homepage, sitemap, `prefetch.json`; on a Shopify shop also the Shopify JSON endpoints, policy and info pages, merged `products.json`) |
 | `explore` | `seed/prefetch/` | `run/` (harness workspace: `plan.md`, `iters/`, `artifact/{prefetch,parts,evidence}`, `run.json`) and `explore.json` |
-| `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json` | `capabilities.json`, `stats.json`, `manifest.json` |
+| `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json`; on a generic site also `run/artifact/parts/*.product-<key>.json` | `capabilities.json`, `stats.json`, `manifest.json` |
 | `synthesize` | `capabilities.json`, `run/artifact/parts/*.md` | `manual.md` |
 
 Prefetch decides the platform before it fetches the rest. First it
@@ -68,8 +68,32 @@ The robots gate, the homepage status gate, the Cloudflare markers and the
 rate limit apply on both paths. `prefetch.json` and `manifest.json` record
 `platform`. On the generic path the planner uses `prompts/planner_generic.md`
 in place of `prompts/planner.md`. That prompt tells the planner to pick
-same-origin start URLs from the homepage links and the sitemap. Stats
-count 0 products and 0 collections when the Shopify files are missing.
+same-origin start URLs from the homepage links and the sitemap.
+
+On the generic path the executors use `prompts/execute_generic.md` in place
+of `prompts/execute.md`, and they get one more tool,
+`record_product_observation`. The prompt tells each executor to call it for
+each product page that it opens, while the page is open. The executor gives
+only the price, the currency, `has_variants` and `variant_axes` (schema in
+`src/explore/observations.ts`, shown in `AGENTS.md`), with the axes named as
+short generic nouns. The tool checks the facts against the schema, takes
+the page key from the open page, and writes the fragment
+`parts/<task_id>.product-<key>.json`. The key is the first 12 hex digits of
+the SHA-256 of the page URL without its query and fragment, and the URL is
+the `<link rel="canonical">` target when the page has one. So the key tells
+product pages apart without naming them, and two paths to one product page
+give one key. A `product_observations` verifier fails an executor iteration
+whose fragments do not match the schema.
+
+`stats.json` records its `source` and `sample_size`. On a Shopify shop
+`computeStats` reads the prefetched catalog: `source` is `catalog_endpoint`
+and `sample_size` is the number of products read. On a generic site
+`computeObservedStats` reads the fragments: `source` is `observed_sample`,
+`sample_size` is the number of distinct product pages, and the price and
+variant stats come from one fragment for each page. When more than one task
+recorded the same page, the first fragment in filename order counts. The
+prices use the most frequent currency, and the observed axes are sorted. The
+product and collection totals and the products per collection stay 0.
 
 With a `focus` (for example `"Video Games"`), the explore step adds
 `prompts/planner_focus.md` after the planner prompt of either platform,
@@ -176,7 +200,7 @@ pipeline runner; `GEN_STEPS` lists them in order:
 
 | Step | Reads | Writes |
 | --- | --- | --- |
-| `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json`; the checked-in Standard sub-manual `src/gen/manual_merge/standard_sub_manual.md` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section); `parts/` holds the six Sub-manuals cut from `manual.md` and the shop's copy of the Standard sub-manual as `parts/standard.md`. Fusion: for each observed `## Account` or `## Checkout` section in `manual.md`, one LLM call fuses the notes into the copy. Observed labels and layout win. Unsupported behavior and the labels that the browser steps check keep the standard text. With no observed notes, the copy is unchanged and there is no LLM call |
+| `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json`; the checked-in Standard sub-manual `src/gen/manual_merge/standard_sub_manual.md` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section); `parts/` holds the six Sub-manuals cut from `manual.md` and the shop's copy of the Standard sub-manual as `parts/standard.md`. Fusion: for each observed `## Account` or `## Checkout` section in `manual.md`, one LLM call fuses the notes into the copy. Observed labels and layout win. Unsupported behavior and the labels that the browser steps check keep the standard text. With no observed notes, the copy is unchanged and there is no LLM call. Merged stats take the totals only from the `catalog_endpoint` seeds; the merged `source` is `observed_sample` when any seed is, and `sample_size` adds up the seeds |
 | `data_synth` | `manual/`; with `sourceDataDir` (`--data`), also `products.json`, `collections.json` and `images/` of that Dataset | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce`, `reviews` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
 | `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity that includes the product and variant of each Review, valid Discount codes, seeded order totals and discounts that follow the backend pricing rules, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
 | `build` | `data/`, `manual/`, `data_validation.json` | `runs/build/` via `build.runBuildLoop` (seed staged in `.shop_gen/build_seed/`); a final status other than `completed` fails the step so the next run resumes it |

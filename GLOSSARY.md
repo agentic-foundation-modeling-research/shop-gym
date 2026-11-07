@@ -47,6 +47,9 @@ One structured, schema-checked fact about one storefront feature, for example th
 **Fixed area**:
 One of the 14 canonical Plan tasks that Storefront exploration plans in every run, on every platform: 11 for the surfaces that every storefront has, such as `homepage_sections` and `cart_drawer`, and the three marketplace areas `product_reviews`, `related_products` and `search_results`. Each one ends done, or `manifest.json` lists it in `fixed_area_gaps` with a one-line reason.
 
+**Product observation**:
+One schema-checked record of one product page that an executor opened on a generic site: the price, the currency, and the variant facts. It has no name, URL, seller or brand. On a generic site, `stats.json` comes from the Product observations (`source: observed_sample`), and each product page counts once.
+
 **Anonymization**:
 The rule that a Shop Manual describes only structure and UX patterns, and contains no brand, domain, product name, or other text that identifies the Live storefront.
 

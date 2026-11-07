@@ -137,6 +137,11 @@ export class IterationBrowser {
     return this.session.close();
   }
 
+  /** The page of the browser of the current Iteration. */
+  get page(): BrowserSession['page'] {
+    return this.session.page;
+  }
+
   /** The cart of this browser's cookies, or why it could not be read. */
   private async readCart(cartUrl: string): Promise<Pick<StartState, 'cart' | 'error'>> {
     let ok: boolean;

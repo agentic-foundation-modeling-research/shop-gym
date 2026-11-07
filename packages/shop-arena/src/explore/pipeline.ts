@@ -64,13 +64,18 @@ import {
 import { type FixedAreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
 import {
+  productObservationJsonSchema,
+  productObservationTool,
+  productObservationVerifier,
+} from './observations.js';
+import {
   type Platform,
   type PrefetchReport,
   normalizeBase,
   prefetch,
   readPlatform,
 } from './prefetch.js';
-import { computeStats } from './stats.js';
+import { computeObservedStats, computeStats } from './stats.js';
 import { renderManual } from './synthesize.js';
 
 export const DEFAULT_MODEL = 'anthropic/claude-opus-4-7';
@@ -179,6 +184,8 @@ interface Prompts {
   /** The hint added to either planner prompt when the run has a focus. */
   readonly plannerFocus: string;
   readonly execute: string;
+  /** The executor prompt for a site on the generic platform. */
+  readonly executeGeneric: string;
   readonly manual: string;
 }
 
@@ -236,11 +243,15 @@ export function runId(url: string, runtimeName: string, now: Date = new Date()):
 function loadPrompts(): Prompts {
   const read = (name: string) => readFileSync(join(PROMPTS_DIR, name), 'utf8');
   return {
-    agents: read('agents.md').replace('{{CAPABILITIES_SCHEMA}}', capabilitiesJsonSchema()),
+    agents: read('agents.md')
+      .replace('{{CAPABILITIES_SCHEMA}}', capabilitiesJsonSchema())
+      // A replacer function, because the schema text contains `$`.
+      .replace('{{PRODUCT_OBSERVATION_SCHEMA}}', () => productObservationJsonSchema()),
     planner: read('planner.md'),
     plannerGeneric: read('planner_generic.md'),
     plannerFocus: read('planner_focus.md'),
     execute: read('execute.md'),
+    executeGeneric: read('execute_generic.md'),
     manual: read('synthesize_manual.md'),
   };
 }
@@ -251,6 +262,11 @@ function plannerPrompt(prompts: Prompts, platform: Platform, focus: string | nul
   if (focus === null) return planner;
   // A function replacement inserts the text as is, so `$&` in it is not a pattern.
   return `${planner}\n${prompts.plannerFocus.replaceAll('{{FOCUS}}', () => focus)}`;
+}
+
+/** The executor prompt for a site on `platform`. */
+function executePrompt(prompts: Prompts, platform: Platform): string {
+  return platform === 'generic' ? prompts.executeGeneric : prompts.execute;
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -329,11 +345,9 @@ const exploreStep: Step<ExploreContext> = {
   outputs: [PATHS.explore],
   async run({ outDir, context, log }) {
     const runDir = join(outDir, PATHS.run);
-    const planner = plannerPrompt(
-      context.prompts,
-      readPlatform(join(outDir, PATHS.prefetch)),
-      context.focus,
-    );
+    const platform = readPlatform(join(outDir, PATHS.prefetch));
+    const generic = platform === 'generic';
+    const planner = plannerPrompt(context.prompts, platform, context.focus);
     writeJson(join(outDir, PATHS.focus), { focus: context.focus });
     const browser = await IterationBrowser.launch({
       episodeId: basename(outDir),
@@ -346,14 +360,21 @@ const exploreStep: Step<ExploreContext> = {
       summary = await runPlanExecLoop(
         {
           runDir,
-          prompts: { planner, execute: context.prompts.execute },
+          prompts: { planner, execute: executePrompt(context.prompts, platform) },
           agentsMd: context.prompts.agents,
           artifactSeedDir: join(outDir, PATHS.seed),
           maxIters: context.maxIters,
           timeoutMs: context.timeoutMs,
           model: context.model,
-          tools: [...browser.tools, ...fileTools()],
-          verifiers: [anonymizationVerifier(context.url)],
+          tools: [
+            ...browser.tools,
+            ...fileTools(),
+            ...(generic ? [productObservationTool(browser)] : []),
+          ],
+          verifiers: [
+            anonymizationVerifier(context.url),
+            ...(generic ? [productObservationVerifier()] : []),
+          ],
           ...(context.onEvent ? { onEvent: context.onEvent } : {}),
           onIterationStart: async ({ iterDir }) =>
             writeJson(join(iterDir, START_STATE_FILENAME), await browser.start()),
@@ -391,12 +412,18 @@ const mergeStep: Step<ExploreContext> = {
     const prefetchDir = join(outDir, PATHS.prefetch);
     const outcome = readJson<ExploreOutcome>(join(outDir, PATHS.explore));
     const planMd = readFileSync(join(runDir, 'plan.md'), 'utf8');
+    const platform = readPlatform(prefetchDir);
 
     const { capabilities, conflicts } = existsSync(partsDir)
       ? mergeFragments(partsDir)
       : { capabilities: parseCapabilities({}), conflicts: [] };
     writeJson(join(outDir, PATHS.capabilities), capabilities);
-    writeJson(join(outDir, PATHS.stats), computeStats(prefetchDir, capabilities));
+    writeJson(
+      join(outDir, PATHS.stats),
+      platform === 'generic'
+        ? computeObservedStats(partsDir, capabilities)
+        : computeStats(prefetchDir, capabilities),
+    );
 
     const summary = readRunSummary(runDir);
     const tasks = summary?.tasksFinal ?? [];
@@ -410,7 +437,7 @@ const mergeStep: Step<ExploreContext> = {
       domain: new URL(context.url).hostname,
       runtime: context.runtime.name,
       model: context.modelName,
-      platform: readPlatform(prefetchDir),
+      platform,
       focus: context.focus,
       harness_status: outcome.final_status,
       iters: { plan: outcome.plan_iters, exec: outcome.exec_iters },
