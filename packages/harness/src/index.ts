@@ -7,6 +7,7 @@ export {
   type PlanExecLoopConfig,
   type PlanExecLoopResult,
   type Prompts,
+  type StopRequest,
   validateConfig,
 } from './config.js';
 export { ResumeRefusedError, type RunOptions, runPlanExecLoop } from './loop.js';

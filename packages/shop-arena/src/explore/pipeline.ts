@@ -49,7 +49,7 @@ import {
   mergeFragments,
   parseCapabilities,
 } from './capabilities.js';
-import { coverageGaps, parsePlanCoverage } from './coverage.js';
+import { coverageGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
 import {
   type Platform,
@@ -308,7 +308,8 @@ const mergeStep: Step<ExploreContext> = {
 
     const summary = readRunSummary(runDir);
     const tasks = summary?.tasksFinal ?? [];
-    const omitted = [...parsePlanCoverage(planMd).omitted].map((entry) => ({
+    const omittedAreas = parseOmittedAreas(planMd);
+    const omitted = [...omittedAreas].map((entry) => ({
       area: entry,
       reason: omissionReason(planMd, entry),
     }));
@@ -325,7 +326,7 @@ const mergeStep: Step<ExploreContext> = {
       plan_tasks_blocked: tasks.filter((task) => task.status === 'blocked').length,
       omitted_areas: omitted,
       capability_conflicts: conflicts,
-      coverage_gaps: coverageGaps(prefetchDir, planMd),
+      coverage_gaps: coverageGaps(prefetchDir, tasks, omittedAreas),
       merged_at: new Date().toISOString(),
       paths: {
         manual: PATHS.manual,

@@ -77,6 +77,14 @@ Two design choices define the extension:
 - **v1.1 TypeScript port (2026-09-30).** `packages/harness/src/verifiers/`
   ports dispatch with the same semantics. `VerifierContext` no longer
   carries the runtime; verifiers close over whatever they need.
+- **Block note (2026-11-05).** A `fail` result may carry `blockNote`.
+  Dispatch then marks the selected task `[!]` with the note
+  `<verifier name>: <blockNote>` instead of reopening it, and writes no
+  `feedback.md`, because no later iteration works on the task. A
+  verifier uses it when another attempt cannot help, for example when
+  its own per-task retry cap is spent (the Storefront exploration
+  `anonymization` verifier blocks a task after two reopens). The retry
+  count stays with the caller; the harness still has no retry budget.
 
 ---
 
@@ -198,6 +206,7 @@ class VerifierResult(BaseModel, frozen=True, extra="forbid"):
     verdict: Verdict
     feedback: str = ""        # markdown; surfaced to next prompt on FAIL/ADVISORY
     details: dict[str, Any] = {}   # caller-defined; persisted verbatim
+    block_note: str | None = None  # FAIL only: block the task (TS: blockNote)
 
 class VerifierContext(BaseModel, frozen=True, extra="forbid"):
     run_dir: Path             # absolute
@@ -230,7 +239,9 @@ After each executor iteration's protocol checks complete:
 3. Persist `iters/<id>/checks/verifiers/<name>.json` per call.
 4. Compute aggregate state:
    - any `FAIL` ⇒ **block**: rewrite the executor's `[x]` or `[!]`
-     for `selected_task_id` back to `[~]`.
+     for `selected_task_id` back to `[~]`. When a `FAIL` carries a
+     block note (TS: `blockNote`), mark the task `[!]` with the
+     notes instead and skip step 5.
    - all `PASS`/`ADVISORY`/`ERROR` ⇒ **advance**: leave the marker.
 5. If any verifier produced non-empty feedback (`FAIL` or
    `ADVISORY`), concatenate them under per-verifier headers and write

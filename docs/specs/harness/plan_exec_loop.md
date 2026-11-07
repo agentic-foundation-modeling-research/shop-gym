@@ -83,6 +83,10 @@ coupled to neither. Its tests run against arbitrary toy tasks.
   reports how each iteration ended: `kept`, or the reason the harness
   abandoned it (§5.9). The ShopArena build loop uses it to keep or roll
   back its `artifact/` checkpoints.
+- **Caller stop (2026-11-05).** `onIterationEnd` can return a
+  `StopRequest` to end the run between iterations with a reason. The run
+  then ends with the final status `stopped`, and a later call resumes it
+  without `force` (§5.10).
 
 ---
 
@@ -414,6 +418,40 @@ rolled the edits back. An error thrown by the hook rejects
 `runPlanExecLoop`. A crash inside an iteration reports nothing; on
 resume the partial iteration is quarantined and its edits stay.
 
+### 5.10 Caller stop
+
+A caller can end a run before the plan drains or the budget ends, for
+example when the agent meets a bot check again and again, or when a
+caller-owned limit is reached. To do this, `onIterationEnd` returns a
+`StopRequest`, `{ stopReason }`. A hook that returns nothing changes
+nothing.
+
+When the hook returns a `StopRequest` after an iteration that lets the
+run continue (any outcome in §5.9 except a planner failure and
+`runtime_error`):
+
+1. The harness starts no further iteration.
+2. The run ends with the final status `stopped`. `run.json` and the
+   returned `PlanExecLoopResult` have `stopReason`, and the attempt's
+   `resumeHistory` entry keeps `stopReason` after later attempts.
+3. `runPlanExecLoop` returns a normal result. `tasksFinal` holds the
+   tasks of the final `plan.md`.
+
+The stop acts only between iterations. The hook runs after the Agent
+run of an iteration has ended, so a stop never cuts an Agent run. The
+status is `stopped` even when the stopped iteration was the last one
+that the plan or the budget allowed: the caller's request wins.
+
+When the hook returns a `StopRequest` after an iteration that already
+ended the run (a failed planner, or a `runtime_error`), the harness
+ignores the request. The run keeps its failure status, so the refusal
+policy of [resume.md](resume.md) §5.5 still applies.
+
+A stopped run is consistent on disk, like a run that used its budget.
+A later call on the same `runDir` resumes it without `force`: it skips
+the planner when its trajectory exists and continues with the pending
+tasks. The caller decides whether to resume.
+
 ---
 
 ## 6. Alternative
@@ -450,7 +488,7 @@ cassette drift.
 ### 8.1 Public surface (informative)
 
 - **Types**: `Task`, `TaskList`, `TaskStatus`, `Trajectory`, `TrajectoryStep`, `AgentRuntime`, `IterationMetadata`, `ProtocolCheckResult`.
-- **Config & result**: `PlanExecLoopConfig` (contains `run_dir`, `prompts`, `agents_md`, `artifact_seed_dir`, loop budget, and the `onEvent` / `onIterationEnd` hooks), `Prompts`, `PlanExecLoopResult`, `IterationEnd`, `IterationOutcome`.
+- **Config & result**: `PlanExecLoopConfig` (contains `run_dir`, `prompts`, `agents_md`, `artifact_seed_dir`, loop budget, and the `onEvent` / `onIterationEnd` hooks), `Prompts`, `PlanExecLoopResult` (with `stopReason` on a `stopped` run), `IterationEnd`, `IterationOutcome`, `StopRequest`.
 - **Entry points**: `run_plan_exec_loop(config, runtime)`, `get_runtime(name, **kwargs)`.
 
 ### 8.2 Future directions (non-blocking)

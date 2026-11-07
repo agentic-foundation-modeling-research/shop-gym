@@ -18,9 +18,10 @@ the model; the runtime executes each iteration in-process.
   `plan.md`, `iters/`, `run.json`), creation, and identity-checked reopen
   for resume.
 - `verifiers/` - caller-owned `Verifier` dispatch after each executor
-  iteration: FAIL reopens the task to `[~]`, ERROR never blocks, feedback is
-  written to `checks/verifiers/feedback.md` and rendered into the next
-  prompt's `{{verifier_feedback}}` placeholder. A result's `images` (PNG or
+  iteration: FAIL reopens the task to `[~]` (a FAIL with a `blockNote` marks
+  it `[!]` with that note and writes no feedback), ERROR never blocks,
+  feedback is written to `checks/verifiers/feedback.md` and rendered into
+  the next prompt's `{{verifier_feedback}}` placeholder. A result's `images` (PNG or
   JPEG paths) are listed in `feedback_images.json` and attached to that
   prompt, at most six per iteration.
 - `loop.ts` - `runPlanExecLoop(config, runtime, { force? })`. Fresh or
@@ -31,6 +32,9 @@ the model; the runtime executes each iteration in-process.
   harness kept it or abandoned it (timeout, invalid plan, protocol
   violation, runtime error). The harness never rolls back `artifact/`
   itself; a caller that wants abandoned edits gone does it in the hook.
+  The hook can return `{ stopReason }` to end the run before the next
+  iteration: the run ends with final status `stopped`, `run.json` records
+  the reason, and a later call resumes it without `force`.
 - `telemetry/` - iteration ids, `metadata.json` schema, secret scrubbing,
   atomic `run.json` writes, and `reconstruct(runDir)` for crashed runs.
 - `trace.ts` - `renderIterDir(iterDir)` renders an iteration's

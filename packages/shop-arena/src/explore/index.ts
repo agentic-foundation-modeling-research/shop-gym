@@ -10,7 +10,6 @@ export {
   brandTokens,
   formatLeaks,
   leakScanner,
-  scanParts,
 } from './anonymization.js';
 export {
   CAPABILITY_KEYS,
@@ -23,7 +22,7 @@ export {
   mergeFragments,
   parseCapabilities,
 } from './capabilities.js';
-export { coverageGaps, evidencedAreas, parsePlanCoverage } from './coverage.js';
+export { coverageGaps, evidencedAreas, parseOmittedAreas } from './coverage.js';
 export { fileTools } from './files.js';
 export {
   DEFAULT_MAX_ITERS,

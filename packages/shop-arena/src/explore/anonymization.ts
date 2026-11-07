@@ -1,18 +1,26 @@
 /**
- * Anonymization verifier: a deterministic scan of the executor's
- * `parts/*.md` for anything that identifies the source storefront.
+ * Anonymization verifier: a deterministic scan of the fragment
+ * `parts/<task_id>.md` that the current Plan task wrote, for anything that
+ * identifies the source storefront. Fragments of other tasks are not read,
+ * so one bad fragment cannot reopen another task. The verifier finds the
+ * fragment by this name only, so a file that the executor writes under
+ * another name is not scanned.
  *
  * Leak markers are derived from the storefront URL and the prefetched
  * homepage: the host (with and without `www.`), absolute URLs on the host,
  * brand tokens from `<title>` and `og:site_name`, hostname labels, and any
  * email address. A hit fails the task with the offending `file:line` list
- * so the executor can rewrite the part.
+ * so the executor can rewrite the fragment. A task is reopened at most
+ * `MAX_ANONYMIZATION_REOPENS` times; the next hit blocks it with a note
+ * that names the fragment. The count per task is kept under
+ * `<runDir>/checks/anonymization_reopens.json`, so a resumed run keeps it.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 import type { Verifier, VerifierResult } from '@shop-gym/harness';
+import { z } from 'zod';
 
 /** Hostname labels shorter than this are too generic to be brand tokens. */
 const MIN_LABEL_LENGTH = 4;
@@ -35,6 +43,12 @@ const STOP_WORDS = new Set([
   'org',
 ]);
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+/** Reopens one Plan task can get from this verifier; the next leak blocks the task. */
+const MAX_ANONYMIZATION_REOPENS = 2;
+/** Run-dir-relative file with the reopen count of each Plan task. */
+const REOPENS_FILE = join('checks', 'anonymization_reopens.json');
+/** Shape of `REOPENS_FILE`: the reopen count of each Plan task id. */
+const REOPENS_SCHEMA = z.record(z.string(), z.number().int().nonnegative());
 
 export interface Leak {
   readonly file: string;
@@ -125,15 +139,6 @@ export function leakScanner(hostname: string, html: string): LeakScanner {
   };
 }
 
-/** Scans every `*.md` under `partsDir`. */
-export function scanParts(partsDir: string, scan: LeakScanner): Leak[] {
-  if (!existsSync(partsDir)) return [];
-  return readdirSync(partsDir)
-    .filter((name) => name.endsWith('.md'))
-    .sort()
-    .flatMap((name) => scan(`parts/${name}`, readFileSync(join(partsDir, name), 'utf8')));
-}
-
 /** Formats leaks as verifier feedback. */
 export function formatLeaks(leaks: readonly Leak[]): string {
   const lines = leaks.map((leak) => `- ${leak.file}:${leak.line} [${leak.marker}]: ${leak.text}`);
@@ -146,10 +151,21 @@ export function formatLeaks(leaks: readonly Leak[]): string {
   ].join('\n');
 }
 
+function readReopens(runDir: string): Record<string, number> {
+  const path = join(runDir, REOPENS_FILE);
+  return existsSync(path) ? REOPENS_SCHEMA.parse(JSON.parse(readFileSync(path, 'utf8'))) : {};
+}
+
+function writeReopens(runDir: string, reopens: Readonly<Record<string, number>>): void {
+  const path = join(runDir, REOPENS_FILE);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(reopens, null, 2)}\n`);
+}
+
 /**
  * The harness verifier. Reads brand markers from
- * `<artifactDir>/prefetch/index.html` and scans `<artifactDir>/parts/*.md`
- * after every executor iteration.
+ * `<artifactDir>/prefetch/index.html` and scans the current task's
+ * `<artifactDir>/parts/<task_id>.md` after every executor iteration.
  */
 export function anonymizationVerifier(storefrontUrl: string): Verifier {
   const hostname = new URL(storefrontUrl).hostname;
@@ -159,12 +175,32 @@ export function anonymizationVerifier(storefrontUrl: string): Verifier {
     async run(ctx): Promise<VerifierResult> {
       const indexPath = join(ctx.artifactDir, 'prefetch', 'index.html');
       const html = existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : '';
-      const leaks = scanParts(join(ctx.artifactDir, 'parts'), leakScanner(hostname, html));
+      const fragment = `parts/${ctx.selectedTaskId}.md`;
+      const fragmentPath = join(ctx.artifactDir, fragment);
+      const leaks = existsSync(fragmentPath)
+        ? leakScanner(hostname, html)(fragment, readFileSync(fragmentPath, 'utf8'))
+        : [];
       if (leaks.length === 0) return { verdict: 'pass' };
+      const reopens = readReopens(ctx.runDir);
+      const prior = reopens[ctx.selectedTaskId] ?? 0;
+      const markers = [...new Set(leaks.map((leak) => leak.marker))];
+      if (prior >= MAX_ANONYMIZATION_REOPENS) {
+        return {
+          verdict: 'fail',
+          feedback: formatLeaks(leaks),
+          details: { leaks: leaks.length, markers, reopens: prior },
+          blockNote: `${fragment} still identifies the storefront after ${prior} reopens`,
+        };
+      }
+      writeReopens(ctx.runDir, { ...reopens, [ctx.selectedTaskId]: prior + 1 });
       return {
         verdict: 'fail',
-        feedback: formatLeaks(leaks),
-        details: { leaks: leaks.length, markers: [...new Set(leaks.map((leak) => leak.marker))] },
+        feedback: [
+          formatLeaks(leaks),
+          '',
+          `This task has used ${prior + 1} of ${MAX_ANONYMIZATION_REOPENS} reopens. A leak after the last reopen blocks the task.`,
+        ].join('\n'),
+        details: { leaks: leaks.length, markers, reopens: prior + 1 },
       };
     },
   };

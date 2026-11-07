@@ -5,9 +5,15 @@
  * Every section is a closed object with nullable scalar fields and
  * empty-list defaults, so a fragment may carry any subset of keys. The
  * merge is pure and order-stable: fragments are read in filename order,
- * objects merge recursively, lists union (first occurrence wins), and a
- * scalar written by two fragments takes the last writer while recording a
- * `Conflict` for the manifest.
+ * objects merge recursively, and lists union (first occurrence wins). For a
+ * scalar field, `null` means unknown: it never replaces a value, and a later
+ * value fills it, with no `Conflict` either way. A scalar written by two
+ * fragments with different non-null values takes the last writer while
+ * recording a `Conflict` for the manifest.
+ *
+ * The same defaults let a schema 0.2 document parse. Schema 0.3 adds the
+ * `departments` block, `search.facets` and `search.sort`, and the product
+ * rating histogram, review filters and related product types.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -21,7 +27,7 @@ const nullableInt = () => z.number().int().nullable().default(null);
 const stringList = () => z.array(z.string()).default([]);
 
 export const capabilitiesSchema = z.strictObject({
-  version: z.string().default('0.2'),
+  version: z.string().default('0.3'),
   shop: z
     .strictObject({
       descriptor: nullableString(),
@@ -37,6 +43,13 @@ export const capabilitiesSchema = z.strictObject({
       has_mega_menu: nullableBool(),
       nav_depth: nullableInt(),
       footer_groups: nullableInt(),
+    })
+    .prefault({}),
+  departments: z
+    .strictObject({
+      has_department_menu: nullableBool(),
+      department_count: nullableInt(),
+      max_depth: nullableInt(),
     })
     .prefault({}),
   homepage: z
@@ -64,6 +77,9 @@ export const capabilitiesSchema = z.strictObject({
       has_reviews: nullableBool(),
       has_recommendations: nullableBool(),
       has_personalization: nullableBool(),
+      has_rating_histogram: nullableBool(),
+      review_filters: stringList(),
+      related_product_types: stringList(),
     })
     .prefault({}),
   cart: z
@@ -80,6 +96,8 @@ export const capabilitiesSchema = z.strictObject({
       has_predictive: nullableBool(),
       predictive_types: stringList(),
       results_layout: nullableString(),
+      facets: stringList(),
+      sort: stringList(),
     })
     .prefault({}),
   floating: z
@@ -126,7 +144,7 @@ export function capabilitiesJsonSchema(): string {
   return JSON.stringify(z.toJSONSchema(capabilitiesSchema), null, 2);
 }
 
-/** A scalar leaf written by two fragments with different values. */
+/** A scalar leaf written by two fragments with different non-null values. */
 export interface Conflict {
   readonly path: string;
   readonly previous_value: unknown;
@@ -151,6 +169,11 @@ type JsonObject = Record<string, unknown>;
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** True for a JSON string, number, boolean or `null`. */
+function isScalar(value: unknown): boolean {
+  return !isObject(value) && !Array.isArray(value);
 }
 
 /** Validates a full capabilities document. */
@@ -215,12 +238,13 @@ function deepMerge(
 ): void {
   for (const [key, value] of Object.entries(incoming)) {
     const childPath = path === '' ? key : `${path}.${key}`;
-    if (!(key in target)) {
+    if (!(key in target) || (target[key] === null && isScalar(value))) {
       target[key] = value;
       seedSources(value, childPath, source, sources);
       continue;
     }
     const existing = target[key];
+    if (value === null && isScalar(existing)) continue;
     if (isObject(existing) && isObject(value)) {
       deepMerge(existing, value, source, childPath, sources, conflicts);
       continue;

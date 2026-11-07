@@ -79,10 +79,12 @@ tools (`read_file`, `write_file`, `list_dir`) that let the agent write
 emits a fixed canonical task list (homepage, header, cart, product,
 collection, search, checkout, account, footer, info pages, floating
 widgets); each executor iteration writes `parts/<task_id>.md` and
-`parts/<task_id>.caps.json`. An `anonymization` verifier scans the parts
-after every iteration for the store domain, brand tokens from the
-prefetched homepage, absolute store URLs, and email addresses, and
-reopens the task with line-level feedback on a hit.
+`parts/<task_id>.caps.json`. An `anonymization` verifier scans the
+current task's `parts/<task_id>.md` after every iteration for the store
+domain, brand tokens from the prefetched homepage, absolute store URLs,
+and email addresses, and reopens the task with line-level feedback on a
+hit. A task gets at most two such reopens; the next hit blocks it with a
+note that names the fragment.
 
 ```ts
 import { loadCredentials } from '@shop-gym/core';
@@ -113,6 +115,15 @@ budget. Prompts live in `src/explore/prompts/*.md` and are copied into
 rendered from the zod schema at run time. Credentials come from
 `loadCredentials()` and are never written to disk. `shopgym explore <url>`
 wraps this function.
+
+The merge step writes `coverage_gaps` in `manifest.json`. It lists each
+area that the prefetch shows on the storefront and that nothing covers. A
+done (`[x]`) Plan task or an entry in the `## Omitted Areas` block of
+`plan.md` covers an area. A Plan task that is pending, in progress or
+blocked when the run ends does not cover its area, so an unfinished,
+failed or skipped area is a gap. When the plan has a Plan task with the
+area's own name (for example `header_navigation`), only that task can
+cover the area.
 
 ## Gen
 
