@@ -163,7 +163,11 @@ layout.
   access.
 - **SC5 — Coverage.** On the fixture set, every coverage-taxonomy area
   that prefetch evidence indicates is present (§5.7) appears as either
-  a planner task or a justified omission in `manifest.json`.
+  a done planner task or a justified omission in `manifest.json`. A
+  pending, in-progress, or blocked task does not cover its area. When
+  the plan has a task with the area's own name, only that task can cover
+  the area. Each evidenced area that nothing covers is listed in
+  `manifest.json:coverage_gaps`.
 
 ---
 
@@ -540,7 +544,7 @@ runs (no further harness involvement):
 4. **Manifest** (deterministic). Write `manifest.json`:
    `{domain, run_id, runtime, started_at, finished_at, harness_status,
      iters, plan_tasks_total, plan_tasks_done, plan_tasks_blocked,
-     omitted_areas, capability_conflicts, paths}`.
+     omitted_areas, capability_conflicts, coverage_gaps, paths}`.
 
 Synthesis failure modes (loud — no silent fallback):
 
