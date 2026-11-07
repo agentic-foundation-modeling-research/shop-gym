@@ -47,10 +47,29 @@ steps on the `@shop-gym/core` pipeline runner:
 
 | Step | Reads | Writes |
 | --- | --- | --- |
-| `prefetch` | the storefront over HTTP | `seed/prefetch/` (robots, homepage, sitemap, Shopify JSON endpoints, policy and info pages, merged `products.json`, `prefetch.json`) |
+| `prefetch` | the storefront over HTTP | `seed/prefetch/` (robots, homepage, sitemap, `prefetch.json`; on a Shopify shop also the Shopify JSON endpoints, policy and info pages, merged `products.json`) |
 | `explore` | `seed/prefetch/` | `run/` (harness workspace: `plan.md`, `iters/`, `artifact/{prefetch,parts,evidence}`, `run.json`) and `explore.json` |
 | `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json` | `capabilities.json`, `stats.json`, `manifest.json` |
 | `synthesize` | `capabilities.json`, `run/artifact/parts/*.md` | `manual.md` |
+
+Prefetch decides the platform before it fetches the rest. First it
+fetches `robots.txt`, the homepage, `sitemap.xml` and one `/products.json`
+page as the probe. It skips `sitemap.xml` when robots.txt forbids it. It
+keeps a sitemap index as fetched and does not open the child sitemaps. It
+cuts a sitemap at 1 MiB.
+
+The platform is `shopify` when the homepage has a Shopify marker
+(`cdn.shopify.com`, `myshopify.com`, `Shopify.theme`, `shopify-section`)
+or the probe returns a product list. Then prefetch fetches the other
+product pages, the Shopify JSON endpoints, and the policy and info pages.
+Otherwise the platform is `generic`, and prefetch fetches nothing more.
+
+The robots gate, the homepage status gate, the Cloudflare markers and the
+rate limit apply on both paths. `prefetch.json` and `manifest.json` record
+`platform`. On the generic path the planner uses `prompts/planner_generic.md`
+in place of `prompts/planner.md`. That prompt tells the planner to pick
+same-origin start URLs from the homepage links and the sitemap. Stats
+count 0 products and 0 collections when the Shopify files are missing.
 
 The explore step drives `runPlanExecLoop` from `@shop-gym/harness` with
 the pi runtime, one headless `BrowserSession` per harness run, the

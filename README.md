@@ -85,6 +85,15 @@ Options: `--out <dir>`, `--max-iters <n>`, `--timeout <ms>`,
 `--from prefetch|explore|merge|synthesize`, `--force-resume`. Re-running with
 the same output directory resumes the unfinished step.
 
+The storefront does not have to be a Shopify shop. Prefetch decides the
+platform first. It fetches `robots.txt`, the homepage, `sitemap.xml` and
+one `/products.json` page as the probe: the platform is `shopify` when the
+homepage has a Shopify marker or the probe returns a product list, else
+`generic`. On a Shopify shop it then fetches the rest of the catalog, the
+Shopify JSON endpoints and the policy pages. On a generic site it fetches
+nothing more, and the planner picks its start URLs from the homepage links
+and the sitemap. `manifest.json` records the `platform`.
+
 ### 2. Generate a SandboxShop
 
 ```bash
