@@ -90,10 +90,11 @@ All browsing - for both planner and executor - goes through the
 issue raw HTTP requests; the prefetch step has already done that for
 the URLs we need, and there is no shell.
 
-The harness has already opened a headless browser for you. One page is
-shared across the whole run, so the page you leave at the end of an
-iteration is the page the next iteration starts on - begin every task
-with `navigate`.
+The harness opens a new headless browser for every iteration. It starts
+on the storefront homepage with no cookies, storage or cart from earlier
+iterations, so a cart that an earlier task filled is empty again. Set up
+the state your task needs (for example, add a product before you open
+the cart) and begin every task with `navigate`.
 
 Tools:
 
