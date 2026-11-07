@@ -47,10 +47,29 @@ steps on the `@shop-gym/core` pipeline runner:
 
 | Step | Reads | Writes |
 | --- | --- | --- |
-| `prefetch` | the storefront over HTTP | `seed/prefetch/` (robots, homepage, sitemap, Shopify JSON endpoints, policy and info pages, merged `products.json`, `prefetch.json`) |
+| `prefetch` | the storefront over HTTP | `seed/prefetch/` (robots, homepage, sitemap, `prefetch.json`; on a Shopify shop also the Shopify JSON endpoints, policy and info pages, merged `products.json`) |
 | `explore` | `seed/prefetch/` | `run/` (harness workspace: `plan.md`, `iters/`, `artifact/{prefetch,parts,evidence}`, `run.json`) and `explore.json` |
 | `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json` | `capabilities.json`, `stats.json`, `manifest.json` |
 | `synthesize` | `capabilities.json`, `run/artifact/parts/*.md` | `manual.md` |
+
+Prefetch decides the platform before it fetches the rest. First it
+fetches `robots.txt`, the homepage, `sitemap.xml` and one `/products.json`
+page as the probe. It skips `sitemap.xml` when robots.txt forbids it. It
+keeps a sitemap index as fetched and does not open the child sitemaps. It
+cuts a sitemap at 1 MiB.
+
+The platform is `shopify` when the homepage has a Shopify marker
+(`cdn.shopify.com`, `myshopify.com`, `Shopify.theme`, `shopify-section`)
+or the probe returns a product list. Then prefetch fetches the other
+product pages, the Shopify JSON endpoints, and the policy and info pages.
+Otherwise the platform is `generic`, and prefetch fetches nothing more.
+
+The robots gate, the homepage status gate, the Cloudflare markers and the
+rate limit apply on both paths. `prefetch.json` and `manifest.json` record
+`platform`. On the generic path the planner uses `prompts/planner_generic.md`
+in place of `prompts/planner.md`. That prompt tells the planner to pick
+same-origin start URLs from the homepage links and the sitemap. Stats
+count 0 products and 0 collections when the Shopify files are missing.
 
 The explore step drives `runPlanExecLoop` from `@shop-gym/harness` with
 the pi runtime, a new headless `BrowserSession` for every iteration
@@ -69,10 +88,12 @@ itself keeps the whole snapshot. The planner
 emits a fixed canonical task list (homepage, header, cart, product,
 collection, search, checkout, account, footer, info pages, floating
 widgets); each executor iteration writes `parts/<task_id>.md` and
-`parts/<task_id>.caps.json`. An `anonymization` verifier scans the parts
-after every iteration for the store domain, brand tokens from the
-prefetched homepage, absolute store URLs, and email addresses, and
-reopens the task with line-level feedback on a hit.
+`parts/<task_id>.caps.json`. An `anonymization` verifier scans the
+current task's `parts/<task_id>.md` after every iteration for the store
+domain, brand tokens from the prefetched homepage, absolute store URLs,
+and email addresses, and reopens the task with line-level feedback on a
+hit. A task gets at most two such reopens; the next hit blocks it with a
+note that names the fragment.
 
 ```ts
 import { loadCredentials } from '@shop-gym/core';
@@ -103,6 +124,15 @@ budget. Prompts live in `src/explore/prompts/*.md` and are copied into
 rendered from the zod schema at run time. Credentials come from
 `loadCredentials()` and are never written to disk. `shopgym explore <url>`
 wraps this function.
+
+The merge step writes `coverage_gaps` in `manifest.json`. It lists each
+area that the prefetch shows on the storefront and that nothing covers. A
+done (`[x]`) Plan task or an entry in the `## Omitted Areas` block of
+`plan.md` covers an area. A Plan task that is pending, in progress or
+blocked when the run ends does not cover its area, so an unfinished,
+failed or skipped area is a gap. When the plan has a Plan task with the
+area's own name (for example `header_navigation`), only that task can
+cover the area.
 
 ## Gen
 

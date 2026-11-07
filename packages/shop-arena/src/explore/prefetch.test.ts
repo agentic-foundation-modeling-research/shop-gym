@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -9,11 +9,20 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   DEFAULT_USER_AGENT,
   PRODUCTS_PAGE_LIMIT,
+  SITEMAP_MAX_BYTES,
   ShopUnreachableError,
   normalizeBase,
   prefetch,
+  readPlatform,
+  robotsDisallowsPath,
   robotsDisallowsRoot,
 } from './prefetch.js';
+import {
+  type FixturePages,
+  type FixtureSite,
+  genericSitePages,
+  startFixtureSite,
+} from './testing.js';
 
 /** Fixed-plan URLs plus the single products page of a small catalog. */
 const EXPECTED_FETCH_COUNT = 16;
@@ -153,9 +162,11 @@ describe('prefetch', () => {
       'base_url',
       'entries',
       'finished_at',
+      'platform',
       'started_at',
       'user_agent',
     ]);
+    expect(onDisk.platform).toBe('shopify');
     expect(readFileSync(join(outDir, 'prefetch.json'), 'utf8').endsWith('\n')).toBe(true);
     expect(JSON.parse(readFileSync(join(outDir, 'products.json'), 'utf8')).products).toHaveLength(
       3,
@@ -238,6 +249,116 @@ describe('prefetch', () => {
   });
 });
 
+describe('prefetch platform detection', () => {
+  const SHOPIFY_HOME =
+    '<!doctype html><html><head><title>Fixture Shop</title>' +
+    '<link rel="stylesheet" href="//cdn.shopify.com/s/files/1/theme.css"></head><body>ok</body></html>';
+
+  it('takes the shopify path on a homepage marker when products.json is unavailable', async () => {
+    routes['/'] = { status: 200, body: SHOPIFY_HOME, contentType: 'text/html' };
+    productPages = {};
+    const report = await run();
+    expect(report.platform).toBe('shopify');
+    expect(report.entries).toHaveLength(EXPECTED_FETCH_COUNT);
+    expect(existsSync(join(outDir, 'collections.json'))).toBe(true);
+  });
+});
+
+describe('prefetch on a generic site', () => {
+  let site: FixtureSite | undefined;
+
+  afterEach(async () => {
+    await site?.close();
+    site = undefined;
+  });
+
+  /** Serves the generic site with `overrides` and prefetches it. */
+  async function prefetchGeneric(
+    overrides: (origin: string) => FixturePages = () => ({}),
+    rateLimitMs = 0,
+  ) {
+    site = await startFixtureSite((origin) => ({
+      ...genericSitePages(origin),
+      ...overrides(origin),
+    }));
+    const report = await prefetch(site.url, outDir, { rateLimitMs });
+    return { report, paths: site.requests.map((request) => request.path) };
+  }
+
+  it('skips sitemap.xml when robots.txt forbids it', async () => {
+    const { report, paths } = await prefetchGeneric(() => ({
+      '/robots.txt': { contentType: 'text/plain', body: 'User-agent: *\nDisallow: /sitemap.xml\n' },
+    }));
+    expect(report.platform).toBe('generic');
+    expect(paths).not.toContain('/sitemap.xml');
+    expect(existsSync(join(outDir, 'sitemap.xml'))).toBe(false);
+  });
+
+  it('keeps a sitemap index as fetched and does not follow its child sitemaps', async () => {
+    const index = (origin: string) =>
+      `<?xml version="1.0"?><sitemapindex><sitemap><loc>${origin}/sitemap-products-1.xml</loc></sitemap></sitemapindex>`;
+    let body = '';
+    const { report, paths } = await prefetchGeneric((origin) => {
+      body = index(origin);
+      return { '/sitemap.xml': { contentType: 'application/xml', body } };
+    });
+    expect(readFileSync(join(outDir, 'sitemap.xml'), 'utf8')).toBe(body);
+    expect(paths).not.toContain('/sitemap-products-1.xml');
+    const entry = report.entries.find((candidate) => candidate.path === '/sitemap.xml');
+    expect(entry).toMatchObject({ status: 200, saved_to: 'sitemap.xml' });
+    expect(entry).not.toHaveProperty('truncated');
+  });
+
+  it('cuts a sitemap longer than the size bound', async () => {
+    const { report } = await prefetchGeneric(() => ({
+      '/sitemap.xml': {
+        contentType: 'application/xml',
+        body: 'x'.repeat(SITEMAP_MAX_BYTES + 1000),
+      },
+    }));
+    expect(readFileSync(join(outDir, 'sitemap.xml')).byteLength).toBe(SITEMAP_MAX_BYTES);
+    expect(report.entries.find((entry) => entry.path === '/sitemap.xml')).toMatchObject({
+      bytes: SITEMAP_MAX_BYTES,
+      saved_to: 'sitemap.xml',
+      truncated: true,
+    });
+  });
+
+  it.each([
+    [
+      'robots_disallow',
+      { '/robots.txt': { contentType: 'text/plain', body: 'User-agent: *\nDisallow: /\n' } },
+    ],
+    ['http_status', { '/': { status: 403, contentType: 'text/html', body: 'blocked' } }],
+    [
+      'cloudflare_challenge',
+      { '/': { contentType: 'text/html', body: '<html><title>Just a moment...</title></html>' } },
+    ],
+  ] as const)('aborts with %s on a generic site', async (reason, overrides) => {
+    await expect(prefetchGeneric(() => overrides)).rejects.toMatchObject({ reason });
+  });
+
+  it('keeps the rate limit between requests', async () => {
+    const rateLimitMs = 40;
+    const started = performance.now();
+    const { paths } = await prefetchGeneric(() => ({}), rateLimitMs);
+    expect(paths).toHaveLength(4);
+    expect(performance.now() - started).toBeGreaterThanOrEqual(3 * rateLimitMs);
+  });
+});
+
+describe('readPlatform', () => {
+  it('reads a prefetch.json with no platform field as shopify', () => {
+    writeFileSync(join(outDir, 'prefetch.json'), JSON.stringify({ base_url: 'x', entries: [] }));
+    expect(readPlatform(outDir)).toBe('shopify');
+  });
+
+  it('rejects a platform that is not known', () => {
+    writeFileSync(join(outDir, 'prefetch.json'), JSON.stringify({ platform: 'magento' }));
+    expect(() => readPlatform(outDir)).toThrow(/unknown platform "magento"/);
+  });
+});
+
 describe('normalizeBase', () => {
   it('keeps only scheme and host', () => {
     expect(normalizeBase('https://example-shop.com/collections/all?x=1')).toBe(
@@ -260,5 +381,20 @@ describe('robotsDisallowsRoot', () => {
     expect(
       robotsDisallowsRoot('User-agent: Bot\nDisallow: /\n\nUser-agent: *\nDisallow: /admin\n'),
     ).toBe(false);
+  });
+});
+
+describe('robotsDisallowsPath', () => {
+  it.each([
+    ['User-agent: *\nDisallow: /sitemap.xml\n', true],
+    ['User-agent: *\nDisallow: /*.xml$\n', true],
+    ['User-agent: *\nDisallow: /\nAllow: /sitemap.xml\n', false],
+    ['User-agent: *\nDisallow: /site\nAllow: /sitemap\n', false],
+    ['User-agent: *\nDisallow: /sitemap.xml\nAllow: /sitemap.xml\n', false],
+    ['User-agent: *\nDisallow: /sitemap.xml$x\n', false],
+    ['User-agent: *\nDisallow:\n', false],
+    ['User-agent: Bot\nDisallow: /\n\nUser-agent: *\nAllow: /\n', false],
+  ])('%j forbids /sitemap.xml: %s', (robotsTxt, forbidden) => {
+    expect(robotsDisallowsPath(robotsTxt, '/sitemap.xml')).toBe(forbidden);
   });
 });

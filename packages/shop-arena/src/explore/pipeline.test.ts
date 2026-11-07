@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -8,15 +8,17 @@ import {
   type CompleteRequest,
   type Completion,
   type LlmClient,
+  promptText,
   readTrajectory,
 } from '@shop-gym/agent';
 import { FakeRuntime, type FakeScript } from '@shop-gym/agent/testing';
 import { StepFailedError } from '@shop-gym/core';
-import { ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
+import { NOTE_PREFIX, ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { exploreStorefront, parseModel, runId } from './pipeline.js';
-import { ShopUnreachableError } from './prefetch.js';
+import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
+import { type FixtureSite, genericSitePages, startFixtureSite } from './testing.js';
 
 const CREDENTIALS = {} as const;
 const HOME =
@@ -125,6 +127,61 @@ const SCRIPTS: readonly FakeScript[] = [
   },
 ];
 
+/** An executor that writes the leaky homepage fragment again and marks it done. */
+const LEAKY_HOMEPAGE_ATTEMPT: FakeScript = {
+  writeFiles: {
+    'artifact/parts/homepage_sections.md': LEAKY_HOMEPAGE,
+    'plan.md': PLAN('x', ' '),
+  },
+  reply: 'homepage done (leaky)',
+};
+
+const HOMEPAGE_BLOCKED = `- [!] homepage_sections [priority: 9] ${NOTE_PREFIX} anonymization: parts/homepage_sections.md still identifies the storefront after 2 reopens`;
+
+/** A fragment with every marketplace Capability of schema 0.3. */
+const MARKETPLACE_CAPS = {
+  departments: { has_department_menu: true, department_count: 24, max_depth: 3 },
+  search: { facets: ['brand', 'price', 'rating'], sort: ['featured', 'price_asc', 'newest'] },
+  product: {
+    has_rating_histogram: true,
+    review_filters: ['star_rating', 'verified_purchase'],
+    related_product_types: ['bought_together', 'also_viewed', 'sponsored'],
+  },
+};
+
+const MARKETPLACE_SCRIPTS: readonly FakeScript[] = [
+  { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+  {
+    writeFiles: {
+      'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+      'artifact/parts/homepage_sections.caps.json': JSON.stringify(MARKETPLACE_CAPS),
+      'plan.md': PLAN('x', ' '),
+    },
+    reply: 'homepage done',
+  },
+  {
+    writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART, 'plan.md': PLAN('x', 'x') },
+    reply: 'cart done',
+  },
+];
+
+/** A `capabilities.json` that Storefront exploration published at schema 0.2. */
+const CAPABILITIES_0_2 = {
+  version: '0.2',
+  shop: { descriptor: 'Minimal Homeware Shop', category: null, currency: 'USD', tone: [] },
+  cart: { type: 'drawer', has_promo_input: true, has_upsells: null, has_shipping_estimate: null },
+  search: { trigger: 'icon', has_predictive: true, predictive_types: [], results_layout: null },
+};
+
+/** The capabilities JSON Schema that the agent constitution shows. */
+function constitutionSchema(systemPrompt: string | undefined): {
+  properties: Record<string, { default?: unknown; properties?: Record<string, unknown> }>;
+} {
+  const block = /```json\n([\s\S]*?)\n```/.exec(systemPrompt ?? '')?.[1];
+  if (block === undefined) throw new Error('the constitution has no JSON Schema block');
+  return JSON.parse(block);
+}
+
 class StubLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
 
@@ -204,18 +261,20 @@ afterEach(() => {
 });
 
 function explore(options: {
+  url?: string;
   scripts?: readonly FakeScript[];
   llm?: StubLlm;
   from?: 'prefetch' | 'explore' | 'merge' | 'synthesize';
   forceResume?: boolean;
+  maxIters?: number;
 }) {
   const runtime = new FakeRuntime(options.scripts ?? []);
   const llm = options.llm ?? new StubLlm();
   return exploreStorefront({
-    url: baseUrl,
+    url: options.url ?? baseUrl,
     outDir,
     model: 'anthropic/test-model',
-    maxIters: 5,
+    maxIters: options.maxIters ?? 5,
     timeoutMs: 60_000,
     rateLimitMs: 0,
     credentials: CREDENTIALS,
@@ -296,6 +355,131 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(llm.requests[0]?.prompt).toContain('## Capabilities');
     expect(llm.requests[0]?.prompt).toContain('### Filled state');
     expect(llm.requests[0]?.model).toEqual({ provider: 'anthropic', id: 'test-model' });
+  });
+
+  it('takes the shopify path when products.json returns a product list', async () => {
+    const { result, runtime } = await explore({ scripts: SCRIPTS });
+
+    expect(readJson(result.manifestPath).platform).toBe('shopify');
+    const paths = readJson(join(result.prefetchDir, 'prefetch.json')).entries.map(
+      (entry: { path: string }) => entry.path,
+    );
+    expect(paths).toEqual(
+      expect.arrayContaining(['/collections.json?limit=50', '/cart.js', '/pages/faq']),
+    );
+    expect(runtime.requests[0]?.prompt).toBe(
+      readFileSync(new URL('./prompts/planner.md', import.meta.url), 'utf8'),
+    );
+  });
+
+  it('reopens a leaking task twice, then blocks it without touching the other task', async () => {
+    const { result, runtime } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        LEAKY_HOMEPAGE_ATTEMPT,
+        LEAKY_HOMEPAGE_ATTEMPT,
+        LEAKY_HOMEPAGE_ATTEMPT,
+        {
+          writeFiles: {
+            'artifact/parts/cart_drawer.md': CART_PART,
+            'plan.md': PLAN('x', 'x').replace(/^- \[x\] homepage_sections .*$/m, HOMEPAGE_BLOCKED),
+          },
+          reply: 'cart done',
+        },
+      ],
+    });
+    expect(result.finalStatus).toBe('completed');
+
+    // Planner, three homepage attempts, one cart attempt.
+    expect(runtime.requests).toHaveLength(5);
+    expect(runtime.requests[2]?.prompt).toContain('1 of 2 reopens');
+    expect(runtime.requests[3]?.prompt).toContain('2 of 2 reopens');
+    const planBeforeCart = readFileSync(join(outDir, 'run/iters/exec-0004/plan.before.md'), 'utf8');
+    expect(planBeforeCart).toContain(HOMEPAGE_BLOCKED);
+
+    // The leaky homepage fragment is still on disk: the cart task passes and
+    // does not see the homepage feedback.
+    expect(runtime.requests[4]?.prompt).toContain('selected_task_id: cart_drawer');
+    expect(runtime.requests[4]?.prompt).not.toContain('Anonymization check failed');
+    const summary = readJson(join(outDir, 'run', 'run.json')) as RunSummary;
+    expect(summary.verifierRuns.map((run) => [run.taskId, run.verdict])).toEqual([
+      ['homepage_sections', 'fail'],
+      ['homepage_sections', 'fail'],
+      ['homepage_sections', 'fail'],
+      ['cart_drawer', 'pass'],
+    ]);
+    expect(readJson(result.manifestPath)).toMatchObject({
+      plan_tasks_total: 2,
+      plan_tasks_done: 1,
+      plan_tasks_blocked: 1,
+    });
+  });
+
+  it('reports the area of an unfinished Plan task as a coverage gap', async () => {
+    // The budget ends after the homepage iteration, so cart_drawer stays pending.
+    const { result } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          reply: 'homepage done',
+        },
+      ],
+      maxIters: 1,
+    });
+
+    expect(result.finalStatus).toBe('budget_exhausted');
+    const manifest = readJson(result.manifestPath);
+    expect(manifest).toMatchObject({ plan_tasks_total: 2, plan_tasks_done: 1 });
+    expect(manifest.coverage_gaps).toEqual([
+      'cart',
+      'collection',
+      'product_detail',
+      'search_results',
+    ]);
+  });
+
+  it('shows the 0.3 schema to the agent and publishes the marketplace Capabilities', async () => {
+    const { result, runtime } = await explore({ scripts: MARKETPLACE_SCRIPTS });
+
+    const schema = constitutionSchema(runtime.requests[0]?.systemPrompt);
+    expect(schema.properties.version?.default).toBe('0.3');
+    expect(Object.keys(schema.properties.departments?.properties ?? {})).toEqual([
+      'has_department_menu',
+      'department_count',
+      'max_depth',
+    ]);
+    expect(Object.keys(schema.properties.search?.properties ?? {})).toEqual(
+      expect.arrayContaining(['facets', 'sort']),
+    );
+    expect(Object.keys(schema.properties.product?.properties ?? {})).toEqual(
+      expect.arrayContaining(['has_rating_histogram', 'review_filters', 'related_product_types']),
+    );
+
+    expect(result.steps.map((step) => step.status)).toEqual(['ran', 'ran', 'ran', 'ran']);
+    const capabilities = readJson(result.capabilitiesPath);
+    expect(capabilities.version).toBe('0.3');
+    expect(capabilities).toMatchObject(MARKETPLACE_CAPS);
+  });
+
+  it('synthesizes again from a capabilities.json at schema 0.2', async () => {
+    await explore({ scripts: SCRIPTS });
+    writeFileSync(join(outDir, 'capabilities.json'), JSON.stringify(CAPABILITIES_0_2));
+
+    const { result, llm } = await explore({ from: 'synthesize' });
+    expect(result.steps.map((step) => step.status)).toEqual([
+      'skipped',
+      'skipped',
+      'skipped',
+      'ran',
+    ]);
+    const prompt = String(llm.requests[0]?.prompt);
+    expect(prompt).toContain('"version": "0.2"');
+    expect(prompt).toContain('"has_department_menu": null');
+    expect(prompt).toContain('"facets": []');
   });
 
   it('skips every step on a second call with the same outDir', async () => {
@@ -468,6 +652,145 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(resumed.result.finalStatus).toBe('completed');
     expect(resumed.runtime.requests).toHaveLength(4);
     expect(readJson(resumed.result.manifestPath).plan_tasks_done).toBe(2);
+  });
+});
+
+const GENERIC_PLAN = (homepage: string, product: string) => `# Plan - General Marketplace
+
+A general marketplace with department menus, a search results page, and
+product pages with reviews.
+
+## Tasks
+
+- [${homepage}] homepage_sections — capture every section below the hero [priority: 9]
+- [${product}] product_variants — open /p/fm-1001 from the sitemap; capture the variant selectors [priority: 7]
+
+## Omitted Areas
+
+(none)
+`;
+
+const GENERIC_HOMEPAGE = `## Homepage Sections
+
+### Section 1 - Hero
+
+- **Type:** promotional banner with one call to action
+- **Layout:** single column
+- **Content:** headline and a link to a department
+- **Behavior:** static
+- **Styling:** light surface
+- **UX Notes:** none
+`;
+
+const GENERIC_PRODUCT = `## Product Variants
+
+### Variant selectors
+
+- **Type:** two rows of option buttons (edition, platform)
+- **Layout:** below the price
+- **Content:** one button per option
+- **Behavior:** a click selects the option
+- **Styling:** outlined buttons
+- **UX Notes:** none
+`;
+
+/** Planner, homepage executor, and product executor scripts for the generic site. */
+function genericScripts(siteUrl: string): readonly FakeScript[] {
+  return [
+    {
+      writeFiles: { 'plan.md': GENERIC_PLAN(' ', ' ') },
+      toolCalls: [{ tool: 'navigate', arguments: { url: `${siteUrl}/` } }],
+      reply: 'planned',
+    },
+    {
+      writeFiles: {
+        'artifact/parts/homepage_sections.md': GENERIC_HOMEPAGE,
+        'artifact/parts/homepage_sections.caps.json': JSON.stringify({
+          homepage: { section_types: ['hero', 'product_grid'], section_count: 2 },
+        }),
+        'plan.md': GENERIC_PLAN('x', ' '),
+      },
+      reply: 'homepage done',
+    },
+    {
+      writeFiles: {
+        'artifact/parts/product_variants.md': GENERIC_PRODUCT,
+        'artifact/parts/product_variants.caps.json': JSON.stringify({
+          product: { variant_selectors: ['option_button'], has_reviews: true },
+        }),
+        'plan.md': GENERIC_PLAN('x', 'x'),
+      },
+      toolCalls: [{ tool: 'navigate', arguments: { url: `${siteUrl}/p/fm-1001` } }],
+      reply: 'product done',
+    },
+  ];
+}
+
+describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
+  let site: FixtureSite;
+
+  beforeEach(async () => {
+    site = await startFixtureSite(genericSitePages);
+  });
+
+  afterEach(async () => {
+    await site.close();
+  });
+
+  it('takes the generic path on a site that is not a Shopify shop', async () => {
+    const { result, runtime } = await explore({
+      url: site.url,
+      scripts: genericScripts(site.url),
+    });
+
+    expect(result.steps.map((step) => [step.id, step.status])).toEqual([
+      ['prefetch', 'ran'],
+      ['explore', 'ran'],
+      ['merge', 'ran'],
+      ['synthesize', 'ran'],
+    ]);
+    expect(result.finalStatus).toBe('completed');
+    expect(readJson(result.manifestPath).platform).toBe('generic');
+
+    // Prefetch reads robots.txt, the homepage and the sitemap. The one
+    // products.json request is the platform probe; no other Shopify
+    // endpoint is requested.
+    const prefetched = site.requests
+      .filter((request) => request.userAgent === DEFAULT_USER_AGENT)
+      .map((request) => request.path);
+    expect(prefetched).toEqual([
+      '/robots.txt',
+      '/',
+      '/sitemap.xml',
+      `/products.json?page=1&limit=${PRODUCTS_PAGE_LIMIT}`,
+    ]);
+    // The planner picks same-origin start URLs from the homepage links and the sitemap.
+    const planner = promptText(runtime.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(planner).toContain('Pick your start URLs from the links in `index.html`');
+    expect(planner).toContain('the `<loc>` entries of `sitemap.xml`');
+    expect(planner).toContain('Use only URLs on the same origin as the homepage');
+
+    // The scripted executor opened a product page with the real browser tools.
+    expect(
+      site.requests.some(
+        (request) => request.path === '/p/fm-1001' && request.userAgent !== DEFAULT_USER_AGENT,
+      ),
+    ).toBe(true);
+
+    // With no Shopify prefetch files, merge and synthesis still publish the
+    // manual, and the catalog counts stay 0.
+    for (const file of ['robots.txt', 'index.html', 'sitemap.xml', 'prefetch.json']) {
+      expect(existsSync(join(result.prefetchDir, file)), file).toBe(true);
+    }
+    for (const file of ['products.json', 'collections.json', 'cart.js']) {
+      expect(existsSync(join(result.prefetchDir, file)), file).toBe(false);
+    }
+    const stats = readJson(result.statsPath);
+    expect(stats.products_total).toBe(0);
+    expect(stats.collections_total).toBe(0);
+    expect(stats.products_per_collection).toEqual({ avg: 0, median: 0, max: 0 });
+    expect(readJson(result.manifestPath).coverage_gaps).toEqual([]);
+    expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
   });
 });
 

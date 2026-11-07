@@ -74,11 +74,12 @@ The goal is to capture **STRUCTURE and UX patterns**, not actual
 content. A reader of `manual.md` should be unable to identify the
 source shop.
 
-An automated anonymization verifier scans `artifact/parts/*.md` after
-every executor iteration for the store domain, brand tokens, absolute
-store URLs, and email addresses. A hit reopens the task and its feedback
-appears in your next prompt - but the rules above are the primary
-defense and you are expected to apply them at write time.
+An automated anonymization verifier scans this task's
+`artifact/parts/<task_id>.md` after every executor iteration for the
+store domain, brand tokens, absolute store URLs, and email addresses. A
+hit reopens the task and its feedback appears in your next prompt. After
+two reopens, the next hit blocks the task for good. The rules above are
+the primary defense and you are expected to apply them at write time.
 
 ---
 
@@ -165,8 +166,10 @@ element. Reference your evidence inline by relative path, e.g.
 `parts/<task_id>.caps.json` - a JSON object containing **only** the
 top-level capabilities-schema keys this task is responsible for. The
 schema is closed (extra fields rejected at merge time); do not invent
-keys. Lists are deduplicated and order-preserved at merge time. Do
-**not** wrap your fragment in any envelope - just the partial object.
+keys. Lists are deduplicated and order-preserved at merge time. For a
+scalar field, `null` means unknown: it never replaces a value that another
+task wrote. Do **not** wrap your fragment in any envelope - just the
+partial object.
 
 `evidence/<task_id>/snapshots/NN-<state>.md` - accessibility snapshots
 (the text returned by `snapshot`), one per distinct page state,
@@ -195,10 +198,10 @@ Schema (rendered into this file at pipeline-time, so it cannot drift):
 {{CAPABILITIES_SCHEMA}}
 ```
 
-The top-level groupings (`shop`, `site_shell`, `homepage`,
-`collection`, `product`, `cart`, `search`, `floating`, `intl`,
-`account`, `checkout`, `info_pages_present`) are the only valid keys
-for any `parts/<task_id>.caps.json` fragment.
+The top-level groupings (`shop`, `site_shell`, `departments`,
+`homepage`, `collection`, `product`, `cart`, `search`, `floating`,
+`intl`, `account`, `checkout`, `info_pages_present`) are the only valid
+keys for any `parts/<task_id>.caps.json` fragment.
 
 If your task observes a feature that does not fit the schema, do
 **not** invent a new key. Describe it in `parts/<task_id>.md` and

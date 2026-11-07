@@ -83,9 +83,13 @@ coupled to neither. Its tests run against arbitrary toy tasks.
   reports how each iteration ended: `kept`, or the reason the harness
   abandoned it (§5.9). The ShopArena build loop uses it to keep or roll
   back its `artifact/` checkpoints.
+- **Caller stop (2026-11-05).** `onIterationEnd` can return a
+  `StopRequest` to end the run between iterations with a reason. The run
+  then ends with the final status `stopped`, and a later call resumes it
+  without `force` (§5.10).
 - **Iteration-start hook (2026-11-05).**
   `PlanExecLoopConfig.onIterationStart` runs before each iteration's Agent
-  run (§5.10). Storefront exploration uses it to give each iteration a
+  run (§5.11). Storefront exploration uses it to give each iteration a
   fresh browser.
 
 ---
@@ -418,7 +422,41 @@ rolled the edits back. An error thrown by the hook rejects
 `runPlanExecLoop`. A crash inside an iteration reports nothing; on
 resume the partial iteration is quarantined and its edits stay.
 
-### 5.10 Iteration-start hook
+### 5.10 Caller stop
+
+A caller can end a run before the plan drains or the budget ends, for
+example when the agent meets a bot check again and again, or when a
+caller-owned limit is reached. To do this, `onIterationEnd` returns a
+`StopRequest`, `{ stopReason }`. A hook that returns nothing changes
+nothing.
+
+When the hook returns a `StopRequest` after an iteration that lets the
+run continue (any outcome in §5.9 except a planner failure and
+`runtime_error`):
+
+1. The harness starts no further iteration.
+2. The run ends with the final status `stopped`. `run.json` and the
+   returned `PlanExecLoopResult` have `stopReason`, and the attempt's
+   `resumeHistory` entry keeps `stopReason` after later attempts.
+3. `runPlanExecLoop` returns a normal result. `tasksFinal` holds the
+   tasks of the final `plan.md`.
+
+The stop acts only between iterations. The hook runs after the Agent
+run of an iteration has ended, so a stop never cuts an Agent run. The
+status is `stopped` even when the stopped iteration was the last one
+that the plan or the budget allowed: the caller's request wins.
+
+When the hook returns a `StopRequest` after an iteration that already
+ended the run (a failed planner, or a `runtime_error`), the harness
+ignores the request. The run keeps its failure status, so the refusal
+policy of [resume.md](resume.md) §5.5 still applies.
+
+A stopped run is consistent on disk, like a run that used its budget.
+A later call on the same `runDir` resumes it without `force`: it skips
+the planner when its trajectory exists and continues with the pending
+tasks. The caller decides whether to resume.
+
+### 5.11 Iteration-start hook
 
 A caller that gives each iteration its own resources, for example a new
 browser, passes `onIterationStart(start)`. The harness awaits it once
@@ -471,12 +509,12 @@ cassette drift.
 ### 8.1 Public surface (informative)
 
 - **Types**: `Task`, `TaskList`, `TaskStatus`, `Trajectory`, `TrajectoryStep`, `AgentRuntime`, `IterationMetadata`, `ProtocolCheckResult`.
-- **Config & result**: `PlanExecLoopConfig` (contains `run_dir`, `prompts`, `agents_md`, `artifact_seed_dir`, loop budget, and the `onEvent` / `onIterationStart` / `onIterationEnd` hooks), `Prompts`, `PlanExecLoopResult`, `IterationStart`, `IterationEnd`, `IterationOutcome`.
+- **Config & result**: `PlanExecLoopConfig` (contains `run_dir`, `prompts`, `agents_md`, `artifact_seed_dir`, loop budget, and the `onEvent` / `onIterationStart` / `onIterationEnd` hooks), `Prompts`, `PlanExecLoopResult` (with `stopReason` on a `stopped` run), `IterationStart`, `IterationEnd`, `IterationOutcome`, `StopRequest`.
 - **Entry points**: `run_plan_exec_loop(config, runtime)`, `get_runtime(name, **kwargs)`.
 
 ### 8.2 Future directions (non-blocking)
 
-- **Hooks.** OpenClaw-style `on_stuck` callbacks for callers to add observability without forking. `after_iter` shipped as `onIterationEnd` (§5.9) and `before_iter` as `onIterationStart` (§5.10).
+- **Hooks.** OpenClaw-style `on_stuck` callbacks for callers to add observability without forking. `after_iter` shipped as `onIterationEnd` (§5.9) and `before_iter` as `onIterationStart` (§5.11).
 - **Independent evaluator phases.** Add isolated evaluator phases for benchmark-grade evaluation, with read-only access to the main workspace and separate telemetry.
 - **Long-lived orchestrator mode.** Alternative entry point reusing the runtime protocol, workspace, and trajectory schema.
 - **Parallelism.** Shard `plan.md` Tasks by id with per-iteration locks.

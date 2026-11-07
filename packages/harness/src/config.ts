@@ -20,7 +20,9 @@ export type FinalStatus =
   | 'invalid_plan'
   | 'protocol_violation'
   | 'timeout'
-  | 'runtime_error';
+  | 'runtime_error'
+  /** The caller returned a `StopRequest` from `onIterationEnd`. */
+  | 'stopped';
 
 /**
  * How one iteration ended. `kept`: its edits stand. Any other value is the
@@ -52,6 +54,12 @@ export interface IterationEnd {
   readonly outcome: IterationOutcome;
 }
 
+/** Returned from `onIterationEnd` to end the run after that iteration. */
+export interface StopRequest {
+  /** Why the caller stops the run; recorded as `stopReason` in `run.json`. */
+  readonly stopReason: string;
+}
+
 export interface PlanExecLoopConfig {
   /** Workspace root. Empty or absent for a fresh run, populated to resume. */
   readonly runDir: string;
@@ -81,8 +89,15 @@ export interface PlanExecLoopConfig {
    * Awaited once after each planner and executor iteration, when the harness
    * has recorded it (verifiers, `plan.md` repair, `run.json`) and before the
    * next iteration starts. An error thrown here rejects `runPlanExecLoop`.
+   *
+   * Return a `StopRequest` to end the run now: the harness starts no further
+   * iteration and finishes with final status `stopped`, which a later call
+   * resumes without `force`. After an iteration that already ended the run
+   * (a failed planner or a `runtime_error`), the request is ignored and the
+   * run keeps its failure status.
    */
-  readonly onIterationEnd?: (end: IterationEnd) => Promise<void>;
+  // biome-ignore lint/suspicious/noConfusingVoidType: a hook that never stops keeps its Promise<void> type.
+  readonly onIterationEnd?: (end: IterationEnd) => Promise<void | StopRequest>;
 }
 
 export const DEFAULT_VERIFIER_FEEDBACK_MAX_CHARS = 4000;
@@ -90,6 +105,8 @@ export const DEFAULT_VERIFIER_FEEDBACK_MAX_CHARS = 4000;
 export interface PlanExecLoopResult {
   readonly runDir: string;
   readonly finalStatus: FinalStatus;
+  /** The caller's reason; present only when `finalStatus` is `stopped`. */
+  readonly stopReason?: string;
   /** 0 or 1. */
   readonly planIterCount: number;
   readonly execIterCount: number;

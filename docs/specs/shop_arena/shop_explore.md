@@ -125,6 +125,12 @@ exercises its public surface end-to-end.
   for the next part. It also says that a scroll does not change the
   snapshot. An offset inside a line moves to the start of the next
   line. The other users of `@shop-gym/browser` keep the whole snapshot.
+- Anonymization scope and reopen cap (2026-11-05): the `anonymization`
+  verifier scans only `parts/<task_id>.md` of the selected task, so a
+  leak in one fragment no longer reopens other tasks. It reopens a task
+  at most twice; the next hit blocks the task with a note that names the
+  fragment. The count per task is kept in
+  `run/checks/anonymization_reopens.json`, so a resumed run keeps it.
 
 ---
 
@@ -181,7 +187,11 @@ layout.
   access.
 - **SC5 — Coverage.** On the fixture set, every coverage-taxonomy area
   that prefetch evidence indicates is present (§5.7) appears as either
-  a planner task or a justified omission in `manifest.json`.
+  a done planner task or a justified omission in `manifest.json`. A
+  pending, in-progress, or blocked task does not cover its area. When
+  the plan has a task with the area's own name, only that task can cover
+  the area. Each evidenced area that nothing covers is listed in
+  `manifest.json:coverage_gaps`.
 
 ---
 
@@ -411,7 +421,10 @@ so schema drift is loud. Top-level shape:
 Each executor writes a fragment matching one or more top-level keys to
 `parts/<task_id>.caps.json`. The post-loop merge is a deterministic
 deep-merge with the rule: **last writer wins per leaf**, except lists
-(union, deduplicated, order-preserving). Conflicts are recorded in
+(union, deduplicated, order-preserving) and `null`. For a scalar field,
+`null` means unknown: it never replaces a non-null value, and a later
+non-null value fills it. Neither case is a conflict. Conflicts (two
+different non-null values for one leaf) are recorded in
 `manifest.json:capability_conflicts`.
 
 ### 5.6 Stats schema
@@ -466,7 +479,11 @@ The planner emits `plan.md` tasks of the form:
    - optional `network.jsonl` of relevant XHRs (e.g. predictive search
      suggestions).
 5. Write a markdown section to `artifact/parts/<task_id>.md`,
-   apply anonymization rules at write time.
+   apply anonymization rules at write time. The `anonymization`
+   verifier scans only this file of the selected task. A hit reopens
+   the task at most twice (the count per task is kept in
+   `run/checks/anonymization_reopens.json`); the next hit blocks the
+   task with a note that names the file.
 6. Write a JSON fragment to `artifact/parts/<task_id>.caps.json`
    containing only the capabilities-schema keys this task is
    responsible for.
@@ -555,7 +572,7 @@ runs (no further harness involvement):
 4. **Manifest** (deterministic). Write `manifest.json`:
    `{domain, run_id, runtime, started_at, finished_at, harness_status,
      iters, plan_tasks_total, plan_tasks_done, plan_tasks_blocked,
-     omitted_areas, capability_conflicts, paths}`.
+     omitted_areas, capability_conflicts, coverage_gaps, paths}`.
 
 Synthesis failure modes (loud — no silent fallback):
 
