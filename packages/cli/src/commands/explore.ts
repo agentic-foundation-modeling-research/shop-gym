@@ -17,6 +17,8 @@ Options:
   --timeout <ms>       Per-iteration wall clock budget
   --from <step>        Rerun from this step: ${EXPLORE_STEPS.join(' | ')}
   --force-resume       Resume a run that ended in a refused status
+  --focus <text>       Give the planner a hint to explore one part of the site,
+                       e.g. "Video Games"; a resumed run needs the same focus
   -h, --help           Show this help
 
 Prints the manual path on the last line of stdout.`;
@@ -30,6 +32,7 @@ export interface ExploreArgs {
   readonly timeoutMs?: number;
   readonly from?: ExploreStep;
   readonly forceResume: boolean;
+  readonly focus?: string;
 }
 
 export function parseExploreArgs(argv: readonly string[]): ExploreArgs {
@@ -40,6 +43,7 @@ export function parseExploreArgs(argv: readonly string[]): ExploreArgs {
     timeout: { type: 'string' },
     from: { type: 'string' },
     'force-resume': { type: 'boolean' },
+    focus: { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   });
   if (flag(args, 'help')) {
@@ -56,6 +60,10 @@ export function parseExploreArgs(argv: readonly string[]): ExploreArgs {
   const maxIters = integerOption(args, 'max-iters');
   const timeoutMs = integerOption(args, 'timeout');
   const from = enumOption(args, 'from', EXPLORE_STEPS);
+  const focus = stringOption(args, 'focus');
+  if (focus?.trim() === '') {
+    throw new CliError('--focus must not be blank');
+  }
   return {
     help: false,
     url,
@@ -65,6 +73,7 @@ export function parseExploreArgs(argv: readonly string[]): ExploreArgs {
     ...(maxIters !== undefined ? { maxIters } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     ...(from !== undefined ? { from } : {}),
+    ...(focus !== undefined ? { focus } : {}),
   };
 }
 

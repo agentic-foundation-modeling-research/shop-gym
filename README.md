@@ -82,8 +82,8 @@ shopgym explore https://example-shop.com
 ```
 
 Options: `--out <dir>`, `--max-iters <n>`, `--timeout <ms>`,
-`--from prefetch|explore|merge|synthesize`, `--force-resume`. Re-running with
-the same output directory resumes the unfinished step.
+`--from prefetch|explore|merge|synthesize`, `--force-resume`, `--focus <text>`.
+Re-running with the same output directory resumes the unfinished step.
 
 The storefront does not have to be a Shopify shop. Prefetch decides the
 platform first. It fetches `robots.txt`, the homepage, `sitemap.xml` and
@@ -93,6 +93,15 @@ homepage has a Shopify marker or the probe returns a product list, else
 Shopify JSON endpoints and the policy pages. On a generic site it fetches
 nothing more, and the planner picks its start URLs from the homepage links
 and the sitemap. `manifest.json` records the `platform`.
+
+On a large site, `--focus "<text>"` keeps the run in one part of the site,
+for example `--focus "Video Games"`. The planner gets the focus as a hint: it
+picks start URLs, product pages and search queries in that part, and it still
+plans the site-wide areas (header, footer, cart, checkout entry). It writes
+the focus into the task briefs, so the executors get it too. Navigation
+outside the focus is not blocked. `manifest.json` records the `focus`, or
+`null` when the run has none. A resumed run keeps its plan, so a re-run on the
+same output directory must pass the same `--focus`.
 
 ### 2. Generate a SandboxShop
 

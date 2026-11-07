@@ -10,6 +10,7 @@
  * seed/prefetch/        prefetch.json + saved bodies (seeded into the run)
  * run/                  harness workspace (plan.md, iters/, artifact/, run.json)
  * run/iters/<id>/start_state.json   where the Iteration's fresh browser started
+ * focus.json            the focus that the planner got, written by the explore step
  * explore.json          harness outcome of the explore step
  * capabilities.json     merged, schema-validated capabilities
  * stats.json            catalog and feature statistics
@@ -22,7 +23,8 @@
  * step is skipped on a later call with the same `outDir`; `from` forces a
  * step and everything downstream. The harness workspace under `run/` is
  * never deleted by the pipeline: an interrupted or forced explore step
- * resumes it, so the same `outDir` continues the same exploration.
+ * resumes it, so the same `outDir` continues the same exploration. For
+ * the same reason a later call must pass the focus of the first call.
  */
 
 import { createHash } from 'node:crypto';
@@ -101,6 +103,13 @@ export interface ExploreOptions {
   readonly from?: ExploreStep;
   /** Resume a harness run that ended in a refused status. */
   readonly forceResume?: boolean;
+  /**
+   * One part of the site to explore, for example the department "Video
+   * Games". The planner gets it as a hint for its start URLs, product
+   * pages and search queries, and still plans the site-wide areas.
+   * Navigation outside the focus is not blocked.
+   */
+  readonly focus?: string;
   readonly credentials: Credentials;
   /** Overrides the pi runtime (tests). */
   readonly runtime?: AgentRuntime;
@@ -139,6 +148,8 @@ export interface Manifest {
   readonly model: string;
   /** The prefetch path that the run took. */
   readonly platform: Platform;
+  /** The focus hint of the run, or `null` when the run has none. */
+  readonly focus: string | null;
   readonly harness_status: FinalStatus;
   readonly iters: { plan: number; exec: number };
   readonly plan_tasks_total: number;
@@ -165,6 +176,8 @@ interface Prompts {
   readonly planner: string;
   /** The planner prompt for a site on the generic platform. */
   readonly plannerGeneric: string;
+  /** The hint added to either planner prompt when the run has a focus. */
+  readonly plannerFocus: string;
   readonly execute: string;
   readonly manual: string;
 }
@@ -177,6 +190,7 @@ interface ExploreContext {
   readonly timeoutMs: number;
   readonly rateLimitMs: number | undefined;
   readonly forceResume: boolean;
+  readonly focus: string | null;
   readonly runtime: AgentRuntime;
   readonly llm: LlmClient;
   readonly prompts: Prompts;
@@ -187,6 +201,7 @@ const PATHS = {
   prefetch: join('seed', 'prefetch'),
   seed: 'seed',
   run: 'run',
+  focus: 'focus.json',
   explore: 'explore.json',
   capabilities: 'capabilities.json',
   stats: 'stats.json',
@@ -224,14 +239,18 @@ function loadPrompts(): Prompts {
     agents: read('agents.md').replace('{{CAPABILITIES_SCHEMA}}', capabilitiesJsonSchema()),
     planner: read('planner.md'),
     plannerGeneric: read('planner_generic.md'),
+    plannerFocus: read('planner_focus.md'),
     execute: read('execute.md'),
     manual: read('synthesize_manual.md'),
   };
 }
 
-/** The planner prompt for a site on `platform`. */
-function plannerPrompt(prompts: Prompts, platform: Platform): string {
-  return platform === 'generic' ? prompts.plannerGeneric : prompts.planner;
+/** The planner prompt for a site on `platform`, then the focus hint when there is a focus. */
+function plannerPrompt(prompts: Prompts, platform: Platform, focus: string | null): string {
+  const planner = platform === 'generic' ? prompts.plannerGeneric : prompts.planner;
+  if (focus === null) return planner;
+  // A function replacement inserts the text as is, so `$&` in it is not a pattern.
+  return `${planner}\n${prompts.plannerFocus.replaceAll('{{FOCUS}}', () => focus)}`;
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -245,6 +264,32 @@ function readJson<T>(path: string): T {
 function readRunSummary(runDir: string): RunSummary | undefined {
   const path = join(runDir, 'run.json');
   return existsSync(path) ? readJson<RunSummary>(path) : undefined;
+}
+
+/** `focus "<text>"`, or `no focus`. */
+function describeFocus(focus: string | null): string {
+  return focus === null ? 'no focus' : `focus ${JSON.stringify(focus)}`;
+}
+
+/**
+ * Checks `focus` against `<outDir>/focus.json`, which the explore step
+ * writes before the harness runs. A later call must pass the same focus:
+ * a resumed harness run keeps the plan of its first planner, so a new
+ * focus would not reach the plan.
+ *
+ * @throws Error when `focus` differs from the recorded focus.
+ */
+function checkFocus(outDir: string, focus: string | null): void {
+  const path = join(outDir, PATHS.focus);
+  if (!existsSync(path)) return;
+  const recorded = readJson<{ focus: string | null }>(path).focus;
+  if (recorded !== focus) {
+    const want = describeFocus(recorded);
+    const got = describeFocus(focus);
+    throw new Error(
+      `${outDir} started with ${want}, got ${got}; pass the same focus or a new outDir`,
+    );
+  }
 }
 
 /**
@@ -284,7 +329,12 @@ const exploreStep: Step<ExploreContext> = {
   outputs: [PATHS.explore],
   async run({ outDir, context, log }) {
     const runDir = join(outDir, PATHS.run);
-    const planner = plannerPrompt(context.prompts, readPlatform(join(outDir, PATHS.prefetch)));
+    const planner = plannerPrompt(
+      context.prompts,
+      readPlatform(join(outDir, PATHS.prefetch)),
+      context.focus,
+    );
+    writeJson(join(outDir, PATHS.focus), { focus: context.focus });
     const browser = await IterationBrowser.launch({
       episodeId: basename(outDir),
       baseUrl: context.url,
@@ -361,6 +411,7 @@ const mergeStep: Step<ExploreContext> = {
       runtime: context.runtime.name,
       model: context.modelName,
       platform: readPlatform(prefetchDir),
+      focus: context.focus,
       harness_status: outcome.final_status,
       iters: { plan: outcome.plan_iters, exec: outcome.exec_iters },
       plan_tasks_total: tasks.length,
@@ -434,6 +485,7 @@ const STEPS: readonly Step<ExploreContext>[] = [
  * Calling again with the same `outDir` skips complete steps and resumes
  * an unfinished harness run; `from` forces a step and its dependents.
  *
+ * @throws Error when `focus` differs from the focus that `outDir` started with.
  * @throws ShopUnreachableError when the prefetch gates reject the shop.
  * @throws ResumeRefusedError when the prior harness run ended in a
  *   refused status and `forceResume` is not set.
@@ -447,6 +499,8 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
   const outDir = resolve(
     options.outDir ?? join(DEFAULT_OUTPUT_ROOT, domain, runId(base, runtime.name)),
   );
+  const focus = options.focus ?? null;
+  checkFocus(outDir, focus);
   const context: ExploreContext = {
     url: base,
     model: parseModel(modelName),
@@ -455,6 +509,7 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     rateLimitMs: options.rateLimitMs,
     forceResume: options.forceResume ?? false,
+    focus,
     runtime,
     llm,
     prompts: loadPrompts(),
