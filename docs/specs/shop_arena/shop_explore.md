@@ -191,7 +191,12 @@ layout.
   pending, in-progress, or blocked task does not cover its area. When
   the plan has a task with the area's own name, only that task can cover
   the area. Each evidenced area that nothing covers is listed in
-  `manifest.json:coverage_gaps`.
+  `manifest.json:coverage_gaps`. Apart from the evidence, each of the
+  14 fixed areas (the canonical Plan tasks that the planner emits in
+  every run: 11 for the surfaces of every storefront and
+  `product_reviews`, `related_products`, `search_results`) that does
+  not end done is listed in
+  `manifest.json:fixed_area_gaps` with a one-line reason.
 
 ---
 
@@ -476,8 +481,7 @@ The planner emits `plan.md` tasks of the form:
    - one a11y `snapshot.md` per distinct page state,
    - one full-page PNG per distinct page state (use playwright's
      `--full-page`),
-   - optional `network.jsonl` of relevant XHRs (e.g. predictive search
-     suggestions).
+   - optional `network.jsonl` of relevant XHRs (e.g. cart updates).
 5. Write a markdown section to `artifact/parts/<task_id>.md`,
    apply anonymization rules at write time. The `anonymization`
    verifier scans only this file of the selected task. A hit reopens
@@ -572,7 +576,8 @@ runs (no further harness involvement):
 4. **Manifest** (deterministic). Write `manifest.json`:
    `{domain, run_id, runtime, started_at, finished_at, harness_status,
      iters, plan_tasks_total, plan_tasks_done, plan_tasks_blocked,
-     omitted_areas, capability_conflicts, coverage_gaps, paths}`.
+     omitted_areas, capability_conflicts, coverage_gaps, fixed_area_gaps,
+     paths}`.
 
 Synthesis failure modes (loud — no silent fallback):
 

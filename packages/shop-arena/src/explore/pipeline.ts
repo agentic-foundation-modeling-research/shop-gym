@@ -13,7 +13,7 @@
  * explore.json          harness outcome of the explore step
  * capabilities.json     merged, schema-validated capabilities
  * stats.json            catalog and feature statistics
- * manifest.json         counts, omissions, conflicts, coverage gaps, paths
+ * manifest.json         counts, omissions, conflicts, coverage and fixed area gaps, paths
  * manual.md             the synthesized shop manual
  * .pipeline/            step records of the pipeline runner
  * ```
@@ -39,7 +39,16 @@ import {
   PiRuntime,
 } from '@shop-gym/agent';
 import { type Credentials, type Step, type StepReport, runPipeline } from '@shop-gym/core';
-import { type FinalStatus, type RunSummary, runPlanExecLoop } from '@shop-gym/harness';
+import {
+  type FinalStatus,
+  InvalidPlanError,
+  PLAN_ITER_ID,
+  type RunSummary,
+  type TaskList,
+  iterDirPath,
+  parse,
+  runPlanExecLoop,
+} from '@shop-gym/harness';
 
 import { anonymizationVerifier } from './anonymization.js';
 import { IterationBrowser, parseCart } from './browser.js';
@@ -50,7 +59,7 @@ import {
   mergeFragments,
   parseCapabilities,
 } from './capabilities.js';
-import { coverageGaps, parseOmittedAreas } from './coverage.js';
+import { type FixedAreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
 import {
   type Platform,
@@ -69,7 +78,7 @@ export const DEFAULT_OUTPUT_ROOT = join('outputs', 'shop_manuals');
 export const EXPLORE_STEPS = ['prefetch', 'explore', 'merge', 'synthesize'] as const;
 
 /** Bumped when the prompts or the output contract change shape. */
-const EXPLORE_VERSION = '1.1';
+const EXPLORE_VERSION = '1.2';
 const RUN_ID_HASH_LEN = 8;
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
 
@@ -138,6 +147,8 @@ export interface Manifest {
   readonly omitted_areas: readonly { area: string; reason: string }[];
   readonly capability_conflicts: readonly Conflict[];
   readonly coverage_gaps: readonly string[];
+  /** Each fixed area whose Plan task did not end done, with a one-line reason. */
+  readonly fixed_area_gaps: readonly FixedAreaGap[];
   readonly merged_at: string;
   readonly paths: {
     manual: string;
@@ -234,6 +245,21 @@ function readJson<T>(path: string): T {
 function readRunSummary(runDir: string): RunSummary | undefined {
   const path = join(runDir, 'run.json');
   return existsSync(path) ? readJson<RunSummary>(path) : undefined;
+}
+
+/**
+ * The Plan tasks as the planner wrote them: the `plan.after.md` snapshot
+ * of the planner iteration. Empty when the planner wrote no valid plan.
+ */
+function readPlannedTasks(runDir: string): TaskList {
+  const path = join(iterDirPath(join(runDir, 'iters'), PLAN_ITER_ID), 'plan.after.md');
+  if (!existsSync(path)) return [];
+  try {
+    return parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    if (error instanceof InvalidPlanError) return [];
+    throw error;
+  }
 }
 
 const prefetchStep: Step<ExploreContext> = {
@@ -343,6 +369,7 @@ const mergeStep: Step<ExploreContext> = {
       omitted_areas: omitted,
       capability_conflicts: conflicts,
       coverage_gaps: coverageGaps(prefetchDir, tasks, omittedAreas),
+      fixed_area_gaps: fixedAreaGaps(tasks, readPlannedTasks(runDir)),
       merged_at: new Date().toISOString(),
       paths: {
         manual: PATHS.manual,

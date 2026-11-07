@@ -1,12 +1,13 @@
 /**
  * Coverage check: which storefront areas the prefetch evidenced but no
- * done Plan task explored and the plan did not explicitly omit.
+ * done Plan task explored and the plan did not explicitly omit, and which
+ * fixed areas, planned in every run, did not end done.
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { type TaskList, taskById } from '@shop-gym/harness';
+import { type Task, type TaskList, taskById } from '@shop-gym/harness';
 
 interface Area {
   readonly name: string;
@@ -161,4 +162,84 @@ export function coverageGaps(
     if (!covered) gaps.push(area);
   }
   return gaps.sort();
+}
+
+/**
+ * The canonical Plan task ids that the planner emits in every run, on
+ * every platform, in the order of the planner prompt: 11 for the surfaces
+ * that every storefront has, and three marketplace ids
+ * (`product_reviews`, `related_products`, `search_results`).
+ */
+export const FIXED_AREAS: readonly string[] = [
+  'homepage_sections',
+  'header_navigation',
+  'cart_drawer',
+  'product_variants',
+  'product_reviews',
+  'related_products',
+  'collection_filters',
+  'search_predictive',
+  'search_results',
+  'checkout_flow',
+  'account_pages',
+  'footer',
+  'info_pages',
+  'floating_widgets',
+];
+
+/** A fixed area that did not end done, with a one-line reason. */
+export interface FixedAreaGap {
+  readonly area: string;
+  readonly reason: string;
+}
+
+/**
+ * The fixed areas whose Plan task did not end done, in `FIXED_AREAS`
+ * order, each with a one-line reason.
+ *
+ * Prefetch evidence and plan omissions do not matter here, because every
+ * run plans every fixed area. A fixed area that the plan does not have
+ * is a gap too.
+ *
+ * @param tasks The Plan tasks when the run ended.
+ * @param planned The Plan tasks as the planner wrote them. The executor
+ *   that blocks a task appends its reason to the planned brief, so the
+ *   reason is the text after that brief.
+ */
+export function fixedAreaGaps(tasks: TaskList, planned: TaskList): FixedAreaGap[] {
+  return FIXED_AREAS.flatMap((area) => {
+    const reason = gapReason(taskById(tasks, area), taskById(planned, area)?.note ?? null);
+    return reason === undefined ? [] : [{ area, reason }];
+  });
+}
+
+/**
+ * Why `task` leaves its fixed area a gap, or `undefined` when it is done.
+ * `brief` is the note of the task as the planner wrote it.
+ */
+function gapReason(task: Task | undefined, brief: string | null): string | undefined {
+  if (task === undefined) return 'not in the plan';
+  switch (task.status) {
+    case 'done':
+      return undefined;
+    case 'pending':
+      return 'not started when the run ended';
+    case 'in_progress':
+      return 'in progress when the run ended';
+    case 'blocked':
+      return `blocked: ${blockedReason(task.note, brief)}`;
+  }
+}
+
+/**
+ * The reason of a blocked Plan task: the text that follows its planned
+ * `brief` in its `note`, without the `;` that starts it. A note that does
+ * not start with the brief, such as the note of a protocol violation that
+ * the harness writes in place of the brief, is the reason as a whole.
+ */
+function blockedReason(note: string | null, brief: string | null): string {
+  const text = note ?? '';
+  const appended = brief !== null && text.startsWith(brief) ? text.slice(brief.length) : text;
+  const reason = appended.replace(/^\s*;/, '').trim();
+  return reason === '' ? 'no reason given' : reason;
 }

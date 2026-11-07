@@ -85,9 +85,22 @@ accessibility tree. A longer tree comes in parts. A part ends at a line
 end; only a line longer than the limit is cut inside the line. The note
 after a part gives the `offset` of the next part. `@shop-gym/browser`
 itself keeps the whole snapshot. The planner
-emits a fixed canonical task list (homepage, header, cart, product,
-collection, search, checkout, account, footer, info pages, floating
-widgets); each executor iteration writes `parts/<task_id>.md` and
+emits the same 14 canonical Plan tasks, the fixed areas
+(`FIXED_AREAS`), in every run on every platform: 11 for the surfaces
+that every storefront has (homepage, header and departments, cart,
+product, collection, predictive search, checkout, account, footer, info
+pages, floating widgets) and three marketplace ones (`product_reviews`,
+`related_products`, `search_results`). Their
+briefs use platform-neutral words (for example, `cart_drawer` covers
+any cart surface) and name the Capabilities that each task fills;
+`homepage_sections` fills the `shop` block. The briefs keep the executor
+on the storefront pages that a visitor sees: `collection_filters` starts
+on a department or category landing page, not a search results page;
+`product_reviews` scrolls a product page to its review block and skips
+an all-reviews page behind a sign-in; `search_predictive` snapshots the
+suggestion dropdown and captures no network or API request. A brief
+that the planner makes more specific keeps these rules.
+Each executor iteration writes `parts/<task_id>.md` and
 `parts/<task_id>.caps.json`. An `anonymization` verifier scans the
 current task's `parts/<task_id>.md` after every iteration for the store
 domain, brand tokens from the prefetched homepage, absolute store URLs,
@@ -133,6 +146,13 @@ blocked when the run ends does not cover its area, so an unfinished,
 failed or skipped area is a gap. When the plan has a Plan task with the
 area's own name (for example `header_navigation`), only that task can
 cover the area.
+
+The merge step also writes `fixed_area_gaps`: one `{ area, reason }`
+entry for each fixed area whose Plan task did not end done, whatever the
+prefetch shows. The reason is one line: `not in the plan`, `not started
+when the run ended`, `in progress when the run ended`, or `blocked:`
+with the text that the executor added after the brief that the planner
+wrote.
 
 ## Gen
 

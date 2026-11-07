@@ -177,8 +177,8 @@ numbered for ordering.
 
 `evidence/<task_id>/network.jsonl` - optional; append one JSON object
 per observed request. Use only when the request itself is the evidence
-(predictive search suggestions, cart updates) and you can read it from
-the page (e.g. a JSON endpoint opened with `navigate`).
+(cart updates) and you can read it from the page (e.g. a JSON endpoint
+opened with `navigate`).
 
 Final action of any executor iteration: rewrite `plan.md` with
 `write_file` so that this task's line reads `[x]` (success) or
@@ -216,8 +216,8 @@ future schema revision, not a silent leak.
   (planner: <= 4 pages; executor: scope of one task in `plan.md`).
 - Don't hit `/admin` or anything behind a login. We are an
   unauthenticated UX explorer: the `account_pages` task looks only at
-  the public login / signup / password-reset surfaces, and the
-  `checkout_flow` task stops at the first checkout step. Never create
+  the public sign-in and sign-up entries, and the `checkout_flow` task
+  stops at the first sign-in or payment wall. Never create
   an account, submit credentials, enter payment details, or place an
   order.
 - Don't mutate `artifact/prefetch/` - it is the immutable seed.
