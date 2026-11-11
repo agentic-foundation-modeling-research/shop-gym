@@ -70,12 +70,22 @@ pages are one `product` state.
   {{PAGE_TYPES}}
   and a `url_pattern`: the path of the page, with a `{name}`
   placeholder for each part that changes, for example
-  `/products/{handle}` or `/search?q={query}`. No scheme and no host.
+  `/products/{handle}` or `/search?q={query}`.
+  - The pattern starts with one `/`. No scheme and no host.
+  - Each placeholder is a snake_case name in braces, such as
+    `{handle}`.
+  - Each query parameter is a key and a placeholder: `?q={query}`,
+    never `?q=shoes` and never a key with no value. Leave out tracking
+    and session parameters.
+  - No two page states have the same URL pattern. Two patterns that
+    differ only in their placeholder names, such as `/products/{id}`
+    and `/products/{handle}`, are the same pattern.
 - An overlay state has `"kind": "overlay"`, an `overlay` kind from this
   closed list:
   {{OVERLAY_KINDS}}
-  and `on`: the ids of the page states that it opens on. A header
-  widget that opens on every page lists every page state.
+  and `on`: the ids of one or more page states that it opens on. Each
+  id names a page state, not an overlay. A header widget that opens on
+  every page lists every page state.
 
 ### Transitions
 
@@ -88,18 +98,25 @@ A transition is one shopper action that goes from one state to another.
   `add_to_cart` or `apply_filter`. Give the same action the same name.
 - `effect` - what the action changes, from this closed list:
   {{EFFECTS}}
-  - `navigate` - another page loads.
-  - `open_overlay` - an overlay opens over the page.
+  Each effect has a rule for `from` and `to`:
+  - `navigate` - another page loads. `to` is a page; `from` can be a
+    page or an overlay.
+  - `open_overlay` - an overlay opens over the page. `to` is an
+    overlay, and `from` is one of the pages in its `on`.
   - `swap_overlay` - one overlay changes into another, for example a
-    sign-in modal that changes into a register modal.
+    sign-in modal that changes into a register modal. `from` and `to`
+    are two different overlays.
   - `close_overlay` - the overlay closes, and the page under it shows.
+    `from` is an overlay, and `to` is one of the pages in its `on`.
   - `update_in_place` - the state changes in place, for example a
     facet, a sort or a variant choice. `from` and `to` are the same
     state.
 - `params` - optional: the snake_case names of the values that the
-  action takes, for example `["query"]` for a search.
+  action takes, for example `["query"]` for a search. No name is
+  repeated.
 - `needs` - optional: the snake_case names of what an earlier step must
-  give, for example `["variant"]` before add to cart.
+  give, for example `["variant"]` before add to cart. No name is
+  repeated.
 - `source` - the Plan task id of the part that shows the transition.
   Use only the `task` ids of the `<part>` blocks below.
 
@@ -110,6 +127,11 @@ A transition is one shopper action that goes from one state to another.
   it.
 - Each `from` and `to` names a state of the graph, and no two states
   have the same id.
+- Each state is the `from` or the `to` of one or more transitions. Do
+  not put in a state that no transition uses; an `on` list does not
+  count as a use.
+- A graph that breaks a rule of this prompt fails the check, and there
+  is no second call.
 - No site text. Do not write button labels, headings, product names,
   product ids, brand names, store names, hosts, absolute URLs or email
   addresses. Ids, action kinds, params and needs are generic snake_case
