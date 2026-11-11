@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CliError, DEFAULT_MODEL } from '../context.js';
-import { exploreExitCode, parseExploreArgs } from './explore.js';
+import { USAGE, exploreExitCode, parseExploreArgs } from './explore.js';
 
 describe('parseExploreArgs', () => {
   it('parses the url and every option', () => {
@@ -58,7 +58,7 @@ describe('parseExploreArgs', () => {
 
   it('rejects an unknown --from step with the allowed list', () => {
     expect(() => parseExploreArgs(['u', '--from', 'build'])).toThrow(
-      '--from must be one of prefetch, explore, merge, synthesize, got "build"',
+      '--from must be one of prefetch, explore, merge, synthesize, graph, got "build"',
     );
   });
 
@@ -74,6 +74,14 @@ describe('parseExploreArgs', () => {
 
   it('returns help without validating positionals', () => {
     expect(parseExploreArgs(['--help']).help).toBe(true);
+  });
+});
+
+describe('USAGE', () => {
+  it('lists every step that --from takes', () => {
+    expect(USAGE).toContain(
+      '--from <step>        Rerun from this step: prefetch | explore | merge | synthesize | graph',
+    );
   });
 });
 

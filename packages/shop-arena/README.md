@@ -9,7 +9,7 @@ Layout:
 
 ```
 src/
-  explore/      explore pipeline: prefetch, harness tasks, capability merge, manual synthesis
+  explore/      explore pipeline: prefetch, harness tasks, capability merge, manual synthesis, Site state graph
   gen/
     build/      build loop: template seeding, backend sidecar, owned-file rules, verifiers, prompts
     ...         manual_merge, data_synth, data_validation, final_eval, publish (see Gen)
@@ -42,7 +42,7 @@ checkout and `/cart.js` flows over HTTP against
 ## Explore
 
 `exploreStorefront(options)` (also exported from `@shop-gym/shop-arena/explore`)
-turns one live storefront into an anonymized Shop Manual. It runs four
+turns one live storefront into an anonymized Shop Manual. It runs five
 steps on the `@shop-gym/core` pipeline runner:
 
 | Step | Reads | Writes |
@@ -51,6 +51,24 @@ steps on the `@shop-gym/core` pipeline runner:
 | `explore` | `seed/prefetch/` | `run/` (harness workspace: `plan.md`, `iters/`, `artifact/{prefetch,parts,evidence}`, `run.json`) and `explore.json` |
 | `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json`; on a generic site also `run/artifact/parts/*.product-<key>.json` | `capabilities.json`, `stats.json`, `manifest.json` |
 | `synthesize` | `capabilities.json`, `stats.json`, `brand_terms.json`, `seed/prefetch/`, `run/artifact/parts/*.md` | `manual.md`, only when the final Anonymization scan is clean |
+| `graph` | `capabilities.json`, `manifest.json` (only to run again after each merge), `brand_terms.json`, `seed/prefetch/`, `run/plan.md`, `run/artifact/parts/*.md` | `site_graph.json`, only when the reply passes the graph checks and the final Anonymization scan is clean |
+
+The `graph` step writes the Site state graph (`src/explore/graph.ts`,
+prompt `prompts/site_graph.md`). A finished part is the
+`run/artifact/parts/<task_id>.md` of a Plan task that `run/plan.md` marks
+done. The prompt gets the closed lists of `@shop-gym/core` and the merged
+Capabilities. From each finished part it gets only the H2 and H3
+headings and the Behavior lines, under the Plan task id. The one
+completion must be one JSON object, bare or in one fenced block. The
+object must pass `parseSiteGraph`, and the `source` of each transition
+must name a finished part. If a check fails, the step fails with
+`SiteGraphReplyError` or `SiteGraphValidationError` and writes no file.
+There is no retry. `manifest.json` is an input because merge writes it
+again on each run, so `from: 'merge'` writes the graph again.
+`from: 'graph'` writes the graph from the files on disk with no site
+traffic. It does not write the manifest again. On a manual from before
+the graph step, use `from: 'merge'` to add `site_graph` to the manifest
+`paths`.
 
 Prefetch decides the platform before it fetches the rest. First it
 fetches `robots.txt`, the homepage, `sitemap.xml` and one `/products.json`
@@ -149,6 +167,7 @@ from `og:site_name`. The title splits at ` | `, ` - `, ` : ` and similar
 separators, and after `.`, `!` or `?` that a space follows. The brand
 segment is the one that matches a hostname label when spaces and
 punctuation are removed; when no segment matches, every segment counts.
+A segment that is only a stop word, such as "Home", gives no token.
 The `brandTerms` option adds words or phrases, such as sub-brands, to
 the markers. A term of more than one word matches as a phrase. The terms
 are kept in `brand_terms.json` in `outDir`, outside the published files,
@@ -157,7 +176,8 @@ the final Anonymization scan (`publishedLeaks`) checks `manual.md`,
 `capabilities.json` and `stats.json` (only the values of the JSON files)
 for the same markers. A hit fails the `synthesize` step with an
 `AnonymizationLeakError` that lists each `file:line`, and `manual.md` is
-not written.
+not written. The `graph` step scans `site_graph.json` the same way, and
+a hit fails it with the same error before the file is written.
 
 The scan matches only these markers. The prompts carry the other rules:
 the executors write only what they saw and leave the rest `null` or

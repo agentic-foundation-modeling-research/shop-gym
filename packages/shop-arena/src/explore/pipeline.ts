@@ -16,11 +16,12 @@
  * stats.json            catalog and feature statistics
  * manifest.json         counts, omissions, conflicts, coverage and fixed area gaps, paths
  * manual.md             the synthesized shop manual
+ * site_graph.json       the Site state graph, from the finished parts
  * brand_terms.json      the brand terms of the run (never published)
  * .pipeline/            step records of the pipeline runner
  * ```
  *
- * Steps are `prefetch`, `explore`, `merge`, and `synthesize`. A complete
+ * Steps are `prefetch`, `explore`, `merge`, `synthesize`, and `graph`. A complete
  * step is skipped on a later call with the same `outDir`; `from` forces a
  * step and everything downstream. The harness workspace under `run/` is
  * never deleted by the pipeline: an interrupted or forced explore step
@@ -30,7 +31,9 @@
  * The synthesize step ends with the final Anonymization scan of the
  * published files (`manual.md`, `capabilities.json`, `stats.json`): a
  * brand token, a brand term or the storefront host in them fails the
- * step, and `manual.md` is not written.
+ * step, and `manual.md` is not written. The graph step runs the same scan
+ * on the graph before it writes `site_graph.json`. Synthesize and graph
+ * are two branches after merge: neither reads the output of the other.
  */
 
 import { createHash } from 'node:crypto';
@@ -61,6 +64,7 @@ import { z } from 'zod';
 
 import {
   AnonymizationLeakError,
+  type LeakScanner,
   anonymizationVerifier,
   checkBrandTerms,
   leakScanner,
@@ -76,6 +80,7 @@ import {
 } from './capabilities.js';
 import { type FixedAreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
+import { readFinishedParts, renderSiteGraph } from './graph.js';
 import {
   productObservationJsonSchema,
   productObservationTool,
@@ -95,10 +100,10 @@ export const DEFAULT_MODEL = 'anthropic/claude-opus-4-7';
 export const DEFAULT_MAX_ITERS = 20;
 export const DEFAULT_TIMEOUT_MS = 1_800_000;
 export const DEFAULT_OUTPUT_ROOT = join('outputs', 'shop_manuals');
-export const EXPLORE_STEPS = ['prefetch', 'explore', 'merge', 'synthesize'] as const;
+export const EXPLORE_STEPS = ['prefetch', 'explore', 'merge', 'synthesize', 'graph'] as const;
 
 /** Bumped when the prompts or the output contract change shape. */
-const EXPLORE_VERSION = '1.2';
+const EXPLORE_VERSION = '1.3';
 const RUN_ID_HASH_LEN = 8;
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
 
@@ -153,6 +158,7 @@ export interface ExploreResult {
   readonly capabilitiesPath: string;
   readonly statsPath: string;
   readonly manifestPath: string;
+  readonly siteGraphPath: string;
   readonly finalStatus: FinalStatus;
   /** Why the explore step stopped the run, or `null` when it did not. */
   readonly stop: ExploreStop | null;
@@ -207,6 +213,7 @@ export interface Manifest {
     capabilities: string;
     stats: string;
     manifest: string;
+    site_graph: string;
     prefetch: string;
     run: string;
   };
@@ -223,6 +230,7 @@ interface Prompts {
   /** The executor prompt for a site on the generic platform. */
   readonly executeGeneric: string;
   readonly manual: string;
+  readonly graph: string;
 }
 
 interface ExploreContext {
@@ -251,6 +259,7 @@ const PATHS = {
   stats: 'stats.json',
   manifest: 'manifest.json',
   manual: 'manual.md',
+  siteGraph: 'site_graph.json',
   brandTerms: 'brand_terms.json',
 } as const;
 /** Written into each Iteration's directory when the Iteration starts. */
@@ -294,6 +303,7 @@ function loadPrompts(): Prompts {
     execute: read('execute.md'),
     executeGeneric: read('execute_generic.md'),
     manual: read('synthesize_manual.md'),
+    graph: read('site_graph.md'),
   };
 }
 
@@ -527,6 +537,7 @@ const mergeStep: Step<ExploreContext> = {
         capabilities: PATHS.capabilities,
         stats: PATHS.stats,
         manifest: PATHS.manifest,
+        site_graph: PATHS.siteGraph,
         prefetch: PATHS.prefetch,
         run: PATHS.run,
       },
@@ -549,6 +560,21 @@ function omissionReason(planMd: string, area: string): string {
   return '';
 }
 
+/**
+ * The Anonymization scan of the published files: the storefront host, the
+ * brand tokens of the prefetched homepage, and the Brand terms of the run.
+ */
+function publishedFileScanner(outDir: string, context: ExploreContext): LeakScanner {
+  // Prefetch saves no homepage when `/` answers with an empty body or a
+  // success status other than 200; then no title gives brand tokens.
+  const homepagePath = join(outDir, PATHS.prefetch, 'index.html');
+  return leakScanner(
+    new URL(context.url).hostname,
+    existsSync(homepagePath) ? readFileSync(homepagePath, 'utf8') : '',
+    context.brandTerms,
+  );
+}
+
 const synthesizeStep: Step<ExploreContext> = {
   id: 'synthesize',
   inputs: [PATHS.capabilities, PATHS.stats, PATHS.brandTerms, PATHS.prefetch],
@@ -567,15 +593,7 @@ const synthesizeStep: Step<ExploreContext> = {
       partsDir,
       signal,
     );
-    // Prefetch saves no homepage when `/` answers with an empty body or a
-    // success status other than 200; then no title gives brand tokens.
-    const homepagePath = join(outDir, PATHS.prefetch, 'index.html');
-    const scan = leakScanner(
-      new URL(context.url).hostname,
-      existsSync(homepagePath) ? readFileSync(homepagePath, 'utf8') : '',
-      context.brandTerms,
-    );
-    const leaks = publishedLeaks(scan, {
+    const leaks = publishedLeaks(publishedFileScanner(outDir, context), {
       [PATHS.manual]: manual,
       [PATHS.capabilities]: readFileSync(join(outDir, PATHS.capabilities), 'utf8'),
       [PATHS.stats]: readFileSync(join(outDir, PATHS.stats), 'utf8'),
@@ -583,6 +601,50 @@ const synthesizeStep: Step<ExploreContext> = {
     if (leaks.length > 0) throw new AnonymizationLeakError(leaks);
     writeFileSync(join(outDir, PATHS.manual), manual);
     log(`wrote manual.md (${manual.length} chars)`);
+  },
+};
+
+/**
+ * Writes the Site state graph from the finished parts and the merged
+ * Capabilities with one completion. The graph must pass its checks and
+ * the Anonymization scan, or the step fails and writes no file.
+ *
+ * The step does not read `manifest.json`, but it is an input. Merge
+ * writes the manifest again on each run, with a new time. Thus each
+ * merge makes the graph stale, also a forced merge that keeps the same
+ * Capabilities. `plan.md` decides which parts are finished.
+ */
+const graphStep: Step<ExploreContext> = {
+  id: 'graph',
+  inputs: [
+    PATHS.capabilities,
+    PATHS.manifest,
+    PATHS.brandTerms,
+    PATHS.prefetch,
+    join(PATHS.run, 'plan.md'),
+  ],
+  outputs: [PATHS.siteGraph],
+  async run({ outDir, context, log, signal }) {
+    const runDir = join(outDir, PATHS.run);
+    const graph = await renderSiteGraph(
+      context.llm,
+      context.model,
+      context.prompts.graph,
+      parseCapabilities(readJson(join(outDir, PATHS.capabilities))),
+      readFinishedParts(runDir),
+      signal,
+    );
+    const text = `${JSON.stringify(graph, null, 2)}\n`;
+    const leaks = publishedLeaks(publishedFileScanner(outDir, context), {
+      [PATHS.siteGraph]: text,
+    });
+    if (leaks.length > 0) throw new AnonymizationLeakError(leaks);
+    writeFileSync(join(outDir, PATHS.siteGraph), text);
+    const pages = graph.states.filter((state) => state.kind === 'page').length;
+    const overlays = graph.states.length - pages;
+    log(
+      `wrote site_graph.json: pages ${pages}, overlays ${overlays}, transitions ${graph.transitions.length}`,
+    );
   },
 };
 
@@ -610,6 +672,7 @@ const STEPS: readonly Step<ExploreContext>[] = [
   exploreStep,
   mergeStep,
   synthesizeStep,
+  graphStep,
 ];
 
 /**
@@ -626,6 +689,10 @@ const STEPS: readonly Step<ExploreContext>[] = [
  * @throws StepFailedError for the synthesize step, with an
  *   AnonymizationLeakError cause, when the final Anonymization scan finds
  *   a leak in a published file.
+ * @throws StepFailedError for the graph step when the graph reply is not
+ *   one JSON object (SiteGraphReplyError cause), fails a graph check
+ *   (SiteGraphValidationError cause), or has a leak
+ *   (AnonymizationLeakError cause).
  */
 export async function exploreStorefront(options: ExploreOptions): Promise<ExploreResult> {
   const base = normalizeBase(options.url);
@@ -669,6 +736,7 @@ export async function exploreStorefront(options: ExploreOptions): Promise<Explor
     capabilitiesPath: join(outDir, PATHS.capabilities),
     statsPath: join(outDir, PATHS.stats),
     manifestPath: join(outDir, PATHS.manifest),
+    siteGraphPath: join(outDir, PATHS.siteGraph),
     finalStatus: outcome.final_status,
     stop: outcome.stop ?? null,
     steps,

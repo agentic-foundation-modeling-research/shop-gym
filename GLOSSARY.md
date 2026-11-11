@@ -46,8 +46,12 @@ The fixed number of `navigate` calls (200) that one run of the explore step may 
 _Avoid_: page budget, navigation limit
 
 **Shop Manual**:
-The anonymized description of one storefront's structure, features, and UX: prose in `manual.md`, Capabilities in `capabilities.json`, and catalog statistics in `stats.json`.
+The anonymized description of one storefront's structure, features, and UX: prose in `manual.md`, Capabilities in `capabilities.json`, the Site state graph in `site_graph.json`, and catalog statistics in `stats.json`.
 _Avoid_: manual (alone), seed manual, Seed Shop Manual
+
+**Site state graph**:
+The graph in `site_graph.json` that tells how a shopper moves through one storefront, like a UX prototype. Its states are pages and overlays. A page has a page type from a closed list and a URL pattern. An overlay, such as a modal or a side sheet, opens on pages. Its transitions are shopper actions from one state to another. Each transition has a trigger, an action kind and an effect, and its source names the Plan task whose fragment shows it. The `graph` step of Storefront exploration writes the graph with one LLM call, from the fragments of the finished Plan tasks and the Capabilities.
+_Avoid_: Interaction graph, transition state, site map
 
 **Capability**:
 One structured, schema-checked fact about one storefront feature, for example the cart type or the list of collection filters.

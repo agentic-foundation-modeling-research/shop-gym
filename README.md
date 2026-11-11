@@ -78,18 +78,31 @@ of `shopgym gen` runs on `openai/gpt-6-sol` unless `--build-model` is set. See
 ```bash
 shopgym explore https://example-shop.com
 # -> outputs/shop_manuals/<host>/<run_id>/manual.md
-#    (+ capabilities.json, stats.json, seed/prefetch/, run/)
+#    (+ capabilities.json, site_graph.json, stats.json, seed/prefetch/, run/)
 ```
 
 Options: `--out <dir>`, `--max-iters <n>`, `--timeout <ms>`,
-`--from prefetch|explore|merge|synthesize`, `--force-resume`, `--focus <text>`.
+`--from prefetch|explore|merge|synthesize|graph`, `--force-resume`, `--focus <text>`.
 Re-running with the same output directory resumes the unfinished step.
+
+After merge, the `graph` step writes `site_graph.json`, the Site state
+graph. The graph has the page and overlay states of the storefront and
+the shopper actions that move between them. The step makes one LLM call
+on the run's model. The call gets the merged Capabilities and the
+headings and Behavior lines of each finished part. The reply must be one
+JSON object that passes `parseSiteGraph` in `@shop-gym/core`. The
+`source` of each transition must name a finished Plan task. If a check
+fails, the step fails and writes no file. There is no retry.
+`--from graph` adds a graph to an existing manual with no site traffic.
+A manifest from before the graph step does not name `site_graph.json`;
+`--from merge` writes the manifest again and then the graph.
 
 Brand tokens come from the brand segment of the homepage title (the
 segment that matches a hostname label, such as "Fixture Mart" in
 "Fixture Mart. Spend less. Shop more.") and from `og:site_name`, so the
 words of a tagline do not become brand tokens. When no segment matches,
-every segment counts. Add sub-brands that the title does not name with
+every segment counts, but a segment that is only a stop word, such as
+"Home", gives no token. Add sub-brands that the title does not name with
 a repeatable `--brand-term <word>`, for example
 `--brand-term Zephyr --brand-term "Nova Pass"`. A term of more than one
 word matches as a phrase. The run keeps the terms in `brand_terms.json`
@@ -97,7 +110,8 @@ in the run directory; no published file holds them, and a rerun without
 `--brand-term` uses them again. The Anonymization verifier uses the
 terms. After synthesis, a final scan of `manual.md`, `capabilities.json`
 and `stats.json` fails the run on a brand token, a brand term or the
-storefront host, and `manual.md` is not written.
+storefront host, and `manual.md` is not written. The `graph` step runs
+the same scan on `site_graph.json` before it writes the file.
 
 The storefront does not have to be a Shopify shop. Prefetch decides the
 platform first. It fetches `robots.txt`, the homepage, `sitemap.xml` and

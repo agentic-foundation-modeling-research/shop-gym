@@ -32,7 +32,8 @@ shopgym explore <url> [--out <dir>] [--model <ref>] [--max-iters <n>]
                       [--brand-term <word>]...
 ```
 
-`--from` must be one of `prefetch`, `explore`, `merge`, `synthesize`.
+`--from` must be one of `prefetch`, `explore`, `merge`, `synthesize`, `graph`;
+`--from graph` adds `site_graph.json` to an existing manual with no site traffic.
 `--focus` gives the planner a hint to explore one part of the site, for example
 `--focus "Video Games"`; `manifest.json` records it, and a re-run on the same
 `--out` must pass the same focus. Prints the manual path on stdout. Exits 0
