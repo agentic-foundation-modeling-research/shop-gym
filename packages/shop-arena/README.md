@@ -79,6 +79,22 @@ traffic. It does not write the manifest again. On a manual from before
 the graph step, use `from: 'merge'` to add `site_graph` to the manifest
 `paths`.
 
+`parseSiteGraph` applies the closed schema and these graph rules. The
+graph prompt states the same rules.
+
+- A URL pattern is a path that starts with one `/`. It has snake_case
+  `{name}` placeholders, and each query value is a placeholder.
+- No two page states have one URL pattern. Placeholder names do not
+  count, so `/products/{id}` and `/products/{handle}` are one pattern.
+- An overlay opens on one or more page states.
+- Each state is the `from` or `to` of a transition.
+- `params` and `needs` have no repeated items.
+- Each effect has a rule for its two ends. `navigate` ends on a page.
+  `open_overlay` goes from a host page to the overlay. `swap_overlay`
+  goes from one overlay to a different overlay. `close_overlay` goes
+  from the overlay to one of its host pages. `update_in_place` has the
+  same `from` and `to`.
+
 Prefetch decides the platform before it fetches the rest. First it
 fetches `robots.txt`, the homepage, `sitemap.xml` and one `/products.json`
 page as the probe. It skips `sitemap.xml` when robots.txt forbids it. It

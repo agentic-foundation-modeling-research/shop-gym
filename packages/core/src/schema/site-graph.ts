@@ -12,6 +12,8 @@
  *
  * The schema is closed: an unknown field or an unknown list value fails.
  * Field names are snake_case, as in the published file `site_graph.json`.
+ * `parseSiteGraph` also applies the graph rules: for example, a navigate
+ * transition ends on a page, and an overlay opens only on page states.
  */
 
 import { z } from 'zod';
@@ -52,10 +54,56 @@ export const TRANSITION_EFFECTS = [
 
 export const SITE_GRAPH_VERSION = '0.1';
 
+/** A snake_case name: a state id, an action kind, a param, a need or a URL placeholder. */
+const SNAKE_CASE = '[a-z][a-z0-9]*(?:_[a-z0-9]+)*';
+
 /** A state id, an action kind, a param or a need. */
 const snakeCaseSchema = z
   .string()
-  .regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/, 'expected a snake_case name');
+  .regex(new RegExp(`^${SNAKE_CASE}$`), 'expected a snake_case name');
+
+/** A list of params or needs, with no repeated item. */
+const nameListSchema = z.array(snakeCaseSchema).superRefine((names, ctx) => {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const name of names) (seen.has(name) ? repeated : seen).add(name);
+  for (const name of repeated) {
+    ctx.addIssue({ code: 'custom', message: `${JSON.stringify(name)} is repeated` });
+  }
+});
+
+/** A `{name}` placeholder of a URL pattern. */
+const PLACEHOLDER_RE = new RegExp(`\\{${SNAKE_CASE}\\}`, 'g');
+/** One query item of a URL pattern: a key, `=` and one placeholder. */
+const QUERY_ITEM_RE = new RegExp(`^[^=&{}]+=\\{${SNAKE_CASE}\\}$`);
+
+/** True when each item of the query of `pattern`, if it has one, is `key={name}`. */
+function hasPlaceholderQueryValues(pattern: string): boolean {
+  const start = pattern.indexOf('?');
+  if (start === -1) return true;
+  return pattern
+    .slice(start + 1)
+    .split('&')
+    .every((item) => QUERY_ITEM_RE.test(item));
+}
+
+/**
+ * The path of a page, for example `/products/{handle}` or
+ * `/search?q={query}`. Each part that changes is a `{name}` placeholder.
+ * Each query value is a placeholder too. Thus a URL pattern cannot hold
+ * a session value or a tracking value.
+ */
+const urlPatternSchema = z
+  .string()
+  .refine(
+    (pattern) => /^\/(?!\/)/.test(pattern),
+    'expected a path that starts with one "/", with no scheme or host',
+  )
+  .refine(
+    (pattern) => !/[{}]/.test(pattern.replace(PLACEHOLDER_RE, '')),
+    'expected snake_case {name} placeholders only',
+  )
+  .refine(hasPlaceholderQueryValues, 'expected a {name} placeholder for each query value');
 
 /** A Plan task id. */
 const planTaskIdSchema = z.string().regex(/^[a-z0-9_]+$/, 'expected a Plan task id');
@@ -64,8 +112,7 @@ const pageStateSchema = z.strictObject({
   id: snakeCaseSchema,
   kind: z.literal('page'),
   page_type: z.enum(PAGE_TYPES),
-  /** The path of the page, with `{name}` placeholders, for example `/products/{handle}`. */
-  url_pattern: z.string(),
+  url_pattern: urlPatternSchema,
 });
 
 const overlayStateSchema = z.strictObject({
@@ -73,7 +120,7 @@ const overlayStateSchema = z.strictObject({
   kind: z.literal('overlay'),
   overlay: z.enum(OVERLAY_KINDS),
   /** The ids of the page states that the overlay opens on. */
-  on: z.array(snakeCaseSchema),
+  on: z.array(snakeCaseSchema).min(1, 'expected one or more page state ids'),
 });
 
 const stateSchema = z.discriminatedUnion('kind', [pageStateSchema, overlayStateSchema]);
@@ -86,9 +133,9 @@ const transitionSchema = z.strictObject({
   action: snakeCaseSchema,
   effect: z.enum(TRANSITION_EFFECTS),
   /** The values that the action takes, for example `query` for a search. */
-  params: z.array(snakeCaseSchema).optional(),
+  params: nameListSchema.optional(),
   /** What an earlier step must give, for example `variant` before add to cart. */
-  needs: z.array(snakeCaseSchema).optional(),
+  needs: nameListSchema.optional(),
   /** The Plan task whose part shows the transition. */
   source: planTaskIdSchema,
 });
@@ -142,32 +189,161 @@ function formatIssue(issue: z.core.$ZodIssue): string {
   return `${formatPath(issue.path)}: ${issue.message}${got}`;
 }
 
-/** The graph rules that a schema cannot express: unique state ids, and no dangling transition. */
-function graphProblems(graph: SiteGraph): string[] {
-  const ids = new Set<string>();
-  const repeated = new Set<string>();
-  for (const state of graph.states) {
-    (ids.has(state.id) ? repeated : ids).add(state.id);
-  }
-  const problems = [...repeated].map((id) => `state id ${JSON.stringify(id)} is repeated`);
-  graph.transitions.forEach((transition, index) => {
-    for (const end of ['from', 'to'] as const) {
-      if (!ids.has(transition[end])) {
-        const id = JSON.stringify(transition[end]);
-        problems.push(`transitions[${index}].${end} names no state: ${id}`);
+/** One rule on the two ends of the transitions of one effect. */
+interface EffectRule {
+  /** The rule as it shows in an error, for example `a navigate transition ends on a page`. */
+  readonly rule: string;
+  readonly holds: (from: SiteGraphState, to: SiteGraphState) => boolean;
+}
+
+/**
+ * The rules on the two ends of a transition, for each effect. A host
+ * page rule holds when the end that must be an overlay is a page. Then
+ * the other rule of the effect fails, so the error shows one problem and
+ * not two.
+ */
+const EFFECT_RULES: Readonly<Record<TransitionEffect, readonly EffectRule[]>> = {
+  navigate: [
+    { rule: 'a navigate transition ends on a page', holds: (_, to) => to.kind === 'page' },
+  ],
+  open_overlay: [
+    {
+      rule: 'an open_overlay transition ends on an overlay',
+      holds: (_, to) => to.kind === 'overlay',
+    },
+    {
+      rule: 'an open_overlay transition starts on one of the host pages of its overlay',
+      holds: (from, to) => to.kind !== 'overlay' || to.on.includes(from.id),
+    },
+  ],
+  swap_overlay: [
+    {
+      rule: 'a swap_overlay transition starts on an overlay',
+      holds: (from) => from.kind === 'overlay',
+    },
+    {
+      rule: 'a swap_overlay transition ends on a different overlay',
+      holds: (from, to) => to.kind === 'overlay' && to.id !== from.id,
+    },
+  ],
+  close_overlay: [
+    {
+      rule: 'a close_overlay transition starts on an overlay',
+      holds: (from) => from.kind === 'overlay',
+    },
+    {
+      rule: 'a close_overlay transition ends on one of the host pages of its overlay',
+      holds: (from, to) => from.kind !== 'overlay' || from.on.includes(to.id),
+    },
+  ],
+  update_in_place: [
+    {
+      rule: 'an update_in_place transition has the same from and to',
+      holds: (from, to) => from.id === to.id,
+    },
+  ],
+};
+
+/**
+ * The state rules. Each overlay opens only on page states. No two page
+ * states have one URL pattern. Each state is the `from` or `to` of a
+ * transition. Two URL patterns that differ only in their placeholder
+ * names match the same URLs, so they count as one pattern.
+ */
+function stateProblems(graph: SiteGraph, states: ReadonlyMap<string, SiteGraphState>): string[] {
+  const problems: string[] = [];
+  /** The index of the first page state of each URL pattern, with no placeholder names. */
+  const patterns = new Map<string, number>();
+  graph.states.forEach((state, index) => {
+    if (state.kind === 'overlay') {
+      for (const host of state.on) {
+        if (states.get(host)?.kind !== 'page') {
+          problems.push(`states[${index}].on names no page state: ${JSON.stringify(host)}`);
+        }
       }
+      return;
     }
+    const pattern = state.url_pattern.replace(PLACEHOLDER_RE, '{}');
+    const first = patterns.get(pattern);
+    if (first === undefined) {
+      patterns.set(pattern, index);
+      return;
+    }
+    const url = JSON.stringify(state.url_pattern);
+    problems.push(
+      `states[${index}].url_pattern matches the same URLs as states[${first}].url_pattern: ${url}`,
+    );
   });
+  const used = new Set(graph.transitions.flatMap((transition) => [transition.from, transition.to]));
+  for (const id of states.keys()) {
+    if (!used.has(id)) problems.push(`no transition starts or ends on state ${JSON.stringify(id)}`);
+  }
   return problems;
 }
 
 /**
- * Checks a Site state graph against the closed schema. When the schema
- * passes, it checks that the state ids are unique and that each
- * transition goes from a state to a state.
+ * The transition rules: `from` and `to` name states, and the two ends
+ * obey the rules of the effect. The effect rules apply only when both
+ * ends name a state.
+ */
+function transitionProblems(
+  graph: SiteGraph,
+  states: ReadonlyMap<string, SiteGraphState>,
+): string[] {
+  return graph.transitions.flatMap((transition, index) => {
+    const problems: string[] = [];
+    for (const end of ['from', 'to'] as const) {
+      if (!states.has(transition[end])) {
+        const id = JSON.stringify(transition[end]);
+        problems.push(`transitions[${index}].${end} names no state: ${id}`);
+      }
+    }
+    const from = states.get(transition.from);
+    const to = states.get(transition.to);
+    if (from === undefined || to === undefined) return problems;
+    for (const { rule, holds } of EFFECT_RULES[transition.effect]) {
+      if (!holds(from, to)) {
+        const ends = `from ${JSON.stringify(from.id)} to ${JSON.stringify(to.id)}`;
+        problems.push(`transitions[${index}] goes ${ends}: ${rule}`);
+      }
+    }
+    return problems;
+  });
+}
+
+/**
+ * The graph rules that a schema cannot express: unique state ids, then
+ * the state rules, then the transition rules. When an id is repeated,
+ * the first state with the id is the one that the rules check.
+ */
+function graphProblems(graph: SiteGraph): string[] {
+  const states = new Map<string, SiteGraphState>();
+  const repeated = new Set<string>();
+  for (const state of graph.states) {
+    if (states.has(state.id)) repeated.add(state.id);
+    else states.set(state.id, state);
+  }
+  return [
+    ...[...repeated].map((id) => `state id ${JSON.stringify(id)} is repeated`),
+    ...stateProblems(graph, states),
+    ...transitionProblems(graph, states),
+  ];
+}
+
+/**
+ * Checks a Site state graph in two phases.
  *
- * @throws SiteGraphValidationError that lists every schema problem, or,
- *   when the schema passes, every repeated id and dangling transition.
+ * 1. The closed schema. It also checks single fields: the URL patterns,
+ *    one or more host pages for each overlay, and no repeated params or
+ *    needs.
+ * 2. The graph rules. They run only when the schema passes. The state
+ *    ids are unique. Each host page is a page state. No two page states
+ *    have one URL pattern. Each state is the end of a transition. Each
+ *    transition goes from a state to a state and obeys the rules of its
+ *    effect.
+ *
+ * @throws SiteGraphValidationError that lists every problem of the phase
+ *   that fails.
  */
 export function parseSiteGraph(value: unknown): SiteGraph {
   const result = siteGraphSchema.safeParse(value, { reportInput: true });

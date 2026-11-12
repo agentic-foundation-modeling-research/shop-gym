@@ -1491,6 +1491,12 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
       /transitions\[1\]\.to names no state: "checkout"/,
     ],
     [
+      'breaks an effect rule',
+      JSON.stringify(withTransition(0, { to: 'cart_drawer' })),
+      SiteGraphValidationError,
+      /transitions\[0\] goes from "home" to "cart_drawer": a navigate transition ends on a page/,
+    ],
+    [
       'has a source that names no finished part',
       JSON.stringify(withTransition(0, { source: 'footer' })),
       SiteGraphValidationError,
