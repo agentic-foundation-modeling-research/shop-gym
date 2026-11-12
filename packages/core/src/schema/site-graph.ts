@@ -91,12 +91,13 @@ function hasPlaceholderQueryValues(pattern: string): boolean {
  * The path of a page, for example `/products/{handle}` or
  * `/search?q={query}`. Each part that changes is a `{name}` placeholder.
  * Each query value is a placeholder too. Thus a URL pattern cannot hold
- * a session value or a tracking value.
+ * a session value or a tracking value. No `://` can come later in the
+ * path, so a pattern cannot hold an absolute URL.
  */
 const urlPatternSchema = z
   .string()
   .refine(
-    (pattern) => /^\/(?!\/)/.test(pattern),
+    (pattern) => /^\/(?!\/)/.test(pattern) && !pattern.includes('://'),
     'expected a path that starts with one "/", with no scheme or host',
   )
   .refine(
@@ -245,15 +246,31 @@ const EFFECT_RULES: Readonly<Record<TransitionEffect, readonly EffectRule[]>> = 
 };
 
 /**
+ * The index stored for `key` in `firsts`. When `key` has no index yet, the
+ * call stores `index` for it and returns undefined.
+ */
+function firstIndex(firsts: Map<string, number>, key: string, index: number): number | undefined {
+  const first = firsts.get(key);
+  if (first === undefined) firsts.set(key, index);
+  return first;
+}
+
+/**
  * The state rules. Each overlay opens only on page states. No two page
- * states have one URL pattern. Each state is the `from` or `to` of a
- * transition. Two URL patterns that differ only in their placeholder
- * names match the same URLs, so they count as one pattern.
+ * states have one URL pattern. No two page states of one page type have
+ * one path (the pattern before `?`): a query on a path, such as a filter,
+ * a sort or a variant, does not make another state. Each state is the
+ * `from` or `to` of a transition. Two URL patterns that differ only in
+ * their placeholder names match the same URLs, so they count as one
+ * pattern. Two page states of one page type with one URL pattern give
+ * only the URL pattern problem.
  */
 function stateProblems(graph: SiteGraph, states: ReadonlyMap<string, SiteGraphState>): string[] {
   const problems: string[] = [];
   /** The index of the first page state of each URL pattern, with no placeholder names. */
   const patterns = new Map<string, number>();
+  /** The index of the first page state of each page type and path, with no placeholder names. */
+  const typesAndPaths = new Map<string, number>();
   graph.states.forEach((state, index) => {
     if (state.kind === 'overlay') {
       for (const host of state.on) {
@@ -264,15 +281,22 @@ function stateProblems(graph: SiteGraph, states: ReadonlyMap<string, SiteGraphSt
       return;
     }
     const pattern = state.url_pattern.replace(PLACEHOLDER_RE, '{}');
-    const first = patterns.get(pattern);
-    if (first === undefined) {
-      patterns.set(pattern, index);
+    const url = JSON.stringify(state.url_pattern);
+    const samePattern = firstIndex(patterns, pattern, index);
+    if (samePattern !== undefined) {
+      problems.push(
+        `states[${index}].url_pattern matches the same URLs as states[${samePattern}].url_pattern: ${url}`,
+      );
       return;
     }
-    const url = JSON.stringify(state.url_pattern);
-    problems.push(
-      `states[${index}].url_pattern matches the same URLs as states[${first}].url_pattern: ${url}`,
-    );
+    const typeAndPath = `${state.page_type} ${pattern.replace(/\?.*/s, '')}`;
+    const samePath = firstIndex(typesAndPaths, typeAndPath, index);
+    if (samePath !== undefined) {
+      const pageType = JSON.stringify(state.page_type);
+      problems.push(
+        `states[${index}].url_pattern has the same path as states[${samePath}].url_pattern, and both are ${pageType} pages: ${url}`,
+      );
+    }
   });
   const used = new Set(graph.transitions.flatMap((transition) => [transition.from, transition.to]));
   for (const id of states.keys()) {
@@ -282,14 +306,17 @@ function stateProblems(graph: SiteGraph, states: ReadonlyMap<string, SiteGraphSt
 }
 
 /**
- * The transition rules: `from` and `to` name states, and the two ends
- * obey the rules of the effect. The effect rules apply only when both
- * ends name a state.
+ * The transition rules: `from` and `to` name states, no two transitions
+ * have the same `from`, `action` and `to`, and the two ends obey the
+ * rules of the effect. The effect rules apply only when both ends name a
+ * state.
  */
 function transitionProblems(
   graph: SiteGraph,
   states: ReadonlyMap<string, SiteGraphState>,
 ): string[] {
+  /** The index of the first transition of each `from`, `action` and `to`. */
+  const firsts = new Map<string, number>();
   return graph.transitions.flatMap((transition, index) => {
     const problems: string[] = [];
     for (const end of ['from', 'to'] as const) {
@@ -297,6 +324,14 @@ function transitionProblems(
         const id = JSON.stringify(transition[end]);
         problems.push(`transitions[${index}].${end} names no state: ${id}`);
       }
+    }
+    const edge = [transition.from, transition.action, transition.to];
+    const first = firstIndex(firsts, JSON.stringify(edge), index);
+    if (first !== undefined) {
+      const names = edge.map((name) => JSON.stringify(name)).join(', ');
+      problems.push(
+        `transitions[${index}] has the same from, action and to as transitions[${first}]: ${names}`,
+      );
     }
     const from = states.get(transition.from);
     const to = states.get(transition.to);
@@ -338,8 +373,10 @@ function graphProblems(graph: SiteGraph): string[] {
  *    needs.
  * 2. The graph rules. They run only when the schema passes. The state
  *    ids are unique. Each host page is a page state. No two page states
- *    have one URL pattern. Each state is the end of a transition. Each
- *    transition goes from a state to a state and obeys the rules of its
+ *    have one URL pattern, and no two page states of one page type have
+ *    one path. Each state is the end of a transition. Each transition
+ *    goes from a state to a state, no two transitions have the same
+ *    from, action and to, and each transition obeys the rules of its
  *    effect.
  *
  * @throws SiteGraphValidationError that lists every problem of the phase
