@@ -172,7 +172,10 @@ exercises its public surface end-to-end.
   step does not browse, and it does not write `manual.md`.
   `manifest.json:paths.site_graph` names the file. See §5.13. The
   first graph, of the Video Games Shop Manual, is reviewed and
-  accepted (2026-11-12), with two open limits.
+  accepted (2026-11-12). After the review, a `load` trigger fixes the
+  trigger limit, and sharper prompt rules fix the rule breaks of the
+  review. Two reruns show that the model still breaks other prompt
+  rules, and that the breaks change from run to run.
 
 ---
 
@@ -811,8 +814,18 @@ The repair reply gets the same checks. There is no second repair.
 
 - One page type and one path make one page state. A query key goes in
   a URL pattern only when the page needs it to show its content, such
-  as a search query or a category id. A path segment that changes from
-  page to page, such as a category name, is a placeholder.
+  as a search query or a category id. A key whose value selects the
+  item that the page shows stays, also when its name is short or not
+  clear. A path segment that changes from page to page, such as a
+  category name, is a placeholder, also when the inputs show only one
+  such page. Two URL shapes that open the same kind of page, such as a
+  path with and with no name segment, make one state, with the shape
+  that most action lines show.
+- An overlay covers a part of the page. A region that the page makes
+  room for, such as a docked rail, is part of the page, and each of its
+  controls gets one transition from one page that shows it. A control
+  that only selects a value for its page, such as a sort, is one
+  `update_in_place` transition, with no overlay for its list.
 - An action line with no `(path changed)` mark stays on its state, or
   opens an overlay on it. A filter, sort, page or variant change is
   `update_in_place`, also when the URL loads again. `navigate` goes to
@@ -822,10 +835,14 @@ The repair reply gets the same checks. There is no second repair.
   transition from `home`, not one from each page.
 - `from` is the state that shows the control.
 - A behavior that a fragment calls unknown gives no transition.
+- A way to close an overlay that a fragment shows, such as a close
+  button in a Layout line, gives a `close_overlay` transition. A close
+  that a fragment calls unknown gives none.
 - A transition has a trigger that a fragment or the actions show. The
   `load` trigger is for a change that the site makes when a page loads,
   such as an overlay that shows with no shopper action. When no trigger
   of the list fits the input, such as a scroll, there is no transition.
+  A state that then has no transition is not in the graph.
 
 **Schema.** `@shop-gym/core` owns the schema, the closed lists
 (`PAGE_TYPES`, `OVERLAY_KINDS`, `TRANSITION_TRIGGERS`,
@@ -966,12 +983,58 @@ graph is accepted. The review keeps these results:
   - The closed trigger list had no trigger for an overlay that shows
     with no shopper action, such as a sign-in tooltip on page load. The
     model gave such an overlay a trigger that no fragment shows. The
-    `load` trigger now covers this case.
-  - The model breaks some prompt rules that no check catches. A
-    category name stays as text in a path, and a category page loses
-    its id key. One sort control shows as a page control and also as
-    an overlay. A docked rail shows as a popover that a click opens. A
-    menu that a fragment says closes has no close transition.
+    `load` trigger now covers this case. The graph `version` stays
+    `0.1`, because the change only adds a list value and no code reads
+    the graph yet.
+  - The model broke some prompt rules that no check catches. A
+    category name stayed as text in a path, and a category page lost
+    its id key. One sort control showed as a page control and also as
+    an overlay. A docked rail showed as a popover that a click opens. A
+    menu that a fragment says closes had no close transition. Sharper
+    prompt rules now cover these cases.
+
+**Reruns after the follow-ups (2026-11-12).** Two `--from graph` runs
+with the `load` trigger and the sharper prompt rules sent no site
+traffic. The first run used the first wording of the new rules. After
+it, the code review changed the wording and added two rules: a state
+that then has no transition is not in the graph, and two URL shapes of
+one page get the shape that most action lines show. The second run
+used the final prompt. The runs keep these results:
+
+- The first run gave 16 pages, 8 overlays and 78 transitions. Its first
+  reply had two repeated transitions, and the repair reply passed all
+  checks.
+  - It fixed four cases of the review and the trigger limit. The
+    category page is one state, with its id key and with no category
+    name in its path. Each sort control is one `update_in_place`
+    transition. The sign-in tooltip opens with `load`. The menu has a
+    close transition.
+  - The mini cart was still a popover. Two fragments tell about it in
+    different ways: one calls it a small cart popover on the add
+    confirmation page, and one calls it a docked rail that does not
+    cover the page. The graph followed the first fragment.
+  - It broke two rules that the graph before kept or that the review
+    did not name. It had a checkout page that no fragment shows: the
+    checkout fragment says that the cart goes to a sign-in gate, and
+    that no checkout page shows before the gate. A help topic page lost
+    its topic id key and the file extension of its path.
+- The second run gave 11 pages, 7 overlays and 55 transitions, and its
+  first reply passed all checks.
+  - It fixes all five cases of the review and the trigger limit. The
+    category page and the sort control are as in the first run, and
+    the sign-in tooltip opens with `load`. The menu closes to `home`
+    with the Escape key that the actions show. The mini cart is not an
+    overlay.
+  - The two breaks of the first run are gone. The cart goes to the
+    sign-in gate, and the help topic page keeps its file extension and
+    a topic key.
+  - It breaks other rules. It leaves out the brand store pages that the
+    homepage fragment names, and the go-to-cart link of the docked mini
+    cart. It writes the help topic key in snake_case, not with the name
+    that the actions show.
+- So the sharper prompt rules fix the cases that they name, but the
+  model still breaks some rules, and the breaks change from run to
+  run. A reviewer must still read each graph.
 
 ---
 
