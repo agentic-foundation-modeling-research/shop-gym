@@ -60,6 +60,9 @@ const cartSchema = z.object({
 /** The lines of a Shopify `/cart.js` cart. */
 export type Cart = z.infer<typeof cartSchema>;
 
+/** The file in each Iteration's directory that holds its `StartState`. */
+export const START_STATE_FILENAME = 'start_state.json';
+
 /** Where the browser of one Iteration starts. */
 export interface StartState {
   /** The page URL after the start URL loaded, redirects included. */

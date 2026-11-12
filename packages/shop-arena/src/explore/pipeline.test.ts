@@ -17,7 +17,7 @@ import { NOTE_PREFIX, ResumeRefusedError, type RunSummary } from '@shop-gym/harn
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { AnonymizationLeakError } from './anonymization.js';
-import { NAVIGATION_CAP } from './browser.js';
+import { IterationBrowser, NAVIGATION_CAP } from './browser.js';
 import type { FixedAreaGap } from './coverage.js';
 import { SiteGraphReplyError } from './graph.js';
 import { type ExploreStep, exploreStorefront, parseModel, runId } from './pipeline.js';
@@ -1152,6 +1152,60 @@ function genericScripts(siteUrl: string): readonly FakeScript[] {
   ];
 }
 
+type ScriptedCall = NonNullable<FakeScript['toolCalls']>[number];
+
+/** A ref of the Browser tools, such as `e12` or `f2e12`. */
+const REF_RE = /^(?:f\d+)?e\d+$/;
+
+/**
+ * `calls` with each `ref` that names an element, such as `link "Video Games"`,
+ * changed to the ref of that element in the latest snapshot. The Browser
+ * calls run in a new Iteration browser on `siteUrl`, so each ref is the
+ * ref that the same calls get in an executor Iteration.
+ */
+async function withRefs(siteUrl: string, calls: readonly ScriptedCall[]): Promise<ScriptedCall[]> {
+  const browser = await IterationBrowser.launch({
+    episodeId: 'refs',
+    baseUrl: siteUrl,
+    startUrl: `${siteUrl}/`,
+  });
+  const tools = new Map(browser.tools.map((tool) => [tool.name, tool]));
+  const resolved: ScriptedCall[] = [];
+  let snapshot = '';
+  try {
+    await browser.start();
+    for (const call of calls) {
+      const { ref } = call.arguments;
+      const next =
+        typeof ref === 'string' && !REF_RE.test(ref)
+          ? { ...call, arguments: { ...call.arguments, ref: elementRef(snapshot, ref) } }
+          : call;
+      resolved.push(next);
+      const tool = tools.get(call.tool);
+      if (tool === undefined) continue;
+      const { content } = await tool.execute(next.arguments, {
+        cwd: root,
+        callId: 'refs',
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (call.tool === 'snapshot') {
+        snapshot = content.map((part) => (part.type === 'text' ? part.text : '')).join('\n');
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+  return resolved;
+}
+
+/** The ref of the first line `- <element> [ref=...]` of `snapshot`. */
+function elementRef(snapshot: string, element: string): string {
+  const line = snapshot.split('\n').find((text) => text.trimStart().startsWith(`- ${element} [`));
+  const ref = line === undefined ? undefined : /\[ref=([^\]]+)\]/.exec(line)?.[1];
+  if (ref === undefined) throw new Error(`the latest snapshot has no ${element}`);
+  return ref;
+}
+
 /** The Plan tasks of the bot-check plan, highest priority first. */
 const BOT_CHECK_PLAN_TASKS = [
   ['homepage_sections', 'capture every section below the hero', 9],
@@ -1281,6 +1335,61 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
     const prompt = promptText(llm.graphRequest().prompt);
     expect(prompt).toContain('<part task="homepage_sections">');
     expect(prompt).not.toContain('<part task="cart_drawer">');
+  });
+
+  it('puts the actions of each executor Iteration under its Plan task, in run order', async () => {
+    // The leaky homepage Iteration and the clean one both work on homepage_sections.
+    const urls = [undefined, `${baseUrl}/search?q=vase&page=2`, `${baseUrl}/cart`];
+    const scripts = SCRIPTS.map((script, index) => {
+      const url = urls[index];
+      return url === undefined
+        ? script
+        : { ...script, toolCalls: [{ tool: 'navigate', arguments: { url } }] };
+    });
+    const { llm } = await explore({ scripts });
+
+    const prompt = promptText(llm.graphRequest().prompt);
+    expect(prompt).toContain(
+      [
+        '- **Behavior:** static',
+        '</part>',
+        '<actions task="homepage_sections" iteration="exec-0001" start="/">',
+        'navigate -> /search?q={value}&page={value} (path changed)',
+        '</actions>',
+        '<actions task="homepage_sections" iteration="exec-0002" start="/">',
+        'navigate -> /cart (path changed)',
+        '</actions>',
+        '',
+        '<part task="cart_drawer">',
+      ].join('\n'),
+    );
+    expect(prompt).toContain(
+      '</part>\n<actions task="cart_drawer" iteration="exec-0003" start="/">\n</actions>',
+    );
+  });
+
+  it('gives a Plan task with no Iteration only its part and still writes the graph', async () => {
+    const { result: run } = await explore({ scripts: SCRIPTS });
+    // A part written outside the harness: plan.md marks its task done, but
+    // no Iteration selected the task.
+    const planPath = join(run.runDir, 'plan.md');
+    const search = `- [x] search_results ${NOTE_PREFIX} capture the search results [priority: 7]`;
+    writeFileSync(
+      planPath,
+      readFileSync(planPath, 'utf8').replace(/^- \[x\] cart_drawer .*$/m, `$&\n${search}`),
+    );
+    writeFileSync(join(run.runDir, 'artifact', 'parts', 'search_results.md'), SEARCH_RESULTS_PART);
+
+    const { result, llm } = await explore({
+      from: 'graph',
+      llm: new StubLlm(MANUAL, JSON.stringify(SITE_GRAPH)),
+    });
+    expect(result.steps.at(-1)).toMatchObject({ id: 'graph', status: 'ran' });
+    expect(parseSiteGraph(readJson(result.siteGraphPath))).toEqual(SITE_GRAPH);
+    const prompt = promptText(llm.graphRequest().prompt);
+    // search_results is the last Plan task, so its part ends the prompt.
+    expect(prompt).toMatch(/<part task="search_results">\n[^<]*<\/part>\s*$/);
+    expect(prompt).toContain('<actions task="cart_drawer" iteration="exec-0003" start="/">');
   });
 
   it('adds a graph to an existing manual with from graph and no site traffic', async () => {
@@ -2024,6 +2133,53 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
       plan_tasks_done: 1,
       stop: { reason: 'navigation_cap', iteration: 'exec-0001', blocked_tasks: [] },
     });
+  });
+
+  it('gives the graph call each browser action by element name and URL shape', async () => {
+    const toolCalls = await withRefs(site.url, [
+      { tool: 'snapshot', arguments: {} },
+      { tool: 'hover', arguments: { ref: 'link "Video Games"' } },
+      // No snapshot holds this ref, so the click fails.
+      { tool: 'click', arguments: { ref: 'e999' } },
+      { tool: 'type', arguments: { ref: 'searchbox "Search"', text: 'lunar kite', submit: true } },
+      { tool: 'snapshot', arguments: {} },
+      { tool: 'select', arguments: { ref: 'combobox "Sort by"', value: 'Newest arrivals' } },
+      { tool: 'press', arguments: { key: 'Escape' } },
+      { tool: 'scroll', arguments: { direction: 'down' } },
+      { tool: 'wait', arguments: { ms: 1 } },
+      { tool: 'screenshot', arguments: {} },
+      { tool: 'read_file', arguments: { path: 'plan.md' } },
+      { tool: 'back', arguments: {} },
+      { tool: 'snapshot', arguments: {} },
+      { tool: 'click', arguments: { ref: 'link "Shop video games"' } },
+      { tool: 'navigate', arguments: { url: `${site.url}/p/fm-1001?ref=promo-77` } },
+      { tool: 'finish', arguments: { answer: 'done' } },
+    ]);
+    const scripts = genericScripts(site.url).map((script, index) =>
+      index === 1 ? { ...script, toolCalls } : script,
+    );
+    const { llm } = await explore({ url: site.url, scripts });
+
+    const prompt = promptText(llm.graphRequest().prompt);
+    expect(prompt).toContain(
+      [
+        '<actions task="homepage_sections" iteration="exec-0001" start="/">',
+        'hover link "Video Games" -> /',
+        'click unknown element -> / (failed)',
+        'type searchbox "Search" and submit -> /search?q={value} (path changed)',
+        'select combobox "Sort by" -> /search?q={value}',
+        'press "Escape" -> /search?q={value}',
+        'back -> / (path changed)',
+        'click link "Shop video games" -> /d/video-games (path changed)',
+        'navigate -> /p/fm-1001?ref={value} (path changed)',
+        '</actions>',
+      ].join('\n'),
+    );
+    // No ref, host, query value, typed text or selected option goes to the graph call.
+    expect(prompt).not.toMatch(/\b(?:f\d+)?e\d+\b/);
+    for (const leak of [new URL(site.url).hostname, 'lunar', 'promo-77', 'Newest arrivals']) {
+      expect(prompt).not.toContain(leak);
+    }
   });
 });
 

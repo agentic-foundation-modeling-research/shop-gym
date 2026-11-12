@@ -51,14 +51,23 @@ steps on the `@shop-gym/core` pipeline runner:
 | `explore` | `seed/prefetch/` | `run/` (harness workspace: `plan.md`, `iters/`, `artifact/{prefetch,parts,evidence}`, `run.json`) and `explore.json` |
 | `merge` | `explore.json`, `run/plan.md`, `run/artifact/parts/*.caps.json`; on a generic site also `run/artifact/parts/*.product-<key>.json` | `capabilities.json`, `stats.json`, `manifest.json` |
 | `synthesize` | `capabilities.json`, `stats.json`, `brand_terms.json`, `seed/prefetch/`, `run/artifact/parts/*.md` | `manual.md`, only when the final Anonymization scan is clean |
-| `graph` | `capabilities.json`, `manifest.json` (only to run again after each merge), `brand_terms.json`, `seed/prefetch/`, `run/plan.md`, `run/artifact/parts/*.md` | `site_graph.json`, only when the reply passes the graph checks and the final Anonymization scan is clean |
+| `graph` | `capabilities.json`, `manifest.json` (only to run again after each merge), `brand_terms.json`, `seed/prefetch/`, `run/plan.md`, `run/artifact/parts/*.md`, `run/iters/*/` (trajectory, metadata and start state of each Iteration) | `site_graph.json`, only when the reply passes the graph checks and the final Anonymization scan is clean |
 
 The `graph` step writes the Site state graph (`src/explore/graph.ts`,
 prompt `prompts/site_graph.md`). A finished part is the
 `run/artifact/parts/<task_id>.md` of a Plan task that `run/plan.md` marks
 done. The prompt gets the closed lists of `@shop-gym/core` and the merged
 Capabilities. From each finished part it gets only the H2 and H3
-headings and the Behavior lines, under the Plan task id. The one
+headings and the Behavior lines, under the Plan task id. After each part
+come the browser actions of each executor Iteration that selected its
+Plan task, in run order (`src/explore/trajectory-digest.ts`). A line
+names the action and its element, and the URL path after the action.
+The element is its role and name from the latest snapshot that showed
+its ref. Each query value is `{value}`. The prompt has no refs, hosts,
+query values, typed text or selected values. A Plan task with no Iteration,
+for example one whose part was written outside the harness, has only its
+part. The trajectories are not step inputs, because the merge after each
+explore step makes the graph stale. The one
 completion must be one JSON object, bare or in one fenced block. The
 object must pass `parseSiteGraph`, and the `source` of each transition
 must name a finished part. If a check fails, the step fails with

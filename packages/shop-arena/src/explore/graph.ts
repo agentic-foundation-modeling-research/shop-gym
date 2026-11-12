@@ -4,7 +4,10 @@
  *
  * A finished part is the `parts/<task_id>.md` of a Plan task that
  * `plan.md` marks done. The prompt gets only the H2 and H3 headings and
- * the Behavior lines of each one, under its Plan task id. The reply must
+ * the Behavior lines of each one, under its Plan task id. After each part
+ * come the browser actions of each executor Iteration of its Plan task,
+ * in run order. A Plan task with no Iteration, for example one whose part
+ * was written outside the harness, has only its part. The reply must
  * be one JSON object, bare or in one fenced block. It must pass the core
  * graph checks, and each transition must name a finished part as its
  * source. There is no retry.
@@ -26,12 +29,15 @@ import {
 import { parse } from '@shop-gym/harness';
 
 import type { Capabilities } from './capabilities.js';
+import { type IterationActions, readIterationActions } from './trajectory-digest.js';
 
-/** The outline of the part of one finished Plan task. */
+/** The outline of the part of one finished Plan task, and the actions of its Iterations. */
 export interface FinishedPart {
   readonly taskId: string;
   /** The H2 and H3 headings and the Behavior lines of the part, in order. */
   readonly outline: string;
+  /** The executor Iterations that selected the Plan task, in run order. */
+  readonly iterations: readonly IterationActions[];
 }
 
 /** The graph reply is not one JSON object. */
@@ -69,19 +75,37 @@ function partOutline(part: string): string {
 
 /**
  * The finished parts of the harness run in `runDir`, in plan order: each
- * Plan task that `plan.md` marks done and that has a part. The plan, and
- * not the run summary, decides, so a part written outside the harness
- * counts when its task is marked done.
+ * Plan task that `plan.md` marks done and that has a part, with the
+ * browser actions of the executor Iterations that selected the task. The
+ * plan, and not the run summary, decides, so a part written outside the
+ * harness counts when its task is marked done.
  *
  * @throws InvalidPlanError when `plan.md` is not a valid plan.
  */
-export function readFinishedParts(runDir: string): FinishedPart[] {
+export async function readFinishedParts(runDir: string): Promise<FinishedPart[]> {
   const tasks = parse(readFileSync(join(runDir, 'plan.md'), 'utf8'));
+  const iterations = await readIterationActions(runDir);
   return tasks.flatMap((task) => {
     const path = join(runDir, 'artifact', 'parts', `${task.id}.md`);
     if (task.status !== 'done' || !existsSync(path)) return [];
-    return [{ taskId: task.id, outline: partOutline(readFileSync(path, 'utf8')) }];
+    return [
+      {
+        taskId: task.id,
+        outline: partOutline(readFileSync(path, 'utf8')),
+        iterations: iterations.filter((iteration) => iteration.taskId === task.id),
+      },
+    ];
   });
+}
+
+/** The `<actions>` block of one executor Iteration. */
+function actionsBlock(iteration: IterationActions): string {
+  const { taskId, iterId, start, lines } = iteration;
+  return [
+    `<actions task="${taskId}" iteration="${iterId}" start="${start}">`,
+    ...lines,
+    '</actions>',
+  ].join('\n');
 }
 
 function codeList(values: readonly string[]): string {
@@ -106,7 +130,12 @@ function buildGraphPrompt(
     EFFECTS: codeList(TRANSITION_EFFECTS),
     CAPABILITIES: JSON.stringify(capabilities, null, 2),
     PARTS: parts
-      .map((part) => `<part task="${part.taskId}">\n${part.outline}\n</part>`)
+      .map((part) =>
+        [
+          `<part task="${part.taskId}">\n${part.outline}\n</part>`,
+          ...part.iterations.map(actionsBlock),
+        ].join('\n'),
+      )
       .join('\n\n'),
   };
   return template.replace(PLACEHOLDER_RE, (placeholder, name: string) => {

@@ -88,8 +88,11 @@ Re-running with the same output directory resumes the unfinished step.
 After merge, the `graph` step writes `site_graph.json`, the Site state
 graph. The graph has the page and overlay states of the storefront and
 the shopper actions that move between them. The step makes one LLM call
-on the run's model. The call gets the merged Capabilities and the
-headings and Behavior lines of each finished part. The reply must be one
+on the run's model. The call gets the merged Capabilities, the
+headings and Behavior lines of each finished part, and the browser
+actions of each executor Iteration under its Plan task. An action shows
+the element name and the URL path, with no ref, host, query value or
+typed text. The reply must be one
 JSON object that passes `parseSiteGraph` in `@shop-gym/core`. The
 `source` of each transition must name a finished Plan task. If a check
 fails, the step fails and writes no file. There is no retry.
