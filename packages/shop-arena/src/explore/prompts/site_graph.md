@@ -101,18 +101,28 @@ a variant, does not make another state.
   - Each placeholder is a snake_case name in braces, such as
     `{handle}`. A path segment that changes from page to page, such as
     the name of a category or a product, is a placeholder, not site
-    text.
+    text. Use a placeholder such as `{category}` also when the parts
+    and the actions show only one category page. Do not write the name
+    of that category.
   - Each query parameter is a key and a placeholder: `?q={query}`,
     never `?q=shoes` and never a key with no value.
   - Put a query key in the pattern only when the page needs it to show
     its content, such as the query of a search page or the id of a
     category page. Leave out the other keys: tracking, session,
     encoding, filter, sort and page keys.
+  - A key whose value selects the item that the page shows, such as a
+    category id or a product id, is a key that the page needs. A
+    category page with no category id shows no category. Keep such a
+    key, also when its name is short or not clear.
   - No two page states have the same URL pattern. Two patterns that
     differ only in their placeholder names, such as `/products/{id}`
     and `/products/{handle}`, are the same pattern.
   - No two page states of one page type have the same path (the part
     of the pattern before `?`).
+  - Two URL shapes can open the same kind of page, for example a path
+    with a name segment and the same path with no name segment. Make
+    one page state for them. Give it the shape that most action lines
+    show.
 - An overlay state has `"kind": "overlay"`, an `overlay` kind from this
   closed list:
   {{OVERLAY_KINDS}}
@@ -121,6 +131,17 @@ a variant, does not make another state.
   page after an action, such as a modal, a popover or a confirmation
   panel, is an overlay on that page, also when the URL changes only in
   its query.
+  - An overlay covers a part of the page. A region that the page makes
+    room for, such as a docked rail, a banner or a sticky bar, is part
+    of the page. It is not an overlay, also when its markup is a
+    dialog. For example, when a part says that the page content
+    narrows to make room for the region, the region is part of the
+    page. Give each control of the region one transition, from one
+    page state that shows the region.
+  - A control that only selects a value for its page, such as a sort or
+    a page size select, is part of the page. It is not an overlay, also
+    when it opens a list. Give one `update_in_place` transition for its
+    choice, and no overlay for its list.
 - The header and the footer show on every page. An overlay that a
   header or footer control opens lists every page state in `on`. A
   header or footer control gets one transition from `home`, not one
@@ -129,12 +150,22 @@ a variant, does not make another state.
 ### Transitions
 
 A transition is one shopper action that goes from one state to another.
+A change that the site makes with no shopper action, such as an
+overlay that shows when a page loads, is also a transition.
 
 - `from`, `to` - the ids of two states of this graph. `from` is the
   state that shows the control: a link in a homepage section starts on
   `home`, also when the part tells about the page that the link opens.
 - `trigger` - the input that starts the action, from this closed list:
   {{TRIGGERS}}
+  - `load` is not a shopper input. The site starts the action when the
+    page loads. Use `load` when a part says that a state shows with no
+    shopper action, for example a prompt that shows when the page
+    loads.
+  - Give a trigger that the part or the actions show. Do not pick the
+    nearest trigger. When no trigger of the list fits the input, such
+    as a scroll, give no transition. When a state then has no
+    transition, do not add the state to the graph.
 - `action` - a snake_case action kind, for example `open_result`,
   `add_to_cart` or `apply_filter`. Give the same action the same name.
 - `effect` - what the action changes, from this closed list:
@@ -178,6 +209,10 @@ A transition is one shopper action that goes from one state to another.
 - A part writes `unknown` for a behavior that the explorer did not see.
   Such a behavior shows no transition: when a part says that closing an
   overlay is unknown, give no transition that closes it.
+- When a part shows a way to close an overlay, such as a close button,
+  give a `close_overlay` transition for it. Do this also when only a
+  Layout line names the close button. But when a part calls that close
+  `unknown`, give no transition for it.
 - Each `from` and `to` names a state of the graph, and no two states
   have the same id.
 - Each state is the `from` or the `to` of one or more transitions. Do

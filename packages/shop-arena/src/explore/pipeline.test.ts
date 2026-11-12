@@ -1308,7 +1308,7 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
       '`home`, `collection`, `product`, `search`, `cart`, `page`, `policy`, `login`, `register`, `account`, `addresses`, `order_detail`, `checkout`, `checkout_confirmation`, `other`',
     );
     expect(prompt).toContain('`modal`, `side_sheet`, `popover`, `dropdown`, `flyout`');
-    expect(prompt).toContain('`click`, `hover`, `type`, `submit`, `key`');
+    expect(prompt).toContain('`click`, `hover`, `type`, `submit`, `key`, `load`');
     expect(prompt).toContain(
       '`navigate`, `open_overlay`, `swap_overlay`, `close_overlay`, `update_in_place`',
     );
