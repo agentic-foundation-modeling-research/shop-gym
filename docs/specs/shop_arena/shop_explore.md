@@ -42,8 +42,8 @@ exercises its public surface end-to-end.
 - **Storefront** — the public, unauthenticated view of an online store at a given base URL.
 - **Shop Manual** — the bundle this module emits for one storefront run:
   `manual.md` (prose), `capabilities.json` (structured features),
-  `stats.json` (analysis statistics), per-task evidence, and a
-  `manifest.json`. See §5.4.
+  `stats.json` (analysis statistics), `site_graph.json` (the Site state
+  graph, §5.13), per-task evidence, and a `manifest.json`. See §5.4.
 - **Capability** — a structured, schema-validated tag describing one
   feature of the storefront (e.g. `cart.type=drawer`,
   `search.has_predictive=true`, `collection.filters=[size,color,price]`).
@@ -62,6 +62,13 @@ exercises its public surface end-to-end.
   product-identifying strings so the manual describes structure and UX
   patterns, not the original shop. v0.1 enforces this only via prompt
   rules; no deterministic post-pass scrubber.
+- **Site state graph** - the published file `site_graph.json`. It tells
+  how a shopper moves through the storefront: its states are pages and
+  overlays, and its transitions are shopper actions from one state to
+  another. See §5.13.
+- **Trajectory digest** - the browser actions of one executor
+  Iteration, one line for each action. The `graph` step gives it to its
+  LLM call. It has no refs, hosts, query values or typed text.
 
 ---
 
@@ -152,6 +159,20 @@ exercises its public surface end-to-end.
   internal request names and the site's own feature names into generic
   words. These are prompt rules; the final scan matches only the brand
   markers and the host.
+- Site state graph (2026-11-11): a fifth step, `graph`, runs after
+  `merge` and writes `site_graph.json` with one `LlmClient.complete`
+  call, and one repair call when the reply fails a check. It reads the
+  finished fragments with no Styling lines, the Trajectory digests of
+  their executor Iterations, and the merged Capabilities.
+  `parseSiteGraph` of `@shop-gym/core` checks the reply with a closed
+  schema and graph rules. The step adds a source check and the
+  Anonymization scan. A failed check of the repair reply, or a leak,
+  writes no file.
+  `--from graph` adds a graph to an existing Shop Manual. The graph
+  step does not browse, and it does not write `manual.md`.
+  `manifest.json:paths.site_graph` names the file. See §5.13. The
+  first graph, of the Video Games Shop Manual, is reviewed and
+  accepted (2026-11-12), with two open limits.
 
 ---
 
@@ -363,8 +384,9 @@ outputs/shop_manuals/<domain>/<run_id>/
             └── network.jsonl # optional: captured XHR responses
 ```
 
-The five **published** files (`manual.md`, `capabilities.json`,
-`stats.json`, `manifest.json`, plus the `prefetch/` directory) form the
+The six **published** files (`manual.md`, `capabilities.json`,
+`stats.json`, `manifest.json`, `site_graph.json` (§5.13), plus the
+`prefetch/` directory) form the
 contract consumed by downstream `shop_arena.gen`. Everything else
 (`parts/`, `evidence/`, harness telemetry) is debugging context and may
 be excluded by tooling that ships manuals around.
@@ -702,6 +724,250 @@ Tests live under `packages/shop_arena/tests/explore/` and exercise:
   recorded `shop_arena.explore` cassette (one fixture storefront).
 - Anonymization regex scan over the synthesized manual.
 
+### 5.13 Site state graph
+
+The `graph` step writes `site_graph.json`, the **Site state graph** of
+the storefront. A Shop Manual tells what each page looks like and what
+its sections do. The graph tells how a shopper moves through the
+storefront: which action on which page opens which page or overlay.
+The graph is abstract, like a UX prototype. It has one state for each
+page type and URL shape, not one for each page that the executors
+opened. It has no locators, element ids, product ids or site text.
+
+**Place in the pipeline.** The steps are
+`prefetch | explore | merge | synthesize | graph`. The step reads
+`capabilities.json`, so the runner puts it after `merge`. `synthesize`
+and `graph` are two branches after `merge`: `graph` does not read
+`manual.md`, and `synthesize` does not read the graph. So:
+
+- `--from graph` forces only the graph step. It does not browse, and
+  it does not write `manual.md` again. But the runner still runs each
+  earlier step whose inputs changed, and the input fingerprints of
+  `runPipeline` hold absolute paths. When a run must send no site
+  traffic, use the same output path as the earlier runs, and check
+  that each record in `.pipeline/` matches its inputs first.
+- `--from merge` runs the graph step again: merge writes
+  `manifest.json` again with a new `merged_at`, and the manifest is an
+  input of the graph step.
+- The runner skips a complete graph step on a later call with the same
+  inputs. The inputs are `capabilities.json`, `manifest.json`,
+  `brand_terms.json`, `seed/prefetch/` and `run/plan.md`. The fragments
+  and the trajectories are not inputs. Only the explore step writes the
+  trajectories, and the merge after it makes the graph stale. After a
+  change to a fragment with no merge, use `--from graph` or
+  `--from merge`.
+
+**Prompt inputs.** The prompt is a plain Markdown file,
+`prompts/site_graph.md`, with `{{NAME}}` placeholders. The step fills
+them in one pass. The closed lists come from `@shop-gym/core`. The
+prompt gets three inputs:
+
+- **Fragments.** A finished fragment is the `parts/<task_id>.md` of a
+  Plan task that `plan.md` marks done. `plan.md` decides, so a fragment
+  written outside the harness counts when its task is done. For each
+  finished fragment, the prompt gets one `<part task="<id>">` block
+  that holds the fragment, but not its Styling lines or their wrapped
+  lines. A wrapped line has more indent than its Styling bullet. The
+  Styling lines tell how the storefront looks, not how a shopper moves
+  through it. The other lines can name paths and states that no
+  Behavior line names, for example a register path in a Layout line.
+- **Trajectory digest.** After each fragment come the
+  `<actions task="<id>" iteration="<id>" start="<path>">` blocks of the
+  executor Iterations that selected its Plan task, in run order. Each
+  line is `<action> -> <path after the action>`:
+  - Only `navigate`, `back`, `click`, `hover`, `select`, `type` and
+    `press` give a line. Snapshot, wait, scroll, screenshot, evaluate,
+    finish and file tool calls give no line.
+  - A ref becomes the role and accessible name of its element. The name
+    comes from the newest earlier snapshot that holds the ref. A ref
+    that no snapshot showed is `unknown element`.
+  - `type` shows the element. It adds `and submit` when the call
+    submitted. It never shows the text. `select` shows no value.
+    `press` shows the key.
+  - The path has no scheme and no host. Each query value is `{value}`,
+    and the step drops the fragment identifier. `(path changed)` marks
+    an action that went to another path. `(failed)` marks an action
+    that failed or got no result.
+  - The `start` path comes from the `start_state.json` of the
+    Iteration. A run from before start states shows `unknown path`.
+  - Each `source` must name a finished fragment. So the step leaves
+    out the Iterations of Plan tasks that are not done. A Plan task with
+    no Iteration has only its fragment, for example when its fragment
+    was written outside the harness.
+- **Capabilities.** The merged `capabilities.json`. For example, it
+  tells the LLM that the cart is a drawer.
+
+**The call.** The step makes one `LlmClient.complete` call with the
+model of the run. The reply is one JSON object, bare or in one fenced
+block. When the reply fails a check, the step logs the problems and
+makes one repair call. A reply fails a check when it is not one JSON
+object, when it breaks the schema or a graph rule, or when a `source`
+names no finished fragment. `LlmClient.complete` takes one prompt, so
+the repair prompt is the graph prompt, then
+`prompts/site_graph_repair.md` with the reply and the list of problems.
+The repair reply gets the same checks. There is no second repair.
+
+**Prompt rules.** Some rules of the prompt have no check in code:
+
+- One page type and one path make one page state. A query key goes in
+  a URL pattern only when the page needs it to show its content, such
+  as a search query or a category id. A path segment that changes from
+  page to page, such as a category name, is a placeholder.
+- An action line with no `(path changed)` mark stays on its state, or
+  opens an overlay on it. A filter, sort, page or variant change is
+  `update_in_place`, also when the URL loads again. `navigate` goes to
+  another page: another state, or another page of the same state.
+- The header and the footer show on every page. Their overlays list
+  every page state as a host page, and each of their controls gets one
+  transition from `home`, not one from each page.
+- `from` is the state that shows the control.
+- A behavior that a fragment calls unknown gives no transition.
+
+**Schema.** `@shop-gym/core` owns the schema, the closed lists
+(`PAGE_TYPES`, `OVERLAY_KINDS`, `TRANSITION_TRIGGERS`,
+`TRANSITION_EFFECTS`) and `parseSiteGraph`. So ShopArena writes the
+file and later readers read it with one definition. All ids and names
+are snake_case.
+
+```ts
+type SiteGraph = {
+  version: '0.1';
+  states: State[];
+  transitions: Transition[];
+};
+
+type State =
+  | { id: string; kind: 'page'; page_type: PageType; url_pattern: string }
+  | {
+      id: string;
+      kind: 'overlay';
+      overlay: 'modal' | 'side_sheet' | 'popover' | 'dropdown' | 'flyout';
+      on: string[]; // ids of the page states that the overlay opens on
+    };
+
+type Transition = {
+  from: string;
+  to: string;
+  trigger: 'click' | 'hover' | 'type' | 'submit' | 'key';
+  action: string; // action kind, for example 'open_result', 'add_to_cart'
+  effect: 'navigate' | 'open_overlay' | 'swap_overlay' | 'close_overlay' | 'update_in_place';
+  params?: string[]; // for example ['query']
+  needs?: string[]; // for example ['variant']
+  source: string; // the Plan task whose fragment or Trajectory digest shows it
+};
+```
+
+`PageType` is `home | collection | product | search | cart | page |
+policy | login | register | account | addresses | order_detail |
+checkout | checkout_confirmation | other`.
+
+`parseSiteGraph` first checks the closed schema. Only when the schema
+passes does it check the graph rules. It throws
+`SiteGraphValidationError`, which lists every problem of the first
+check that fails.
+
+1. The closed schema:
+   - An unknown field or list value fails.
+   - A URL pattern starts with one `/` and has no `://`, so it is not
+     an absolute URL and holds none. It uses only `{name}`
+     placeholders, and it has a placeholder for each query value.
+   - An overlay has one or more host pages.
+   - `params` and `needs` have no repeated item.
+2. The graph rules:
+   - State ids are unique. Each `from` and `to` names a state, and each
+     host page names a page state.
+   - No two page states have one URL pattern. Two patterns that differ
+     only in their placeholder names count as one.
+   - No two page states of one page type have one path, the part of the
+     pattern before `?`. Two states with one URL pattern give only the
+     problem of the rule before.
+   - Each state is the `from` or the `to` of one or more transitions.
+   - A `navigate` transition ends on a page.
+   - An `open_overlay` transition ends on an overlay and starts on one
+     of its host pages.
+   - A `swap_overlay` transition goes from an overlay to a different
+     overlay.
+   - A `close_overlay` transition starts on an overlay and ends on one
+     of its host pages.
+   - An `update_in_place` transition has the same `from` and `to`.
+   - No two transitions have the same `from`, `action` and `to`.
+
+The step adds one rule that core cannot check: each `source` names a
+finished fragment.
+
+**Anonymization.** Before it writes the file, the step scans the graph
+text with the same scanner as the final scan of synthesize. The scanner
+matches the host, the brand tokens of the host name and of the
+prefetched homepage, the Brand terms and email addresses. In a `.json`
+file the scan reads only the values. It has no general pattern for
+absolute URLs, but the schema keeps them out of the graph: ids, actions,
+params and needs are snake_case, and a URL pattern has no `://`. The
+prompt forbids site text: button labels, headings, product names and
+ids.
+
+**Failure.** The step fails with `StepFailedError` for `graph`, and
+writes no `site_graph.json`, in three cases:
+
+- The repair reply is not one JSON object (`SiteGraphReplyError`).
+- The repair reply breaks a check (`SiteGraphValidationError`).
+- The scan finds a leak (`AnonymizationLeakError`). A leak gets no
+  repair call.
+
+**Output.** `site_graph.json` is a published file at `<run_id>/`, next
+to `capabilities.json`. Merge writes `paths.site_graph` into
+`manifest.json`, as it writes `paths.manual` before synthesize runs.
+So a manifest from before the graph step does not name the file until
+the next merge. `ExploreResult` names the path as `siteGraphPath`. The
+CLI output does not change: its last line is still the manual path. The
+step logs one line with the counts of pages, overlays and transitions.
+
+**Changes to the first graph design.** Decision 12 of the Source
+bundles spec review
+(`packages/reports/pages/2026-11-03-source-bundles-review.html`) gave a
+first shape of the graph. Its states had `id`, `page_type` and
+`url_pattern`. Its transitions had `from`, `to`, `action`, `params` and
+`needs`. It also had a `weights` block. The graph that shipped changes
+that shape:
+
+- A state has a kind. An overlay is a state of its own, with a kind
+  from a closed list. So a cart drawer or a filter sheet is a step in
+  a flow.
+- An overlay names one or more host pages, not one, because a header
+  widget opens on every page.
+- A transition adds `trigger`, `effect` and `source`.
+- Two graph rules are new: one page state for each page type and path,
+  and one transition for each `from`, `action` and `to`.
+- The page types of two words are snake_case: `order_detail`,
+  `checkout_confirmation`.
+- The graph has a `version`.
+- The graph has no `weights` block (see §8.3).
+
+**Review of the first graph (2026-11-12).** The first graph is of the
+Video Games Shop Manual: 15 pages, 9 overlays and 78 transitions, from
+a `--from merge` run and a `--from graph` run with no site traffic. The
+review page is
+`packages/reports/pages/2026-11-12-video-games-site-graph.html`. The
+graph is accepted. The review keeps these results:
+
+- The graph follows the rules in three places that can look wrong:
+  - An overlay whose close or accept a fragment calls unknown has no
+    transition for it. So the add-on sheet after add to cart has only
+    its decline transition, and an overlay can have no exit.
+  - A step with no path of its own in the inputs is part of the state
+    that it shows as. So the add-to-cart confirmation page is part of
+    the cart state.
+  - A variant pick that loads another product path is `navigate`, a
+    loop on the product state.
+- Two limits stay open:
+  - The closed trigger list has no trigger for an overlay that shows
+    with no shopper action, such as a sign-in tooltip on page load. The
+    model gives such an overlay a trigger that no fragment shows.
+  - The model breaks some prompt rules that no check catches. A
+    category name stays as text in a path, and a category page loses
+    its id key. One sort control shows as a page control and also as
+    an overlay. A docked rail shows as a popover that a click opens. A
+    menu that a fragment says closes has no close transition.
+
 ---
 
 ## 6. Alternatives
@@ -811,3 +1077,9 @@ updated. Tag `shop-explore-v0.1.0`.
   `--headed` flag.
 - **Authenticated flows** (account, wishlists) once we have a
   stable test-account story.
+- **Uses of the Site state graph** (§5.13). Shop generation can carry
+  the graph into a SandboxShop and add a `weights` block from shopper
+  behavior data. A Build loop Verifier can walk each transition. Task
+  generation (`docs/specs/shop_guru/task_generation_proposal.md`) can
+  list the transitions that its tasks do not reach. Named flows, such
+  as search to purchase, can go on top of the transitions.

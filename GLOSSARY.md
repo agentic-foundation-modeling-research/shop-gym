@@ -50,7 +50,7 @@ The anonymized description of one storefront's structure, features, and UX: pros
 _Avoid_: manual (alone), seed manual, Seed Shop Manual
 
 **Site state graph**:
-The graph in `site_graph.json` that tells how a shopper moves through one storefront, like a UX prototype. Its states are pages and overlays. A page has a page type from a closed list and a URL pattern. An overlay, such as a modal or a side sheet, opens on pages. Its transitions are shopper actions from one state to another. Each transition has a trigger, an action kind and an effect, and its source names the Plan task whose fragment or Trajectory digest shows it. The `graph` step of Storefront exploration writes the graph with one LLM call, from the fragments of the finished Plan tasks, the Trajectory digests of their Iterations, and the Capabilities.
+The graph in `site_graph.json` that tells how a shopper moves through one storefront, like a UX prototype. Its states are pages and overlays. A page has a page type from a closed list and a URL pattern. An overlay, such as a modal or a side sheet, opens on pages. Its transitions are shopper actions from one state to another. Each transition has a trigger, an action kind and an effect, and its source names the Plan task whose fragment or Trajectory digest shows it. The `graph` step of Storefront exploration writes the graph with one LLM call, and one repair call when the reply fails a check, from the fragments of the finished Plan tasks, the Trajectory digests of their Iterations, and the Capabilities.
 _Avoid_: Interaction graph, transition state, site map
 
 **Trajectory digest**:

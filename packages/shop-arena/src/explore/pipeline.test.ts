@@ -379,20 +379,29 @@ function isGraphRequest(request: CompleteRequest): boolean {
 }
 
 /**
- * A scripted completion client: the synthesis call gets `text` and the
- * graph call gets `graph`.
+ * A scripted completion client: the synthesis call gets `text`, and the
+ * graph calls get `graphs` in order, the last one again after the end.
+ * With no `graphs`, each graph call gets the empty graph.
  */
 class StubLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
+  private readonly graphs: readonly string[];
 
   constructor(
     private readonly text: string = MANUAL,
-    private readonly graph: string = JSON.stringify(EMPTY_GRAPH),
-  ) {}
+    ...graphs: readonly string[]
+  ) {
+    this.graphs = graphs.length > 0 ? graphs : [JSON.stringify(EMPTY_GRAPH)];
+  }
+
+  /** The graph requests, in order. */
+  graphRequests(): CompleteRequest[] {
+    return this.requests.filter(isGraphRequest);
+  }
 
   /** The one graph request. */
   graphRequest(): CompleteRequest {
-    const [request, ...others] = this.requests.filter(isGraphRequest);
+    const [request, ...others] = this.graphRequests();
     expect(others).toEqual([]);
     if (request === undefined) throw new Error('the graph step made no request');
     return request;
@@ -400,8 +409,9 @@ class StubLlm implements LlmClient {
 
   async complete(request: CompleteRequest): Promise<Completion> {
     this.requests.push(request);
+    const index = Math.min(this.graphRequests().length, this.graphs.length) - 1;
     return {
-      text: isGraphRequest(request) ? this.graph : this.text,
+      text: isGraphRequest(request) ? (this.graphs[index] ?? '') : this.text,
       model: request.model.id,
       stopReason: 'end_turn',
       usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
@@ -1290,7 +1300,7 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
     expect(logs).toContain('wrote site_graph.json: pages 2, overlays 1, transitions 3');
   });
 
-  it('gives the graph call the closed lists, the capabilities, and the outline of each finished part', async () => {
+  it('gives the graph call the closed lists, the capabilities, and each finished part without its Styling lines', async () => {
     const { llm } = await explore({ scripts: SCRIPTS });
 
     const prompt = promptText(llm.graphRequest().prompt);
@@ -1304,12 +1314,36 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
     );
     expect(prompt).toContain('"type": "drawer"');
     expect(prompt).toContain(
-      '<part task="homepage_sections">\n## Homepage Sections\n### Section 1 - Hero\n- **Behavior:** static\n</part>',
+      [
+        '<part task="homepage_sections">',
+        '## Homepage Sections',
+        '',
+        '### Section 1 - Hero',
+        '',
+        '- **Type:** full-bleed hero banner',
+        '- **Layout:** single column',
+        '- **Content:** headline and one call to action',
+        '- **Behavior:** static',
+        '- **UX Notes:** none',
+        '</part>',
+      ].join('\n'),
     );
     expect(prompt).toContain(
-      '<part task="cart_drawer">\n## Cart Drawer\n### Filled state\n- **Behavior:** opens on add to cart\n</part>',
+      [
+        '<part task="cart_drawer">',
+        '## Cart Drawer',
+        '',
+        '### Filled state',
+        '',
+        '- **Type:** slide-in drawer',
+        '- **Layout:** single column',
+        '- **Content:** line items with quantity steppers',
+        '- **Behavior:** opens on add to cart',
+        '- **UX Notes:** none',
+        '</part>',
+      ].join('\n'),
     );
-    expect(prompt).not.toContain('**Type:**');
+    expect(prompt).not.toContain('**Styling:**');
     expect(prompt).not.toContain('{{');
   });
 
@@ -1351,7 +1385,7 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
     const prompt = promptText(llm.graphRequest().prompt);
     expect(prompt).toContain(
       [
-        '- **Behavior:** static',
+        '- **UX Notes:** none',
         '</part>',
         '<actions task="homepage_sections" iteration="exec-0001" start="/">',
         'navigate -> /search?q={value}&page={value} (path changed)',
@@ -1390,6 +1424,54 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
     // search_results is the last Plan task, so its part ends the prompt.
     expect(prompt).toMatch(/<part task="search_results">\n[^<]*<\/part>\s*$/);
     expect(prompt).toContain('<actions task="cart_drawer" iteration="exec-0003" start="/">');
+  });
+
+  it('leaves out the wrapped lines of a Styling line', async () => {
+    const { result: run } = await explore({ scripts: SCRIPTS });
+    const cartPath = join(run.runDir, 'artifact', 'parts', 'cart_drawer.md');
+    const wrapped = '- **Styling:** overlay\n  with a dark scrim';
+    writeFileSync(
+      cartPath,
+      readFileSync(cartPath, 'utf8').replace('- **Styling:** overlay', wrapped),
+    );
+
+    const { llm } = await explore({ from: 'graph' });
+    expect(promptText(llm.graphRequest().prompt)).toContain(
+      '- **Behavior:** opens on add to cart\n- **UX Notes:** none\n</part>',
+    );
+  });
+
+  it('keeps the indented line after an indented Styling line when it is a new field', async () => {
+    const { result: run } = await explore({ scripts: SCRIPTS });
+    const cartPath = join(run.runDir, 'artifact', 'parts', 'cart_drawer.md');
+    const indented = readFileSync(cartPath, 'utf8')
+      .replace(/^- \*\*/gm, '  - **')
+      .replace('  - **Styling:** overlay', '  - **Styling:** overlay\n    with a dark scrim');
+    writeFileSync(cartPath, indented);
+
+    const { llm } = await explore({ from: 'graph' });
+    const prompt = promptText(llm.graphRequest().prompt);
+    expect(prompt).toContain(
+      '  - **Behavior:** opens on add to cart\n  - **UX Notes:** none\n</part>',
+    );
+    expect(prompt).not.toContain('dark scrim');
+  });
+
+  it('fails the graph step with the problems of the repair reply', async () => {
+    const llm = new StubLlm(
+      MANUAL,
+      JSON.stringify(withState(0, { page_type: 'department' })),
+      JSON.stringify(withTransition(1, { to: 'checkout' })),
+    );
+
+    await expect(explore({ scripts: SCRIPTS, llm })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof StepFailedError &&
+        error.cause instanceof SiteGraphValidationError &&
+        error.cause.message.includes('transitions[1].to names no state: "checkout"') &&
+        !error.cause.message.includes('department'),
+    );
+    expect(llm.graphRequests()).toHaveLength(2);
   });
 
   it('adds a graph to an existing manual with from graph and no site traffic', async () => {
@@ -1441,14 +1523,15 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
     expect(parseSiteGraph(readJson(result.siteGraphPath))).toEqual(SITE_GRAPH);
   });
 
-  it('fails the graph step with the leak error on a brand token and writes no graph', async () => {
+  it('fails the graph step with the leak error on a brand token, with no repair call, and writes no graph', async () => {
     const leaky = {
       ...SITE_GRAPH,
       states: SITE_GRAPH.states.map((state) =>
         state.id === 'product' ? { ...state, url_pattern: '/fixture-picks/{handle}' } : state,
       ),
     };
-    const run = explore({ scripts: SCRIPTS, llm: new StubLlm(MANUAL, JSON.stringify(leaky)) });
+    const llm = new StubLlm(MANUAL, JSON.stringify(leaky));
+    const run = explore({ scripts: SCRIPTS, llm });
 
     await expect(run).rejects.toSatisfy(
       (error: unknown) =>
@@ -1457,6 +1540,7 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
         error.cause instanceof AnonymizationLeakError,
     );
     await expect(run).rejects.toThrow(/site_graph\.json:\d+ \[fixture\]: "url_pattern"/);
+    llm.graphRequest();
     expect(existsSync(join(outDir, 'site_graph.json'))).toBe(false);
   });
 
@@ -1469,6 +1553,30 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
   const withTransition = (index: number, edit: Record<string, unknown>) => ({
     ...SITE_GRAPH,
     transitions: SITE_GRAPH.transitions.map((t, i) => (i === index ? { ...t, ...edit } : t)),
+  });
+
+  it('asks once for a repair when the reply fails a check, and writes the repaired graph', async () => {
+    const bad = JSON.stringify(withTransition(0, { to: 'cart_drawer' }));
+    const llm = new StubLlm(MANUAL, bad, fencedJson(SITE_GRAPH));
+    const { result, logs } = await explore({ scripts: SCRIPTS, llm });
+
+    expect(result.steps.at(-1)).toMatchObject({ id: 'graph', status: 'ran' });
+    expect(parseSiteGraph(readJson(result.siteGraphPath))).toEqual(SITE_GRAPH);
+    const [first, repair, ...others] = llm
+      .graphRequests()
+      .map((request) => promptText(request.prompt));
+    expect(others).toEqual([]);
+    // The repair call gets the first prompt, then the reply and its problems.
+    const problem =
+      'transitions[0] goes from "home" to "cart_drawer": a navigate transition ends on a page';
+    expect(first).toBeDefined();
+    expect(repair?.startsWith(`${first}\n`)).toBe(true);
+    expect(repair).toContain(`<reply>\n${bad}\n</reply>`);
+    expect(repair).toContain(`- ${problem}`);
+    expect(repair).not.toContain('{{');
+    expect(logs).toContain(
+      `the graph reply failed its checks; asking once for a repair:\nthe site state graph has 1 problem(s):\n- ${problem}`,
+    );
   });
 
   it.each([
@@ -1503,8 +1611,9 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
       /transitions\[0\]\.source names no finished part: "footer"/,
     ],
   ])(
-    'fails the graph step with no retry and writes no graph when the reply %s',
+    'fails the graph step after one repair call and writes no graph when each reply %s',
     async (_name, reply, type, message) => {
+      // The repair call gets the same reply again.
       const llm = new StubLlm(MANUAL, reply);
       const run = explore({ scripts: SCRIPTS, llm });
 
@@ -1515,7 +1624,7 @@ describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
           error.cause instanceof type,
       );
       await expect(run).rejects.toThrow(message);
-      llm.graphRequest();
+      expect(llm.graphRequests()).toHaveLength(2);
       expect(existsSync(join(outDir, 'site_graph.json'))).toBe(false);
       expect(existsSync(join(outDir, 'manual.md'))).toBe(true);
     },

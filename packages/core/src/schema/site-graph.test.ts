@@ -238,6 +238,7 @@ describe('parseSiteGraph', () => {
       ['products/{handle}', ONE_SLASH],
       ['https://shop.example/products/{handle}', ONE_SLASH],
       ['//shop.example/products/{handle}', ONE_SLASH],
+      ['/out/https://shop.example/products/{handle}', ONE_SLASH],
       ['/products/{productHandle}', PLACEHOLDERS],
       ['/products/{handle', PLACEHOLDERS],
       ['/search?q=shoes', QUERY_VALUES],
@@ -249,8 +250,25 @@ describe('parseSiteGraph', () => {
       ]);
     });
 
-    it('accepts two page states with the same path and another query', () => {
+    it('accepts two page states of different page types with the same path', () => {
       expect(() => parseSiteGraph(withState(1, { url_pattern: '/?q={query}' }))).not.toThrow();
+    });
+
+    it('rejects two page states of one page type with the same path and another query', () => {
+      const graph = withState(1, {
+        page_type: 'product',
+        url_pattern: '/products/{id}?v={variant}',
+      });
+      expect(validationError(graph).problems).toEqual([
+        'states[2].url_pattern has the same path as states[1].url_pattern, and both are "product" pages: "/products/{handle}"',
+      ]);
+    });
+
+    it('gives one problem for two page states of one page type with one URL pattern', () => {
+      const graph = withState(1, { page_type: 'product', url_pattern: '/products/{id}' });
+      expect(validationError(graph).problems).toEqual([
+        'states[2].url_pattern matches the same URLs as states[1].url_pattern: "/products/{handle}"',
+      ]);
     });
 
     it.each([
@@ -440,6 +458,23 @@ describe('parseSiteGraph', () => {
       ],
     ])('rejects %s and names the rule', (_name, graph, problem) => {
       expect(validationError(graph).problems).toEqual([problem]);
+    });
+  });
+
+  describe('repeated transitions', () => {
+    it('accepts one action from one state to two states', () => {
+      const graph = withAddedTransitions({ ...GRAPH.transitions[1], to: 'search' });
+      expect(() => parseSiteGraph(graph)).not.toThrow();
+    });
+
+    it.each([
+      ['the same transition', {}],
+      ['another trigger and source', { trigger: 'key', source: 'related_products' }],
+    ])('rejects a transition with the from, action and to of an earlier one: %s', (_name, edit) => {
+      const graph = withAddedTransitions({ ...GRAPH.transitions[1], ...edit });
+      expect(validationError(graph).problems).toEqual([
+        'transitions[7] has the same from, action and to as transitions[1]: "search", "open_result", "product"',
+      ]);
     });
   });
 
