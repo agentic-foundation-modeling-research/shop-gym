@@ -12,13 +12,15 @@ import {
   readTrajectory,
 } from '@shop-gym/agent';
 import { FakeRuntime, type FakeScript } from '@shop-gym/agent/testing';
-import { StepFailedError } from '@shop-gym/core';
+import { SiteGraphValidationError, StepFailedError, parseSiteGraph } from '@shop-gym/core';
 import { NOTE_PREFIX, ResumeRefusedError, type RunSummary } from '@shop-gym/harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { AnonymizationLeakError } from './anonymization.js';
 import { NAVIGATION_CAP } from './browser.js';
 import type { FixedAreaGap } from './coverage.js';
-import { exploreStorefront, parseModel, runId } from './pipeline.js';
+import { SiteGraphReplyError } from './graph.js';
+import { type ExploreStep, exploreStorefront, parseModel, runId } from './pipeline.js';
 import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
 import {
   BOT_CHECK_PAGE,
@@ -321,15 +323,85 @@ function expectShopBlockOwner(planner: string): void {
   );
 }
 
+/** A Site state graph with no states, which is valid for any finished parts. */
+const EMPTY_GRAPH = { version: '0.1', states: [], transitions: [] };
+
+/**
+ * A Site state graph whose transitions come from the finished parts of
+ * `SCRIPTS`. Its `home` state passes the scan, although the fixture title
+ * "Fixture Shop | Home" has a "Home" segment.
+ */
+const SITE_GRAPH = {
+  version: '0.1',
+  states: [
+    { id: 'home', kind: 'page', page_type: 'home', url_pattern: '/' },
+    { id: 'product', kind: 'page', page_type: 'product', url_pattern: '/products/{handle}' },
+    { id: 'cart_drawer', kind: 'overlay', overlay: 'side_sheet', on: ['product'] },
+  ],
+  transitions: [
+    {
+      from: 'home',
+      to: 'product',
+      trigger: 'click',
+      action: 'open_product',
+      effect: 'navigate',
+      source: 'homepage_sections',
+    },
+    {
+      from: 'product',
+      to: 'cart_drawer',
+      trigger: 'click',
+      action: 'add_to_cart',
+      effect: 'open_overlay',
+      needs: ['variant'],
+      source: 'cart_drawer',
+    },
+    {
+      from: 'cart_drawer',
+      to: 'product',
+      trigger: 'click',
+      action: 'close_cart',
+      effect: 'close_overlay',
+      source: 'cart_drawer',
+    },
+  ],
+};
+
+/** `value` as JSON in one fenced block, as a model often replies. */
+function fencedJson(value: unknown): string {
+  return `\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\`\n`;
+}
+
+/** True for the graph call, whose prompt starts with the title of the graph prompt. */
+function isGraphRequest(request: CompleteRequest): boolean {
+  const title = readPrompt('site_graph.md').split('\n', 1)[0] ?? '';
+  return promptText(request.prompt).startsWith(title);
+}
+
+/**
+ * A scripted completion client: the synthesis call gets `text` and the
+ * graph call gets `graph`.
+ */
 class StubLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
 
-  constructor(private readonly text: string = MANUAL) {}
+  constructor(
+    private readonly text: string = MANUAL,
+    private readonly graph: string = JSON.stringify(EMPTY_GRAPH),
+  ) {}
+
+  /** The one graph request. */
+  graphRequest(): CompleteRequest {
+    const [request, ...others] = this.requests.filter(isGraphRequest);
+    expect(others).toEqual([]);
+    if (request === undefined) throw new Error('the graph step made no request');
+    return request;
+  }
 
   async complete(request: CompleteRequest): Promise<Completion> {
     this.requests.push(request);
     return {
-      text: this.text,
+      text: isGraphRequest(request) ? this.graph : this.text,
       model: request.model.id,
       stopReason: 'end_turn',
       usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
@@ -339,6 +411,8 @@ class StubLlm implements LlmClient {
 
 /** The fixture's guest carts, keyed by the `cart` cookie. */
 const carts = new Map<string, { variant_id: number; quantity: number }[]>();
+/** The paths that the fixture shop served in the current test. */
+const shopRequests: string[] = [];
 
 function cartToken(req: http.IncomingMessage): string | undefined {
   return /(?:^|;\s*)cart=([^;]+)/.exec(req.headers.cookie ?? '')?.[1];
@@ -352,6 +426,7 @@ let outDir: string;
 beforeAll(async () => {
   server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    shopRequests.push(url.pathname);
     const json = (body: unknown) =>
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body));
     switch (url.pathname) {
@@ -391,6 +466,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  shopRequests.length = 0;
   root = mkdtempSync(join(tmpdir(), 'explore-'));
   outDir = join(root, 'out', runId(baseUrl, 'fake'));
 });
@@ -403,7 +479,7 @@ function explore(options: {
   url?: string;
   scripts?: readonly FakeScript[];
   llm?: StubLlm;
-  from?: 'prefetch' | 'explore' | 'merge' | 'synthesize';
+  from?: ExploreStep;
   forceResume?: boolean;
   maxIters?: number;
   focus?: string;
@@ -411,6 +487,7 @@ function explore(options: {
 }) {
   const runtime = new FakeRuntime(options.scripts ?? []);
   const llm = options.llm ?? new StubLlm();
+  const logs: string[] = [];
   return exploreStorefront({
     url: options.url ?? baseUrl,
     outDir,
@@ -425,7 +502,8 @@ function explore(options: {
     ...(options.forceResume ? { forceResume: true } : {}),
     ...(options.focus !== undefined ? { focus: options.focus } : {}),
     ...(options.brandTerms ? { brandTerms: options.brandTerms } : {}),
-  }).then((result) => ({ result, runtime, llm }));
+    log: (line) => logs.push(line),
+  }).then((result) => ({ result, runtime, llm, logs }));
 }
 
 const readJson = (path: string) => JSON.parse(readFileSync(path, 'utf8'));
@@ -441,6 +519,7 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
       ['explore', 'ran'],
       ['merge', 'ran'],
       ['synthesize', 'ran'],
+      ['graph', 'ran'],
     ]);
     expect(result.finalStatus).toBe('completed');
     for (const file of [
@@ -455,6 +534,7 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
       'stats.json',
       'manifest.json',
       'manual.md',
+      'site_graph.json',
     ]) {
       expect(existsSync(join(outDir, file)), file).toBe(true);
     }
@@ -496,7 +576,9 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     expect(manifest.coverage_gaps).toEqual(['collection', 'product_detail', 'search_results']);
 
     expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
-    expect(llm.requests).toHaveLength(1);
+    // The synthesis call, then the graph call.
+    expect(llm.requests).toHaveLength(2);
+    expect(llm.requests[1]).toBe(llm.graphRequest());
     expect(llm.requests[0]?.prompt).toContain('## Capabilities');
     expect(llm.requests[0]?.prompt).toContain('### Filled state');
     expect(llm.requests[0]?.model).toEqual({ provider: 'anthropic', id: 'test-model' });
@@ -684,7 +766,7 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
       expect.arrayContaining(['has_rating_histogram', 'review_filters', 'related_product_types']),
     );
 
-    expect(result.steps.map((step) => step.status)).toEqual(['ran', 'ran', 'ran', 'ran']);
+    expect(result.steps.map((step) => step.status)).toEqual(['ran', 'ran', 'ran', 'ran', 'ran']);
     const capabilities = readJson(result.capabilitiesPath);
     expect(capabilities.version).toBe('0.3');
     expect(capabilities).toMatchObject(MARKETPLACE_CAPS);
@@ -699,6 +781,7 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
       'skipped',
       'skipped',
       'skipped',
+      'ran',
       'ran',
     ]);
     const prompt = String(llm.requests[0]?.prompt);
@@ -762,17 +845,20 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
       'skipped',
       'skipped',
       'ran',
+      'skipped',
     ]);
     expect(readFileSync(second.result.manualPath, 'utf8')).toContain('Updated.');
 
     // Re-merging the same parts leaves capabilities.json byte-identical, so
-    // synthesize is not stale and stays skipped.
+    // synthesize is not stale and stays skipped. The graph reads the
+    // manifest, which merge writes again with a new time, so it runs.
     const third = await explore({ from: 'merge' });
     expect(third.result.steps.map((step) => step.status)).toEqual([
       'skipped',
       'skipped',
       'ran',
       'skipped',
+      'ran',
     ]);
     expect(third.runtime.requests).toHaveLength(0);
   });
@@ -1134,6 +1220,193 @@ async function blockedIterationResults(
   });
   return toolResults(result.runDir, 'exec-0001');
 }
+
+describe('exploreStorefront Site state graph', { timeout: 60_000 }, () => {
+  it('writes the Site state graph next to the capabilities and names it in the manifest', async () => {
+    const { result, llm, logs } = await explore({
+      scripts: SCRIPTS,
+      llm: new StubLlm(MANUAL, fencedJson(SITE_GRAPH)),
+    });
+
+    expect(result.steps.at(-1)).toMatchObject({ id: 'graph', status: 'ran' });
+    expect(result.siteGraphPath).toBe(join(outDir, 'site_graph.json'));
+    expect(parseSiteGraph(readJson(result.siteGraphPath))).toEqual(SITE_GRAPH);
+    expect(readJson(result.manifestPath).paths.site_graph).toBe('site_graph.json');
+    expect(llm.graphRequest().model).toEqual({ provider: 'anthropic', id: 'test-model' });
+    expect(logs).toContain('wrote site_graph.json: pages 2, overlays 1, transitions 3');
+  });
+
+  it('gives the graph call the closed lists, the capabilities, and the outline of each finished part', async () => {
+    const { llm } = await explore({ scripts: SCRIPTS });
+
+    const prompt = promptText(llm.graphRequest().prompt);
+    expect(prompt).toContain(
+      '`home`, `collection`, `product`, `search`, `cart`, `page`, `policy`, `login`, `register`, `account`, `addresses`, `order_detail`, `checkout`, `checkout_confirmation`, `other`',
+    );
+    expect(prompt).toContain('`modal`, `side_sheet`, `popover`, `dropdown`, `flyout`');
+    expect(prompt).toContain('`click`, `hover`, `type`, `submit`, `key`');
+    expect(prompt).toContain(
+      '`navigate`, `open_overlay`, `swap_overlay`, `close_overlay`, `update_in_place`',
+    );
+    expect(prompt).toContain('"type": "drawer"');
+    expect(prompt).toContain(
+      '<part task="homepage_sections">\n## Homepage Sections\n### Section 1 - Hero\n- **Behavior:** static\n</part>',
+    );
+    expect(prompt).toContain(
+      '<part task="cart_drawer">\n## Cart Drawer\n### Filled state\n- **Behavior:** opens on add to cart\n</part>',
+    );
+    expect(prompt).not.toContain('**Type:**');
+    expect(prompt).not.toContain('{{');
+  });
+
+  it('gives the graph call only the parts of the Plan tasks that plan.md marks done', async () => {
+    // The cart executor writes its part but does not end its task, so the
+    // harness blocks the task.
+    const { result, llm } = await explore({
+      scripts: [
+        { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
+        {
+          writeFiles: {
+            'artifact/parts/homepage_sections.md': CLEAN_HOMEPAGE,
+            'plan.md': PLAN('x', ' '),
+          },
+          reply: 'homepage done',
+        },
+        { writeFiles: { 'artifact/parts/cart_drawer.md': CART_PART }, reply: 'cart not done' },
+      ],
+    });
+    expect(readFileSync(join(result.runDir, 'plan.md'), 'utf8')).toMatch(/^- \[!\] cart_drawer /m);
+    expect(existsSync(join(result.runDir, 'artifact', 'parts', 'cart_drawer.md'))).toBe(true);
+
+    const prompt = promptText(llm.graphRequest().prompt);
+    expect(prompt).toContain('<part task="homepage_sections">');
+    expect(prompt).not.toContain('<part task="cart_drawer">');
+  });
+
+  it('adds a graph to an existing manual with from graph and no site traffic', async () => {
+    await explore({ scripts: SCRIPTS });
+    const manual = readFileSync(join(outDir, 'manual.md'), 'utf8');
+    shopRequests.length = 0;
+
+    const { result, runtime, llm } = await explore({
+      from: 'graph',
+      llm: new StubLlm(MANUAL, JSON.stringify(SITE_GRAPH)),
+    });
+    expect(result.steps.map((step) => [step.id, step.status])).toEqual([
+      ['prefetch', 'skipped'],
+      ['explore', 'skipped'],
+      ['merge', 'skipped'],
+      ['synthesize', 'skipped'],
+      ['graph', 'ran'],
+    ]);
+    expect(runtime.requests).toHaveLength(0);
+    expect(shopRequests).toEqual([]);
+    expect(llm.requests).toEqual([llm.graphRequest()]);
+    expect(readFileSync(result.manualPath, 'utf8')).toBe(manual);
+    expect(parseSiteGraph(readJson(result.siteGraphPath))).toEqual(SITE_GRAPH);
+  });
+
+  it('skips a complete graph step on a later call', async () => {
+    await explore({ scripts: SCRIPTS, llm: new StubLlm(MANUAL, JSON.stringify(SITE_GRAPH)) });
+
+    const { result, llm } = await explore({});
+    expect(result.steps.at(-1)).toMatchObject({ id: 'graph', status: 'skipped' });
+    expect(llm.requests).toHaveLength(0);
+    expect(parseSiteGraph(readJson(result.siteGraphPath))).toEqual(SITE_GRAPH);
+  });
+
+  it('writes the graph again with from merge', async () => {
+    await explore({ scripts: SCRIPTS });
+
+    const { result } = await explore({
+      from: 'merge',
+      llm: new StubLlm(MANUAL, JSON.stringify(SITE_GRAPH)),
+    });
+    expect(result.steps.map((step) => step.status)).toEqual([
+      'skipped',
+      'skipped',
+      'ran',
+      'skipped',
+      'ran',
+    ]);
+    expect(parseSiteGraph(readJson(result.siteGraphPath))).toEqual(SITE_GRAPH);
+  });
+
+  it('fails the graph step with the leak error on a brand token and writes no graph', async () => {
+    const leaky = {
+      ...SITE_GRAPH,
+      states: SITE_GRAPH.states.map((state) =>
+        state.id === 'product' ? { ...state, url_pattern: '/fixture-picks/{handle}' } : state,
+      ),
+    };
+    const run = explore({ scripts: SCRIPTS, llm: new StubLlm(MANUAL, JSON.stringify(leaky)) });
+
+    await expect(run).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof StepFailedError &&
+        error.stepId === 'graph' &&
+        error.cause instanceof AnonymizationLeakError,
+    );
+    await expect(run).rejects.toThrow(/site_graph\.json:\d+ \[fixture\]: "url_pattern"/);
+    expect(existsSync(join(outDir, 'site_graph.json'))).toBe(false);
+  });
+
+  /** `SITE_GRAPH` with its state at `index` changed by `edit`. */
+  const withState = (index: number, edit: Record<string, unknown>) => ({
+    ...SITE_GRAPH,
+    states: SITE_GRAPH.states.map((state, i) => (i === index ? { ...state, ...edit } : state)),
+  });
+  /** `SITE_GRAPH` with its transition at `index` changed by `edit`. */
+  const withTransition = (index: number, edit: Record<string, unknown>) => ({
+    ...SITE_GRAPH,
+    transitions: SITE_GRAPH.transitions.map((t, i) => (i === index ? { ...t, ...edit } : t)),
+  });
+
+  it.each([
+    [
+      'is not one JSON object',
+      `Here is the graph:\n${fencedJson(SITE_GRAPH)}`,
+      SiteGraphReplyError,
+      /the graph reply is not one JSON object/,
+    ],
+    [
+      'has an unknown page type',
+      JSON.stringify(withState(0, { page_type: 'department' })),
+      SiteGraphValidationError,
+      /states\[0\]\.page_type: .* \(got "department"\)/,
+    ],
+    [
+      'has a transition to a missing state',
+      JSON.stringify(withTransition(1, { to: 'checkout' })),
+      SiteGraphValidationError,
+      /transitions\[1\]\.to names no state: "checkout"/,
+    ],
+    [
+      'has a source that names no finished part',
+      JSON.stringify(withTransition(0, { source: 'footer' })),
+      SiteGraphValidationError,
+      /transitions\[0\]\.source names no finished part: "footer"/,
+    ],
+  ])(
+    'fails the graph step with no retry and writes no graph when the reply %s',
+    async (_name, reply, type, message) => {
+      const llm = new StubLlm(MANUAL, reply);
+      const run = explore({ scripts: SCRIPTS, llm });
+
+      await expect(run).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof StepFailedError &&
+          error.stepId === 'graph' &&
+          error.cause instanceof type,
+      );
+      await expect(run).rejects.toThrow(message);
+      llm.graphRequest();
+      expect(existsSync(join(outDir, 'site_graph.json'))).toBe(false);
+      expect(existsSync(join(outDir, 'manual.md'))).toBe(true);
+    },
+  );
+});
+
 describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
   let site: FixtureSite;
 
@@ -1156,6 +1429,7 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
       ['explore', 'ran'],
       ['merge', 'ran'],
       ['synthesize', 'ran'],
+      ['graph', 'ran'],
     ]);
     expect(result.finalStatus).toBe('completed');
     expect(readJson(result.manifestPath).platform).toBe('generic');

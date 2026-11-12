@@ -33,6 +33,7 @@ export {
   parseOmittedAreas,
 } from './coverage.js';
 export { fileTools } from './files.js';
+export { SiteGraphReplyError } from './graph.js';
 export {
   type ProductObservation,
   productObservationJsonSchema,

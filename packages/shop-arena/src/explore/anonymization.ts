@@ -146,7 +146,9 @@ export function brandTokens(hostname: string, html: string): string[] {
       if (word.length >= MIN_TOKEN_LENGTH && !STOP_WORDS.has(word)) tokens.add(word);
     }
     const phraseCompact = compact(phrase);
-    if (phraseCompact.length >= MIN_LABEL_LENGTH) tokens.add(phraseCompact);
+    if (phraseCompact.length >= MIN_LABEL_LENGTH && !STOP_WORDS.has(phraseCompact)) {
+      tokens.add(phraseCompact);
+    }
   }
   return [...tokens].sort();
 }

@@ -110,6 +110,11 @@ describe('brandTokens', () => {
     expect(tokens).toEqual(expect.arrayContaining(['fixture', 'mart', 'spend', 'less', 'more']));
   });
 
+  it('takes no token from a title segment that is only a stop word', () => {
+    const tokens = brandTokens('127.0.0.1', page('Fixture Shop | Home'));
+    expect(tokens).toEqual(['fixture', 'fixtureshop']);
+  });
+
   it('always takes og:site_name', () => {
     const html = `<html><head><title>Fixture Mart. Spend less.</title>
 <meta property="og:site_name" content="Fixture Outlet"></head></html>`;

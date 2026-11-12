@@ -25,6 +25,23 @@ export {
   usageSchema,
 } from './schema/result.js';
 export {
+  OVERLAY_KINDS,
+  type OverlayKind,
+  PAGE_TYPES,
+  type PageType,
+  SITE_GRAPH_VERSION,
+  type SiteGraph,
+  type SiteGraphState,
+  type SiteGraphTransition,
+  SiteGraphValidationError,
+  TRANSITION_EFFECTS,
+  TRANSITION_TRIGGERS,
+  type TransitionEffect,
+  type TransitionTrigger,
+  parseSiteGraph,
+  siteGraphSchema,
+} from './schema/site-graph.js';
+export {
   type Check,
   type LlmJudgeCheck,
   type LocatorProbeCheck,
