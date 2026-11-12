@@ -36,7 +36,9 @@ from the `start` page:
   `/search?q={query}`.
 - A line ends with `(path changed)` when the action went to another
   path, and with `(failed)` when the action failed. A failed action
-  shows no transition.
+  shows no transition. An action with no `(path changed)` mark stays on
+  the same page state, or opens an overlay on it, also when the query
+  changed.
 
 No browsing, no tool calls, no follow-up questions. Reply with the
 graph and stop.
@@ -84,7 +86,9 @@ check.
 
 A state is a page or an overlay. Make one state for each page type and
 URL shape, not one for each page that the explorer opened: all product
-pages are one `product` state.
+pages are one `product` state. One page type and one path make one page
+state: a query on the path, such as a filter, a sort, a page number or
+a variant, does not make another state.
 
 - `id` - a short snake_case name, unique in the graph.
 - A page state has `"kind": "page"`, a `page_type` from this closed
@@ -95,25 +99,40 @@ pages are one `product` state.
   `/products/{handle}` or `/search?q={query}`.
   - The pattern starts with one `/`. No scheme and no host.
   - Each placeholder is a snake_case name in braces, such as
-    `{handle}`.
+    `{handle}`. A path segment that changes from page to page, such as
+    the name of a category or a product, is a placeholder, not site
+    text.
   - Each query parameter is a key and a placeholder: `?q={query}`,
-    never `?q=shoes` and never a key with no value. Leave out tracking
-    and session parameters.
+    never `?q=shoes` and never a key with no value.
+  - Put a query key in the pattern only when the page needs it to show
+    its content, such as the query of a search page or the id of a
+    category page. Leave out the other keys: tracking, session,
+    encoding, filter, sort and page keys.
   - No two page states have the same URL pattern. Two patterns that
     differ only in their placeholder names, such as `/products/{id}`
     and `/products/{handle}`, are the same pattern.
+  - No two page states of one page type have the same path (the part
+    of the pattern before `?`).
 - An overlay state has `"kind": "overlay"`, an `overlay` kind from this
   closed list:
   {{OVERLAY_KINDS}}
   and `on`: the ids of one or more page states that it opens on. Each
-  id names a page state, not an overlay. A header widget that opens on
-  every page lists every page state.
+  id names a page state, not an overlay. Something that shows over the
+  page after an action, such as a modal, a popover or a confirmation
+  panel, is an overlay on that page, also when the URL changes only in
+  its query.
+- The header and the footer show on every page. An overlay that a
+  header or footer control opens lists every page state in `on`. A
+  header or footer control gets one transition from `home`, not one
+  from each page.
 
 ### Transitions
 
 A transition is one shopper action that goes from one state to another.
 
-- `from`, `to` - the ids of two states of this graph.
+- `from`, `to` - the ids of two states of this graph. `from` is the
+  state that shows the control: a link in a homepage section starts on
+  `home`, also when the part tells about the page that the link opens.
 - `trigger` - the input that starts the action, from this closed list:
   {{TRIGGERS}}
 - `action` - a snake_case action kind, for example `open_result`,
@@ -121,8 +140,9 @@ A transition is one shopper action that goes from one state to another.
 - `effect` - what the action changes, from this closed list:
   {{EFFECTS}}
   Each effect has a rule for `from` and `to`:
-  - `navigate` - another page loads. `to` is a page; `from` can be a
-    page or an overlay.
+  - `navigate` - another page loads: another state, or another page
+    of the same state, such as a related product. `to` is a page;
+    `from` can be a page or an overlay.
   - `open_overlay` - an overlay opens over the page. `to` is an
     overlay, and `from` is one of the pages in its `on`.
   - `swap_overlay` - one overlay changes into another, for example a
@@ -130,9 +150,10 @@ A transition is one shopper action that goes from one state to another.
     are two different overlays.
   - `close_overlay` - the overlay closes, and the page under it shows.
     `from` is an overlay, and `to` is one of the pages in its `on`.
-  - `update_in_place` - the state changes in place, for example a
-    facet, a sort or a variant choice. `from` and `to` are the same
-    state.
+  - `update_in_place` - the same page shows another view, for example
+    a facet, a sort, a page of results or a variant choice. Use it also
+    when the browser loads a new URL for that view. `from` and `to` are
+    the same state.
 - `params` - optional: the snake_case names of the values that the
   action takes, for example `["query"]` for a search. No name is
   repeated.
@@ -142,12 +163,21 @@ A transition is one shopper action that goes from one state to another.
 - `source` - the Plan task id of the part or the `<actions>` block that
   shows the transition. Use only the `task` ids of the `<part>` blocks
   below.
+- No two transitions have the same `from`, `action` and `to`. When two
+  parts show one transition, give it once, with one of them as its
+  source.
 
 ## 2. Rules
 
 - Put in only the states and transitions that the parts, the actions or
   the capabilities show. Do not add a flow because a typical storefront
   has it.
+- Put in each transition that the parts, the actions or the
+  capabilities show, for example each link whose target page a part
+  names, such as a sign-in link and a register link.
+- A part writes `unknown` for a behavior that the explorer did not see.
+  Such a behavior shows no transition: when a part says that closing an
+  overlay is unknown, give no transition that closes it.
 - Each `from` and `to` names a state of the graph, and no two states
   have the same id.
 - Each state is the `from` or the `to` of one or more transitions. Do
