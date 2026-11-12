@@ -12,11 +12,11 @@ You get two inputs at the end of this prompt:
 1. `## Capabilities` - the merged structured facts as JSON. Use them to
    pick the kind of each state; for example, a drawer cart is an
    overlay, not a page.
-2. `## Parts` - the H2 and H3 headings and the Behavior lines of each
-   finished part, in one `<part task="<plan_task_id>">` block for each
-   Plan task. After each part come the `<actions>` blocks of its Plan
-   task: one block for each executor Iteration that worked on the task,
-   in run order. A Plan task with no Iteration has only its part.
+2. `## Parts` - each finished part with no Styling lines, in one
+   `<part task="<plan_task_id>">` block for each Plan task. After each
+   part come the `<actions>` blocks of its Plan task: one block for each
+   executor Iteration that worked on the task, in run order. A Plan task
+   with no Iteration has only its part.
 
 An `<actions task="<plan_task_id>" iteration="<id>" start="<path>">`
 block has one line for each browser action of the Iteration, in order,
@@ -38,8 +38,8 @@ from the `start` page:
   path, and with `(failed)` when the action failed. A failed action
   shows no transition.
 
-This is a **single-shot call**. No browsing, no tool calls, no
-follow-up questions. Reply with the graph and stop.
+No browsing, no tool calls, no follow-up questions. Reply with the
+graph and stop.
 
 ---
 
@@ -153,8 +153,7 @@ A transition is one shopper action that goes from one state to another.
 - Each state is the `from` or the `to` of one or more transitions. Do
   not put in a state that no transition uses; an `on` list does not
   count as a use.
-- A graph that breaks a rule of this prompt fails the check, and there
-  is no second call.
+- A graph that breaks a rule of this prompt fails the check.
 - No site text. Do not write the element names of the actions. Do not
   write button labels, headings, product names, product ids, brand
   names, store names, hosts, absolute URLs or email addresses. Ids,

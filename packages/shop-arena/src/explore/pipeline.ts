@@ -80,7 +80,7 @@ import {
 } from './capabilities.js';
 import { type FixedAreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
 import { fileTools } from './files.js';
-import { readFinishedParts, renderSiteGraph } from './graph.js';
+import { type GraphPrompts, readFinishedParts, renderSiteGraph } from './graph.js';
 import {
   productObservationJsonSchema,
   productObservationTool,
@@ -230,7 +230,7 @@ interface Prompts {
   /** The executor prompt for a site on the generic platform. */
   readonly executeGeneric: string;
   readonly manual: string;
-  readonly graph: string;
+  readonly graph: GraphPrompts;
 }
 
 interface ExploreContext {
@@ -301,7 +301,7 @@ function loadPrompts(): Prompts {
     execute: read('execute.md'),
     executeGeneric: read('execute_generic.md'),
     manual: read('synthesize_manual.md'),
-    graph: read('site_graph.md'),
+    graph: { graph: read('site_graph.md'), repair: read('site_graph_repair.md') },
   };
 }
 
@@ -605,8 +605,9 @@ const synthesizeStep: Step<ExploreContext> = {
 /**
  * Writes the Site state graph from the finished parts, the browser
  * actions of their executor Iterations, and the merged Capabilities with
- * one completion. The graph must pass its checks and the Anonymization
- * scan, or the step fails and writes no file.
+ * one completion, and one repair completion when the reply fails a check.
+ * The graph must pass its checks and the Anonymization scan, or the step
+ * fails and writes no file. A leak gets no repair.
  *
  * The step does not read `manifest.json`, but it is an input. Merge
  * writes the manifest again on each run, with a new time. Thus each
@@ -633,6 +634,7 @@ const graphStep: Step<ExploreContext> = {
       context.prompts.graph,
       parseCapabilities(readJson(join(outDir, PATHS.capabilities))),
       await readFinishedParts(runDir),
+      log,
       signal,
     );
     const text = `${JSON.stringify(graph, null, 2)}\n`;
@@ -690,9 +692,9 @@ const STEPS: readonly Step<ExploreContext>[] = [
  * @throws StepFailedError for the synthesize step, with an
  *   AnonymizationLeakError cause, when the final Anonymization scan finds
  *   a leak in a published file.
- * @throws StepFailedError for the graph step when the graph reply is not
- *   one JSON object (SiteGraphReplyError cause), fails a graph check
- *   (SiteGraphValidationError cause), or has a leak
+ * @throws StepFailedError for the graph step when the repair reply is
+ *   not one JSON object (SiteGraphReplyError cause) or fails a graph
+ *   check (SiteGraphValidationError cause), or when the graph has a leak
  *   (AnonymizationLeakError cause).
  */
 export async function exploreStorefront(options: ExploreOptions): Promise<ExploreResult> {
