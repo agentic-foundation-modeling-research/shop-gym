@@ -55,37 +55,43 @@ steps on the `@shop-gym/core` pipeline runner:
 
 The `graph` step writes the Site state graph (`src/explore/graph.ts`,
 prompt `prompts/site_graph.md`). A finished part is the
-`run/artifact/parts/<task_id>.md` of a Plan task that `run/plan.md` marks
-done. The prompt gets the closed lists of `@shop-gym/core` and the merged
-Capabilities. From each finished part it gets only the H2 and H3
-headings and the Behavior lines, under the Plan task id. After each part
-come the browser actions of each executor Iteration that selected its
-Plan task, in run order (`src/explore/trajectory-digest.ts`). A line
-names the action and its element, and the URL path after the action.
-The element is its role and name from the latest snapshot that showed
-its ref. Each query value is `{value}`. The prompt has no refs, hosts,
-query values, typed text or selected values. A Plan task with no Iteration,
-for example one whose part was written outside the harness, has only its
-part. The trajectories are not step inputs, because the merge after each
-explore step makes the graph stale. The one
-completion must be one JSON object, bare or in one fenced block. The
-object must pass `parseSiteGraph`, and the `source` of each transition
-must name a finished part. If a check fails, the step fails with
+`run/artifact/parts/<task_id>.md` of a Plan task that `run/plan.md`
+marks done. The prompt gets the closed lists of `@shop-gym/core` and the
+merged Capabilities. It gets each finished part with no Styling lines,
+under the Plan task id. After each part come the browser actions of each
+executor Iteration that selected its Plan task, in run order
+(`src/explore/trajectory-digest.ts`). A line names the action and its
+element, and the URL path after the action. The element is its role and
+name from the latest snapshot that showed its ref. Each query value is
+`{value}`. The prompt has no refs, hosts, query values, typed text or
+selected values. A Plan task with no Iteration, for example one whose
+part was written outside the harness, has only its part. The
+trajectories are not step inputs, because the merge after each explore
+step makes the graph stale. The completion must be one JSON object, bare
+or in one fenced block. The object must pass `parseSiteGraph`, and the
+`source` of each transition must name a finished part. When a check
+fails, the step logs the problems and makes one repair completion: the
+graph prompt, then `prompts/site_graph_repair.md` with the reply and its
+problems. If the repair reply also fails a check, the step fails with
 `SiteGraphReplyError` or `SiteGraphValidationError` and writes no file.
-There is no retry. `manifest.json` is an input because merge writes it
-again on each run, so `from: 'merge'` writes the graph again.
-`from: 'graph'` writes the graph from the files on disk with no site
-traffic. It does not write the manifest again. On a manual from before
-the graph step, use `from: 'merge'` to add `site_graph` to the manifest
-`paths`.
+A leak in the Anonymization scan gets no repair. `manifest.json` is an
+input because merge writes it again on each run, so `from: 'merge'`
+writes the graph again. `from: 'graph'` writes the graph from the files
+on disk with no site traffic. It does not write the manifest again. On a
+manual from before the graph step, use `from: 'merge'` to add
+`site_graph` to the manifest `paths`.
 
 `parseSiteGraph` applies the closed schema and these graph rules. The
 graph prompt states the same rules.
 
-- A URL pattern is a path that starts with one `/`. It has snake_case
-  `{name}` placeholders, and each query value is a placeholder.
+- A URL pattern is a path that starts with one `/` and has no `://`. It
+  has snake_case `{name}` placeholders, and each query value is a
+  placeholder.
 - No two page states have one URL pattern. Placeholder names do not
   count, so `/products/{id}` and `/products/{handle}` are one pattern.
+- No two page states of one page type have one path, the part of the
+  pattern before `?`. So a filter or a sort query does not make a
+  second state.
 - An overlay opens on one or more page states.
 - Each state is the `from` or `to` of a transition.
 - `params` and `needs` have no repeated items.
@@ -94,6 +100,11 @@ graph prompt states the same rules.
   goes from one overlay to a different overlay. `close_overlay` goes
   from the overlay to one of its host pages. `update_in_place` has the
   same `from` and `to`.
+- No two transitions have the same `from`, `action` and `to`.
+
+The prompt adds rules that no check can apply, for example that the
+header and footer controls get one transition from `home`. See
+`prompts/site_graph.md`.
 
 Prefetch decides the platform before it fetches the rest. First it
 fetches `robots.txt`, the homepage, `sitemap.xml` and one `/products.json`

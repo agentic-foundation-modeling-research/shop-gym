@@ -161,11 +161,13 @@ exercises its public surface end-to-end.
   markers and the host.
 - Site state graph (2026-11-11): a fifth step, `graph`, runs after
   `merge` and writes `site_graph.json` with one `LlmClient.complete`
-  call. It reads the headings and Behavior lines of the finished
-  fragments, the Trajectory digests of their executor Iterations, and
-  the merged Capabilities. `parseSiteGraph` of `@shop-gym/core` checks
-  the reply with a closed schema and graph rules. The step adds a source
-  check and the Anonymization scan. A failed check writes no file.
+  call, and one repair call when the reply fails a check. It reads the
+  finished fragments with no Styling lines, the Trajectory digests of
+  their executor Iterations, and the merged Capabilities.
+  `parseSiteGraph` of `@shop-gym/core` checks the reply with a closed
+  schema and graph rules. The step adds a source check and the
+  Anonymization scan. A failed check of the repair reply, or a leak,
+  writes no file.
   `--from graph` adds a graph to an existing Shop Manual. The graph
   step does not browse, and it does not write `manual.md`.
   `manifest.json:paths.site_graph` names the file. See §5.13.
@@ -762,8 +764,11 @@ prompt gets three inputs:
   Plan task that `plan.md` marks done. `plan.md` decides, so a fragment
   written outside the harness counts when its task is done. For each
   finished fragment, the prompt gets one `<part task="<id>">` block
-  with the H2 and H3 headings and the Behavior lines (with their
-  wrapped lines). The step leaves out the other lines.
+  that holds the fragment, but not its Styling lines or their wrapped
+  lines. A wrapped line has more indent than its Styling bullet. The
+  Styling lines tell how the storefront looks, not how a shopper moves
+  through it. The other lines can name paths and states that no
+  Behavior line names, for example a register path in a Layout line.
 - **Trajectory digest.** After each fragment come the
   `<actions task="<id>" iteration="<id>" start="<path>">` blocks of the
   executor Iterations that selected its Plan task, in run order. Each
@@ -792,7 +797,29 @@ prompt gets three inputs:
 
 **The call.** The step makes one `LlmClient.complete` call with the
 model of the run. The reply is one JSON object, bare or in one fenced
-block. There is no retry: a bad reply fails the step.
+block. When the reply fails a check, the step logs the problems and
+makes one repair call. A reply fails a check when it is not one JSON
+object, when it breaks the schema or a graph rule, or when a `source`
+names no finished fragment. `LlmClient.complete` takes one prompt, so
+the repair prompt is the graph prompt, then
+`prompts/site_graph_repair.md` with the reply and the list of problems.
+The repair reply gets the same checks. There is no second repair.
+
+**Prompt rules.** Some rules of the prompt have no check in code:
+
+- One page type and one path make one page state. A query key goes in
+  a URL pattern only when the page needs it to show its content, such
+  as a search query or a category id. A path segment that changes from
+  page to page, such as a category name, is a placeholder.
+- An action line with no `(path changed)` mark stays on its state, or
+  opens an overlay on it. A filter, sort, page or variant change is
+  `update_in_place`, also when the URL loads again. `navigate` goes to
+  another page: another state, or another page of the same state.
+- The header and the footer show on every page. Their overlays list
+  every page state as a host page, and each of their controls gets one
+  transition from `home`, not one from each page.
+- `from` is the state that shows the control.
+- A behavior that a fragment calls unknown gives no transition.
 
 **Schema.** `@shop-gym/core` owns the schema, the closed lists
 (`PAGE_TYPES`, `OVERLAY_KINDS`, `TRANSITION_TRIGGERS`,
@@ -839,9 +866,9 @@ check that fails.
 
 1. The closed schema:
    - An unknown field or list value fails.
-   - A URL pattern starts with one `/`, so it is not an absolute URL.
-     It uses only `{name}` placeholders, and it has a placeholder for
-     each query value.
+   - A URL pattern starts with one `/` and has no `://`, so it is not
+     an absolute URL and holds none. It uses only `{name}`
+     placeholders, and it has a placeholder for each query value.
    - An overlay has one or more host pages.
    - `params` and `needs` have no repeated item.
 2. The graph rules:
@@ -849,6 +876,9 @@ check that fails.
      host page names a page state.
    - No two page states have one URL pattern. Two patterns that differ
      only in their placeholder names count as one.
+   - No two page states of one page type have one path, the part of the
+     pattern before `?`. Two states with one URL pattern give only the
+     problem of the rule before.
    - Each state is the `from` or the `to` of one or more transitions.
    - A `navigate` transition ends on a page.
    - An `open_overlay` transition ends on an overlay and starts on one
@@ -858,6 +888,7 @@ check that fails.
    - A `close_overlay` transition starts on an overlay and ends on one
      of its host pages.
    - An `update_in_place` transition has the same `from` and `to`.
+   - No two transitions have the same `from`, `action` and `to`.
 
 The step adds one rule that core cannot check: each `source` names a
 finished fragment.
@@ -867,15 +898,18 @@ text with the same scanner as the final scan of synthesize. The scanner
 matches the host, the brand tokens of the host name and of the
 prefetched homepage, the Brand terms and email addresses. In a `.json`
 file the scan reads only the values. It has no general pattern for
-absolute URLs. The prompt forbids site text: button labels, headings,
-product names and ids.
+absolute URLs, but the schema keeps them out of the graph: ids, actions,
+params and needs are snake_case, and a URL pattern has no `://`. The
+prompt forbids site text: button labels, headings, product names and
+ids.
 
 **Failure.** The step fails with `StepFailedError` for `graph`, and
 writes no `site_graph.json`, in three cases:
 
-- The reply is not one JSON object (`SiteGraphReplyError`).
-- The graph breaks a check (`SiteGraphValidationError`).
-- The scan finds a leak (`AnonymizationLeakError`).
+- The repair reply is not one JSON object (`SiteGraphReplyError`).
+- The repair reply breaks a check (`SiteGraphValidationError`).
+- The scan finds a leak (`AnonymizationLeakError`). A leak gets no
+  repair call.
 
 **Output.** `site_graph.json` is a published file at `<run_id>/`, next
 to `capabilities.json`. Merge writes `paths.site_graph` into
@@ -899,6 +933,8 @@ that shape:
 - An overlay names one or more host pages, not one, because a header
   widget opens on every page.
 - A transition adds `trigger`, `effect` and `source`.
+- Two graph rules are new: one page state for each page type and path,
+  and one transition for each `from`, `action` and `to`.
 - The page types of two words are snake_case: `order_detail`,
   `checkout_confirmation`.
 - The graph has a `version`.
