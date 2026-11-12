@@ -822,6 +822,10 @@ The repair reply gets the same checks. There is no second repair.
   transition from `home`, not one from each page.
 - `from` is the state that shows the control.
 - A behavior that a fragment calls unknown gives no transition.
+- A transition has a trigger that a fragment or the actions show. The
+  `load` trigger is for a change that the site makes when a page loads,
+  such as an overlay that shows with no shopper action. When no trigger
+  of the list fits the input, such as a scroll, there is no transition.
 
 **Schema.** `@shop-gym/core` owns the schema, the closed lists
 (`PAGE_TYPES`, `OVERLAY_KINDS`, `TRANSITION_TRIGGERS`,
@@ -848,7 +852,7 @@ type State =
 type Transition = {
   from: string;
   to: string;
-  trigger: 'click' | 'hover' | 'type' | 'submit' | 'key';
+  trigger: 'click' | 'hover' | 'type' | 'submit' | 'key' | 'load'; // 'load': no shopper action
   action: string; // action kind, for example 'open_result', 'add_to_cart'
   effect: 'navigate' | 'open_overlay' | 'swap_overlay' | 'close_overlay' | 'update_in_place';
   params?: string[]; // for example ['query']
@@ -958,10 +962,11 @@ graph is accepted. The review keeps these results:
     the cart state.
   - A variant pick that loads another product path is `navigate`, a
     loop on the product state.
-- Two limits stay open:
-  - The closed trigger list has no trigger for an overlay that shows
+- Two limits stayed open after the review:
+  - The closed trigger list had no trigger for an overlay that shows
     with no shopper action, such as a sign-in tooltip on page load. The
-    model gives such an overlay a trigger that no fragment shows.
+    model gave such an overlay a trigger that no fragment shows. The
+    `load` trigger now covers this case.
   - The model breaks some prompt rules that no check catches. A
     category name stays as text in a path, and a category page loses
     its id key. One sort control shows as a page control and also as

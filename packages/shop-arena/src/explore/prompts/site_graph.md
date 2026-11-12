@@ -129,12 +129,21 @@ a variant, does not make another state.
 ### Transitions
 
 A transition is one shopper action that goes from one state to another.
+A change that the site makes with no shopper action, such as an
+overlay that shows when a page loads, is also a transition.
 
 - `from`, `to` - the ids of two states of this graph. `from` is the
   state that shows the control: a link in a homepage section starts on
   `home`, also when the part tells about the page that the link opens.
 - `trigger` - the input that starts the action, from this closed list:
   {{TRIGGERS}}
+  - `load` is not a shopper input: the site starts the action when the
+    page loads. Use it when a part says that a state shows with no
+    shopper action, for example a prompt that shows when the page
+    loads.
+  - Give a trigger that the part or the actions show. When no trigger
+    of the list fits the input, such as a scroll, give no transition.
+    Do not pick the nearest trigger.
 - `action` - a snake_case action kind, for example `open_result`,
   `add_to_cart` or `apply_filter`. Give the same action the same name.
 - `effect` - what the action changes, from this closed list:

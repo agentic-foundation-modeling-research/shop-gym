@@ -40,8 +40,12 @@ export const PAGE_TYPES = [
 /** The kinds of overlay state. */
 export const OVERLAY_KINDS = ['modal', 'side_sheet', 'popover', 'dropdown', 'flyout'] as const;
 
-/** The inputs that start a transition. */
-export const TRANSITION_TRIGGERS = ['click', 'hover', 'type', 'submit', 'key'] as const;
+/**
+ * The inputs that start a transition. `load` is not a shopper input: the
+ * site makes the change when the page loads, for example a prompt that
+ * shows with no shopper action.
+ */
+export const TRANSITION_TRIGGERS = ['click', 'hover', 'type', 'submit', 'key', 'load'] as const;
 
 /** What a transition changes. */
 export const TRANSITION_EFFECTS = [

@@ -87,7 +87,8 @@ Re-running with the same output directory resumes the unfinished step.
 
 After merge, the `graph` step writes `site_graph.json`, the Site state
 graph. The graph has the page and overlay states of the storefront and
-the shopper actions that move between them. The step makes one LLM call
+the transitions between them: the shopper actions, and the changes that
+the site makes when a page loads. The step makes one LLM call
 on the run's model, and one repair call when the reply fails a check.
 The call gets the merged Capabilities, each finished part with no
 Styling lines, and the browser actions of each executor Iteration under

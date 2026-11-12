@@ -145,7 +145,7 @@ describe('the closed lists', () => {
       ],
     ],
     ['overlay kinds', OVERLAY_KINDS, ['modal', 'side_sheet', 'popover', 'dropdown', 'flyout']],
-    ['triggers', TRANSITION_TRIGGERS, ['click', 'hover', 'type', 'submit', 'key']],
+    ['triggers', TRANSITION_TRIGGERS, ['click', 'hover', 'type', 'submit', 'key', 'load']],
     [
       'effects',
       TRANSITION_EFFECTS,
