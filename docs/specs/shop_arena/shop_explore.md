@@ -170,7 +170,9 @@ exercises its public surface end-to-end.
   writes no file.
   `--from graph` adds a graph to an existing Shop Manual. The graph
   step does not browse, and it does not write `manual.md`.
-  `manifest.json:paths.site_graph` names the file. See §5.13.
+  `manifest.json:paths.site_graph` names the file. See §5.13. The
+  first graph, of the Video Games Shop Manual, is reviewed and
+  accepted (2026-11-12), with two open limits.
 
 ---
 
@@ -939,6 +941,32 @@ that shape:
   `checkout_confirmation`.
 - The graph has a `version`.
 - The graph has no `weights` block (see §8.3).
+
+**Review of the first graph (2026-11-12).** The first graph is of the
+Video Games Shop Manual: 15 pages, 9 overlays and 78 transitions, from
+a `--from merge` run and a `--from graph` run with no site traffic. The
+review page is
+`packages/reports/pages/2026-11-12-video-games-site-graph.html`. The
+graph is accepted. The review keeps these results:
+
+- The graph follows the rules in three places that can look wrong:
+  - An overlay whose close or accept a fragment calls unknown has no
+    transition for it. So the add-on sheet after add to cart has only
+    its decline transition, and an overlay can have no exit.
+  - A step with no path of its own in the inputs is part of the state
+    that it shows as. So the add-to-cart confirmation page is part of
+    the cart state.
+  - A variant pick that loads another product path is `navigate`, a
+    loop on the product state.
+- Two limits stay open:
+  - The closed trigger list has no trigger for an overlay that shows
+    with no shopper action, such as a sign-in tooltip on page load. The
+    model gives such an overlay a trigger that no fragment shows.
+  - The model breaks some prompt rules that no check catches. A
+    category name stays as text in a path, and a category page loses
+    its id key. One sort control shows as a page control and also as
+    an overlay. A docked rail shows as a popover that a click opens. A
+    menu that a fragment says closes has no close transition.
 
 ---
 
