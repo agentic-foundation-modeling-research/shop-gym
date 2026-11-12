@@ -1,0 +1,741 @@
+<title>Video Games Site Graph</title>
+<meta name="description" content="Interactive review of the third Site state graph run of the Video Games Shop Manual: 24 states, 78 transitions, and the review items left open.">
+<style>
+/* Layout: lane diagram that follows a shopper left to right (start, browse, results, product, cart, account and help),
+   header overlays in a band on top, an inspector beside it, reference tables below. Wider than the shared page width,
+   because the diagram and the inspector sit side by side. The page width token is wider for the same reason,
+   so the site bar lines up with the page. */
+:root { --page-width: 1680px; }
+.sg {
+  --nav: var(--series-1);
+  --inplace: var(--series-3);
+  --overlay: var(--series-7);
+  --overlay-bg: color-mix(in srgb, var(--series-7) 11%, var(--surface));
+  --band: color-mix(in srgb, var(--series-7) 6%, var(--surface-2));
+  --canvas: var(--surface-2);
+  --lane: var(--grid);
+  --node: var(--surface);
+  --node-stroke: var(--muted);
+  --flag: var(--warn);
+  --flag-bg: var(--warn-soft);
+  max-width: var(--page-width);
+  margin: 0 auto;
+  padding-left: var(--gutter-left);
+  padding-right: var(--gutter-right);
+  padding-block: 28px 80px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.sg li { max-width: none; }
+.sg li + li { margin-top: 0; }
+
+/* Effect tokens: one hue per transition effect, shared by edges, toggles and dots. */
+.fx-mixed { --fx: var(--muted); }
+.fx-navigate { --fx: var(--nav); }
+.fx-update_in_place { --fx: var(--inplace); }
+.fx-open_overlay, .fx-swap_overlay, .fx-close_overlay { --fx: var(--overlay); }
+
+.sg-top { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: flex-end; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.sg-top > div { min-width: 0; display: grid; gap: 10px; }
+.sg-top .lede { font-size: 1rem; max-width: 74ch; }
+.sg-counts { display: flex; flex-wrap: wrap; gap: 8px 26px; margin: 0; }
+.sg-counts div { display: flex; flex-direction: column; }
+.sg-counts dt { font: 500 .73rem var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.sg-counts dd { margin: 0; font: 700 1.5rem/1.1 var(--head); font-variant-numeric: tabular-nums; }
+
+.sg-toolbar { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; padding-block: 14px; }
+.fx-toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+.fx-toggle { display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font: 500 12.5px var(--mono); cursor: pointer; }
+.fx-toggle .sw { width: 16px; height: 3px; border-radius: 2px; background: var(--fx); }
+.fx-toggle .n { font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fx-toggle[aria-pressed="false"]:not(:disabled) { opacity: .5; }
+.fx-toggle[aria-pressed="false"]:not(:disabled) .name { text-decoration: line-through; }
+.fx-toggle:disabled { cursor: default; border-style: dashed; background: transparent; color: var(--muted); }
+.fx-toggle:disabled .sw { background: transparent; height: 0; border-top: 2px dotted var(--muted); }
+.lg { display: inline-block; width: 20px; height: 12px; flex: none; }
+.lg-page { border: 1.2px solid var(--node-stroke); border-radius: 2px; background: var(--node); }
+.lg-overlay { border: 1.2px dashed var(--overlay); border-radius: 999px; background: var(--overlay-bg); }
+.lg-out { height: 0; border-top: 2px solid var(--ink); }
+.lg-in { height: 0; border-top: 2px dashed var(--ink); }
+
+.sg-app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+.sg-canvas { gap: 0; background: var(--canvas); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.sg-canvas .scroll { overflow-x: auto; }
+.sg-canvas figcaption { max-width: none; padding: 9px 14px 11px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.sg-side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); max-height: calc(100vh - 32px); overflow: auto; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.sg-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (max-width: 1100px) {
+  .sg-app { grid-template-columns: minmax(0, 1fr); }
+  .sg-side { position: static; max-height: none; overflow: visible; }
+}
+
+/* Diagram */
+#sg-graph { display: block; width: 100%; min-width: 900px; height: auto; }
+.bg-hit { fill: transparent; }
+.lane { fill: var(--lane); }
+.lane-label { font: 500 11px var(--mono); letter-spacing: .09em; text-transform: uppercase; fill: var(--muted); text-anchor: middle; }
+.band { fill: var(--band); stroke: var(--line); }
+.band-label { font: 600 11px var(--mono); letter-spacing: .09em; fill: var(--overlay); }
+.band-sub { font: 400 11px var(--sans); fill: var(--muted); }
+.edge { fill: none; stroke: var(--fx); stroke-width: 1.3; opacity: .45; }
+.edge.dim { opacity: .07; }
+.edge.hl { opacity: 1; stroke-width: 2; }
+.edge.in { stroke-dasharray: 5 4; }
+.ahf { fill: var(--fx); }
+.node { cursor: pointer; outline: none; }
+.node .box { fill: var(--node); stroke: var(--node-stroke); stroke-width: 1.2; }
+.node.overlay .box { fill: var(--overlay-bg); stroke: var(--overlay); stroke-dasharray: 4 3; }
+.node .nid { font: 600 12px var(--mono); fill: var(--ink); text-anchor: middle; }
+.node .nsub { font: 400 10.5px var(--mono); fill: var(--muted); text-anchor: middle; }
+.node:hover .box { stroke: var(--accent); stroke-width: 1.8; }
+.node:focus-visible .box, .node.sel .box { stroke: var(--accent); stroke-width: 2.6; }
+.node.dim { opacity: .28; }
+.ringr { fill: none; stroke: var(--flag); stroke-width: 2; stroke-dasharray: 3 3; }
+.flag rect { fill: var(--flag-bg); stroke: var(--flag); stroke-width: 1; }
+.flag text { font: 600 9.5px var(--mono); fill: var(--flag); }
+.loopn { font: 600 9.5px var(--mono); fill: var(--muted); }
+.loopn.dim { opacity: .2; }
+.elabel { font: 500 11.5px var(--mono); fill: var(--ink); paint-order: stroke; stroke: var(--canvas); stroke-width: 4px; stroke-linejoin: round; }
+
+/* Inspector */
+.ins-head { display: flex; flex-direction: column; gap: 4px; }
+.ins-head .mono { font-size: 1rem; }
+.ins-top { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.ins-top .ins-head { min-width: 0; overflow-wrap: anywhere; }
+.ins-top .btn { flex: none; }
+.sg .hint { color: var(--muted); }
+.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.facts { display: flex; flex-direction: column; gap: 8px; padding-left: 18px; }
+.sec { display: flex; flex-direction: column; gap: 8px; }
+.trs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.trs li { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 8px; align-items: start; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fx); margin-top: 6px; }
+.tr-main { overflow-wrap: anywhere; }
+.tr-main .act { font-weight: 500; }
+.tr-meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.st { font: 500 12.5px var(--mono); color: var(--accent); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.st:hover { text-decoration-thickness: 2px; }
+.empty { color: var(--muted); font-size: 12.5px; }
+.flags-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Review items */
+.ri-list { display: flex; flex-direction: column; gap: 6px; }
+.ri { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.ri.active { border-color: var(--flag); background: var(--flag-bg); }
+.ri-show { all: unset; cursor: pointer; display: flex; flex-wrap: wrap; gap: 3px 8px; align-items: baseline; min-width: 0; }
+.ri-show:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.rid { font: 600 11.5px var(--mono); font-style: normal; color: var(--flag); background: var(--flag-bg); border: 1px solid var(--flag); border-radius: 4px; padding: 0 5px; }
+.rid.ok { color: var(--ok); background: var(--ok-soft); border-color: var(--ok); }
+button.rid { cursor: pointer; }
+.status { font-size: 11.5px; color: var(--muted); }
+.ri-title { flex-basis: 100%; font-weight: 500; }
+.tick { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+details.fixed summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.fx-list { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; }
+.fx-row { all: unset; display: flex; gap: 8px; align-items: baseline; padding: 4px 2px; font-size: 13px; border-radius: 4px; }
+button.fx-row { cursor: pointer; }
+button.fx-row:hover .fx-t { text-decoration: underline; }
+button.fx-row:focus-visible { outline: 2px solid var(--accent); }
+.fx-note { color: var(--muted); font-size: 12px; }
+.picks { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.picks-text { font: 12.5px/1.5 var(--mono); background: var(--code); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; user-select: all; max-width: none; }
+.picks-row { display: flex; gap: 10px; align-items: center; }
+#sg-copy-state { color: var(--muted); font-size: 12.5px; }
+
+/* Tables */
+.sg-tables { display: flex; flex-direction: column; gap: 12px; padding-top: 36px; }
+.sg-tables h2 { padding-top: 8px; font-size: 1.3rem; }
+.sg-tables table { width: 100%; font-size: 13px; }
+.sg-tables td, .sg-tables th { white-space: nowrap; }
+.sg-tables .dot { display: inline-block; margin: 0 6px 0 0; vertical-align: 1px; }
+.sg-tables tbody tr:hover { background: var(--surface-2); }
+.filters { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.filters label { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12.5px; }
+.filters select, .filters input { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 13px; }
+#sg-row-count { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+</style>
+
+<div class="sg">
+  <header class="sg-top">
+    <div>
+      <h1>Video Games Site Graph</h1>
+      <p class="lede">The third graph run of the Video Games Shop Manual, model <span class="mono">openai/gpt-5.5</span>. The first reply passed every check, so no repair call ran. No site traffic: the graph comes from the parts and the action lines of the first explore run. The paths have no host, and the Anonymization scan passed.</p>
+    </div>
+    <dl class="sg-counts" id="sg-counts"></dl>
+  </header>
+
+  <div class="sg-toolbar">
+    <div class="fx-toggles" id="sg-effects" role="group" aria-label="Show transitions by effect"></div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="lg lg-page"></i>page</span>
+      <span><i class="lg lg-overlay"></i>overlay</span>
+      <span><i class="rid">F1</i>open review item</span>
+      <span><i class="lg lg-out"></i>leaves the selection</span>
+      <span><i class="lg lg-in"></i>enters it</span>
+    </div>
+  </div>
+
+  <div class="sg-app">
+    <figure class="sg-canvas" id="sg-canvas">
+      <div class="scroll">
+        <svg id="sg-graph" viewBox="0 0 1300 785" role="group" aria-label="Site state graph of the Video Games storefront"></svg>
+      </div>
+      <figcaption>Columns follow a shopper from home to account and help. The top band holds the header controls: they show on every page, and the graph starts each one from <span class="mono">home</span>. A small number at the top right of a state counts the transitions that stay on it.</figcaption>
+    </figure>
+
+    <aside class="sg-side">
+      <div class="sg-panel" id="sg-inspector" aria-live="polite"></div>
+      <div class="sg-panel">
+        <div class="ins-head">
+          <span class="kicker">Decision</span>
+          <h3>Review items</h3>
+        </div>
+        <p class="hint">Click an item to see it on the graph. Tick the ones that should become follow-up tickets.</p>
+        <div class="ri-list" id="sg-review-open"></div>
+        <details class="fixed">
+          <summary id="sg-fixed-summary">Fixed in this run</summary>
+          <div class="fx-list" id="sg-review-fixed"></div>
+        </details>
+        <div class="picks">
+          <h4>Your picks</h4>
+          <p class="picks-text" id="sg-picks-text"></p>
+          <div class="picks-row">
+            <button type="button" class="btn primary" id="sg-copy">Copy</button>
+            <span id="sg-copy-state" role="status"></span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="sg-tables">
+    <h2 id="sg-states-title">States</h2>
+    <div class="table-wrap"><table id="sg-states-table"></table></div>
+    <h2 id="sg-transitions-title">Transitions</h2>
+    <div class="filters">
+      <label for="sg-source-filter">Source part <select id="sg-source-filter"></select></label>
+      <label for="sg-find">Find <input id="sg-find" type="search" placeholder="state, action or param"></label>
+      <span id="sg-row-count"></span>
+    </div>
+    <div class="table-wrap"><table id="sg-transitions-table"></table></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const GRAPH = {"version":"0.1","states":[{"id":"home","kind":"page","page_type":"home","url_pattern":"/"},{"id":"collection_node","kind":"page","page_type":"collection","url_pattern":"/b"},{"id":"collection_department","kind":"page","page_type":"collection","url_pattern":"/computer-video-games-hardware-accessories/b/"},{"id":"collection_results","kind":"page","page_type":"collection","url_pattern":"/s"},{"id":"product","kind":"page","page_type":"product","url_pattern":"/dp/{id}"},{"id":"review_list","kind":"page","page_type":"other","url_pattern":"/product-reviews/{id}"},{"id":"offer_listing","kind":"page","page_type":"other","url_pattern":"/gp/offer-listing/{id}"},{"id":"brand_store","kind":"page","page_type":"other","url_pattern":"/stores/page/{id}"},{"id":"site_directory","kind":"page","page_type":"page","url_pattern":"/gp/site-directory"},{"id":"search_results","kind":"page","page_type":"search","url_pattern":"/s?k={query}"},{"id":"cart","kind":"page","page_type":"cart","url_pattern":"/cart"},{"id":"login","kind":"page","page_type":"login","url_pattern":"/ap/signin"},{"id":"register","kind":"page","page_type":"register","url_pattern":"/ap/register"},{"id":"help_article","kind":"page","page_type":"policy","url_pattern":"/gp/help/customer/display.html"},{"id":"help_center","kind":"page","page_type":"page","url_pattern":"/gp/help/customer"},{"id":"protection_offer_sheet","kind":"overlay","overlay":"side_sheet","on":["product"]},{"id":"hamburger_menu","kind":"overlay","overlay":"side_sheet","on":["home","collection_node","collection_department","collection_results","product","review_list","offer_listing","brand_store","site_directory","search_results","cart","login","register","help_article","help_center"]},{"id":"top_nav_flyout","kind":"overlay","overlay":"flyout","on":["home","collection_node","collection_department","collection_results","product","review_list","offer_listing","brand_store","site_directory","search_results","cart","login","register","help_article","help_center"]},{"id":"account_flyout","kind":"overlay","overlay":"flyout","on":["home","collection_node","collection_department","collection_results","product","review_list","offer_listing","brand_store","site_directory","search_results","cart","login","register","help_article","help_center"]},{"id":"search_suggestions","kind":"overlay","overlay":"dropdown","on":["home","collection_node","collection_department","collection_results","product","review_list","offer_listing","brand_store","site_directory","search_results","cart","login","register","help_article","help_center"]},{"id":"location_modal","kind":"overlay","overlay":"modal","on":["home","collection_node","collection_department","collection_results","product","review_list","offer_listing","brand_store","site_directory","search_results","cart","login","register","help_article","help_center"]},{"id":"sign_in_tooltip","kind":"overlay","overlay":"popover","on":["product"]},{"id":"mini_cart_rail","kind":"overlay","overlay":"popover","on":["product","search_results","cart"]},{"id":"sort_dropdown","kind":"overlay","overlay":"dropdown","on":["collection_results","search_results"]}],"transitions":[{"from":"home","to":"home","trigger":"click","action":"open_home","effect":"navigate","source":"header_navigation"},{"from":"home","to":"site_directory","trigger":"click","action":"open_site_directory","effect":"navigate","source":"header_navigation"},{"from":"site_directory","to":"collection_department","trigger":"click","action":"open_department","effect":"navigate","source":"header_navigation"},{"from":"home","to":"collection_department","trigger":"click","action":"open_department","effect":"navigate","source":"collection_filters"},{"from":"collection_department","to":"collection_node","trigger":"click","action":"open_category","effect":"navigate","source":"collection_filters"},{"from":"collection_node","to":"collection_results","trigger":"click","action":"apply_filter","effect":"navigate","source":"collection_filters"},{"from":"collection_results","to":"collection_results","trigger":"click","action":"apply_filter","effect":"update_in_place","source":"collection_filters"},{"from":"collection_results","to":"collection_results","trigger":"click","action":"change_sort","effect":"update_in_place","params":["sort"],"source":"collection_filters"},{"from":"collection_results","to":"collection_results","trigger":"click","action":"go_to_next_page","effect":"update_in_place","params":["page"],"source":"collection_filters"},{"from":"home","to":"product","trigger":"click","action":"open_product","effect":"navigate","source":"homepage_sections"},{"from":"home","to":"collection_node","trigger":"click","action":"open_browse_page","effect":"navigate","source":"homepage_sections"},{"from":"home","to":"brand_store","trigger":"click","action":"open_brand_store","effect":"navigate","source":"homepage_sections"},{"from":"home","to":"review_list","trigger":"click","action":"open_review_list","effect":"navigate","source":"homepage_sections"},{"from":"home","to":"login","trigger":"click","action":"open_login","effect":"navigate","source":"homepage_sections"},{"from":"home","to":"register","trigger":"click","action":"open_register","effect":"navigate","source":"homepage_sections"},{"from":"home","to":"cart","trigger":"click","action":"open_cart","effect":"navigate","source":"header_navigation"},{"from":"home","to":"search_results","trigger":"submit","action":"submit_search","effect":"navigate","params":["query"],"source":"search_results"},{"from":"home","to":"search_suggestions","trigger":"type","action":"open_search_suggestions","effect":"open_overlay","params":["query"],"source":"search_predictive"},{"from":"search_suggestions","to":"search_suggestions","trigger":"type","action":"update_search_suggestions","effect":"update_in_place","params":["query"],"source":"search_predictive"},{"from":"home","to":"hamburger_menu","trigger":"click","action":"open_menu","effect":"open_overlay","source":"header_navigation"},{"from":"hamburger_menu","to":"collection_node","trigger":"click","action":"open_category","effect":"navigate","source":"header_navigation"},{"from":"home","to":"top_nav_flyout","trigger":"hover","action":"open_nav_flyout","effect":"open_overlay","source":"header_navigation"},{"from":"top_nav_flyout","to":"collection_node","trigger":"click","action":"open_category","effect":"navigate","source":"header_navigation"},{"from":"top_nav_flyout","to":"search_results","trigger":"click","action":"open_search_destination","effect":"navigate","source":"header_navigation"},{"from":"home","to":"account_flyout","trigger":"hover","action":"open_account_flyout","effect":"open_overlay","source":"header_navigation"},{"from":"account_flyout","to":"login","trigger":"click","action":"open_login","effect":"navigate","source":"header_navigation"},{"from":"account_flyout","to":"register","trigger":"click","action":"open_register","effect":"navigate","source":"header_navigation"},{"from":"account_flyout","to":"login","trigger":"click","action":"open_account_area","effect":"navigate","source":"account_pages"},{"from":"home","to":"location_modal","trigger":"click","action":"open_location_selector","effect":"open_overlay","source":"header_navigation"},{"from":"product","to":"product","trigger":"click","action":"select_variant","effect":"navigate","params":["variant"],"source":"product_variants"},{"from":"product","to":"protection_offer_sheet","trigger":"click","action":"add_to_cart","effect":"open_overlay","needs":["variant"],"source":"product_variants"},{"from":"protection_offer_sheet","to":"cart","trigger":"click","action":"decline_add_on","effect":"navigate","source":"cart_drawer"},{"from":"product","to":"login","trigger":"click","action":"add_to_list","effect":"navigate","source":"product_variants"},{"from":"product","to":"offer_listing","trigger":"click","action":"open_offer_listing","effect":"navigate","source":"product_variants"},{"from":"product","to":"collection_node","trigger":"click","action":"open_breadcrumb","effect":"navigate","source":"product_variants"},{"from":"product","to":"review_list","trigger":"click","action":"open_star_filter","effect":"navigate","source":"product_reviews"},{"from":"product","to":"product","trigger":"click","action":"jump_to_reviews","effect":"update_in_place","source":"product_reviews"},{"from":"product","to":"login","trigger":"click","action":"open_login","effect":"navigate","source":"product_reviews"},{"from":"product","to":"product","trigger":"click","action":"open_related_product","effect":"navigate","source":"related_products"},{"from":"product","to":"brand_store","trigger":"click","action":"open_brand_store","effect":"navigate","source":"related_products"},{"from":"product","to":"login","trigger":"click","action":"open_personalization_login","effect":"navigate","source":"related_products"},{"from":"product","to":"sign_in_tooltip","trigger":"hover","action":"show_sign_in_prompt","effect":"open_overlay","source":"floating_widgets"},{"from":"sign_in_tooltip","to":"login","trigger":"click","action":"open_login","effect":"navigate","source":"floating_widgets"},{"from":"sign_in_tooltip","to":"register","trigger":"click","action":"open_register","effect":"navigate","source":"floating_widgets"},{"from":"cart","to":"product","trigger":"click","action":"open_product","effect":"navigate","source":"cart_drawer"},{"from":"cart","to":"cart","trigger":"click","action":"increase_quantity","effect":"update_in_place","source":"cart_drawer"},{"from":"cart","to":"cart","trigger":"click","action":"remove_item","effect":"update_in_place","source":"cart_drawer"},{"from":"cart","to":"login","trigger":"click","action":"proceed_to_checkout","effect":"navigate","needs":["cart_item"],"source":"checkout_flow"},{"from":"cart","to":"login","trigger":"click","action":"open_returns_center","effect":"navigate","source":"info_pages"},{"from":"cart","to":"collection_node","trigger":"click","action":"open_deals","effect":"navigate","source":"cart_drawer"},{"from":"cart","to":"login","trigger":"click","action":"open_login","effect":"navigate","source":"cart_drawer"},{"from":"cart","to":"register","trigger":"click","action":"open_register","effect":"navigate","source":"cart_drawer"},{"from":"search_results","to":"product","trigger":"click","action":"open_result","effect":"navigate","source":"search_results"},{"from":"search_results","to":"offer_listing","trigger":"click","action":"open_offer_listing","effect":"navigate","source":"search_results"},{"from":"search_results","to":"search_results","trigger":"click","action":"apply_filter","effect":"update_in_place","source":"search_results"},{"from":"search_results","to":"search_results","trigger":"click","action":"change_sort","effect":"update_in_place","params":["sort"],"source":"search_results"},{"from":"search_results","to":"search_results","trigger":"click","action":"go_to_page","effect":"update_in_place","params":["page"],"source":"search_results"},{"from":"search_results","to":"login","trigger":"click","action":"open_personalization_login","effect":"navigate","source":"search_results"},{"from":"collection_results","to":"sort_dropdown","trigger":"click","action":"open_sort","effect":"open_overlay","source":"collection_filters"},{"from":"search_results","to":"sort_dropdown","trigger":"click","action":"open_sort","effect":"open_overlay","source":"search_results"},{"from":"sort_dropdown","to":"search_results","trigger":"click","action":"select_sort","effect":"navigate","params":["sort"],"source":"search_results"},{"from":"sort_dropdown","to":"collection_results","trigger":"click","action":"select_sort","effect":"navigate","params":["sort"],"source":"collection_filters"},{"from":"product","to":"mini_cart_rail","trigger":"click","action":"show_mini_cart","effect":"open_overlay","needs":["cart_item"],"source":"floating_widgets"},{"from":"mini_cart_rail","to":"cart","trigger":"click","action":"open_cart","effect":"navigate","source":"floating_widgets"},{"from":"login","to":"home","trigger":"click","action":"open_home","effect":"navigate","source":"account_pages"},{"from":"register","to":"home","trigger":"click","action":"open_home","effect":"navigate","source":"account_pages"},{"from":"login","to":"help_article","trigger":"click","action":"open_policy","effect":"navigate","source":"checkout_flow"},{"from":"register","to":"help_article","trigger":"click","action":"open_policy","effect":"navigate","source":"account_pages"},{"from":"login","to":"help_center","trigger":"click","action":"open_help","effect":"navigate","source":"account_pages"},{"from":"help_article","to":"help_article","trigger":"click","action":"open_topic","effect":"navigate","source":"info_pages"},{"from":"help_article","to":"help_article","trigger":"click","action":"jump_to_section","effect":"update_in_place","source":"info_pages"},{"from":"help_article","to":"login","trigger":"click","action":"open_self_service","effect":"navigate","source":"info_pages"},{"from":"help_article","to":"help_center","trigger":"click","action":"open_help_home","effect":"navigate","source":"info_pages"},{"from":"help_center","to":"login","trigger":"click","action":"open_self_service","effect":"navigate","source":"info_pages"},{"from":"help_center","to":"help_center","trigger":"click","action":"select_help_topic","effect":"update_in_place","source":"info_pages"},{"from":"home","to":"help_article","trigger":"click","action":"open_policy","effect":"navigate","source":"footer"},{"from":"home","to":"help_center","trigger":"click","action":"open_help","effect":"navigate","source":"footer"},{"from":"home","to":"login","trigger":"click","action":"open_account_area","effect":"navigate","source":"footer"}]};
+
+  const EFFECTS = ['navigate', 'update_in_place', 'open_overlay', 'swap_overlay', 'close_overlay'];
+  const BAND = new Set(['hamburger_menu', 'top_nav_flyout', 'account_flyout', 'search_suggestions', 'location_modal']);
+  const CORRIDOR_Y = 118;
+  const POS = {
+    home: [100, 430],
+    hamburger_menu: [300, 70], top_nav_flyout: [510, 70], account_flyout: [720, 70],
+    search_suggestions: [930, 70], location_modal: [1140, 70],
+    site_directory: [300, 190], collection_department: [300, 270], collection_node: [300, 350],
+    collection_results: [510, 250], sort_dropdown: [510, 370], search_results: [510, 490],
+    review_list: [720, 190], product: [720, 430], offer_listing: [720, 550], brand_store: [720, 670],
+    sign_in_tooltip: [930, 190], protection_offer_sheet: [930, 310], cart: [930, 470], mini_cart_rail: [930, 590],
+    login: [1140, 250], register: [1140, 330], help_center: [1140, 550], help_article: [1140, 670],
+  };
+  const LANES = [[100, 'Start'], [300, 'Browse'], [510, 'Results'], [720, 'Product'], [930, 'Cart'], [1140, 'Account and help']];
+
+  const S = new Map(GRAPH.states.map((s) => [s.id, s]));
+  const T = GRAPH.transitions.map((t, i) => ({ ...t, i }));
+  const PAGES = GRAPH.states.filter((s) => s.kind === 'page');
+  const OVERLAYS = GRAPH.states.filter((s) => s.kind === 'overlay');
+  const SOURCES = [...new Set(T.map((t) => t.source))];
+  const missing = GRAPH.states.filter((s) => !POS[s.id]).map((s) => s.id);
+  if (missing.length) throw new Error(`no diagram place for ${missing.join(', ')}`);
+
+  const STATUS = { partly: 'Partly fixed', agreed: 'As agreed', new: 'New in this run' };
+  const touches = (id) => (t) => t.from === id || t.to === id;
+  const REVIEW = [
+    { id: 'F1', status: 'partly', title: 'Department path keeps site text', nodes: ['collection_department', 'collection_node'],
+      text: 'Product pages are one state now, and no pattern has a tracking key. But <code>collection_department</code> keeps the category name as text in its path, and <code>collection_node</code> (<code>/b</code>) has no category id key. So neither browse pattern tells which category the page shows.' },
+    { id: 'F3', status: 'partly', title: 'Add-on sheet has only one exit', nodes: ['protection_offer_sheet', 'cart'], edges: touches('protection_offer_sheet'),
+      text: 'The add-on sheet is an overlay on <code>product</code> now. It has no accept and no close transition, only <code>decline_add_on</code>. The confirmation page after the decline is part of <code>cart</code>, because no input gives its path: the action line shows the product path, and the parts say only that a page opens.' },
+    { id: 'F10', status: 'agreed', title: 'Search suggestions have no exit', nodes: ['search_suggestions'], edges: touches('search_suggestions'),
+      text: 'The part says that closing the suggestions and picking one are unknown. By the rule on unknown behavior, the graph shows neither, so the overlay only opens and updates.' },
+    { id: 'N1', status: 'new', title: 'Sort shows two ways', nodes: ['sort_dropdown', 'collection_results', 'search_results'],
+      edges: (t) => ['change_sort', 'open_sort', 'select_sort'].includes(t.action),
+      text: '<code>change_sort</code> is an <code>update_in_place</code> loop on both result states. The graph also has <code>sort_dropdown</code>, an overlay whose <code>select_sort</code> is a <code>navigate</code> back to the results. One sort control shows twice, with two effects.' },
+    { id: 'N2', status: 'new', title: 'Mini cart opens on a click', nodes: ['mini_cart_rail'], edges: touches('mini_cart_rail'),
+      text: '<code>mini_cart_rail</code> is a popover that <code>show_mini_cart</code> opens with a click. The part tells of a docked column, not of a control that opens it.' },
+    { id: 'N3', status: 'new', title: 'Sign-in tooltip opens on hover', nodes: ['sign_in_tooltip'], edges: touches('sign_in_tooltip'),
+      text: 'The graph gives <code>show_sign_in_prompt</code> a <code>hover</code> trigger. The tooltip shows on page load, but the trigger list has no load trigger.' },
+    { id: 'N4', status: 'new', title: 'Menu has no close', nodes: ['hamburger_menu'], edges: touches('hamburger_menu'),
+      text: 'The header part says that the menu closes, but the graph has no close transition for <code>hamburger_menu</code>. No overlay in this graph has a close transition.' },
+    { id: 'N5', status: 'new', title: 'Variant pick is navigate', nodes: ['product'],
+      edges: (t) => t.from === 'product' && t.to === 'product' && t.action === 'select_variant',
+      text: '<code>select_variant</code> is a <code>navigate</code> loop on <code>product</code>, because the part says that a pick loads the other listing. This follows the rule for another page of the same state. Check that you agree.' },
+  ];
+  const FIXED = [
+    { id: 'F2', title: 'Header overlays are on all 15 pages', nodes: [...BAND], edges: (t) => t.from === 'home' && BAND.has(t.to) },
+    { id: 'F4', title: 'Home links to product, reviews, browse page, brand store, sign-in and register', nodes: ['home'], edges: (t) => t.from === 'home' && t.source === 'homepage_sections' },
+    { id: 'F5', title: 'Register is a state', nodes: ['register'], edges: touches('register') },
+    { id: 'F6', title: 'Footer and help parts give transitions', nodes: [], edges: (t) => t.source === 'footer' || t.source === 'info_pages' },
+    { id: 'F7', title: 'No repeated transition, and the sort loop is update_in_place', nodes: [], edges: (t) => t.action === 'change_sort' },
+    { id: 'F8', title: 'The manifest names site_graph.json', note: 'Not in the graph. Merge wrote the manifest again.' },
+    { id: 'F9', title: 'A URL pattern with :// fails the check', note: 'Not in the graph. A core check.' },
+    { id: 'F11', title: 'No transition for a behavior that a part calls unknown', nodes: ['protection_offer_sheet', 'search_suggestions'] },
+  ];
+  const ITEMS = new Map([...REVIEW, ...FIXED].map((r) => [r.id, r]));
+  for (const r of ITEMS.values()) r.edgeSet = new Set(T.filter((t) => (r.edges ? r.edges(t) : false)).map((t) => t.i));
+  const flagsOf = (id) => REVIEW.filter((r) => r.nodes.includes(id)).map((r) => r.id);
+
+  const view = { sel: null, hidden: new Set() };
+  const TICKETS_KEY = 'shopgym-site-graph-tickets';
+  let tickets = new Set();
+  try { tickets = new Set(JSON.parse(localStorage.getItem(TICKETS_KEY) || '[]')); } catch (e) { tickets = new Set(); }
+  const saveTickets = () => {
+    try { localStorage.setItem(TICKETS_KEY, JSON.stringify([...tickets])); } catch (e) { /* Storage is blocked: the picks hold for this page only. */ }
+  };
+
+  const $ = (q) => document.querySelector(q);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const NS = 'http://www.w3.org/2000/svg';
+  const svgEl = (tag, attrs, parent) => {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, String(v));
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const r1 = (n) => Math.round(n * 10) / 10;
+  const pt = (p) => `${r1(p[0])},${r1(p[1])}`;
+  const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function box(id) {
+    const [x, y] = POS[id];
+    return S.get(id).kind === 'page' ? { x, y, w: 176, h: 46 } : { x, y, w: 176, h: 40 };
+  }
+  function nodeBetween(a, b) {
+    const [ax, ay] = POS[a];
+    const [, by] = POS[b];
+    const lo = Math.min(ay, by), hi = Math.max(ay, by);
+    return Object.entries(POS).some(([id, [x, y]]) => id !== a && id !== b && Math.abs(x - ax) < 6 && y > lo && y < hi);
+  }
+
+  /** The path of one drawn edge from `from` to `to`, and where its label goes. */
+  function edgeGeom(from, to, off) {
+    const A = box(from), B = box(to);
+    if (BAND.has(to) && !BAND.has(from)) {
+      const sx = A.x - A.w / 2 + 28, tx = B.x, r = 12, dir = Math.sign(tx - sx) || 1;
+      return {
+        d: `M${pt([sx, A.y - A.h / 2])} V${CORRIDOR_Y + r} Q${sx},${CORRIDOR_Y} ${sx + dir * r},${CORRIDOR_Y} H${tx - dir * r} Q${tx},${CORRIDOR_Y} ${tx},${CORRIDOR_Y - r} V${B.y + B.h / 2}`,
+        label: [tx, CORRIDOR_Y + 15],
+      };
+    }
+    const dx = B.x - A.x, dy = B.y - A.y;
+    if (Math.abs(dx) < 6) {
+      if (nodeBetween(from, to)) {
+        const b = 26 + Math.abs(dy) * 0.06 + (dy < 0 ? 16 : 0);
+        const p1 = [A.x + A.w / 2, A.y + off], p2 = [B.x + B.w / 2, B.y + off];
+        return { d: `M${pt(p1)} C${pt([p1[0] + b, p1[1]])} ${pt([p2[0] + b, p2[1]])} ${pt(p2)}` };
+      }
+      const s = Math.sign(dy);
+      return { d: `M${pt([A.x + off, A.y + s * A.h / 2])} L${pt([B.x + off, B.y - s * B.h / 2])}` };
+    }
+    const nx = Math.abs(dx) / ((A.w + B.w) / 2 + 30), ny = Math.abs(dy) / ((A.h + B.h) / 2 + 30);
+    if (nx >= ny) {
+      const s = Math.sign(dx);
+      const p1 = [A.x + s * A.w / 2, A.y + clamp(dy * 0.08, A.h / 2 - 6) + off];
+      const p2 = [B.x - s * B.w / 2, B.y - clamp(dy * 0.08, B.h / 2 - 6) + off];
+      const c = Math.max(30, Math.abs(p2[0] - p1[0]) * 0.5);
+      return { d: `M${pt(p1)} C${pt([p1[0] + s * c, p1[1]])} ${pt([p2[0] - s * c, p2[1]])} ${pt(p2)}` };
+    }
+    const s = Math.sign(dy);
+    const p1 = [A.x + clamp(dx * 0.12, A.w / 2 - 14) + off, A.y + s * A.h / 2];
+    const p2 = [B.x - clamp(dx * 0.12, B.w / 2 - 14) + off, B.y - s * B.h / 2];
+    const c = Math.max(24, Math.abs(p2[1] - p1[1]) * 0.5);
+    return { d: `M${pt(p1)} C${pt([p1[0], p1[1] + s * c])} ${pt([p2[0], p2[1] - s * c])} ${pt(p2)}` };
+  }
+
+  function computeFocus() {
+    const sel = view.sel;
+    if (!sel) return null;
+    if (sel.type === 'state') {
+      const edges = new Set(T.filter(touches(sel.id)).map((t) => t.i));
+      const nodes = new Set([sel.id]);
+      for (const i of edges) { nodes.add(T[i].from); nodes.add(T[i].to); }
+      return { mode: 'state', id: sel.id, edges, nodes, ring: new Set() };
+    }
+    const r = ITEMS.get(sel.id);
+    const nodes = new Set(r.nodes || []);
+    for (const i of r.edgeSet) { nodes.add(T[i].from); nodes.add(T[i].to); }
+    return { mode: 'review', id: r.id, edges: r.edgeSet, nodes, ring: new Set(r.nodes || []) };
+  }
+
+  const effectOf = (ts) => { const f = new Set(ts.map((t) => t.effect)); return f.size === 1 ? [...f][0] : 'mixed'; };
+  const names = (ts) => { const n = ts.map((t) => t.action); return n.length > 2 ? `${n.slice(0, 2).join(', ')} +${n.length - 2}` : n.join(', '); };
+  const describe = (t) => `${t.from} to ${t.to}: ${t.action} (${t.trigger}, ${t.effect}, part ${t.source})`;
+
+  function renderGraph() {
+    const svg = $('#sg-graph');
+    const active = document.activeElement;
+    const focusedId = active && active.closest ? active.closest('#sg-graph .node')?.getAttribute('data-id') : null;
+    svg.replaceChildren();
+    const focus = computeFocus();
+
+    const defs = svgEl('defs', {}, svg);
+    for (const fx of [...EFFECTS, 'mixed']) {
+      for (const [suffix, size] of [['', 7], ['-hl', 9]]) {
+        const m = svgEl('marker', { id: `ah-${fx}${suffix}`, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: size, markerHeight: size, markerUnits: 'userSpaceOnUse', orient: 'auto' }, defs);
+        svgEl('path', { d: 'M0,0 L10,5 L0,10 z', class: `ahf fx-${fx}` }, m);
+      }
+    }
+    svgEl('rect', { x: 0, y: 0, width: 1300, height: 785, class: 'bg-hit' }, svg);
+    LANES.forEach(([x, label], i) => {
+      if (i % 2 === 0) svgEl('rect', { x: Math.max(0, x - 100), y: 136, width: 200, height: 604, rx: 6, class: 'lane' }, svg);
+      svgEl('text', { x, y: 763, class: 'lane-label' }, svg).textContent = label;
+    });
+    svgEl('rect', { x: 8, y: 38, width: 1284, height: 64, rx: 8, class: 'band' }, svg);
+    svgEl('text', { x: 22, y: 66, class: 'band-label' }, svg).textContent = 'HEADER';
+    svgEl('text', { x: 22, y: 81, class: 'band-sub' }, svg).textContent = 'on every page';
+
+    const under = svgEl('g', {}, svg);
+    const nodesG = svgEl('g', {}, svg);
+    const loopsG = svgEl('g', {}, svg);
+    const over = svgEl('g', {}, svg);
+    const labelsG = svgEl('g', {}, svg);
+    const labels = [];
+
+    const visible = T.filter((t) => !view.hidden.has(t.effect));
+    const groups = new Map();
+    for (const t of visible) {
+      if (t.from === t.to) continue;
+      const k = `${t.from}>${t.to}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(t);
+    }
+    for (const [k, ts] of groups) {
+      const [from, to] = k.split('>');
+      const off = groups.has(`${to}>${from}`) ? (from < to ? -5 : 5) : 0;
+      const g = edgeGeom(from, to, off);
+      const fx = effectOf(ts);
+      const hit = focus ? ts.filter((t) => focus.edges.has(t.i)) : [];
+      const hl = hit.length > 0;
+      const incoming = hl && focus.mode === 'state' && to === focus.id;
+      const cls = ['edge', `fx-${fx}`, focus ? (hl ? 'hl' : 'dim') : '', incoming ? 'in' : ''].join(' ');
+      const p = svgEl('path', { d: g.d, class: cls, 'marker-end': `url(#ah-${fx}${hl ? '-hl' : ''})` }, hl ? over : under);
+      svgEl('title', {}, p).textContent = ts.map(describe).join('\n');
+      if (hl) labels.push({ p, g, text: names(hit), t: focus.mode === 'state' ? (incoming ? 0.35 : 0.62) : 0.5 });
+    }
+
+    for (const s of GRAPH.states) {
+      const b = box(s.id);
+      const page = s.kind === 'page';
+      const selected = !!(view.sel && view.sel.type === 'state' && view.sel.id === s.id);
+      const cls = ['node', s.kind, focus && !focus.nodes.has(s.id) ? 'dim' : '', selected ? 'sel' : ''].join(' ');
+      const sub = page ? s.url_pattern : `${s.overlay} · on ${s.on.length === PAGES.length ? 'all' : s.on.length}`;
+      const g = svgEl('g', {
+        class: cls, transform: `translate(${b.x},${b.y})`, tabindex: 0, role: 'button', 'data-id': s.id,
+        'aria-pressed': String(selected),
+        'aria-label': `${s.id}, ${page ? `${s.page_type} page, ${s.url_pattern}` : `${s.overlay} overlay`}`,
+      }, nodesG);
+      if (focus && focus.ring.has(s.id)) {
+        svgEl('rect', { x: -b.w / 2 - 5, y: -b.h / 2 - 5, width: b.w + 10, height: b.h + 10, rx: page ? 8 : (b.h + 10) / 2, class: 'ringr' }, g);
+      }
+      svgEl('rect', { x: -b.w / 2, y: -b.h / 2, width: b.w, height: b.h, rx: page ? 5 : b.h / 2, class: 'box' }, g);
+      svgEl('text', { y: -3, class: 'nid' }, g).textContent = s.id;
+      svgEl('text', { y: 13, class: 'nsub' }, g).textContent = sub.length > 26 ? `${sub.slice(0, 25)}…` : sub;
+      svgEl('title', {}, g).textContent = page ? `${s.id}: ${s.page_type} page, ${s.url_pattern}` : `${s.id}: ${s.overlay} overlay on ${s.on.length} pages`;
+      const flags = flagsOf(s.id);
+      if (flags.length) {
+        const label = flags.join(' ');
+        const fg = svgEl('g', { class: 'flag', transform: `translate(${-b.w / 2 + (page ? 0 : 16)},${-b.h / 2 - 9})` }, g);
+        svgEl('rect', { x: 0, y: -7, width: label.length * 5.8 + 10, height: 14, rx: 3 }, fg);
+        svgEl('text', { x: 5, y: 3.5 }, fg).textContent = label;
+      }
+
+      const loops = visible.filter((t) => t.from === s.id && t.to === s.id);
+      if (loops.length) {
+        const x = b.x + b.w / 2, y = b.y - b.h / 2;
+        const fx = effectOf(loops);
+        const hit = focus ? loops.filter((t) => focus.edges.has(t.i)) : [];
+        const hl = hit.length > 0;
+        const lp = svgEl('path', {
+          d: `M${pt([x - 24, y])} C${pt([x - 24, y - 26])} ${pt([x + 26, y + 12])} ${pt([x, y + 12])}`,
+          class: `edge fx-${fx} ${focus ? (hl ? 'hl' : 'dim') : ''}`, 'marker-end': `url(#ah-${fx}${hl ? '-hl' : ''})`,
+        }, loopsG);
+        svgEl('title', {}, lp).textContent = loops.map(describe).join('\n');
+        svgEl('text', { x: x + 5, y: y - 12, class: `loopn ${focus && !hl ? 'dim' : ''}` }, loopsG).textContent = loops.length;
+        // A loop label tries above the state, then below it, then at its right and left sides.
+        if (hl) {
+          labels.push({
+            at: (w) => [[b.x, y - 26], [b.x, b.y + b.h / 2 + 16], [b.x + b.w / 2 + w / 2 + 10, b.y + 4], [b.x - b.w / 2 - w / 2 - 10, b.y + 4]],
+            text: names(hit),
+          });
+        }
+      }
+    }
+
+    // Each label takes the free place nearest its first anchor: along its path, then up, down or to a side.
+    // Nodes, their flags and the labels before it count as taken. When no place is free, the label takes
+    // the place that covers the least.
+    const placed = GRAPH.states.map((s) => {
+      const b = box(s.id);
+      return { x0: b.x - b.w / 2 - 3, x1: b.x + b.w / 2 + 3, y0: b.y - b.h / 2 - (flagsOf(s.id).length ? 18 : 3), y1: b.y + b.h / 2 + 3 };
+    });
+    const inView = (r) => r.x0 >= 2 && r.x1 <= 1298 && r.y0 >= 2 && r.y1 <= 783;
+    const covered = (r) => placed.reduce((sum, p) => sum + Math.max(0, Math.min(r.x1, p.x1) - Math.max(r.x0, p.x0)) * Math.max(0, Math.min(r.y1, p.y1) - Math.max(r.y0, p.y0)), 0);
+    for (const l of labels) {
+      const w = l.text.length * 6.9 + 4;
+      const points = [];
+      if (l.p && !l.g.label) {
+        const len = l.p.getTotalLength();
+        for (const t of [l.t, l.t - 0.12, l.t + 0.12, l.t - 0.24, l.t + 0.24]) {
+          const q = l.p.getPointAtLength(len * Math.min(0.92, Math.max(0.08, t)));
+          points.push([q.x, q.y + 4]);
+        }
+      } else {
+        points.push(...(l.at ? l.at(w) : [l.g.label]));
+      }
+      const rectAt = (c) => ({ x0: c.x - w / 2, x1: c.x + w / 2, y0: c.y - 12, y1: c.y + 3 });
+      let pick = { x: points[0][0], y: points[0][1] };
+      let best = Infinity;
+      points.forEach(([x, y], k) => {
+        for (const dy of [0, -13, 13, -26, 26, -39, 39]) {
+          for (const dx of [0, -w / 2, w / 2]) {
+            const c = { x: x + dx, y: y + dy };
+            const r = rectAt(c);
+            if (!inView(r)) continue;
+            const score = covered(r) * 100 + Math.hypot(dx, dy) + k * 6;
+            if (score < best) { best = score; pick = c; }
+          }
+        }
+      });
+      placed.push(rectAt(pick));
+      svgEl('text', { x: r1(pick.x), y: r1(pick.y), class: 'elabel', 'text-anchor': 'middle' }, labelsG).textContent = l.text;
+    }
+
+    if (focusedId) svg.querySelector(`.node[data-id="${focusedId}"]`)?.focus({ preventScroll: true });
+  }
+
+  function renderCounts() {
+    const rows = [['Pages', PAGES.length], ['Overlays', OVERLAYS.length], ['Transitions', T.length], ['Source parts', SOURCES.length]];
+    $('#sg-counts').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+  }
+
+  function renderEffects() {
+    const wrap = $('#sg-effects');
+    wrap.replaceChildren();
+    for (const fx of EFFECTS) {
+      const n = T.filter((t) => t.effect === fx).length;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `fx-toggle fx-${fx}`;
+      b.disabled = n === 0;
+      b.setAttribute('aria-pressed', String(n > 0 && !view.hidden.has(fx)));
+      b.title = n === 0 ? 'No transition in this graph has this effect' : `Show or hide the ${fx} transitions`;
+      b.innerHTML = `<span class="sw"></span><span class="name">${fx}</span><span class="n">${n}</span>`;
+      b.addEventListener('click', () => {
+        if (view.hidden.has(fx)) view.hidden.delete(fx); else view.hidden.add(fx);
+        renderEffects();
+        renderGraph();
+      });
+      wrap.appendChild(b);
+    }
+  }
+
+  const stBtn = (id) => `<button type="button" class="st" data-select="${esc(id)}">${esc(id)}</button>`;
+  const ridBtn = (id) => `<button type="button" class="rid${ITEMS.get(id).status ? '' : ' ok'}" data-review="${esc(id)}">${esc(id)}</button>`;
+  function trRow(t, side) {
+    const meta = [t.trigger, t.effect];
+    if (t.params) meta.push(`params ${t.params.join(', ')}`);
+    if (t.needs) meta.push(`needs ${t.needs.join(', ')}`);
+    meta.push(`part ${t.source}`);
+    const act = `<span class="mono act">${esc(t.action)}</span>`;
+    const arrow = '<span aria-hidden="true">→</span>';
+    /** `in` names the start, `out` the end, `full` both ends, and `loop` neither. */
+    const main = {
+      in: `${stBtn(t.from)} ${arrow} ${act}`,
+      out: `${act} ${arrow} ${stBtn(t.to)}`,
+      full: `${stBtn(t.from)} ${arrow} ${act} ${arrow} ${stBtn(t.to)}`,
+      loop: act,
+    }[side];
+    return `<li><span class="dot fx-${t.effect}"></span><div><div class="tr-main">${main}</div><div class="tr-meta">${esc(meta.join(' · '))}</div></div></li>`;
+  }
+  const selectedHead = (kicker, title) => `<div class="ins-top"><div class="ins-head"><span class="kicker">${kicker}</span>${title}</div><button type="button" class="btn" data-clear>Clear</button></div>`;
+  const trSection = (title, ts, side) => `<div class="sec"><h4>${title} (${ts.length})</h4>${ts.length ? `<ul class="trs">${ts.map((t) => trRow(t, side)).join('')}</ul>` : '<p class="empty">None.</p>'}</div>`;
+
+  function overviewHtml() {
+    const exits = (id) => T.filter((t) => t.from === id && t.to !== id).length;
+    const deadOverlays = OVERLAYS.filter((s) => exits(s.id) === 0).map((s) => s.id);
+    const deadPages = PAGES.filter((s) => exits(s.id) === 0).map((s) => s.id);
+    const count = (fx) => T.filter((t) => t.effect === fx).length;
+    const toLogin = T.filter((t) => t.to === 'login' && t.from !== 'login');
+    const loginFrom = new Set(toLogin.map((t) => t.from));
+    const facts = [];
+    if (count('close_overlay') === 0 && count('swap_overlay') === 0) facts.push('No transition closes or swaps an overlay: <code>close_overlay</code> 0, <code>swap_overlay</code> 0.');
+    if (deadOverlays.length) facts.push(`${deadOverlays.length} overlays have no exit: ${deadOverlays.map(stBtn).join(', ')}.`);
+    if (deadPages.length) facts.push(`${deadPages.length} pages have no exit of their own. A shopper leaves them only by the header: ${deadPages.map(stBtn).join(', ')}.`);
+    facts.push(`${toLogin.length} transitions from ${loginFrom.size} states end on ${stBtn('login')}. The explorer stayed signed out, so checkout, lists and account links stop at sign-in.`);
+    facts.push(`Each of the ${SOURCES.length} parts is the source of one or more transitions.`);
+    return `<div class="ins-head"><span class="kicker">Nothing selected</span><h3>Overview</h3></div>
+      <p class="hint">Click a state to see where a shopper can go from it. Click a review item to see the states and transitions it is about. Press Esc to clear.</p>
+      <div class="sec"><h4>Graph facts</h4><ul class="facts">${facts.map((f) => `<li>${f}</li>`).join('')}</ul></div>`;
+  }
+
+  function stateHtml(id) {
+    const s = S.get(id);
+    const page = s.kind === 'page';
+    const kv = page
+      ? [['Page type', `<code>${esc(s.page_type)}</code>`], ['URL pattern', `<code>${esc(s.url_pattern)}</code>`]]
+      : [['Overlay', `<code>${esc(s.overlay)}</code>`], ['Opens on', s.on.length === PAGES.length ? `every page (${s.on.length})` : s.on.map(stBtn).join(', ')]];
+    if (page) {
+      const on = OVERLAYS.filter((o) => o.on.includes(id));
+      const header = on.filter((o) => BAND.has(o.id)).length;
+      const own = on.filter((o) => !BAND.has(o.id)).map((o) => o.id);
+      kv.push(['Overlays on it', [header ? `${header} header overlays` : '', ...own.map(stBtn)].filter(Boolean).join(', ') || 'None']);
+    }
+    const flags = flagsOf(id);
+    const out = T.filter((t) => t.from === id && t.to !== id);
+    const loops = T.filter((t) => t.from === id && t.to === id);
+    const inc = T.filter((t) => t.to === id && t.from !== id);
+    return `${selectedHead(page ? 'Page state' : 'Overlay state', `<h3 class="mono">${esc(id)}</h3>`)}
+      <dl class="kv">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+      ${flags.length ? `<div class="sec"><h4>Review items</h4><div class="flags-row">${flags.map(ridBtn).join('')}</div></div>` : ''}
+      ${trSection('Leaves this state', out, 'out')}
+      ${loops.length ? trSection('Stays on this state', loops, 'loop') : ''}
+      ${trSection('Enters this state', inc, 'in')}`;
+  }
+
+  function reviewHtml(id) {
+    const r = ITEMS.get(id);
+    const ts = T.filter((t) => r.edgeSet.has(t.i));
+    const text = r.text || (r.note ? esc(r.note) : '');
+    return `${selectedHead(`Review item · ${r.status ? STATUS[r.status] : 'Fixed'}`, `<h3>${esc(r.id)} ${esc(r.title)}</h3>`)}
+      ${text ? `<p>${text}</p>` : ''}
+      ${r.nodes && r.nodes.length ? `<div class="sec"><h4>States</h4><p>${r.nodes.map(stBtn).join(', ')}</p></div>` : ''}
+      ${ts.length ? `<div class="sec"><h4>Transitions (${ts.length})</h4><ul class="trs">${ts.map((t) => trRow(t, 'full')).join('')}</ul></div>` : ''}`;
+  }
+
+  function renderInspector() {
+    const sel = view.sel;
+    $('#sg-inspector').innerHTML = !sel ? overviewHtml() : sel.type === 'state' ? stateHtml(sel.id) : reviewHtml(sel.id);
+  }
+
+  function picksText() {
+    const picks = REVIEW.filter((r) => tickets.has(r.id)).map((r) => r.id);
+    if (!picks.length) return 'I accept the third graph. No follow-up tickets.';
+    const list = picks.length === 1 ? picks[0] : `${picks.slice(0, -1).join(', ')} and ${picks[picks.length - 1]}`;
+    return `Make follow-up tickets for ${list}. I accept the rest of the third graph.`;
+  }
+
+  function renderReview() {
+    const activeId = view.sel && view.sel.type === 'review' ? view.sel.id : null;
+    $('#sg-review-open').innerHTML = REVIEW.map((r) => `
+      <div class="ri${activeId === r.id ? ' active' : ''}">
+        <button type="button" class="ri-show" data-review="${r.id}" aria-pressed="${activeId === r.id}">
+          <span class="rid">${r.id}</span><span class="status">${STATUS[r.status]}</span>
+          <span class="ri-title">${esc(r.title)}</span>
+        </button>
+        <label class="tick" for="sg-ticket-${r.id}"><input type="checkbox" id="sg-ticket-${r.id}" data-ticket="${r.id}"${tickets.has(r.id) ? ' checked' : ''}> Ticket</label>
+      </div>`).join('');
+    $('#sg-fixed-summary').textContent = `Fixed in this run (${FIXED.length})`;
+    $('#sg-review-fixed').innerHTML = FIXED.map((r) => (r.note
+      ? `<div class="fx-row"><span class="rid ok">${r.id}</span><span><span class="fx-t">${esc(r.title)}</span> <span class="fx-note">${esc(r.note)}</span></span></div>`
+      : `<button type="button" class="fx-row" data-review="${r.id}"><span class="rid ok">${r.id}</span><span class="fx-t">${esc(r.title)}</span></button>`)).join('');
+    $('#sg-picks-text').textContent = picksText();
+  }
+
+  function renderStates() {
+    $('#sg-states-title').textContent = `States (${GRAPH.states.length})`;
+    const head = '<thead><tr><th>State</th><th>Kind</th><th>Type</th><th>URL pattern or opens on</th><th class="num">Out</th><th class="num">Stays</th><th class="num">In</th><th>Review</th></tr></thead>';
+    const rows = GRAPH.states.map((s) => {
+      const out = T.filter((t) => t.from === s.id && t.to !== s.id).length;
+      const stays = T.filter((t) => t.from === s.id && t.to === s.id).length;
+      const inc = T.filter((t) => t.to === s.id && t.from !== s.id).length;
+      const where = s.kind === 'page' ? `<span class="mono">${esc(s.url_pattern)}</span>` : s.on.length === PAGES.length ? 'every page' : `<span class="mono">${s.on.map(esc).join(', ')}</span>`;
+      return `<tr><td>${stBtn(s.id)}</td><td>${s.kind}</td><td class="mono">${esc(s.page_type || s.overlay)}</td><td>${where}</td><td class="num">${out}</td><td class="num">${stays}</td><td class="num">${inc}</td><td>${flagsOf(s.id).map(ridBtn).join(' ')}</td></tr>`;
+    }).join('');
+    $('#sg-states-table').innerHTML = `${head}<tbody>${rows}</tbody>`;
+  }
+
+  function renderTransitions() {
+    const src = $('#sg-source-filter').value;
+    const q = $('#sg-find').value.trim().toLowerCase();
+    const rows = T.filter((t) => (!src || t.source === src) && (!q || [t.from, t.to, t.action, t.trigger, t.effect, ...(t.params || []), ...(t.needs || [])].some((v) => v.toLowerCase().includes(q))));
+    $('#sg-transitions-title').textContent = `Transitions (${T.length})`;
+    $('#sg-row-count').textContent = `${rows.length} of ${T.length} shown`;
+    const head = '<thead><tr><th class="num">#</th><th>From</th><th>Action</th><th>To</th><th>Trigger</th><th>Effect</th><th>Params</th><th>Needs</th><th>Source part</th></tr></thead>';
+    const body = rows.map((t) => `<tr><td class="num">${t.i + 1}</td><td>${stBtn(t.from)}</td><td class="mono">${esc(t.action)}</td><td>${stBtn(t.to)}</td><td>${t.trigger}</td><td><span class="dot fx-${t.effect}"></span><span class="mono">${t.effect}</span></td><td class="mono">${esc((t.params || []).join(', '))}</td><td class="mono">${esc((t.needs || []).join(', '))}</td><td class="mono">${esc(t.source)}</td></tr>`).join('');
+    $('#sg-transitions-table').innerHTML = `${head}<tbody>${body || '<tr><td colspan="9" class="empty">No transition matches.</td></tr>'}</tbody>`;
+  }
+
+  function renderSourceFilter() {
+    const opts = [`<option value="">All parts (${T.length})</option>`, ...SOURCES.map((s) => `<option value="${esc(s)}">${esc(s)} (${T.filter((t) => t.source === s).length})</option>`)];
+    $('#sg-source-filter').innerHTML = opts.join('');
+  }
+
+  function select(sel) {
+    const same = sel && view.sel && sel.type === view.sel.type && sel.id === view.sel.id;
+    view.sel = same ? null : sel;
+    renderGraph();
+    renderInspector();
+    renderReview();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!(e.target instanceof Element)) return;
+    const s = e.target.closest('[data-select]');
+    if (s) {
+      view.sel = null;
+      select({ type: 'state', id: s.getAttribute('data-select') });
+      if (s.closest('.sg-tables')) $('#sg-canvas').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+      return;
+    }
+    const r = e.target.closest('[data-review]');
+    if (r) {
+      select({ type: 'review', id: r.getAttribute('data-review') });
+      return;
+    }
+    if (e.target.closest('[data-clear]')) select(null);
+  });
+  $('#sg-graph').addEventListener('click', (e) => {
+    const n = e.target.closest('.node');
+    if (n) select({ type: 'state', id: n.getAttribute('data-id') });
+    else if (view.sel) select(null);
+  });
+  $('#sg-graph').addEventListener('keydown', (e) => {
+    const n = e.target.closest('.node');
+    if (n && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); select({ type: 'state', id: n.getAttribute('data-id') }); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && view.sel) select(null); });
+  document.addEventListener('change', (e) => {
+    const id = e.target instanceof Element ? e.target.getAttribute('data-ticket') : null;
+    if (!id) return;
+    if (e.target.checked) tickets.add(id); else tickets.delete(id);
+    saveTickets();
+    $('#sg-picks-text').textContent = picksText();
+  });
+  $('#sg-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(picksText());
+      $('#sg-copy-state').textContent = 'Copied';
+    } catch (err) {
+      const range = document.createRange();
+      range.selectNodeContents($('#sg-picks-text'));
+      const s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(range);
+      $('#sg-copy-state').textContent = 'Selected. Press Cmd+C or Ctrl+C to copy.';
+    }
+  });
+  $('#sg-source-filter').addEventListener('change', renderTransitions);
+  $('#sg-find').addEventListener('input', renderTransitions);
+
+  renderCounts();
+  renderEffects();
+  renderSourceFilter();
+  renderGraph();
+  renderInspector();
+  renderReview();
+  renderStates();
+  renderTransitions();
+})();
+</script>
