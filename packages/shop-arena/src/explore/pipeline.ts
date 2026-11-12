@@ -16,7 +16,7 @@
  * stats.json            catalog and feature statistics
  * manifest.json         counts, omissions, conflicts, coverage and fixed area gaps, paths
  * manual.md             the synthesized shop manual
- * site_graph.json       the Site state graph, from the finished parts
+ * site_graph.json       the Site state graph, from the finished parts and their actions
  * brand_terms.json      the brand terms of the run (never published)
  * .pipeline/            step records of the pipeline runner
  * ```
@@ -70,7 +70,7 @@ import {
   leakScanner,
   publishedLeaks,
 } from './anonymization.js';
-import { IterationBrowser, parseCart } from './browser.js';
+import { IterationBrowser, START_STATE_FILENAME, parseCart } from './browser.js';
 import {
   type Capabilities,
   type Conflict,
@@ -262,8 +262,6 @@ const PATHS = {
   siteGraph: 'site_graph.json',
   brandTerms: 'brand_terms.json',
 } as const;
-/** Written into each Iteration's directory when the Iteration starts. */
-const START_STATE_FILENAME = 'start_state.json';
 
 /** Shape of `brand_terms.json`. */
 const BRAND_TERMS_SCHEMA = z.array(z.string());
@@ -605,14 +603,17 @@ const synthesizeStep: Step<ExploreContext> = {
 };
 
 /**
- * Writes the Site state graph from the finished parts and the merged
- * Capabilities with one completion. The graph must pass its checks and
- * the Anonymization scan, or the step fails and writes no file.
+ * Writes the Site state graph from the finished parts, the browser
+ * actions of their executor Iterations, and the merged Capabilities with
+ * one completion. The graph must pass its checks and the Anonymization
+ * scan, or the step fails and writes no file.
  *
  * The step does not read `manifest.json`, but it is an input. Merge
  * writes the manifest again on each run, with a new time. Thus each
  * merge makes the graph stale, also a forced merge that keeps the same
- * Capabilities. `plan.md` decides which parts are finished.
+ * Capabilities. `plan.md` decides which parts are finished. The
+ * trajectories under `run/iters/` are not inputs: only the explore step
+ * writes them, and the merge after it makes the graph stale.
  */
 const graphStep: Step<ExploreContext> = {
   id: 'graph',
@@ -631,7 +632,7 @@ const graphStep: Step<ExploreContext> = {
       context.model,
       context.prompts.graph,
       parseCapabilities(readJson(join(outDir, PATHS.capabilities))),
-      readFinishedParts(runDir),
+      await readFinishedParts(runDir),
       signal,
     );
     const text = `${JSON.stringify(graph, null, 2)}\n`;

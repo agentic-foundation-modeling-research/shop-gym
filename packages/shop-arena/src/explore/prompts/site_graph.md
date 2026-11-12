@@ -14,7 +14,29 @@ You get two inputs at the end of this prompt:
    overlay, not a page.
 2. `## Parts` - the H2 and H3 headings and the Behavior lines of each
    finished part, in one `<part task="<plan_task_id>">` block for each
-   Plan task.
+   Plan task. After each part come the `<actions>` blocks of its Plan
+   task: one block for each executor Iteration that worked on the task,
+   in run order. A Plan task with no Iteration has only its part.
+
+An `<actions task="<plan_task_id>" iteration="<id>" start="<path>">`
+block has one line for each browser action of the Iteration, in order,
+from the `start` page:
+
+```text
+<action> -> <path after the action>
+```
+
+- The action is `navigate`, `back`, `press "<key>"`, or `click`,
+  `hover`, `select` or `type` with the role and name of the element, for
+  example `click link "Sign in"`. `unknown element` is an element that
+  no snapshot showed. `type ... and submit` typed text and pressed
+  Enter. Typed text and selected values are not shown.
+- The path has no host, and each query value is `{value}`. In a
+  `url_pattern`, give the placeholder a name, for example
+  `/search?q={query}`.
+- A line ends with `(path changed)` when the action went to another
+  path, and with `(failed)` when the action failed. A failed action
+  shows no transition.
 
 This is a **single-shot call**. No browsing, no tool calls, no
 follow-up questions. Reply with the graph and stop.
@@ -100,19 +122,20 @@ A transition is one shopper action that goes from one state to another.
   action takes, for example `["query"]` for a search.
 - `needs` - optional: the snake_case names of what an earlier step must
   give, for example `["variant"]` before add to cart.
-- `source` - the Plan task id of the part that shows the transition.
-  Use only the `task` ids of the `<part>` blocks below.
+- `source` - the Plan task id of the part or the `<actions>` block that
+  shows the transition. Use only the `task` ids of the `<part>` blocks
+  below.
 
 ## 2. Rules
 
-- Put in only the states and transitions that the parts or the
-  capabilities show. Do not add a flow because a typical storefront has
-  it.
+- Put in only the states and transitions that the parts, the actions or
+  the capabilities show. Do not add a flow because a typical storefront
+  has it.
 - Each `from` and `to` names a state of the graph, and no two states
   have the same id.
-- No site text. Do not write button labels, headings, product names,
-  product ids, brand names, store names, hosts, absolute URLs or email
-  addresses. Ids, action kinds, params and needs are generic snake_case
+- No site text. Do not write the element names of the actions. Do not
+  write button labels, headings, product names, product ids, brand
+  names, store names, hosts, absolute URLs or email addresses. Ids, action kinds, params and needs are generic snake_case
   words; URL patterns are paths only.
 
 ## Capabilities
