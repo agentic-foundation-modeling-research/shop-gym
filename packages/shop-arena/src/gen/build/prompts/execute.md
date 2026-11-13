@@ -58,6 +58,11 @@ Feedback shapes you should know how to react to:
   "Total", or an unknown code did not show "Enter a valid discount code"
   with the "Total" unchanged. The body names the step. Restore the
   template's "Discount code" form and its error.
+- `site_graph`: a transition of the Site state graph does not work on the
+  built shop. The body names it as `` `from` -> `to` (`action`) `` with the
+  built page that was loaded. Add a link or a form on that page whose
+  target is the built route of the `to` page type (header and footer
+  controls count), or fix the page that answered an error.
 - `visual_judge`: a page scored below the bar. Fix the listed issues in
   order, then confirm with `screenshot_page` on the same route before you
   mark the task done.

@@ -47,6 +47,25 @@ const MARKETPLACE_MANUAL_MD = `# Shop Manual - Minimal Homeware Shop
 A full results page with facets on the left and a sort menu above the grid.
 `;
 
+/** A tiny Site state graph: the home page links to one department page. */
+const SITE_GRAPH = {
+  version: '0.1',
+  states: [
+    { id: 'home', kind: 'page', page_type: 'home', url_pattern: '/' },
+    { id: 'department', kind: 'page', page_type: 'collection', url_pattern: '/aisle/{node}' },
+  ],
+  transitions: [
+    {
+      from: 'home',
+      to: 'department',
+      trigger: 'click',
+      action: 'open_department',
+      effect: 'navigate',
+      source: 'site_shell',
+    },
+  ],
+};
+
 describe('mergeCapabilities', () => {
   it('returns the single seed unchanged', async () => {
     const only = seed({ shop: { descriptor: 'Homeware', currency: 'USD' } });
@@ -311,6 +330,74 @@ describe('runManualMerge', () => {
   it('lists the Standard sub-manual as a step input, so an edit to it reruns the step', async () => {
     const { manualMergeStep } = await import('./index.js');
     expect(manualMergeStep([path.join(root, 'seed')]).inputs).toContain(STANDARD_SUB_MANUAL_PATH);
+  });
+
+  describe('the Site state graph', () => {
+    async function merge(manualDirs: readonly string[], log: (line: string) => void = () => {}) {
+      const { ScriptedFusionLlm } = await import('../testing.js');
+      const { manualMergeStep } = await import('./index.js');
+      const outDir = path.join(root, 'shop');
+      await fs.mkdir(outDir, { recursive: true });
+      await manualMergeStep(manualDirs).run({
+        outDir,
+        context: mergeContext(manualDirs, new ScriptedFusionLlm()),
+        log,
+        signal: new AbortController().signal,
+      });
+      return path.join(outDir, 'manual');
+    }
+
+    it('copies site_graph.json byte for byte and lists it as a step input', async () => {
+      const { writeManualFixture } = await import('../testing.js');
+      const { manualMergeStep } = await import('./index.js');
+      const seedDir = await writeManualFixture(path.join(root, 'seed'));
+      const graphText = JSON.stringify(SITE_GRAPH);
+      await fs.writeFile(path.join(seedDir, 'site_graph.json'), graphText);
+
+      const manualDir = await merge([seedDir]);
+
+      expect(await fs.readFile(path.join(manualDir, 'site_graph.json'), 'utf-8')).toBe(graphText);
+      expect(manualMergeStep([seedDir]).inputs).toContain(path.join(seedDir, 'site_graph.json'));
+    });
+
+    it('writes no graph and lists none as an input when the manual has none', async () => {
+      const { writeManualFixture } = await import('../testing.js');
+      const { manualMergeStep } = await import('./index.js');
+      const seedDir = await writeManualFixture(path.join(root, 'seed'));
+
+      const manualDir = await merge([seedDir]);
+
+      expect(await fs.readdir(manualDir)).not.toContain('site_graph.json');
+      expect(manualMergeStep([seedDir]).inputs).not.toContain(
+        path.join(seedDir, 'site_graph.json'),
+      );
+    });
+
+    it('fails the step when the graph breaks a graph rule', async () => {
+      const { writeManualFixture } = await import('../testing.js');
+      const seedDir = await writeManualFixture(path.join(root, 'seed'));
+      const [transition] = SITE_GRAPH.transitions;
+      await fs.writeFile(
+        path.join(seedDir, 'site_graph.json'),
+        JSON.stringify({ ...SITE_GRAPH, transitions: [{ ...transition, to: 'nowhere' }] }),
+      );
+
+      await expect(merge([seedDir])).rejects.toThrow(/transitions\[0\]\.to names no state/);
+    });
+
+    it('writes no graph for several manuals and logs that it dropped them', async () => {
+      const { writeManualFixture } = await import('../testing.js');
+      const first = await writeManualFixture(path.join(root, 'seed_a'));
+      const second = await writeManualFixture(path.join(root, 'seed_b'));
+      await fs.writeFile(path.join(second, 'manual.md'), MARKETPLACE_MANUAL_MD);
+      await fs.writeFile(path.join(first, 'site_graph.json'), JSON.stringify(SITE_GRAPH));
+      const log: string[] = [];
+
+      const manualDir = await merge([first, second], (line) => log.push(line));
+
+      expect(await fs.readdir(manualDir)).not.toContain('site_graph.json');
+      expect(log).toContainEqual(expect.stringMatching(/site_graph\.json.*not merged/));
+    });
   });
 
   it('merges a 0.2 manual with a 0.3 marketplace manual and keeps the marketplace Capabilities', async () => {
