@@ -35,6 +35,18 @@ summary{list-style:none}
 a{color:#223344}
 </style>`;
 
+/**
+ * Shop buttons whose padding keeps a 32x34 px box, and three screen-reader
+ * classes of 1 px with overflow hidden: `visually-hidden` clips with
+ * `clip`, `sr-clip-path` with `clip-path` and `sr-no-clip` not at all.
+ */
+const SORT_STYLES = `<style>
+button{box-sizing:border-box;min-height:36px;padding:0 16px;background:#fff;border:1px solid #223344;font-size:14px}
+.visually-hidden,.sr-clip-path,.sr-no-clip{position:absolute;width:1px;height:1px;overflow:hidden;white-space:nowrap}
+.visually-hidden{clip:rect(0,0,0,0)}
+.sr-clip-path{clip-path:inset(50%)}
+</style>`;
+
 /** An open cart drawer; `backdrop` and `drawer` add CSS to the two components. */
 function drawerPage(options: { backdrop?: string; drawer?: string; body?: string } = {}): string {
   return `<!doctype html><html><head>${SHOP_STYLES}<style>
@@ -118,6 +130,43 @@ describe('lintLoadedPage', () => {
     </style><label><input class="sr-only" type="checkbox"><span class="box"></span> Verified Buyers only</label>
     <label><input type="radio" name="size" style="position:absolute;opacity:0"><span class="box"></span> Small</label>`);
     expect(findings).toEqual([]);
+  });
+
+  it('ignores a visually hidden button whose label is wider than its box', async () => {
+    const findings = await lint(`${SORT_STYLES}<form class="collection-sort">
+      <button class="visually-hidden" type="submit">Sort</button>
+      <button class="sr-clip-path" type="submit">Sort</button>
+      <span class="visually-hidden"><button type="submit" style="width:1px;overflow:hidden">Sort</button></span>
+      <button class="sr-no-clip" type="submit" style="clip:rect(1px 1px 1px 1px)">Sort</button>
+    </form>`);
+    expect(findings).toEqual([]);
+  });
+
+  it('ignores a visually hidden native checkbox', async () => {
+    const findings = await lint(`<style>
+      .sr-clip-path{position:absolute;clip-path:inset(50%)}
+      .visually-hidden{position:absolute;width:16px;height:16px;clip:rect(0 0 0 0)}
+      .box{display:inline-block;width:16px;height:16px;border:1px solid #223344;background:#fff}
+    </style><label><input class="sr-clip-path" type="checkbox"><span class="box"></span> Prime only</label>
+    <label><input class="visually-hidden" type="checkbox"><span class="box"></span> In stock</label>`);
+    expect(findings).toEqual([]);
+  });
+
+  it('still fails the same button when no clip empties its painted area', async () => {
+    const findings = await lint(`${SORT_STYLES}<form class="collection-sort">
+      <button class="sr-no-clip" type="submit">Sort</button>
+      <button class="sr-no-clip" type="submit" style="clip:rect(0 auto auto 0)">Sort</button>
+      <button class="sr-no-clip" type="submit" style="position:static;clip:rect(0 0 0 0)">Sort</button>
+      <button class="sr-no-clip" type="submit" style="clip-path:inset(10%)">Sort</button>
+      <span class="sr-no-clip"><button type="submit" style="width:1px;overflow:hidden">Sort</button></span>
+    </form>`);
+    expect(findings.map((finding) => [finding.rule, finding.text, finding.detail])).toEqual(
+      Array.from({ length: 5 }, () => [
+        'clipped_label',
+        'Sort',
+        expect.stringMatching(/needs \d+x\d+ px but the box shows 32x34 px/),
+      ]),
+    );
   });
 
   it('fails a bare number input against its own baseline', async () => {

@@ -44,10 +44,22 @@
  *   wider than the drawer's content box. In the drawer, the first two rules
  *   check only what is inside the drawer.
  *
- * An element is visible when it and its ancestors show it (not
- * `display: none`, `visibility: hidden` or `opacity: 0`), its box is at
- * least 2x2 px and it is not off-screen to the left, right or top. So a
- * visually hidden native input behind a shop-drawn box does not count.
+ * Every rule checks only visible elements. An element is visible when it
+ * and its ancestors show it (not `display: none`, `visibility: hidden` or
+ * `opacity: 0`), its box is at least 2x2 px, it is not off-screen to the
+ * left, right or top, and it and its ancestors paint some area through
+ * their `clip` and `clip-path`. On one element, measured on its border box:
+ *
+ * - `clip` paints nothing when the element is absolutely or fixed
+ *   positioned (the only elements `clip` applies to) and its `rect()` has
+ *   no width or no height, as in `rect(0 0 0 0)` or `rect(1px 1px 1px 1px)`.
+ * - `clip-path` paints nothing when it is an `inset()` whose top and bottom
+ *   or left and right insets cover the box, as in `inset(50%)`. Other
+ *   shapes (`circle()`, `ellipse()`, `polygon()`, `path()`, `url()`) and
+ *   insets with `calc()` count as painted.
+ *
+ * So a visually hidden native input behind a shop-drawn box and a
+ * visually hidden (screen-reader only) label or button do not count.
  */
 
 import { BrowserSession } from '@shop-gym/browser';
@@ -639,6 +651,44 @@ function samplePage(args: SampleArgs): PageSample {
   const win = globalThis as unknown as DomWindow;
   const doc = win.document;
   const clean = (text: string): string => text.replace(/\s+/g, ' ').trim().slice(0, 80);
+  /** A computed `px` length, or a percentage of `size`, in px; NaN for anything else. */
+  const px = (value: string, size: number): number => {
+    if (value.endsWith('px')) return Number.parseFloat(value);
+    if (value.endsWith('%')) return (Number.parseFloat(value) / 100) * size;
+    return Number.NaN;
+  };
+  /** Whether the element's own `clip` or `clip-path: inset()` paints no area of its border box. */
+  const paintsNothing = (element: DomElement): boolean => {
+    const style = win.getComputedStyle(element);
+    const positioned = ['absolute', 'fixed'].includes(style.getPropertyValue('position'));
+    const clip = positioned
+      ? /^rect\(([^()]*)\)$/.exec(style.getPropertyValue('clip'))?.[1]
+      : undefined;
+    const inset = /^inset\(([^()]*)\)/.exec(style.getPropertyValue('clip-path'))?.[1];
+    if (clip === undefined && inset === undefined) return false;
+    const { width, height } = element.getBoundingClientRect();
+    if (clip !== undefined) {
+      const [top = '', right = '', bottom = '', left = ''] = clip
+        .split(',')
+        .map((value) => value.trim());
+      const edge = (value: string, auto: number): number =>
+        value === 'auto' ? auto : px(value, 0);
+      if (edge(right, width) <= edge(left, 0) || edge(bottom, height) <= edge(top, 0)) return true;
+    }
+    if (inset === undefined) return false;
+    const [insets = ''] = inset.split(' round ');
+    const [top = '', right = top, bottom = top, left = right] = insets.trim().split(/\s+/);
+    return (
+      px(top, height) + px(bottom, height) >= height || px(left, width) + px(right, width) >= width
+    );
+  };
+  /** Whether `clip` or `clip-path` on the element or an ancestor leaves it no painted area. */
+  const clippedAway = (element: DomElement): boolean => {
+    for (let node: DomElement | null = element; node !== null; node = node.parentElement) {
+      if (paintsNothing(node)) return true;
+    }
+    return false;
+  };
   const visible = (element: DomElement): boolean => {
     if (!element.checkVisibility({ opacityProperty: true, visibilityProperty: true })) {
       return false;
@@ -649,7 +699,8 @@ function samplePage(args: SampleArgs): PageSample {
       rect.height >= 2 &&
       rect.right > 0 &&
       rect.left < win.innerWidth &&
-      rect.bottom + win.scrollY > 0
+      rect.bottom + win.scrollY > 0 &&
+      !clippedAway(element)
     );
   };
   const cssPath = (element: DomElement): string => {
