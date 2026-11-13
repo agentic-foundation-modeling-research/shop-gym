@@ -37,6 +37,14 @@ _Avoid_: real shop, source storefront, original shop
 The ShopArena process (`shopgym explore`) that browses one Live storefront and writes one Shop Manual.
 _Avoid_: ShopExplore, explore (alone)
 
+**Platform path**:
+The way that Storefront exploration reads one Live storefront, as prefetch decides it: `shopify` when the homepage has a Shopify marker or the first `/products.json` page returns a product list, else `generic`. On the `shopify` path, prefetch also reads the catalog endpoints and the policy pages, and `stats.json` comes from the catalog. On the `generic` path, prefetch stops after `robots.txt`, the homepage, `sitemap.xml` and that first `/products.json` request, the planner picks start pages from their links, and `stats.json` comes from the Product observations. `manifest.json` records `platform`.
+_Avoid_: platform mode, site type
+
+**Focus hint**:
+The `--focus` text, such as "Video Games", that tells the planner of Storefront exploration which part of a large Live storefront to explore. The planner picks its listing pages, product pages and search queries in that part and writes the focus into the briefs. It still plans every Fixed area, and navigation outside the focus is not blocked. `manifest.json` records `focus`, and a resumed run must pass the same focus.
+_Avoid_: department filter, scope
+
 **Bot check**:
 A page that a site shows in place of the page that was asked for, to find out whether the visitor is a person, for example a Cloudflare challenge, a captcha page, an interstitial page with one button to go on, or a rate-limit page served with HTTP 503. Storefront exploration finds it by markers in the page HTML and never tries to pass it: its Browser tools refuse to click, type, select or press on it. A bot-check homepage stops prefetch. In a Harness run, the Plan task that meets a Bot check is marked blocked with the note "bot check", and two Iterations in a row with a Bot check end the run with a Caller stop.
 _Avoid_: captcha (for all kinds), block page
