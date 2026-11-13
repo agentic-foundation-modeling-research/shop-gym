@@ -1,4 +1,5 @@
 export { AR23_DATASET, type Ar23Report } from './ar23/adapter.js';
+export type { CompleteReport } from './complete/complete.js';
 export {
   BUNDLE_ADAPTERS,
   BUNDLE_STEPS,

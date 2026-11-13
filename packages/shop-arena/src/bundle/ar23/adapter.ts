@@ -7,6 +7,9 @@
  * `store` the seller, `categories` the category path, the other text
  * `details` the attributes, and the large images the image source URLs.
  * The one source price goes on every variant, marked `inferred`.
+ * `related.also_bought` comes from co-purchases, marked `inferred`: the
+ * verified reviews before the cutoff by every reviewer in the source, not
+ * only by the modeled users, and before the per-product review cap.
  *
  * Reviews are catalog content. User events exist only for modeled users:
  * each review is a `review` event, and a verified review is also an
@@ -33,6 +36,7 @@ import {
 } from '@shop-gym/core';
 
 import { writeJsonFile } from '../../gen/io.js';
+import { type Purchases, alsoBought } from '../co_purchase.js';
 import { writeJsonl } from '../jsonl.js';
 import {
   type ProductStats,
@@ -54,6 +58,8 @@ const AR23_SOURCE = {
 
 const LOCALE = 'en-US';
 const CURRENCY = 'USD';
+/** A product is "also bought" with another when this many users bought both. */
+const ALSO_BOUGHT = { minBuyers: 2, max: 10 } as const;
 
 /** The two files of one AR23 category, in the layout of the dataset download. */
 export interface Ar23Files {
@@ -98,6 +104,8 @@ export interface Ar23Report {
   readonly products: number;
   readonly variants: number;
   readonly products_without_price: number;
+  /** Products with a `related.also_bought` list from co-purchases. */
+  readonly products_with_also_bought: number;
   readonly reviews: number;
   /** Reviews of kept products that the per-product cap left out. */
   readonly reviews_over_cap: number;
@@ -166,6 +174,11 @@ export async function writeAr23Bundle(
     catalog,
     keptProduct,
     variants: source.variants,
+    alsoBought: alsoBought(
+      purchasesBefore(source.rows, keptProduct, cutoffMs),
+      catalog.ids,
+      ALSO_BOUGHT,
+    ),
   });
   await writeJsonFile(path.join(outDir, BUNDLE_FILES.manifest), manifest(options));
 
@@ -191,6 +204,7 @@ export async function writeAr23Bundle(
     products: products.products,
     variants: products.variants,
     products_without_price: products.withoutPrice,
+    products_with_also_bought: products.withAlsoBought,
     reviews: written.reviews,
     reviews_over_cap: keptProductRows - written.reviews,
     review_events: written.reviewEvents,
@@ -345,6 +359,23 @@ async function readReviews(file: string, catalog: Catalog, cutoffMs: number): Pr
   };
 }
 
+/** The verified purchases of kept products before the cutoff, by every user. */
+function purchasesBefore(rows: Rows, keptProduct: Uint8Array, cutoffMs: number): Purchases {
+  const users: number[] = [];
+  const products: number[] = [];
+  rows.product.forEach((product, row) => {
+    if (
+      keptProduct[product] === 1 &&
+      (rows.verified[row] ?? 0) === 1 &&
+      (rows.timeMs[row] ?? cutoffMs) < cutoffMs
+    ) {
+      users.push(rows.user[row] ?? 0);
+      products.push(product);
+    }
+  });
+  return { users, products };
+}
+
 /** Rule 4: 1 for each kept row, by row number. */
 function keepReviews(
   rows: Rows,
@@ -473,8 +504,10 @@ async function writeProducts(
     readonly catalog: Catalog;
     readonly keptProduct: Uint8Array;
     readonly variants: readonly ReadonlySet<string>[];
+    /** Related product indexes by product index. */
+    readonly alsoBought: ReadonlyMap<number, readonly number[]>;
   },
-): Promise<{ products: number; variants: number; withoutPrice: number }> {
+): Promise<{ products: number; variants: number; withoutPrice: number; withAlsoBought: number }> {
   const keptIds = new Set(sample.catalog.ids.filter((_, i) => sample.keptProduct[i] === 1));
   const products: BundleProduct[] = [];
   const done = new Set<string>();
@@ -486,7 +519,10 @@ async function writeProducts(
     }
     done.add(row.parent_asin);
     const variants = [...(sample.variants[product] ?? [])].sort(compareStrings);
-    products.push(toProduct(row, variants, keptIds));
+    const related = (sample.alsoBought.get(product) ?? []).map(
+      (other) => sample.catalog.ids[other] ?? '',
+    );
+    products.push(toProduct(row, variants, keptIds, related));
   }
   products.sort((a, b) => compareStrings(a.product_id, b.product_id));
   await writeJsonl(path.join(outDir, BUNDLE_FILES.products), products);
@@ -494,6 +530,7 @@ async function writeProducts(
     products: products.length,
     variants: products.reduce((sum, product) => sum + product.variants.length, 0),
     withoutPrice: products.filter((product) => product.variants[0]?.price === undefined).length,
+    withAlsoBought: products.filter((product) => product.related?.also_bought !== undefined).length,
   };
 }
 
@@ -501,6 +538,7 @@ function toProduct(
   row: MetaRow,
   variantIds: readonly string[],
   keptIds: ReadonlySet<string>,
+  alsoBoughtIds: readonly string[],
 ): BundleProduct {
   const amount = parsePrice(row.price);
   const description = (row.description ?? []).flatMap(nonEmpty).join('\n');
@@ -522,6 +560,14 @@ function toProduct(
   const boughtTogether = (row.bought_together ?? []).filter(
     (id) => id !== row.parent_asin && keptIds.has(id),
   );
+  const related = {
+    ...(boughtTogether.length > 0 ? { bought_together: boughtTogether } : {}),
+    ...(alsoBoughtIds.length > 0 ? { also_bought: [...alsoBoughtIds] } : {}),
+  };
+  const provenance = {
+    ...(amount !== undefined ? { 'variants[].price': 'inferred' as const } : {}),
+    ...(alsoBoughtIds.length > 0 ? { 'related.also_bought': 'inferred' as const } : {}),
+  };
   return {
     product_id: row.parent_asin,
     // The catalog holds only products with a title, so the fallback is never used.
@@ -537,9 +583,9 @@ function toProduct(
       ...(amount !== undefined ? { price: { amount, currency: CURRENCY } } : {}),
     })),
     ...(images.length > 0 ? { images } : {}),
-    ...(boughtTogether.length > 0 ? { related: { bought_together: boughtTogether } } : {}),
+    ...(Object.keys(related).length > 0 ? { related } : {}),
     source: { dataset: AR23_DATASET, id: row.parent_asin },
-    ...(amount !== undefined ? { provenance: { 'variants[].price': 'inferred' } } : {}),
+    ...(Object.keys(provenance).length > 0 ? { provenance } : {}),
   };
 }
 

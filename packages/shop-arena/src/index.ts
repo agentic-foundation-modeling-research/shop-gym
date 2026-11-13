@@ -11,6 +11,7 @@ export {
   type BundleReport,
   type BundleResult,
   type BundleStepName,
+  type CompleteReport,
   DEFAULT_MIN_EVENTS_BEFORE,
   buildBundle,
   bundleOptionsSchema,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CliError } from '../context.js';
+import { CliError, DEFAULT_MODEL } from '../context.js';
 import { USAGE, parseBundleArgs } from './bundle.js';
 
 const REQUIRED = [
@@ -28,8 +28,12 @@ describe('parseBundleArgs', () => {
       '3',
       '--reviews-per-product',
       '50',
+      '--model',
+      'p/m',
+      '--concurrency',
+      '3',
       '--from',
-      'publish',
+      'complete',
     ]);
     expect(args).toEqual({
       help: false,
@@ -44,13 +48,17 @@ describe('parseBundleArgs', () => {
         seed: '7',
         minEventsBefore: 3,
         reviewsPerProduct: 50,
-        from: 'publish',
+        model: 'p/m',
+        concurrency: 3,
+        from: 'complete',
       },
     });
   });
 
-  it('leaves the optional options to the defaults', () => {
+  it('applies the default model and leaves the other options to the defaults', () => {
     const args = parseBundleArgs(REQUIRED);
+    expect(args.help === false && args.options.model).toBe(DEFAULT_MODEL);
+    expect(args.help === false && args.options).not.toHaveProperty('concurrency');
     expect(args.help === false && args.options).not.toHaveProperty('minEventsBefore');
     expect(args.help === false && args.options).not.toHaveProperty('reviewsPerProduct');
   });
@@ -65,12 +73,13 @@ describe('parseBundleArgs', () => {
     expect(() => parseBundleArgs(['webshop', 'src', ...REQUIRED.slice(2)])).toThrow(
       '<adapter> must be one of amazon_reviews_2023',
     );
-    expect(() => parseBundleArgs([...REQUIRED, '--from', 'complete'])).toThrow(CliError);
+    expect(() => parseBundleArgs([...REQUIRED, '--from', 'deploy'])).toThrow(CliError);
     expect(() => parseBundleArgs(['amazon_reviews_2023'])).toThrow('missing <src>');
   });
 
   it('shows help', () => {
     expect(parseBundleArgs(['--help'])).toEqual({ help: true });
     expect(USAGE).toContain('--reviews-per-product');
+    expect(USAGE).toContain('--model');
   });
 });

@@ -1,5 +1,6 @@
 /** `shopgym bundle <adapter> <src> --out <dir> ...`: build a Source bundle from a dataset. */
 
+import { PiLlmClient } from '@shop-gym/agent';
 import {
   BUNDLE_ADAPTERS,
   BUNDLE_STEPS,
@@ -9,16 +10,19 @@ import {
 } from '@shop-gym/shop-arena';
 
 import { enumOption, flag, integerOption, parse, parseEnum, stringOption } from '../args.js';
-import { CliError } from '../context.js';
+import { CliError, DEFAULT_MODEL, cliCredentials, findRepoRoot } from '../context.js';
 import { logLine } from '../progress.js';
 
 export const USAGE = `Usage: shopgym bundle <adapter> <src> --out <dir> --category <name> --cutoff <date>
                       --products <n> --users <n> --seed <s> [options]
 
-Build a raw Source bundle (bundle.json, catalog/, events/) from a source
-dataset: pick modeled users at random, keep the products in their
-histories, and fill up with the most reviewed products of the same
-categories.
+Build a complete Source bundle (bundle.json, catalog/, users/, events/)
+from a source dataset. The sample step picks modeled users at random,
+keeps the products in their histories, and fills up with the most
+reviewed products of the same categories. The complete step fills the
+missing catalog fields by rules, lets an LLM name the variants and write
+one User profile per modeled user, and marks each filled field in
+provenance. LLM replies are cached in <dir>/.bundle/llm_cache.
 
 Adapters: ${BUNDLE_ADAPTERS.join(', ')}
   <src> is the dataset directory with review_categories/<name>.jsonl and
@@ -35,6 +39,8 @@ Options:
                               (default: ${DEFAULT_MIN_EVENTS_BEFORE})
   --reviews-per-product <n>   Keep at most n reviews of a product, plus the reviews
                               of modeled users (default: no cap)
+  --model <provider/id>       Model for the complete step (default: ${DEFAULT_MODEL})
+  --concurrency <n>           Parallel LLM calls in the complete step
   --from <step>               Rerun from this step: ${BUNDLE_STEPS.join(' | ')}
   -h, --help                  Show this help
 
@@ -54,6 +60,8 @@ export function parseBundleArgs(argv: readonly string[]): BundleArgs {
     seed: { type: 'string' },
     'min-events-before': { type: 'string' },
     'reviews-per-product': { type: 'string' },
+    model: { type: 'string' },
+    concurrency: { type: 'string' },
     from: { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   });
@@ -86,6 +94,7 @@ export function parseBundleArgs(argv: readonly string[]): BundleArgs {
   };
   const minEventsBefore = integerOption(args, 'min-events-before');
   const reviewsPerProduct = integerOption(args, 'reviews-per-product');
+  const concurrency = integerOption(args, 'concurrency');
   const from = enumOption(args, 'from', BUNDLE_STEPS);
   return {
     help: false,
@@ -100,6 +109,8 @@ export function parseBundleArgs(argv: readonly string[]): BundleArgs {
       seed: required('seed'),
       ...(minEventsBefore !== undefined ? { minEventsBefore } : {}),
       ...(reviewsPerProduct !== undefined ? { reviewsPerProduct } : {}),
+      model: stringOption(args, 'model') ?? DEFAULT_MODEL,
+      ...(concurrency !== undefined ? { concurrency } : {}),
       ...(from !== undefined ? { from } : {}),
     },
   };
@@ -111,7 +122,11 @@ export async function run(argv: readonly string[]): Promise<number> {
     console.log(USAGE);
     return 0;
   }
-  const result = await buildBundle(args.options, { log: logLine });
+  const credentials = cliCredentials(findRepoRoot());
+  const result = await buildBundle(args.options, {
+    llm: new PiLlmClient({ credentials }),
+    log: logLine,
+  });
   console.log(result.bundleDir);
   return 0;
 }
