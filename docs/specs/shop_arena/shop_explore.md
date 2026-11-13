@@ -1,6 +1,6 @@
 # Storefront exploration (`packages/shop-arena/src/explore`)
 
-Status: **Implemented (`exploreStorefront`, `shopgym explore`)** · Version: **1.3**
+Status: **Implemented (`exploreStorefront`, `shopgym explore`)** · Version: **1.4**
 Owners: ShopArena
 
 > A storefront exploration pipeline that produces an anonymized **Shop
@@ -143,7 +143,7 @@ Storefront exploration is the first non-trivial caller of
   also reads `/cart.js`. The explore step writes the result to
   `run/iters/<id>/start_state.json` as `{ url, cart, error }`. When the
   homepage or the cart cannot be read, `error` gives the reason, and the
-  Iteration still runs. All browsers of a run send the same
+  Iteration still runs. Since 2026-11-12 the browsers send no
   `x-shopgym-episode` header. The storefront origin is the base URL of
   every browser, so `navigate` opens a site path such as `/cart` on the
   storefront. The explore `snapshot` tool shows at most 50,000
@@ -249,6 +249,17 @@ Storefront exploration is the first non-trivial caller of
   trigger limit, and sharper prompt rules fix the rule breaks of the
   review. Two reruns show that the model still breaks other prompt
   rules, and that the breaks change from run to run.
+- Run 2 findings fixed (2026-11-12, version 1.4): a stat that the run
+  did not see is `null` in `stats.json`, never 0, and the Shop
+  generation manual merge keeps it unknown (§5.6). When no part gives
+  `shop.currency`, merge takes it from the stats prices. The
+  `read_file` calls of one Iteration have a Read budget of 200,000
+  characters (§5.7). The `synthesize` step finds Run notes by a closed
+  list of run words and asks one rewrite call for those lines; a
+  rewritten line with a run word fails the step with
+  `ManualRunNoteError` (§5.10). The Iteration browsers send no
+  `x-shopgym-episode` header, because a local test reproduces a blank
+  page from the CORS preflight that the header causes (§8.2).
 
 ---
 
@@ -690,8 +701,8 @@ No LLM. The source depends on the platform:
   most frequent currency; `products_with_variants_pct` and
   `variant_axes_observed` (sorted) use all of them. `sample_size` is the
   number of distinct product pages. `products_total`,
-  `collections_total` and `products_per_collection` stay 0, because a
-  sample does not show them. Shop generation takes its totals from its
+  `collections_total` and `products_per_collection` are `null`, because
+  a sample does not show them. Shop generation takes its totals from its
   config targets either way. The key has limits. A site that gives each
   variant its own URL counts each variant page as one product. A call
   made after the executor left the product page records the key of the
@@ -721,10 +732,32 @@ Shape:
 booleans + non-empty list lengths) and provides a single coverage
 number for cross-shop comparison.
 
-On both paths, `navigation_depth_max` is `site_shell.nav_depth` and
-`homepage_section_count` is `homepage.section_count`. An unknown
-(`null`) count becomes 0, so 0 can mean "none" or "unknown" (§8.2).
-`info_pages_count` is the length of `info_pages_present`.
+On both paths, a stat that the run did not see is `null`, never 0, so 0
+always means "none". `navigation_depth_max` is `site_shell.nav_depth` and
+`homepage_section_count` is `homepage.section_count`, and each one is
+`null` when its Capability is `null`. `info_pages_count` is the length of
+`info_pages_present`, and `null` when the list is empty: the list has no
+unknown state, and nearly every storefront has an info page, so an empty
+list means "not seen". `price` is `null` when the run saw no price, and
+`price.currency` is `null` when no source gives a currency. On a Shopify
+shop `products_per_collection` is `null` when no collection count was
+read, and `products_with_variants_pct` is `null` when the catalog has no
+product; on a generic site both come from the sample, and the
+percentage is `null` on an empty sample. `variant_axes_observed` is `[]`
+when nothing was seen.
+
+When no part gives `shop.currency`, the merge step writes the currency
+of the stats prices into `capabilities.json`. On a Shopify shop that is
+the currency of the prefetched `cart.js`; on a generic site it is the
+most frequent currency of the Product observations. A currency that a
+part gives wins. When the run saw no price, `shop.currency` stays
+`null`.
+
+The Shop generation manual merge keeps the same rule. It takes a number
+only from the seeds that know it, and the merged number is `null` when
+no seed knows it. It takes the totals only from the `catalog_endpoint`
+seeds, and it skips a seed price whose `max` is 0, because older
+`observed_sample` seeds wrote 0 for an unknown price.
 
 ### 5.7 Plan + executor contract
 
@@ -782,6 +815,11 @@ Focus hint, but the brief keeps every rule of its canonical brief.
 3. Drive the browser **only** through the Browser tools, and read and
    write files only through `read_file`, `write_file` and `list_dir`,
    which stay inside the run directory. There is no HTTP fetch tool.
+   One `read_file` call returns at most 60,000 characters. All
+   `read_file` calls of one Iteration return at most 200,000 characters
+   (the Read budget); the explore step resets the budget at the start of
+   each Iteration. When the budget is spent, `read_file` fails and tells
+   the agent to work from what it already read.
 4. Capture evidence under `artifact/evidence/<task_id>/`:
    - one `snapshots/NN-<state>.md` (the `snapshot` text) per distinct
      page state,
@@ -836,10 +874,13 @@ Nine caller-owned files live under
   `execute.md` plus the start pages of a generic site and the rule to
   record each product page that the executor opens with the
   `record_product_observation` tool (§5.6).
-- `synthesize_manual.md` - the prompt of the one manual call: keep only
+- `synthesize_manual.md` - the prompt of the manual call: keep only
   what the parts show, mark the rest unknown, let no sentence
-  contradict `capabilities.json`, and use generic words for the site's
-  own names.
+  contradict `capabilities.json`, use generic words for the site's own
+  names, and write no Run notes.
+- `synthesize_manual_rewrite.md` - the prompt of the one rewrite call
+  for the Run notes of the manual, with `{{LINES}}` replaced by the
+  lines and their run words (§5.10).
 - `site_graph.md` and `site_graph_repair.md` - the graph prompt and its
   repair prompt (§5.13).
 
@@ -929,7 +970,8 @@ involvement:
    `stats.json` from `prefetch/products.json`,
    `prefetch/collections.json` and `capabilities.json`. On a generic
    site, compute it from the Product observation fragments and
-   `capabilities.json` (§5.6).
+   `capabilities.json` (§5.6). When `capabilities.json` has no
+   `shop.currency`, write the currency of the stats prices into it.
 3. **Manifest** (`merge`, deterministic). Write `manifest.json`:
 
    ```
@@ -958,9 +1000,19 @@ involvement:
 4. **Manual prose** (`synthesize`, one LLM call, no browsing).
    Concatenate `parts/*.md` and `capabilities.json`, send them with
    `synthesize_manual.md` to `LlmClient.complete` with the model of the
-   run. Then the final Anonymization scan (§5.15) checks the reply,
-   `capabilities.json` and `stats.json`. Only a clean scan writes
-   `manual.md`.
+   run. A reply line with a run word is a Run note. The run words are a
+   short closed list in `synthesize.ts`, for example "this session",
+   "the run", "bot check", "snapshot", "captured", "originally planned"
+   and "was not tested"; the list is narrow, so that storefront prose
+   such as "once per session" does not match. When the reply has Run
+   notes, the step logs their count and makes one more completion with
+   `synthesize_manual_rewrite.md`. It gets only those lines and their
+   run words, not the parts. The reply is one JSON array with one
+   string for each line, bare or in one fenced block; each string
+   replaces its line in place, and an empty string removes the line.
+   There is no second rewrite. Then the final Anonymization scan
+   (§5.15) checks the manual, `capabilities.json` and `stats.json`.
+   Only a clean scan writes `manual.md`.
 5. **Site state graph** (`graph`, §5.13).
 
 Synthesis failure modes (loud, no silent fallback). Each one fails its
@@ -978,6 +1030,10 @@ step with `StepFailedError`, and the CLI exits 1:
   misconfiguration and was removed deliberately.
 - Manual LLM call raises (network error, timeout) → no `manual.md`
   emitted.
+- The rewrite reply is not one JSON array with one string for each Run
+  note, or a line of the rewritten manual still has a run word →
+  `ManualRunNoteError`, no `manual.md` emitted. The message names each
+  line that still has run words.
 - The final scan finds a leak → `AnonymizationLeakError`, no
   `manual.md` emitted.
 
@@ -1027,13 +1083,13 @@ packages/shop-arena/src/explore/
 ├── browser.ts            # IterationBrowser: a new browser for each Iteration,
 │                         #   start_state.json, snapshot tool, bot-check notice
 │                         #   and refusal, Navigation cap
-├── files.ts              # run-dir-scoped read_file, write_file, list_dir
+├── files.ts              # run-dir-scoped read_file, write_file, list_dir, ReadBudget
 ├── capabilities.ts       # Capabilities 0.3 schema, parseCapabilities, mergeFragments
 ├── observations.ts       # Product observation schema, tool, Verifier, reader
 ├── stats.ts              # computeStats (catalog), computeObservedStats (sample)
 ├── coverage.ts           # evidencedAreas, coverageGaps, FIXED_AREAS, fixedAreaGaps
 ├── anonymization.ts      # brandTokens, leakScanner, Verifier, publishedLeaks
-├── synthesize.ts         # renderManual (the one manual call)
+├── synthesize.ts         # renderManual (the manual call and the Run-note rewrite)
 ├── graph.ts              # renderSiteGraph (§5.13)
 ├── trajectory-digest.ts  # Trajectory digest of an executor Iteration (§5.13)
 ├── testing.ts            # fixture storefronts for the tests
@@ -1625,7 +1681,9 @@ Exported from `@shop-gym/shop-arena` and `@shop-gym/shop-arena/explore`:
   `AnonymizationLeakError`; types `Leak`, `LeakScanner`.
 - **Synthesis and graph**: `renderManual`, `buildManualPrompt`,
   `concatParts`, `MANUAL_MIN_CHARS`, `ManualRenderError`,
-  `SiteGraphReplyError`; `fileTools`.
+  `ManualRunNoteError`, `SiteGraphReplyError`; type `ManualPrompts`.
+- **File tools** (`files.ts`): `fileTools`, `ReadBudget`; type
+  `FileToolsOptions`.
 
 `bot-check.ts` and `NAVIGATION_CAP` are internal.
 
@@ -1658,17 +1716,27 @@ Exported from `@shop-gym/shop-arena` and `@shop-gym/shop-arena/explore`:
    before the Cloudflare gate, so a challenge homepage served with 403
    or 503 stops with `http_status`, not `cloudflare_challenge`. Both
    stop the run. A change of the gate order is a code change.
-8. **Findings of the first generic run** (§8.4), still open:
-   - Some prose lines tell about the run ("this task", "captured"), not
-     about the storefront.
-   - `stats.json` writes 0 for an unknown structural count (§5.6).
-   - There is no total budget for `read_file` in one Iteration.
-   - `shop.currency` can stay `null` when the prices show a currency.
-   - The homepage can show blank in a new headless browser. A likely
-     cause is the CORS preflight that the extra `x-shopgym-episode`
-     header causes on cross-origin requests.
-   - All Iteration browsers of a run send the same `x-shopgym-episode`
-     id.
+8. ~~**Findings of the first generic run** (§8.4).~~ **Resolved
+   (2026-11-12):**
+   - Run notes: the synthesis prompt forbids them, and the `synthesize`
+     step rewrites them once or fails (§5.10).
+   - `stats.json` writes `null` for an unknown stat, never 0, and the
+     Shop generation manual merge keeps it `null` (§5.6).
+   - The `read_file` calls of one Iteration have a Read budget of
+     200,000 characters (§5.7).
+   - When no part gives `shop.currency`, merge takes it from the stats
+     prices (§5.6, §5.10).
+   - Blank homepage: a local test reproduces the cause. With the
+     `x-shopgym-episode` header, a page that fetches its content from
+     another origin sends a CORS preflight, the API does not allow the
+     header, and the fetch fails, so the page has no title and no
+     content. Without the header there is no preflight. The Iteration
+     browsers now send no episode header; a Live storefront has no use
+     for it. The cause on the live site is not confirmed, because the
+     live site may not be visited again: the blank page also fits a
+     site that blocks headless browsers.
+   - Same episode id in all Iteration browsers: there is no episode id
+     now, so this finding goes away.
 9. **Findings of the 2026-11-11 criteria check**, still open:
    - `execute_generic.md` names predictive search as a request that can
      be evidence, but the `search_predictive` brief says "no network or
@@ -1753,7 +1821,9 @@ committed file names the site.
     run. Merge takes the task counts from `run.json`, not from
     `plan.md`, so they do not count the offline parts.
   - 7 prose lines tell about the run, not the storefront. All come from
-    the 3 parts that the harness wrote.
+    the 3 parts that the harness wrote. The `synthesize` step of
+    version 1.4 rewrites such lines or fails (§8.2), but this manual
+    was written before it.
   - Not captured: single reviews and review sort, checkout after the
     sign-in wall, registration after its entry page, the returns page,
     a true no-results page, carousel paging, hover states, mobile, and

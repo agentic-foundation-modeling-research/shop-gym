@@ -1,9 +1,10 @@
 /**
  * One Playwright browser context per episode.
  *
- * Every request the context makes carries `x-shopgym-episode: <id>` so the
- * sandbox backend can keep per-episode state (login, cart, orders) apart
- * while many episodes share one hosted shop.
+ * With an episode id, every request the context makes carries
+ * `x-shopgym-episode: <id>` so the sandbox backend can keep per-episode
+ * state (login, cart, orders) apart while many episodes share one hosted
+ * shop. A session on another site sends no such header.
  */
 
 import { type Browser, type BrowserContext, type Page, chromium } from 'playwright';
@@ -17,8 +18,13 @@ export interface FinishResult {
 
 /** Options for `BrowserSession.launch`. */
 export interface BrowserSessionOptions {
-  /** Sent as `x-shopgym-episode` on every request. */
-  readonly episodeId: string;
+  /**
+   * Sent as `x-shopgym-episode` on every request. Leave it out on a site
+   * that is not a sandbox shop: the extra header makes each cross-origin
+   * fetch of a page send a CORS preflight, and a site that does not allow
+   * the header fails that fetch.
+   */
+  readonly episodeId?: string;
   /** Resolves relative `navigate` URLs. */
   readonly baseUrl?: string;
   /** Defaults to `true`. */
@@ -38,7 +44,7 @@ export type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
 
 /** A chromium browser, one context, and one page bound to an episode. */
 export class BrowserSession {
-  readonly episodeId: string;
+  readonly episodeId: string | undefined;
   readonly baseUrl: string | undefined;
   readonly evaluateEnabled: boolean;
   readonly context: BrowserContext;
@@ -69,7 +75,9 @@ export class BrowserSession {
     const browser = await chromium.launch({ headless: options.headless ?? true });
     const context = await browser.newContext({
       viewport: options.viewport ?? { width: 1280, height: 800 },
-      extraHTTPHeaders: { 'x-shopgym-episode': options.episodeId },
+      ...(options.episodeId !== undefined
+        ? { extraHTTPHeaders: { 'x-shopgym-episode': options.episodeId } }
+        : {}),
       ...(options.video ? { recordVideo: { dir: options.video.dir } } : {}),
     });
     if (options.trace) {
