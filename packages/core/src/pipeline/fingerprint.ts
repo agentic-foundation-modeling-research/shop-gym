@@ -55,6 +55,19 @@ function byName(a: fs.Dirent, b: fs.Dirent): number {
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }
 
+/** Files are read in chunks of this size, so an input may be larger than memory. */
+const READ_CHUNK_BYTES = 1 << 20;
+
 function hashFile(file: string): string {
-  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  const digest = createHash('sha256');
+  const buffer = Buffer.alloc(READ_CHUNK_BYTES);
+  const fd = fs.openSync(file, 'r');
+  try {
+    for (let n = fs.readSync(fd, buffer); n > 0; n = fs.readSync(fd, buffer)) {
+      digest.update(buffer.subarray(0, n));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return digest.digest('hex');
 }

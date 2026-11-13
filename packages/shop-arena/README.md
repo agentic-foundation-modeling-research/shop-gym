@@ -1,15 +1,17 @@
 # @shop-gym/shop-arena
 
-TypeScript ShopArena: storefront exploration (`src/explore/`), SandboxShop
-generation (`src/gen/`), and the storefront template under `templates/`.
-The `shopgym explore` and `shopgym gen` commands in `packages/cli` drive
-it; see `docs/specs/v1_1_typescript_redesign.md`.
+TypeScript ShopArena: storefront exploration (`src/explore/`), Source
+bundles (`src/bundle/`), SandboxShop generation (`src/gen/`), and the
+storefront template under `templates/`. The `shopgym explore`, `shopgym
+bundle` and `shopgym gen` commands in `packages/cli` drive it; see
+`docs/specs/v1_1_typescript_redesign.md`.
 
 Layout:
 
 ```
 src/
   explore/      explore pipeline: prefetch, harness tasks, capability merge, manual synthesis, Site state graph
+  bundle/       Source bundle pipeline: user-first sampling, source adapters (ar23/)
   gen/
     build/      build loop: template seeding, backend sidecar, owned-file rules, verifiers, prompts
     ...         manual_merge, data_synth, data_validation, final_eval, publish (see Gen)
@@ -296,6 +298,47 @@ finished parts, the unfinished areas are coverage gaps, and
 (`null` when the run did not stop early). `ExploreResult.stop` gives the
 reason and the Iteration, and `shopgym explore` exits 0 for `completed`
 and `stopped`.
+
+## Bundle
+
+`buildBundle(options, deps)` turns one category of a source dataset into
+a raw Source bundle (the `@shop-gym/core` bundle schemas). The only
+adapter is Amazon Reviews 2023 (`src/bundle/ar23/`). It runs two steps on
+the `@shop-gym/core` pipeline runner; `BUNDLE_STEPS` lists them in order:
+
+| Step | Reads | Writes |
+| --- | --- | --- |
+| `sample` | `.bundle/request.json` (the resolved options), the source review and meta files | `.bundle/raw/` (a raw bundle), `.bundle/sample.json` (what the adapter read, dropped and kept) |
+| `publish` | `.bundle/raw/`, `.bundle/sample.json` | `bundle.json`, `catalog/`, `events/` copied from the raw bundle after it passes the `raw` validation level, and `report.json` |
+
+`sample` streams each source file twice and keeps only small per-row
+numbers in memory between the passes. It drops exact duplicate reviews
+(same user, asin, time, rating, title and text). Then it samples, user
+first, with one global cutoff (`src/bundle/sample.ts`):
+
+1. Pick `users` modeled users at random (seeded) among the users with at
+   least `minEventsBefore` (default 5) User events before the cutoff and
+   at least one purchase after it.
+2. Keep every product in their histories, before and after the cutoff.
+3. Fill up to `products` with the other products of the same category
+   paths, the most reviewed before the cutoff first.
+4. Keep the reviews of the kept products. `reviewsPerProduct` caps them
+   with a seeded choice per product, and always keeps the reviews of
+   modeled users.
+5. Drop the products first seen after the cutoff, unless a modeled user
+   buys them after the cutoff (Task targets).
+
+AR23 field map: `parent_asin` is the product, each reviewed `asin` a
+variant, `features` the bullets, `details.Brand` the brand, `store` the
+seller, `categories` the category path, the other text `details` the
+attributes, and the large images the image source URLs. The source price
+(a number, or text such as `from 29.99`) goes on every variant, marked
+`inferred`. Each review of a modeled user is a `review` User event, and a
+verified one is also an inferred `purchase` event at the review time
+(precision `order`). Other reviewers have no events and no `user_id`.
+Products are sorted by id, reviews keep the source order, and events are
+sorted by user and time, so the same options and source give the same
+bytes.
 
 ## Gen
 

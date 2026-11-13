@@ -34,6 +34,16 @@ describe('fingerprintPaths', () => {
     expect(fingerprintPaths([dir])).not.toBe(before);
   });
 
+  it('hashes the whole of a file that is larger than one read chunk', () => {
+    const big = path.join(root, 'big.jsonl');
+    const content = Buffer.alloc(3 * (1 << 20) + 5, 'a');
+    fs.writeFileSync(big, content);
+    const before = fingerprintPaths([big]);
+    content[content.length - 1] = 'b'.charCodeAt(0);
+    fs.writeFileSync(big, content);
+    expect(fingerprintPaths([big])).not.toBe(before);
+  });
+
   it('distinguishes a missing path from an empty directory', () => {
     const dir = path.join(root, 'empty');
     const missing = fingerprintPaths([dir]);

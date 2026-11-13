@@ -124,6 +124,22 @@ _Avoid_: hosting sidecar
 **Final eval**:
 The advisory check of a built shop after the Build loop: a visual sweep that screenshots and judges the canonical pages, and a functional sweep that runs a fixed sign-up-to-order script. Its result never fails Shop generation.
 
+**Source bundle**:
+A directory in one format for every source dataset: `bundle.json`, a catalog of products with variants, their reviews, and the User events of the Modeled users. `shopgym bundle` writes a raw bundle, which has only the source facts. A complete bundle also has the fields that a shop needs, such as a price and an inventory on every variant, and user profiles. The core validator checks each level.
+_Avoid_: dataset bundle, source dump
+
+**Adapter**:
+The code that reads one source dataset and writes a raw Source bundle. It maps the source fields to the bundle fields, and marks the values that it infers.
+
+**User event**:
+One dated action of one Modeled user in a Source bundle, such as a `review` or a `purchase`, from a closed list of event types. Each event records how exact its time is and whether it comes from the source or is inferred.
+
+**Modeled user**:
+A source user that the sampling picks, with enough User events before the Cutoff and at least one purchase after it. Only Modeled users get User events, and only their reviews keep a user id.
+
+**Cutoff**:
+The one time that splits the User events of a Source bundle: events before it are a user's history, and purchases after it are Task targets.
+
 ### ShopBackend
 
 **Dataset**:
