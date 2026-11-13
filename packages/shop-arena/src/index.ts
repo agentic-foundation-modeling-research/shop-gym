@@ -12,7 +12,11 @@ export {
   type BundleResult,
   type BundleStepName,
   type CompleteReport,
+  DEFAULT_IMAGES_PER_PRODUCT,
   DEFAULT_MIN_EVENTS_BEFORE,
+  type FetchImage,
+  type ImageFailure,
+  type ImagesReport,
   buildBundle,
   bundleOptionsSchema,
 } from './bundle/index.js';

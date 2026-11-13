@@ -11,7 +11,7 @@ Layout:
 ```
 src/
   explore/      explore pipeline: prefetch, harness tasks, capability merge, manual synthesis, Site state graph
-  bundle/       Source bundle pipeline: user-first sampling, source adapters (ar23/), complete step (complete/)
+  bundle/       Source bundle pipeline: user-first sampling, source adapters (ar23/), complete step (complete/), image download
   gen/
     build/      build loop: template seeding, backend sidecar, owned-file rules, verifiers, prompts
     ...         manual_merge, data_synth, data_validation, final_eval, publish (see Gen)
@@ -303,14 +303,15 @@ and `stopped`.
 `buildBundle(options, deps)` turns one category of a source dataset into
 a complete Source bundle (the `@shop-gym/core` bundle schemas). The only
 adapter is Amazon Reviews 2023 (`src/bundle/ar23/`). `deps.llm` is the
-`LlmClient` of the complete step. It runs three steps on the
+`LlmClient` of the complete step. It runs four steps on the
 `@shop-gym/core` pipeline runner; `BUNDLE_STEPS` lists them in order:
 
 | Step | Reads | Writes |
 | --- | --- | --- |
 | `sample` | `.bundle/request.json` (the resolved sample options), the source review and meta files | `.bundle/raw/` (a raw bundle), `.bundle/sample.json` (what the adapter read, dropped and kept) |
 | `complete` | `.bundle/raw/`, `.bundle/complete_request.json` (the model) | `.bundle/complete/` (a complete bundle in the same layout, with `users/profiles.jsonl`), `.bundle/complete.json` (what it filled) |
-| `publish` | `.bundle/complete/`, `.bundle/sample.json`, `.bundle/complete.json` | `bundle.json`, `catalog/`, `users/`, `events/` copied from the complete bundle after it passes the `complete` validation level, and `report.json` |
+| `images` | `.bundle/images-request.json` (`imagesPerProduct`), `.bundle/complete/catalog/products.jsonl` | the image files in `catalog/images/`, `.bundle/images/products.jsonl` (the products with local paths), `.bundle/images/report.json` |
+| `publish` | `.bundle/complete/`, `.bundle/sample.json`, `.bundle/complete.json`, `.bundle/images/` | `bundle.json`, `catalog/reviews.jsonl`, `users/`, `events/` copied from the complete bundle, `catalog/products.jsonl` from `images`, and `report.json`, after the bundle passes the `complete` validation level (which also checks that each image `path` names a file) |
 
 `sample` streams each source file twice and keeps only small per-row
 numbers in memory between the passes. It drops exact duplicate reviews
@@ -369,6 +370,30 @@ the model, the prompt and the reply schema. No step owns the cache, so
 `from` and a changed option keep it, and a rerun with the same input
 makes no LLM call and writes the same bytes. Reviews and User events are
 copied without change.
+
+`images` (`src/bundle/images.ts`) picks the first `imagesPerProduct`
+(default 1, 0 turns it off) images of each product that have a
+`source_url` and no `path`, and downloads each distinct URL once to
+`catalog/images/<16 hex digits of the URL hash>.<extension>`. The local
+`path` (relative to `catalog/`) goes next to the `source_url`. The
+download uses `deps.fetch` (the global `fetch` by default) and requests
+only these URLs:
+
+- 4 requests at a time, a 30 s time limit per request, no redirects
+  followed.
+- A network error, a time-out, a 408 or a 5xx is retried 3 times, after
+  1 s, 2 s and 4 s.
+- A refusal (a 3xx, 401, 403 or 429, or an answer that is not
+  `image/*`) is not retried. 10 refusals in a row stop the download, and
+  the report gives the reason and the images not requested.
+- A failed image is listed in `report.json` (`images.failed`) and keeps
+  only its `source_url`; the bundle is still published.
+
+No step owns the image files, so the pipeline never deletes them. A file
+is written under a temporary name and then renamed, so a file on disk is
+complete, and a rerun of `images` (after an interruption, with
+`from: 'images'`, or with a larger `imagesPerProduct`) requests only the
+images that are not on disk.
 
 ## Gen
 

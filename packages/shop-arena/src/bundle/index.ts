@@ -1,5 +1,6 @@
 export { AR23_DATASET, type Ar23Report } from './ar23/adapter.js';
 export type { CompleteReport } from './complete/complete.js';
+export type { FetchImage, ImageFailure, ImagesReport } from './images.js';
 export {
   BUNDLE_ADAPTERS,
   BUNDLE_STEPS,
@@ -7,6 +8,7 @@ export {
   type BundleOptions,
   type BundleOptionsInput,
   type BundleStepName,
+  DEFAULT_IMAGES_PER_PRODUCT,
   DEFAULT_MIN_EVENTS_BEFORE,
   bundleOptionsSchema,
 } from './options.js';

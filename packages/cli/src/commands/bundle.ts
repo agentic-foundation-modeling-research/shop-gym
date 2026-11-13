@@ -5,6 +5,7 @@ import {
   BUNDLE_ADAPTERS,
   BUNDLE_STEPS,
   type BundleOptionsInput,
+  DEFAULT_IMAGES_PER_PRODUCT,
   DEFAULT_MIN_EVENTS_BEFORE,
   buildBundle,
 } from '@shop-gym/shop-arena';
@@ -22,7 +23,10 @@ keeps the products in their histories, and fills up with the most
 reviewed products of the same categories. The complete step fills the
 missing catalog fields by rules, lets an LLM name the variants and write
 one User profile per modeled user, and marks each filled field in
-provenance. LLM replies are cached in <dir>/.bundle/llm_cache.
+provenance. LLM replies are cached in <dir>/.bundle/llm_cache. The images
+step downloads the first large images of each product into
+catalog/images/. The download requests only the image URLs of the
+dataset, a few at a time, and stops after 10 refused requests in a row.
 
 Adapters: ${BUNDLE_ADAPTERS.join(', ')}
   <src> is the dataset directory with review_categories/<name>.jsonl and
@@ -41,7 +45,11 @@ Options:
                               of modeled users (default: no cap)
   --model <provider/id>       Model for the complete step (default: ${DEFAULT_MODEL})
   --concurrency <n>           Parallel LLM calls in the complete step
+  --images-per-product <n>    Large images to download per product; 0 turns the
+                              download off (default: ${DEFAULT_IMAGES_PER_PRODUCT})
   --from <step>               Rerun from this step: ${BUNDLE_STEPS.join(' | ')}
+                              (--from images retries the failed images and keeps
+                              the files already on disk)
   -h, --help                  Show this help
 
 Prints the bundle directory on the last line of stdout.`;
@@ -62,6 +70,7 @@ export function parseBundleArgs(argv: readonly string[]): BundleArgs {
     'reviews-per-product': { type: 'string' },
     model: { type: 'string' },
     concurrency: { type: 'string' },
+    'images-per-product': { type: 'string' },
     from: { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   });
@@ -95,6 +104,10 @@ export function parseBundleArgs(argv: readonly string[]): BundleArgs {
   const minEventsBefore = integerOption(args, 'min-events-before');
   const reviewsPerProduct = integerOption(args, 'reviews-per-product');
   const concurrency = integerOption(args, 'concurrency');
+  const imagesPerProduct =
+    stringOption(args, 'images-per-product') === '0'
+      ? 0
+      : integerOption(args, 'images-per-product');
   const from = enumOption(args, 'from', BUNDLE_STEPS);
   return {
     help: false,
@@ -111,6 +124,7 @@ export function parseBundleArgs(argv: readonly string[]): BundleArgs {
       ...(reviewsPerProduct !== undefined ? { reviewsPerProduct } : {}),
       model: stringOption(args, 'model') ?? DEFAULT_MODEL,
       ...(concurrency !== undefined ? { concurrency } : {}),
+      ...(imagesPerProduct !== undefined ? { imagesPerProduct } : {}),
       ...(from !== undefined ? { from } : {}),
     },
   };

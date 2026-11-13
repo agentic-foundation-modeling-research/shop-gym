@@ -9,6 +9,7 @@
  * - `products.related.*` -> `products.product_id`
  * - `reviews.user_id`, `events.user_id` -> `profiles.user_id`, when the
  *   bundle has profiles
+ * - `products.images[].path` -> a file under `catalog/`
  *
  * It also checks that ids are unique (variant ids in the whole bundle) and
  * that every price is in the bundle currency.
@@ -131,6 +132,7 @@ export async function validateBundle(
   const problems = new Problems();
   const schemas = LEVEL_SCHEMAS[level];
   const manifest = readManifest(dir, problems);
+  const catalogDir = path.join(dir, path.dirname(BUNDLE_FILES.products));
   const checkPrice = (price: Price | undefined, where: string, field: string): void => {
     if (price !== undefined && manifest !== undefined && price.currency !== manifest.currency) {
       problems.add(
@@ -166,6 +168,11 @@ export async function validateBundle(
         checkPrice(variant.price, where, `${field}.price`);
       });
       variantsOf.set(product.product_id, variants);
+      product.images?.forEach((image, index) => {
+        if (image.path !== undefined && !isFile(path.join(catalogDir, image.path))) {
+          problems.add(`${where}: images[${index}].path: no file "${image.path}"`);
+        }
+      });
       for (const [field, ids] of Object.entries(product.related ?? {})) {
         for (const id of ids ?? []) related.push({ where, field: `related.${field}`, id });
       }
@@ -318,6 +325,10 @@ async function forEachRecord<T>(
     }
   }
   return true;
+}
+
+function isFile(file: string): boolean {
+  return fs.statSync(file, { throwIfNoEntry: false })?.isFile() === true;
 }
 
 function parseJson(text: string): unknown {

@@ -32,6 +32,8 @@ describe('parseBundleArgs', () => {
       'p/m',
       '--concurrency',
       '3',
+      '--images-per-product',
+      '3',
       '--from',
       'complete',
     ]);
@@ -50,6 +52,7 @@ describe('parseBundleArgs', () => {
         reviewsPerProduct: 50,
         model: 'p/m',
         concurrency: 3,
+        imagesPerProduct: 3,
         from: 'complete',
       },
     });
@@ -61,6 +64,13 @@ describe('parseBundleArgs', () => {
     expect(args.help === false && args.options).not.toHaveProperty('concurrency');
     expect(args.help === false && args.options).not.toHaveProperty('minEventsBefore');
     expect(args.help === false && args.options).not.toHaveProperty('reviewsPerProduct');
+    expect(args.help === false && args.options).not.toHaveProperty('imagesPerProduct');
+  });
+
+  it('turns the image download off with --images-per-product 0', () => {
+    const args = parseBundleArgs([...REQUIRED, '--images-per-product', '0']);
+    expect(args.help === false && args.options.imagesPerProduct).toBe(0);
+    expect(() => parseBundleArgs([...REQUIRED, '--images-per-product', '-1'])).toThrow(CliError);
   });
 
   it('refuses a missing option, an unknown adapter and an unknown step', () => {
@@ -81,5 +91,6 @@ describe('parseBundleArgs', () => {
     expect(parseBundleArgs(['--help'])).toEqual({ help: true });
     expect(USAGE).toContain('--reviews-per-product');
     expect(USAGE).toContain('--model');
+    expect(USAGE).toContain('--images-per-product');
   });
 });

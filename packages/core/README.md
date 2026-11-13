@@ -11,7 +11,8 @@ Shared contracts and utilities with no ShopGym-internal dependencies.
   catalog products (with variants), reviews, User profiles and User events
   (closed `EVENT_TYPES`, page types shared with the Site state graph), a
   JSONL line reader, and `validateBundle(dir, 'raw' | 'complete')`, which
-  checks every record and the joins between the files.
+  checks every record and the joins between the files, including that the
+  `path` of each image names a file under `catalog/`.
 - `pipeline/` - a file-based step pipeline. Steps declare input and output
   paths; completion is derived from the filesystem (outputs exist and the
   recorded input fingerprint still matches), so re-running a pipeline only

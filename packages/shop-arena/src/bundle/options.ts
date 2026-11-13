@@ -14,11 +14,13 @@ export const BUNDLE_ADAPTERS = ['amazon_reviews_2023'] as const;
 export type BundleAdapter = (typeof BUNDLE_ADAPTERS)[number];
 
 /** Pipeline step ids in execution order. */
-export const BUNDLE_STEPS = ['sample', 'complete', 'publish'] as const;
+export const BUNDLE_STEPS = ['sample', 'complete', 'images', 'publish'] as const;
 
 export type BundleStepName = (typeof BUNDLE_STEPS)[number];
 
 export const DEFAULT_MIN_EVENTS_BEFORE = 5;
+
+export const DEFAULT_IMAGES_PER_PRODUCT = 1;
 
 export const bundleOptionsSchema = z.strictObject({
   adapter: z.enum(BUNDLE_ADAPTERS),
@@ -44,6 +46,8 @@ export const bundleOptionsSchema = z.strictObject({
   model: z.string().min(1).default(DEFAULT_MODEL),
   /** Parallel LLM calls in the complete step. */
   concurrency: z.number().int().positive().default(DEFAULT_CONCURRENCY),
+  /** Large images to download per product, the first ones first; 0 turns the download off. */
+  imagesPerProduct: z.number().int().nonnegative().default(DEFAULT_IMAGES_PER_PRODUCT),
   /** Force this step and everything after it. */
   from: z.enum(BUNDLE_STEPS).optional(),
 });
