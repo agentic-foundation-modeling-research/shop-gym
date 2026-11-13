@@ -249,12 +249,26 @@ export function ProductImageGallery({
   );
 }
 
+/** The variant title, or null for the "Default Title" of a product with one variant. */
+export function variantTitle(title: string): string | null {
+  return title === 'Default Title' ? null : title;
+}
+
+/**
+ * The variant radios of the add form. A product whose only variant is the
+ * "Default Title" one has nothing to choose: its variant id goes in a hidden
+ * field and no picker shows.
+ */
 export function VariantChoices({
   variants,
 }: {
   readonly variants: readonly ProductVariant[];
 }) {
   if (variants.length === 0) return null;
+  const [onlyVariant] = variants;
+  if (variants.length === 1 && onlyVariant && variantTitle(onlyVariant.title) === null) {
+    return <input type="hidden" name="merchandiseId" value={onlyVariant.id} />;
+  }
   const selectedVariant = variants.find((variant) => variant.availableForSale) ?? variants[0];
   return (
     <fieldset className="variant-choices">
@@ -367,13 +381,14 @@ export function CartLineItem({
   readonly line: CartLine;
   readonly redirectTo?: string | undefined;
 }) {
+  const variant = variantTitle(line.merchandise.title);
   return (
     <li className="cart-line">
       <div className="cart-line-product">
         <Link to={`/products/${line.merchandise.product.handle}`}>
           {line.merchandise.product.title}
         </Link>
-        <p className="muted">{line.merchandise.title}</p>
+        {variant ? <p className="muted">{variant}</p> : null}
       </div>
       <div className="cart-line-actions">
         <Form method="post" action="/cart" className="cart-line-update" reloadDocument>
@@ -428,6 +443,12 @@ export function CartSummary({
         <Price money={cart.cost.subtotalAmount} />
       </div>
       {discount ? <DiscountRow discount={discount} /> : null}
+      {cart.cost.totalTaxAmount ? (
+        <div className="cart-total-row">
+          <span>Estimated tax</span>
+          <Price money={cart.cost.totalTaxAmount} />
+        </div>
+      ) : null}
       <div className="cart-total-row cart-total-row-grand">
         <span>Total</span>
         <Price money={cart.cost.totalAmount} />

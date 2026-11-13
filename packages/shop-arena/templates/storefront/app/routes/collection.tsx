@@ -1,6 +1,8 @@
 import { type LoaderFunctionArgs, useLoaderData } from 'react-router';
+import { FacetLayout } from '~/components/facets';
 import { ProductGrid } from '~/components/storefront';
 import { getAppContext } from '~/lib/context';
+import { productFiltersOf } from '~/lib/facets';
 import { COLLECTION_QUERY } from '~/lib/queries';
 import { storefrontQuery } from '~/lib/storefront';
 import type { CollectionDetail } from '~/lib/types';
@@ -24,12 +26,14 @@ export function meta({
 export async function loader({
   context,
   params,
+  request,
 }: LoaderFunctionArgs): Promise<CollectionLoaderData> {
   if (!params.handle) {
     throw new Response('Missing collection handle.', { status: 400 });
   }
   const data = await storefrontQuery<CollectionData>(getAppContext(context), COLLECTION_QUERY, {
     handle: params.handle,
+    filters: productFiltersOf(new URL(request.url)),
   });
   const collection = data.collection;
   if (!collection) {
@@ -46,7 +50,9 @@ export default function Collection() {
         <h1>{collection.title}</h1>
         <p>{collection.description}</p>
       </section>
-      <ProductGrid products={collection.products.nodes} />
+      <FacetLayout filters={collection.products.filters}>
+        <ProductGrid products={collection.products.nodes} />
+      </FacetLayout>
     </div>
   );
 }

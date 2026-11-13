@@ -79,7 +79,7 @@ import {
   parseCapabilities,
 } from './capabilities.js';
 import { type FixedAreaGap, coverageGaps, fixedAreaGaps, parseOmittedAreas } from './coverage.js';
-import { fileTools } from './files.js';
+import { READ_BUDGET_CHARS, ReadBudget, fileTools } from './files.js';
 import { type GraphPrompts, readFinishedParts, renderSiteGraph } from './graph.js';
 import {
   productObservationJsonSchema,
@@ -93,8 +93,8 @@ import {
   prefetch,
   readPlatform,
 } from './prefetch.js';
-import { computeObservedStats, computeStats } from './stats.js';
-import { renderManual } from './synthesize.js';
+import { computeObservedStats, computeStats, withPriceCurrency } from './stats.js';
+import { type ManualPrompts, renderManual } from './synthesize.js';
 
 export const DEFAULT_MODEL = 'anthropic/claude-opus-4-7';
 export const DEFAULT_MAX_ITERS = 20;
@@ -103,7 +103,7 @@ export const DEFAULT_OUTPUT_ROOT = join('outputs', 'shop_manuals');
 export const EXPLORE_STEPS = ['prefetch', 'explore', 'merge', 'synthesize', 'graph'] as const;
 
 /** Bumped when the prompts or the output contract change shape. */
-const EXPLORE_VERSION = '1.3';
+const EXPLORE_VERSION = '1.4';
 const RUN_ID_HASH_LEN = 8;
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
 
@@ -229,7 +229,7 @@ interface Prompts {
   readonly execute: string;
   /** The executor prompt for a site on the generic platform. */
   readonly executeGeneric: string;
-  readonly manual: string;
+  readonly manual: ManualPrompts;
   readonly graph: GraphPrompts;
 }
 
@@ -300,7 +300,10 @@ function loadPrompts(): Prompts {
     plannerFocus: read('planner_focus.md'),
     execute: read('execute.md'),
     executeGeneric: read('execute_generic.md'),
-    manual: read('synthesize_manual.md'),
+    manual: {
+      manual: read('synthesize_manual.md'),
+      runNoteRewrite: read('synthesize_manual_rewrite.md'),
+    },
     graph: { graph: read('site_graph.md'), repair: read('site_graph_repair.md') },
   };
 }
@@ -399,11 +402,12 @@ const exploreStep: Step<ExploreContext> = {
     const planner = plannerPrompt(context.prompts, platform, context.focus);
     writeJson(join(outDir, PATHS.focus), { focus: context.focus });
     const browser = await IterationBrowser.launch({
-      episodeId: basename(outDir),
       baseUrl: context.url,
       startUrl: `${context.url}/`,
       ...(servesCart(join(outDir, PATHS.prefetch)) ? { cartUrl: `${context.url}/cart.js` } : {}),
     });
+    // One budget for all the reads of an Iteration; each Iteration starts a new count.
+    const readBudget = new ReadBudget(READ_BUDGET_CHARS);
     let stop: ExploreStop | null = null;
     let botCheckStreak = 0;
     let summary: Awaited<ReturnType<typeof runPlanExecLoop>>;
@@ -419,7 +423,7 @@ const exploreStep: Step<ExploreContext> = {
           model: context.model,
           tools: [
             ...browser.tools,
-            ...fileTools(),
+            ...fileTools({ readBudget }),
             ...(generic ? [productObservationTool(browser)] : []),
           ],
           verifiers: [
@@ -427,8 +431,10 @@ const exploreStep: Step<ExploreContext> = {
             ...(generic ? [productObservationVerifier()] : []),
           ],
           ...(context.onEvent ? { onEvent: context.onEvent } : {}),
-          onIterationStart: async ({ iterDir }) =>
-            writeJson(join(iterDir, START_STATE_FILENAME), await browser.start()),
+          onIterationStart: async ({ iterDir }) => {
+            readBudget.reset();
+            writeJson(join(iterDir, START_STATE_FILENAME), await browser.start());
+          },
           onIterationEnd: async ({ iterId }) => {
             botCheckStreak = browser.botCheck === null ? 0 : botCheckStreak + 1;
             const reason = stopReason(botCheckStreak, browser.navigationCapReached);
@@ -495,13 +501,12 @@ const mergeStep: Step<ExploreContext> = {
     const { capabilities, conflicts } = existsSync(partsDir)
       ? mergeFragments(partsDir)
       : { capabilities: parseCapabilities({}), conflicts: [] };
-    writeJson(join(outDir, PATHS.capabilities), capabilities);
-    writeJson(
-      join(outDir, PATHS.stats),
+    const stats =
       platform === 'generic'
         ? computeObservedStats(partsDir, capabilities)
-        : computeStats(prefetchDir, capabilities),
-    );
+        : computeStats(prefetchDir, capabilities);
+    writeJson(join(outDir, PATHS.capabilities), withPriceCurrency(capabilities, stats));
+    writeJson(join(outDir, PATHS.stats), stats);
 
     const summary = readRunSummary(runDir);
     const tasks = summary?.tasksFinal ?? [];
@@ -589,6 +594,7 @@ const synthesizeStep: Step<ExploreContext> = {
       context.prompts.manual,
       capabilities,
       partsDir,
+      log,
       signal,
     );
     const leaks = publishedLeaks(publishedFileScanner(outDir, context), {

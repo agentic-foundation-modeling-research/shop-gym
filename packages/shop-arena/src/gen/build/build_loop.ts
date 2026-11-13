@@ -52,6 +52,7 @@ import {
   type SchemaIntrospector,
   type StorefrontJudge,
   buildVerifiers,
+  readSiteGraph,
 } from './verifiers/index.js';
 import type { CommandRunner } from './verifiers/subprocess.js';
 
@@ -185,6 +186,8 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
   });
   await checkpoints.open(existing === undefined ? 'seed' : 'resume');
   const ownedFiles = new OwnedFilesVerifier(checkpoints, { genBackend });
+  const manualDir = path.join(artifactDir, MANUAL_DIRNAME);
+  const siteGraph = await readSiteGraph(manualDir);
   const verifiers = buildVerifiers({
     genBackend,
     sidecar,
@@ -192,8 +195,9 @@ export async function runBuildLoop(options: BuildLoopOptions): Promise<BuildLoop
     storefront: {
       sidecar: storefront,
       dataDir: path.join(artifactDir, DATA_DIRNAME),
-      manualDir: path.join(artifactDir, MANUAL_DIRNAME),
+      manualDir,
       ...(options.judge !== undefined ? { judge: options.judge } : {}),
+      ...(siteGraph !== undefined ? { siteGraph } : {}),
     },
     ...(options.commandRunner !== undefined ? { runner: options.commandRunner } : {}),
     ...(options.introspect !== undefined ? { introspect: options.introspect } : {}),

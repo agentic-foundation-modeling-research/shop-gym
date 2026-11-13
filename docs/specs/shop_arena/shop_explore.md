@@ -1,67 +1,102 @@
-# ShopExplore (`packages/shop_arena/src/shop_arena/explore`)
+# Storefront exploration (`packages/shop-arena/src/explore`)
 
-Status: **Implemented (`shop_arena.explore` v0.1.0)** · Version: **0.1**
+Status: **Implemented (`exploreStorefront`, `shopgym explore`)** · Version: **1.4**
 Owners: ShopArena
 
 > A storefront exploration pipeline that produces an anonymized **Shop
-> Manual** — a structured, machine- and human-readable description of a
-> live storefront's UX, IA, and feature set — so that a sandbox shop can
+> Manual**: a structured, machine- and human-readable description of a
+> Live storefront's UX, IA and feature set, so that a SandboxShop can
 > later be synthesized from one or more such manuals.
 
 ---
 
 ## 1. Overview
 
-`shop_arena.explore` ingests one storefront URL and emits a **Shop Manual**: a
-small bundle of files (markdown + JSON + raw evidence) that captures the
-shop's structure, navigation, and modern e-commerce features (cart,
-search, filters, sort, drawers, popups, etc.) in an anonymized form.
+Storefront exploration (`exploreStorefront` in `@shop-gym/shop-arena`,
+`shopgym explore` in the CLI) reads one storefront URL and writes a
+**Shop Manual**: a small set of Markdown and JSON files that tells the
+structure, navigation and features of the shop (cart, search, filters,
+sort, drawers, popups, reviews and so on) in an anonymized form.
 
-Two design choices define the module:
+Three design choices define the module:
 
 - **Harness-driven exploration.** All browsing happens inside
-  `packages/harness` plan-then-exec iterations. The planner agent walks
-  the shop briefly and emits a per-shop task list; executor agents work
-  one task each, driving the browser through the **playwright skill**
-  (CLI). `shop_arena.explore` owns prompts, an `AGENTS.md`, a deterministic
-  prefetch step, and a post-loop synthesis step. It owns no
-  orchestration, no LLM session management, and no telemetry plumbing —
-  the harness owns those.
-- **Decoupled output.** A Shop Manual is a standalone artifact keyed by
-  domain + run id; it is **not** tied to a sandbox shop. Downstream
-  (`shop_arena.gen` SandboxShop builder) consumes one or more Shop Manuals as
-  input.
+  `@shop-gym/harness` plan-then-loop Iterations. A planner agent looks
+  at the shop briefly and writes a Plan with the 14 Fixed areas and any
+  shop-specific tasks. Each executor Iteration works on one Plan task
+  and drives a new headless browser through the Browser tools of
+  `@shop-gym/browser`. The module owns the prompts, an `AGENTS.md`, a
+  deterministic prefetch step, the Verifiers, the bot-check rules and
+  the steps after the loop. It owns no LLM session management and no
+  telemetry plumbing. The harness owns those.
+- **Two Platform paths.** Prefetch decides if the storefront is a
+  Shopify shop (`shopify`) or another site (`generic`). The Shopify path
+  reads the catalog endpoints of the shop. The generic path reads only
+  `robots.txt`, the homepage and `sitemap.xml`, and the executors record
+  Product observations for the catalog statistics.
+- **Decoupled output.** A Shop Manual is a standalone set of files
+  keyed by domain and run id. It is **not** tied to a SandboxShop. Shop
+  generation (`shopgym gen`) reads one or more Shop Manuals as input.
 
-`shop_arena.explore` is the first non-trivial caller of `packages/harness` and
-exercises its public surface end-to-end.
+Storefront exploration is the first non-trivial caller of
+`@shop-gym/harness` and exercises its public surface end to end.
 
 ---
 
 ## 2. Terminology
 
-- **Storefront** — the public, unauthenticated view of an online store at a given base URL.
-- **Shop Manual** — the bundle this module emits for one storefront run:
-  `manual.md` (prose), `capabilities.json` (structured features),
-  `stats.json` (analysis statistics), `site_graph.json` (the Site state
-  graph, §5.13), per-task evidence, and a `manifest.json`. See §5.4.
-- **Capability** — a structured, schema-validated tag describing one
+- **Storefront** - the public, unauthenticated view of an online store
+  at a given base URL. A real one is a Live storefront (`GLOSSARY.md`).
+- **Shop Manual** - the files that this module writes for one
+  storefront run: `manual.md` (prose), `capabilities.json` (structured
+  features), `stats.json` (catalog statistics), `site_graph.json` (the
+  Site state graph, §5.13) and `manifest.json` (the run summary), next
+  to the prefetch seed and the harness workspace. See §5.4.
+- **Capability** - a structured, schema-validated fact about one
   feature of the storefront (e.g. `cart.type=drawer`,
   `search.has_predictive=true`, `collection.filters=[size,color,price]`).
-- **Prefetch** — a deterministic, no-LLM HTTP fetch of a fixed set of
-  shop webpages and JSON endpoints (`/`, `/sitemap.xml`,
-  `/products.json`, `/collections.json`, `/search/suggest.json`,
-  `/cart.js`, `robots.txt`, policy pages). Output is seeded into the
-  harness `run_dir/artifact/prefetch/`.
-- **Task brief** — the inline note text following a task id in
-  `plan.md` (e.g. `- [ ] product_detail — capture variant selectors and
-  gallery on 2 PDPs`). Authored by the planner; read by the executor.
-- **Coverage taxonomy** — a fixed list of feature areas the planner is
-  expected to consider when emitting tasks (§5.7). The planner *omits*
-  areas the prefetch shows are not present.
-- **Anonymization** — write-time obfuscation of brand-, store-, and
-  product-identifying strings so the manual describes structure and UX
-  patterns, not the original shop. v0.1 enforces this only via prompt
-  rules; no deterministic post-pass scrubber.
+- **Platform path** - the way that the run reads the storefront, as
+  prefetch decides it: `shopify` or `generic` (§5.9). `prefetch.json`
+  and `manifest.json` record it as `platform`.
+- **Prefetch** - a deterministic, no-LLM HTTP fetch of a fixed, small
+  set of URLs before the loop. Every run fetches `robots.txt`, `/`,
+  `/sitemap.xml` and the first `/products.json` page. The Shopify path
+  then fetches the rest of the catalog and a fixed list of Shopify
+  endpoints and pages. The output goes to `seed/prefetch/`, and the
+  harness copies it to `run/artifact/prefetch/`.
+- **Task brief** - the note text that follows a task id in a
+  `plan.md` task line. The harness plan parser needs the U+2014 dash
+  character between the id and the brief. The planner writes the brief,
+  and the executor reads it.
+- **Fixed area** - one of the 14 canonical Plan tasks that the planner
+  emits in every run, on both Platform paths (§5.7). Each one ends done,
+  or `manifest.json:fixed_area_gaps` lists it with a one-line reason.
+- **Coverage taxonomy** - the list of feature areas that a storefront
+  can have (§5.3). The planner lists the areas that the storefront does
+  not have under `## Omitted Areas` in `plan.md`.
+- **Focus hint** - the `focus` text (`--focus`) that tells the planner
+  which part of a large site to explore (§5.14). It is a hint, not a
+  filter.
+- **Product observation** - one schema-checked record of one product
+  page that an executor opened on a generic site: price, currency and
+  variant facts, with no name, URL, seller or brand (§5.6).
+- **Anonymization** - the rule that the manual describes structure and
+  UX patterns, not the original shop. The prompts give the rules at
+  write time. Two deterministic checks enforce the brand markers: the
+  `anonymization` Verifier on the fragment of each Plan task, and the
+  final scan of the published files (§5.15). Other identifying text,
+  such as product names, has only prompt rules.
+- **Brand term** - a word or phrase, such as a sub-brand, that the
+  person who runs exploration adds with `--brand-term`, because the
+  homepage title does not name it (§5.15).
+- **Bot check** - a page that a site shows in place of the page that
+  was asked for, to find out whether the visitor is a person: a
+  Cloudflare challenge, a captcha page, an interstitial page with one
+  button, or a rate-limit page served with HTTP 503. Exploration never
+  tries to pass one (§5.16).
+- **Navigation cap** - the fixed number of `navigate` calls (200) that
+  one call of the explore step may make, over all its Iterations
+  (§5.16).
 - **Site state graph** - the published file `site_graph.json`. It tells
   how a shopper moves through the storefront: its states are pages and
   overlays, and its transitions are shopper actions from one state to
@@ -74,26 +109,11 @@ exercises its public surface end-to-end.
 
 ## 3. Current Status
 
-- `packages/shop_arena/src/shop_arena/explore/` is implemented and
-  exposes the `shop-explore` console script plus the library entry
-  point `explore(ExploreConfig)`.
-- The v0.1.0 pipeline runs deterministic prefetch, a harness-driven
-  planner/executor loop, and deterministic synthesis into
-  `manual.md`, `capabilities.json`, `stats.json`, and
-  `manifest.json`.
-- The implementation includes:
-  - capability schemas and merge helpers under `explore/capabilities/`;
-  - HTTP prefetch under `explore/prefetch/`;
-  - planner, executor, `AGENTS.md`, and synthesis prompts under
-    `explore/prompts/`;
-  - deterministic synthesis and manifest writing under
-    `explore/synthesize/`;
-  - resume support through the harness resume contract when `--out`
-    points at an existing run directory.
-- Replay cassettes and tests cover fixture storefronts, capability
-  merging, stats, prefetch, synthesis, CLI wiring, and the harness
-  integration path. Live runtime smoke and real-LLM synthesis remain
-  follow-up work.
+- v0.1 (Python, `shop_arena.explore`) shipped first: deterministic
+  prefetch, a harness-driven planner and executor loop, and
+  deterministic synthesis into `manual.md`, `capabilities.json`,
+  `stats.json` and `manifest.json`, with replay cassettes as tests. The
+  Python code was removed at the v1.1 cutover.
 - v1.1 TypeScript port (2026-09-30): `packages/shop-arena/src/explore/`
   exposes `exploreStorefront(options)` and re-implements the pipeline on
   `@shop-gym/core` `runPipeline` (steps `prefetch`, `explore`, `merge`,
@@ -113,7 +133,8 @@ exercises its public surface end-to-end.
   under `evidence/`. Published files (`manual.md`, `capabilities.json`,
   `stats.json`, `manifest.json`) sit at `<run_id>/`; the harness
   workspace lives at `<run_id>/run/` and the prefetch seed at
-  `<run_id>/seed/prefetch/`. The CLI binary is scheduled for M10.
+  `<run_id>/seed/prefetch/`. The `shopgym explore` CLI came with v1.1
+  M10.
 - Fresh browser per Iteration (2026-11-05): the explore step gives every
   planner and executor Iteration a new headless browser through the
   harness `onIterationStart` hook, so no cookies, storage or cart carry
@@ -122,7 +143,7 @@ exercises its public surface end-to-end.
   also reads `/cart.js`. The explore step writes the result to
   `run/iters/<id>/start_state.json` as `{ url, cart, error }`. When the
   homepage or the cart cannot be read, `error` gives the reason, and the
-  Iteration still runs. All browsers of a run send the same
+  Iteration still runs. Since 2026-11-12 the browsers send no
   `x-shopgym-episode` header. The storefront origin is the base URL of
   every browser, so `navigate` opens a site path such as `/cart` on the
   storefront. The explore `snapshot` tool shows at most 50,000
@@ -138,18 +159,50 @@ exercises its public surface end-to-end.
   at most twice; the next hit blocks the task with a note that names the
   fragment. The count per task is kept in
   `run/checks/anonymization_reopens.json`, so a resumed run keeps it.
+- Coverage counts only done tasks (2026-11-05): a pending, in-progress
+  or blocked Plan task does not cover its area, so a stopped or failed
+  run lists the area in `coverage_gaps` (SC5).
+- Platform paths (2026-11-05): prefetch decides the platform before the
+  fetch plan (§5.9). Both paths fetch `robots.txt`, `/`, `sitemap.xml`
+  and one `/products.json` probe. The `shopify` path then runs the
+  Shopify fetch plan. The `generic` path stops there, and the planner
+  gets `planner_generic.md`, which picks same-origin start paths from the
+  homepage links and the sitemap. On both paths, prefetch skips a
+  `sitemap.xml` that `robots.txt` forbids and keeps at most 1 MiB of it.
+  `prefetch.json` and `manifest.json` record `platform`. A
+  `prefetch.json` with no `platform` reads as `shopify`, so older runs
+  resume.
+- Marketplace Plan tasks and Capabilities 0.3 (2026-11-05): the planner
+  emits 14 Fixed areas in every run, on both paths: the 11 earlier
+  canonical tasks and three marketplace areas, `product_reviews`,
+  `related_products` and `search_results` (§5.7). The briefs use
+  platform-neutral words and name the Capabilities that each task fills.
+  Each Fixed area that does not end done is in
+  `manifest.json:fixed_area_gaps` with a one-line reason. The
+  Capabilities schema goes to version `0.3` with a `departments` block,
+  `search.facets`, `search.sort`, `product.has_rating_histogram`,
+  `product.review_filters` and `product.related_product_types` (§5.5).
+  A 0.2 document still parses. The Shop generation manual merge keeps
+  the new fields.
+- Catalog statistics from an observed sample (2026-11-05): on a generic
+  site, `stats.json` comes from the Product observations of the
+  executors (`source: observed_sample`); on a Shopify shop it comes from
+  the catalog (`source: catalog_endpoint`). Both record `sample_size`
+  (§5.6). The Shop generation stats schema accepts both new fields.
 - Brand segment, brand terms and the final scan (2026-11-05): brand
   tokens come only from the brand segment of the homepage title (the
-  segment that matches a hostname label) and from `og:site_name`; when
-  no segment matches, every segment counts. A repeatable
-  `--brand-term <word>` (option `brandTerms`) adds sub-brands; a term
-  of more than one word matches as a phrase. The terms are kept in
-  `<run_id>/brand_terms.json`, which Shop generation does not read, and
-  the `anonymization` verifier uses them. After synthesis, the final scan
-  checks `manual.md`, `capabilities.json` and `stats.json` (JSON values
-  only) for brand tokens, brand terms and the host, and fails the
-  `synthesize` step before it writes `manual.md`. `manifest.json` is not
-  scanned, because it records the `domain` by design.
+  segment that matches a hostname label), from `og:site_name` and from
+  the hostname labels; when no segment matches, every segment counts. A
+  repeatable `--brand-term <word>` (option `brandTerms`) adds sub-brands;
+  a term of more than one word matches as a phrase. The terms are kept
+  in `<run_id>/brand_terms.json`, which Shop generation does not read,
+  and the `anonymization` verifier uses them. After synthesis, the final
+  scan checks `manual.md`, `capabilities.json` and `stats.json` (JSON
+  values only) for the host, email addresses, brand tokens and brand
+  terms, and fails the `synthesize` step with `AnonymizationLeakError`
+  before it writes `manual.md`. `manifest.json` is not scanned, because
+  it records the `domain` by design. Since 2026-11-11 the `graph` step
+  runs the same scan on `site_graph.json` (§5.15).
 - Observed facts only (2026-11-05): the shared executor instructions
   (`AGENTS.md`) say to write only what the run saw. A field that the run
   did not see stays `null`, and `false` means that the run saw the
@@ -158,7 +211,27 @@ exercises its public surface end-to-end.
   contradict `capabilities.json`. Both prompts put site-specific lists,
   internal request names and the site's own feature names into generic
   words. These are prompt rules; the final scan matches only the brand
-  markers and the host.
+  markers, the host and email addresses.
+- Focus hint (2026-11-05): an optional `focus` (`--focus <text>`) adds
+  `planner_focus.md` after the planner prompt (§5.14). The planner picks
+  its pages and queries in the focus and writes the focus into the
+  briefs. Navigation is not blocked. `focus.json` and
+  `manifest.json:focus` record it, and a resume must pass the same focus.
+- Bot checks and the Navigation cap (2026-11-05): prefetch stops on a
+  captcha, interstitial or rate-limit homepage with the reason
+  `bot_check`. In a run, the Browser tools find bot-check pages, add a
+  notice to the tool result, and refuse `click`, `type`, `select` and
+  `press` on them. Two Iterations in a row with a bot check, or 200
+  `navigate` calls in one explore-step call, end the run with a harness
+  Caller stop. A stopped run still writes the manual from the finished
+  parts, records `stop` in `explore.json` and `manifest.json`, and
+  `shopgym explore` exits 0 (§5.16).
+- First run on a generic site (2026-11-06): the Video Games Shop Manual
+  of a large marketplace, with `--focus "Video Games"`. The live run
+  stopped on bot checks after 3 of the 14 Fixed areas. The other 11
+  parts were written offline from page captures, and a `--from merge`
+  run with no site traffic wrote the manual. The user accepted this
+  manual on 2026-11-11 (§8.4).
 - Site state graph (2026-11-11): a fifth step, `graph`, runs after
   `merge` and writes `site_graph.json` with one `LlmClient.complete`
   call, and one repair call when the reply fails a check. It reads the
@@ -176,61 +249,91 @@ exercises its public surface end-to-end.
   trigger limit, and sharper prompt rules fix the rule breaks of the
   review. Two reruns show that the model still breaks other prompt
   rules, and that the breaks change from run to run.
+- Run 2 findings fixed (2026-11-12, version 1.4): a stat that the run
+  did not see is `null` in `stats.json`, never 0, and the Shop
+  generation manual merge keeps it unknown (§5.6). When no part gives
+  `shop.currency`, merge takes it from the stats prices. The
+  `read_file` calls of one Iteration have a Read budget of 200,000
+  characters (§5.7). The `synthesize` step finds Run notes by a closed
+  list of run words and asks one rewrite call for those lines; a
+  rewritten line with a run word fails the step with
+  `ManualRunNoteError` (§5.10). The Iteration browsers send no
+  `x-shopgym-episode` header, because a local test reproduces a blank
+  page from the CORS preflight that the header causes (§8.2).
 
 ---
 
 ## 4. Desired Status
 
-A self-contained module under `packages/shop_arena/src/shop_arena/explore/`
-that, given a storefront URL, runs one harness `plan_exec_loop` against
-it and emits a Shop Manual under
-`outputs/shop_manuals/<domain>/<run_id>/`.
+A self-contained module under `packages/shop-arena/src/explore/` that,
+given a storefront URL, runs one harness `runPlanExecLoop` against it
+and emits a Shop Manual under `outputs/shop_manuals/<domain>/<run_id>/`.
 
 ### 4.1 I/O contract
 
-**Inputs** (CLI or library):
+**Inputs** (library option, with the CLI option in brackets):
 
-| Input        | Notes                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------- |
-| `url`        | Public storefront base URL. Required.                                                  |
-| `out_dir`    | Defaults to `outputs/shop_manuals/<domain>/<run_id>/`. Must be empty or non-existent.  |
-| `runtime`    | `pi` (default) or `claude_code`. Selected via `harness.get_runtime`.                   |
-| `max_iters`  | Executor budget; default 12.                                                           |
-| `timeout`    | Per-iteration timeout; default 600s.                                                   |
+| Input                                  | Notes                                                                                                   |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `url`                                  | Public storefront URL. Required. Only the scheme and the host are used.                                 |
+| `outDir` (`--out`)                     | Defaults to `outputs/shop_manuals/<domain>/<run_id>/` under the working directory. An existing `outDir` resumes (§5.2). |
+| `model` (`--model`)                    | `provider/model-id`. Library default `anthropic/claude-opus-4-7`; CLI default `openai/gpt-5.5`.        |
+| `maxIters` (`--max-iters`)             | Executor Iterations of the explore step. Default 20.                                                    |
+| `timeoutMs` (`--timeout`)              | Wall clock budget of one Iteration. Default 1,800,000 ms (30 minutes).                                  |
+| `from` (`--from`)                      | Force this step and every step after it: `prefetch`, `explore`, `merge`, `synthesize` or `graph`.       |
+| `forceResume` (`--force-resume`)       | Resume a harness run that ended in a refused status.                                                    |
+| `focus` (`--focus`)                    | The Focus hint (§5.14). The CLI refuses a blank value.                                                  |
+| `brandTerms` (`--brand-term`, repeatable) | Brand terms (§5.15). A term with no letter or digit fails the call.                                  |
 
-**Outputs** (under `<out_dir>/`):
+Library only: `credentials` (required; the CLI reads them with the
+repository credentials loader), `rateLimitMs` (the prefetch pace),
+`runtime` and `llm` (inject an `AgentRuntime` and an `LlmClient`, for
+tests), `onEvent`, `log` and `signal`.
 
-The output directory **is** the harness `run_dir`. The Shop Manual
-itself is the contents of `<out_dir>/artifact/`. See §5.4 for the full
-layout.
+**Outputs** (under `<outDir>/`):
+
+The published files sit at `<outDir>/`. The harness workspace is
+`<outDir>/run/`, and the prefetch seed is `<outDir>/seed/prefetch/`.
+See §5.4 for the full layout.
 
 **Out of scope:**
 
-- Authenticated flows (login, account, wishlist).
-- Checkout (cart-to-payment).
-- Cross-shop merging / SandboxShop synthesis (separate spec under
-  `shop_arena.gen`).
+- Authenticated flows. The executors look only at the public sign-in
+  and sign-up entries and never submit them.
+- Orders and payment. `checkout_flow` stops at the first sign-in or
+  payment wall.
+- Any way to pass a bot check: captcha solving, proxies, user agent
+  rotation or stealth browsers (§5.16).
+- Rules for each path in `robots.txt`. Prefetch keeps the root gate and
+  the sitemap check only (§8.2).
+- Platform paths other than `shopify` and `generic`.
+- Cross-shop merging and SandboxShop synthesis (Shop generation,
+  `docs/specs/shop_arena/shop_gen.md`).
 - Sandbox shop generation, asset rewriting, GraphQL mocking.
-- Asset downloads beyond what playwright captures opportunistically.
-- Deterministic anonymization scrubber (deferred; §6).
+- Asset downloads beyond the screenshots that the runtime keeps.
+- A deterministic scrubber that rewrites leaks. The final scan fails
+  the run; it does not change the text (§6 E).
 
 ### 4.2 Success criteria
 
-- **SC1 — One command.** `shop-explore <url>` produces a complete Shop
-  Manual under `outputs/shop_manuals/<domain>/<run_id>/` with no
+- **SC1 - One command.** `shopgym explore <url>` produces a complete
+  Shop Manual under `outputs/shop_manuals/<domain>/<run_id>/` with no
   additional flags required.
-- **SC2 — Schema-valid capabilities.** `capabilities.json` validates
-  against the v0.1 schema (§5.5) on a representative set of fixture
-  storefronts. Unknown fields are rejected.
-- **SC3 — Anonymized.** `manual.md` and `capabilities.json` contain no
-  occurrence of the source domain, source store name, or any product
-  title from prefetched `products.json`, on the fixture set. Verified by
-  a test-only regex scan (the production pipeline does not enforce this
-  in v0.1).
-- **SC4 — Replayable.** A test harness using `harness.runtimes.replay`
-  can drive a recorded `shop_arena.explore` run end-to-end without network
-  access.
-- **SC5 — Coverage.** On the fixture set, every coverage-taxonomy area
+- **SC2 - Schema-valid capabilities.** `capabilities.json` validates
+  against the closed 0.3 schema (§5.5). Unknown fields are rejected. A
+  0.2 document still parses.
+- **SC3 - Anonymized.** The published files `manual.md`,
+  `capabilities.json`, `stats.json` and `site_graph.json` contain no
+  occurrence of the source host, an email address, a brand token or a
+  Brand term. The final scan enforces this in the production pipeline
+  (§5.15). Product names and the site's own feature names have prompt
+  rules only.
+- **SC4 - Tested with no live site.** The tests drive
+  `exploreStorefront` end to end with `FakeRuntime` scripts and a stub
+  `LlmClient` against local HTTP fixture storefronts with fake brand
+  names: a Shopify fixture and a generic fixture. No test opens a live
+  site.
+- **SC5 - Coverage.** On the fixture set, every coverage-taxonomy area
   that prefetch evidence indicates is present (§5.7) appears as either
   a done planner task or a justified omission in `manifest.json`. A
   pending, in-progress, or blocked task does not cover its area. When
@@ -242,6 +345,12 @@ layout.
   `product_reviews`, `related_products`, `search_results`) that does
   not end done is listed in
   `manifest.json:fixed_area_gaps` with a one-line reason.
+- **SC6 - Generic sites and bot checks.** On the generic fixture, the
+  run takes the generic path, and `stats.json` comes from the Product
+  observations. A Plan task that meets a bot-check page is blocked, and
+  no page action runs on that page. Two Iterations in a row with a bot
+  check, or the Navigation cap, stop the run, and the run still
+  publishes the manual with the stop and the gaps in `manifest.json`.
 
 ---
 
@@ -250,163 +359,210 @@ layout.
 ### 5.1 Architecture
 
 ```
-              ┌──────────────────────────────────────────────┐
-              │                shop_arena.explore                  │
-              │  url → out_dir/{manual.md, capabilities.json,│
-              │         stats.json, evidence/, …}            │
-              └────────────┬───────────────────────┬─────────┘
-                           │ owns                  │ owns
-                           ▼                       ▼
-       ┌────────────────────────┐   ┌─────────────────────────────┐
-       │  Prefetch (no LLM)     │   │  Synthesis (post-loop)      │
-       │  HTTP + sitemap + JSON │   │  parts → manual + caps +    │
-       │  endpoints; aborts on  │   │  stats + manifest           │
-       │  bot-block / 4xx/5xx   │   │  (1 LLM call + det. merge)  │
-       └───────────┬────────────┘   └────────────▲────────────────┘
-                   │ seeds                       │ reads
-                   ▼                             │
-       ┌────────────────────────────────────────┴────────────────┐
-       │                 packages.harness                         │
-       │                                                          │
-       │  run_plan_exec_loop(config, runtime)                     │
-       │  • planner iter (1×): reads prefetch, light browse,      │
-       │                       writes plan.md                     │
-       │  • executor iters (N×): each task = one feature area;    │
-       │                         drives playwright skill;         │
-       │                         writes parts/<task>.md +         │
-       │                         parts/<task>.caps.json +         │
-       │                         evidence/<task>/…                │
-       └──────────────────────────────────────────────────────────┘
+url
+ │
+ ▼
+prefetch ───► seed/prefetch/                         no LLM; gates; Platform path
+ │
+ ▼
+explore ────► run/ (harness workspace), explore.json  @shop-gym/harness runPlanExecLoop:
+ │                                                    1 planner Iteration, then executor
+ │                                                    Iterations, one Plan task each
+ ▼
+merge ──────► capabilities.json, stats.json,          no LLM
+ │            manifest.json
+ ├──────────────────────────────┐
+ ▼                              ▼
+synthesize ─► manual.md         graph ─► site_graph.json
+1 LLM call + final scan         1 LLM call, at most 1 repair, + scan
 ```
 
-`shop_arena.explore` is a thin façade. The harness owns the loop, telemetry,
-and `run.json`. The agent runtime (default `pi`) owns the LLM and the
-playwright skill discovery. `shop_arena.explore` owns three things:
+Storefront exploration is a thin layer over the harness. The harness
+owns the loop, telemetry, resume and `run.json`. The agent runtime
+(default `pi`) owns the LLM session. Storefront exploration owns four
+things:
 
-1. **Prefetch** — one deterministic Python step before the loop.
-2. **Prompt + AGENTS.md bundle** — the planner/executor instructions
-   and the project constitution that scope the run.
-3. **Synthesis** — one deterministic Python step after the loop, plus a
-   single LLM call to merge the prose.
+1. **Prefetch** - one deterministic step before the loop (§5.9).
+2. **Prompt and `AGENTS.md` bundle** - the planner and executor
+   instructions for each Platform path, and the project constitution
+   that scopes the run (§5.8).
+3. **Tools, Verifiers and stops** - a new browser for each Iteration,
+   the run-dir-scoped file tools, the `record_product_observation` tool
+   on a generic site, the `anonymization` and `product_observations`
+   Verifiers, and the Caller stop on bot checks and at the Navigation
+   cap (§5.16).
+4. **Steps after the loop** - deterministic merge and stats, one LLM
+   call for the prose, the graph step, and the final scan (§5.10,
+   §5.13, §5.15).
 
 ### 5.2 Execution model
 
 ```
-shop-explore <url>
+shopgym explore <url>               (library: exploreStorefront(options))
   │
-  ├─ 1. validate url, derive domain + run_id
-  ├─ 2. prefetch(url) → seed_dir/prefetch/         (no LLM, ~5–15 s)
-  │      • abort early on bot-block, network error, non-2xx index
-  ├─ 3. render prompts + AGENTS.md into seed_dir/
-  ├─ 4. run_plan_exec_loop(
-  │        run_dir=out_dir,
-  │        prompts={planner, execute},
-  │        agents_md=...,
-  │        artifact_seed_dir=seed_dir,
-  │        runtime=get_runtime("pi"),
-  │        config={max_iters, timeout},
-  │     )
-  │      • 1 planner iter, then ≤ max_iters executor iters
-  │      • each executor iter = one task in plan.md
-  ├─ 5. synthesize(out_dir/artifact/)
-  │      • merge parts/*.caps.json → capabilities.json   (deterministic)
-  │      • compute stats.json from prefetch + capabilities (deterministic)
-  │      • single LLM call: parts/*.md + caps.json → manual.md + final anonymization re-check
-  │      • write manifest.json (run summary, justified omissions)
-  └─ 6. exit code = 0 iff harness final_status == completed
-                       AND capabilities.json validates
-                       AND manual.md non-empty
+  ├─ 1. normalize the url to scheme + host, derive domain + run_id,
+  │     check the focus against focus.json, resolve the Brand terms
+  ├─ 2. prefetch   -> seed/prefetch/                         (no LLM)
+  │      • stop with ShopUnreachableError at a gate (§5.9)
+  │      • decide the Platform path, record it in prefetch.json
+  ├─ 3. explore    -> run/, focus.json, explore.json
+  │      • runPlanExecLoop({
+  │            runDir: run/,
+  │            prompts: { planner (by platform, + focus hint),
+  │                       execute (by platform) },
+  │            agentsMd, artifactSeedDir: seed/,
+  │            tools, verifiers, maxIters, timeoutMs, model,
+  │            onIterationStart: new browser + start_state.json,
+  │            onIterationEnd: Caller stop on bot checks or the cap,
+  │         }, runtime, { force: forceResume })
+  │      • 1 planner Iteration, then ≤ maxIters executor Iterations
+  │      • each executor Iteration = one Plan task in plan.md
+  ├─ 4. merge      -> capabilities.json, stats.json, manifest.json
+  │      • merge parts/*.caps.json                      (deterministic)
+  │      • stats from the catalog or the Product observations
+  │      • manifest: counts, omissions, conflicts, gaps, stop, paths
+  ├─ 5. synthesize -> manual.md
+  │      • 1 LLM call: parts/*.md + capabilities.json -> manual text
+  │      • final Anonymization scan; a leak writes no manual.md
+  ├─ 6. graph      -> site_graph.json (§5.13)
+  └─ 7. exit code (CLI) = 0 iff every step passed AND the harness
+                          final status is `completed` or `stopped`
 ```
 
-The planner iteration receives prefetch evidence in
-`run_dir/artifact/prefetch/` via `artifact_seed_dir`. It must browse at
-most a small fixed number of pages (homepage + 1 collection + 1 PDP +
-homepage interactions) before emitting `plan.md`; this is enforced by
-the planner prompt, not the harness.
+A gate in prefetch, a failed step or an error stops the pipeline, and
+the CLI exits 1. A harness run that ends with a status other than
+`completed` or `stopped` (for example `budget_exhausted` or
+`runtime_error`) still runs the later steps, but the CLI exits 1.
+
+Calling again with the same `outDir` skips each complete step (the
+records in `.pipeline/`) and resumes an unfinished harness run. `from`
+forces a step and every step after it. The pipeline never deletes
+`run/`, so `from: 'explore'` continues the same exploration with a new
+Iteration budget.
+
+The planner Iteration receives the prefetch files in
+`run/artifact/prefetch/` via `artifactSeedDir`. It must browse at most
+4 pages with `navigate` (homepage, one listing page, one product page,
+one more page only when needed) before it writes `plan.md`; this is
+enforced by the planner prompt, not the harness.
 
 ### 5.3 Coverage taxonomy
 
-The planner is expected to **consider** each of these feature areas and
-emit a task when the prefetch indicates it is present (or skip it with a
-note in `manifest.json` when it is absent):
+The coverage taxonomy names the feature areas that a storefront can
+have:
 
 ```
 Site shell:        announcement_bar, header_navigation, mega_menu, footer
+Departments:       department_menu (count, levels)
 Homepage:          hero, sections (featured_collection / banner / testimonials /
                    carousel / video), newsletter, popups
 Collection:        listing_layout, product_card, filters, sort, pagination
 Product detail:    gallery, variant_selectors, qty_selector, add_to_cart,
-                   description, recommendations, reviews
+                   description, recommendations, reviews, rating_histogram,
+                   review_filters, related_product_blocks
 Cart:              cart_drawer_or_page, line_item_edit, upsells, promo_code
-Search:            search_trigger, predictive, results_layout
+Search:            search_trigger, predictive, results_layout, facets, sort
+Checkout:          guest_checkout, shipping, payment, discount_code
+Account:           sign_in, sign_up
 Info / policy:     about, contact, shipping, returns, privacy, tos, faq, gift_cards
 Internationalization: locale_switcher, currency_switcher
 Floating:          chat_widget, age_gate, cookie_banner
 ```
 
-The planner does not blindly emit a task for every area. Tasks must be
-*evidenced*: derived from prefetch (`/cart.js` exists ⇒ cart task) or
-from the planner's brief browse. Areas observed-absent are listed in
-`manifest.json:omitted_areas` with a one-line reason.
+The planner does not decide which surfaces to explore. It emits the 14
+Fixed areas (§5.7) in every run, verbatim, in a fixed order and with
+fixed priorities, also when a feature looks absent. If a feature is
+missing, the executor says so in its fragment, and `capabilities.json`
+shows it. This keeps runs stable across shops and gives the synthesis
+a predictable input shape. The planner can add shop-specific Plan
+tasks after the 14, each with a one-line evidence reference in its
+brief.
+
+Three Fixed areas are marketplace areas: `product_reviews`,
+`related_products` and `search_results`. They fill the 0.3
+Capabilities of large sites: rating histograms, review filters,
+related-product blocks, search facets and search sort.
+
+Areas observed-absent are listed in `plan.md` under `## Omitted Areas`
+with a one-line reason, and merge copies them to
+`manifest.json:omitted_areas`. A Fixed area id is never an omitted
+area.
 
 ### 5.4 Output layout
 
-`out_dir == run_dir`. The harness owns the top-level structure (§5.3 of
-the harness spec); `shop_arena.explore` owns everything under `artifact/`.
+`outDir` holds the published files, the prefetch seed, the harness
+workspace and the step records. The harness owns the structure of
+`run/` (§5.3 of the harness spec); Storefront exploration owns
+everything else, and the agents write under `run/artifact/`.
 
 ```
-outputs/shop_manuals/<domain>/<run_id>/
-├── AGENTS.md                 # harness-stable; written by shop_arena.explore
-├── prompts/                  # harness-stable; planner.md, execute.md
-├── plan.md                   # harness; evolving
-├── iters/                    # harness; per-iteration trajectories
-├── run.json                  # harness; run summary
-└── artifact/                 # owned by shop_arena.explore + agents
-    ├── manual.md             # PUBLISHED — prose, anonymized
-    ├── capabilities.json     # PUBLISHED — structured tags, schema-validated
-    ├── stats.json            # PUBLISHED — analysis statistics
-    ├── manifest.json         # PUBLISHED — run summary + omitted_areas
-    ├── prefetch/             # seeded by shop_arena.explore (no LLM)
-    │   ├── index.html
-    │   ├── sitemap.xml
-    │   ├── robots.txt
-    │   ├── products.json
-    │   ├── collections.json
-    │   ├── search_suggest.json
-    │   ├── cart.js
-    │   ├── policies/         # /policies/* HTML
-    │   └── prefetch.json     # what we tried + outcome per URL
-    ├── parts/                # written by executors
-    │   ├── <task_id>.md
-    │   ├── <task_id>.caps.json
-    │   └── <task_id>.product-<key>.json # generic sites only (§5.6)
-    └── evidence/             # written by executors
-        └── <task_id>/
-            ├── snapshots/    # playwright `pw.js snapshot` a11y dumps
-            ├── screenshots/  # full-page PNGs
-            └── network.jsonl # optional: captured XHR responses
+outputs/shop_manuals/<domain>/<run_id>/      # outDir
+├── manual.md                 # PUBLISHED - prose, anonymized
+├── capabilities.json         # PUBLISHED - Capabilities, schema 0.3
+├── stats.json                # PUBLISHED - catalog statistics
+├── site_graph.json           # PUBLISHED - Site state graph (§5.13)
+├── manifest.json             # PUBLISHED - run summary, gaps, stop, paths
+├── seed/
+│   └── prefetch/             # written by prefetch (no LLM)
+│       ├── prefetch.json     # platform + one entry per request
+│       ├── robots.txt
+│       ├── index.html
+│       ├── sitemap.xml       # when robots.txt allows it; at most 1 MiB
+│       ├── products.json     # shopify: all catalog pages, merged
+│       ├── collections.json  # shopify only, as the 5 files below
+│       ├── search_suggest.json
+│       ├── cart.js
+│       ├── cart.html
+│       ├── search.html
+│       ├── policies/         # shopify: 4 policy pages
+│       └── pages/            # shopify: about, contact, faq
+├── run/                      # harness workspace (runDir)
+│   ├── AGENTS.md
+│   ├── prompts/              # planner.md, execute.md as the run got them
+│   ├── plan.md
+│   ├── run.json
+│   ├── iters/<id>/           # trajectory, metadata, start_state.json
+│   ├── checks/anonymization_reopens.json
+│   └── artifact/
+│       ├── prefetch/         # copy of seed/prefetch/ (artifact seed)
+│       ├── parts/            # written by executors
+│       │   ├── <task_id>.md
+│       │   ├── <task_id>.caps.json
+│       │   └── <task_id>.product-<key>.json # generic sites only (§5.6)
+│       └── evidence/         # written by executors
+│           └── <task_id>/
+│               ├── snapshots/    # `snapshot` text, one per page state
+│               └── network.jsonl # optional
+├── focus.json                # the Focus hint of the run, or null
+├── explore.json              # harness outcome: final_status, iters, stop
+├── brand_terms.json          # Brand terms; never published
+└── .pipeline/                # step records of the pipeline runner
 ```
 
-The six **published** files (`manual.md`, `capabilities.json`,
-`stats.json`, `manifest.json`, `site_graph.json` (§5.13), plus the
-`prefetch/` directory) form the
-contract consumed by downstream `shop_arena.gen`. Everything else
-(`parts/`, `evidence/`, harness telemetry) is debugging context and may
-be excluded by tooling that ships manuals around.
+The **published** files are `manual.md`, `capabilities.json`,
+`stats.json`, `site_graph.json` and `manifest.json`. Shop generation
+reads `manual.md`, `capabilities.json` and `stats.json` (ADR 0012).
+`manifest.json` records the `domain` by design, so the final scan does
+not cover it. Everything else (`seed/`, `run/`, `brand_terms.json` and
+the step files) is run state and debugging context. It can hold raw
+site text, and tooling that ships manuals around must leave it out.
 
-`<run_id>` is `<UTC-timestamp>-<short-hash>` where the hash is the
-SHA-256 prefix of `(url, runtime, version)` to allow safe parallel runs
-of the same shop.
+`<run_id>` is `<UTC timestamp>-<8 hex digits>`, where the digits are
+the SHA-256 prefix of `(url, runtime, version)`, so parallel runs of
+the same shop do not collide.
 
 ### 5.5 Capabilities schema
 
-`capabilities.json` is a single pydantic v2 model owned by
-`shop_arena.explore.capabilities`. It is **closed** (extra fields rejected)
-so schema drift is loud. Top-level shape:
+`capabilities.json` is one zod `strictObject` in
+`src/explore/capabilities.ts`, at schema version `0.3`. It is
+**closed** (extra fields rejected) so schema drift is loud. Each scalar
+is nullable (`null` means unknown), and each list defaults to empty, so
+a fragment fills only its own fields. Top-level shape, with fake
+values:
 
 ```json
 {
-  "version": "0.1",
+  "version": "0.3",
   "shop": {
     "descriptor": "premium minimalist jewelry store",
     "category": "fashion_accessories",
@@ -419,6 +575,11 @@ so schema drift is loud. Top-level shape:
     "has_mega_menu": true,
     "nav_depth": 2,
     "footer_groups": 4
+  },
+  "departments": {
+    "has_department_menu": true,
+    "department_count": 12,
+    "max_depth": 3
   },
   "homepage": {
     "section_types": ["hero_carousel", "featured_collection",
@@ -440,7 +601,10 @@ so schema drift is loud. Top-level shape:
     "description_layout": "tabs",
     "has_reviews": true,
     "has_recommendations": true,
-    "has_personalization": false
+    "has_personalization": false,
+    "has_rating_histogram": true,
+    "review_filters": ["star_rating"],
+    "related_product_types": ["bought_together", "also_viewed"]
   },
   "cart": {
     "type": "drawer",
@@ -452,11 +616,9 @@ so schema drift is loud. Top-level shape:
     "trigger": "header_icon",
     "has_predictive": true,
     "predictive_types": ["products", "collections"],
-    "results_layout": "grid_with_filters"
-  },
-  "intl": {
-    "has_locale_switcher": true,
-    "has_currency_switcher": false
+    "results_layout": "grid_with_filters",
+    "facets": ["brand", "price", "rating"],
+    "sort": ["relevance", "price_asc", "newest"]
   },
   "floating": {
     "has_chat_widget": true,
@@ -464,11 +626,37 @@ so schema drift is loud. Top-level shape:
     "has_cookie_banner": true,
     "has_newsletter_popup": true
   },
+  "intl": {
+    "has_locale_switcher": true,
+    "has_currency_switcher": false
+  },
+  "account": {
+    "has_login": true,
+    "has_signup": true,
+    "has_profile": null,
+    "has_addresses": null,
+    "has_order_history": null
+  },
+  "checkout": {
+    "has_guest_checkout": true,
+    "payment_methods": ["card", "wallet"],
+    "has_discount_code": true,
+    "shipping_options": ["standard", "express"]
+  },
   "info_pages_present": ["about", "contact", "shipping_policy",
                          "returns_policy", "privacy", "tos", "faq",
                          "gift_cards"]
 }
 ```
+
+**Versions.** 0.2 added the `account` and `checkout` blocks. 0.3 added
+the `departments` block, `search.facets`, `search.sort`,
+`product.has_rating_histogram`, `product.review_filters` and
+`product.related_product_types`. Each new field is nullable or defaults
+to an empty list, so a 0.2 document still parses. `version` defaults to
+`0.3`, and a parse keeps the version that a document gives. `AGENTS.md`
+shows the schema as JSON Schema, rendered at run time, so it cannot
+drift.
 
 Each executor writes a fragment matching one or more top-level keys to
 `parts/<task_id>.caps.json`. The post-loop merge is a deterministic
@@ -479,9 +667,16 @@ non-null value fills it. Neither case is a conflict. Conflicts (two
 different non-null values for one leaf) are recorded in
 `manifest.json:capability_conflicts`.
 
+The Shop generation manual merge, which merges the Capabilities of
+more than one Shop Manual, has its own rules for the 0.3 fields:
+`departments.has_department_menu` and `product.has_rating_histogram`
+are true when any manual says true, `departments.department_count` is
+the most common value, `departments.max_depth` is the largest value,
+and the 0.3 lists are the union.
+
 ### 5.6 Stats schema
 
-`stats.json` is computed deterministically by `shop_arena.explore.stats`.
+`stats.json` is computed deterministically by `src/explore/stats.ts`.
 No LLM. The source depends on the platform:
 
 - **`catalog_endpoint`** (Shopify). The stats come from `prefetch/` (the
@@ -506,8 +701,8 @@ No LLM. The source depends on the platform:
   most frequent currency; `products_with_variants_pct` and
   `variant_axes_observed` (sorted) use all of them. `sample_size` is the
   number of distinct product pages. `products_total`,
-  `collections_total` and `products_per_collection` stay 0, because a
-  sample does not show them. Shop generation takes its totals from its
+  `collections_total` and `products_per_collection` are `null`, because
+  a sample does not show them. Shop generation takes its totals from its
   config targets either way. The key has limits. A site that gives each
   variant its own URL counts each variant page as one product. A call
   made after the executor left the product page records the key of the
@@ -537,6 +732,33 @@ Shape:
 booleans + non-empty list lengths) and provides a single coverage
 number for cross-shop comparison.
 
+On both paths, a stat that the run did not see is `null`, never 0, so 0
+always means "none". `navigation_depth_max` is `site_shell.nav_depth` and
+`homepage_section_count` is `homepage.section_count`, and each one is
+`null` when its Capability is `null`. `info_pages_count` is the length of
+`info_pages_present`, and `null` when the list is empty: the list has no
+unknown state, and nearly every storefront has an info page, so an empty
+list means "not seen". `price` is `null` when the run saw no price, and
+`price.currency` is `null` when no source gives a currency. On a Shopify
+shop `products_per_collection` is `null` when no collection count was
+read, and `products_with_variants_pct` is `null` when the catalog has no
+product; on a generic site both come from the sample, and the
+percentage is `null` on an empty sample. `variant_axes_observed` is `[]`
+when nothing was seen.
+
+When no part gives `shop.currency`, the merge step writes the currency
+of the stats prices into `capabilities.json`. On a Shopify shop that is
+the currency of the prefetched `cart.js`; on a generic site it is the
+most frequent currency of the Product observations. A currency that a
+part gives wins. When the run saw no price, `shop.currency` stays
+`null`.
+
+The Shop generation manual merge keeps the same rule. It takes a number
+only from the seeds that know it, and the merged number is `null` when
+no seed knows it. It takes the totals only from the `catalog_endpoint`
+seeds, and it skips a seed price whose `max` is 0, because older
+`observed_sample` seeds wrote 0 for an unknown price.
+
 ### 5.7 Plan + executor contract
 
 The planner emits `plan.md` tasks of the form:
@@ -550,182 +772,348 @@ The planner emits `plan.md` tasks of the form:
 - [ ] info_pages         — visit shipping, returns, privacy, tos; one screenshot each [priority: 3]
 ```
 
+The harness plan parser needs the U+2014 dash between the id and the
+brief, and a `[priority: N]` tag. The briefs above are only an example
+of the form. The canonical briefs are in `prompts/planner.md` and
+`prompts/planner_generic.md`, and both prompts emit them verbatim.
+
+**The 14 Fixed areas** (`FIXED_AREAS`, in this order):
+
+| Fixed area           | Priority | What the brief asks for                                                                                  |
+| -------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `homepage_sections`  | 9        | Every section below the hero; fill the `shop` block (descriptor, category, currency code, tone).         |
+| `header_navigation`  | 8        | Header rows, sticky behavior, the department menu and its levels (`departments`), flyouts, header icons. |
+| `cart_drawer`        | 8        | Add one product; the cart surface (drawer, page or side sheet): empty, filled, quantity change, remove.  |
+| `product_variants`   | 7        | Two product pages, one with more than one variant: gallery, variant selectors, quantity stepper.         |
+| `product_reviews`    | 6        | The review block of a product page (`product.has_rating_histogram`, `product.review_filters`); skip all-reviews pages behind a sign-in. |
+| `related_products`   | 5        | Each related-product block of two product pages; their kinds in `product.related_product_types`.         |
+| `collection_filters` | 7        | A collection, department or category landing page, not a search results page: filters, sort, pagination. |
+| `search_predictive`  | 6        | Two prefixes in the search box; the suggestion dropdown; no network or API capture.                      |
+| `search_results`     | 7        | One submitted query: results layout, facets (`search.facets`), sort (`search.sort`), pagination, empty state. |
+| `checkout_flow`      | 6        | Checkout from a filled cart: guest option, shipping, payment, discount input; stop at the first sign-in or payment wall. |
+| `account_pages`      | 5        | Only the public sign-in and sign-up entries: their fields and options; never submit them.                |
+| `footer`             | 4        | Link groups, legal links, payment icons, social icons.                                                    |
+| `info_pages`         | 4        | Shipping, refund, privacy, terms, FAQ, and contact or about when present.                                |
+| `floating_widgets`   | 3        | Cookie banner, newsletter popup, chat widget, age gate: presence and behavior.                           |
+
+The ids are stable names, not a claim about how the shop is built.
+Every brief uses platform-neutral words, so the same block fits any
+storefront: `cart_drawer` covers a cart page or side sheet too. A key
+in backticks names the Capabilities that the task fills. The planner
+can make a brief more specific, for example with start paths or the
+Focus hint, but the brief keeps every rule of its canonical brief.
+
 **Per-task executor obligations** (encoded in the execute prompt and
 `AGENTS.md`):
 
-1. Read `plan.md` for the selected task and its inline brief.
-2. Read `artifact/prefetch/` for context.
-3. Drive the browser **only** via the playwright skill CLI
-   (`node $SKILL_DIR/scripts/pw.js …`). No HTTP fetch from inside the
-   executor.
+1. Read `plan.md` for the selected task and its inline brief. The
+   harness adds the `selected_task_id` control header and the Verifier
+   feedback of the earlier attempt.
+2. Read `artifact/prefetch/` for context. On a generic site, find the
+   pages from the start paths in the brief, the links in `index.html`
+   and the `<loc>` entries of `sitemap.xml`.
+3. Drive the browser **only** through the Browser tools, and read and
+   write files only through `read_file`, `write_file` and `list_dir`,
+   which stay inside the run directory. There is no HTTP fetch tool.
+   One `read_file` call returns at most 60,000 characters. All
+   `read_file` calls of one Iteration return at most 200,000 characters
+   (the Read budget); the explore step resets the budget at the start of
+   each Iteration. When the budget is spent, `read_file` fails and tells
+   the agent to work from what it already read.
 4. Capture evidence under `artifact/evidence/<task_id>/`:
-   - one a11y `snapshot.md` per distinct page state,
-   - one full-page PNG per distinct page state (use playwright's
-     `--full-page`),
-   - optional `network.jsonl` of relevant XHRs (e.g. cart updates).
-5. Write a markdown section to `artifact/parts/<task_id>.md`,
-   apply anonymization rules at write time. The `anonymization`
-   verifier scans only this file of the selected task. A hit reopens
-   the task at most twice (the count per task is kept in
-   `run/checks/anonymization_reopens.json`); the next hit blocks the
-   task with a note that names the file.
+   - one `snapshots/NN-<state>.md` (the `snapshot` text) per distinct
+     page state,
+   - optional `network.jsonl`, only when a request is the evidence
+     (e.g. cart updates).
+   Screenshots help to read the layout. The runtime keeps them under
+   the Iteration directory.
+5. Write a markdown section to `artifact/parts/<task_id>.md` with the
+   per-element template of `execute.md` (Type, Layout, Content,
+   Behavior, Styling, UX Notes), and apply the anonymization rules at
+   write time. The `anonymization` verifier scans only this file of the
+   selected task. A hit reopens the task at most twice (the count per
+   task is kept in `run/checks/anonymization_reopens.json`); the next
+   hit blocks the task with a note that names the file.
 6. Write a JSON fragment to `artifact/parts/<task_id>.caps.json`
    containing only the capabilities-schema keys this task is
    responsible for.
-7. Self-check (per harness §5.8): the markdown describes structure,
-   not original copy; the JSON fragment is well-formed; ≥ 1 screenshot
-   exists.
-8. Mark the task `[x]` (or `[!]` with reason) before exiting.
+7. On a generic site, call `record_product_observation` on each product
+   page that the task opens, while the page is open (§5.6).
+8. On a bot-check page, do not click, type or submit. Mark the task
+   `[!]` with the reason "bot check" and end the Iteration (§5.16).
+9. Self-check: both part files exist, the caps file is one JSON
+   object, at least one snapshot is saved, and the text has no store,
+   brand or product names and no verbatim page copy.
+10. Mark the task `[x]` (or `[!]` with the reason after a `;` in the
+    brief) before exiting. Change only the line of the selected task.
 
 ### 5.8 Prompts and AGENTS.md
 
-Three caller-owned files live under `packages/shop_arena/src/shop_arena/explore/prompts/`:
+Nine caller-owned files live under
+`packages/shop-arena/src/explore/prompts/`. They are plain Markdown with
+`{{NAME}}` placeholders, not a template language:
 
-- `agents.md` — project constitution. Anonymization rules (verbatim
-  from the legacy `anonymization_rules.md`, lightly extended), how to
-  invoke the playwright skill, file-write conventions, the
-  capabilities schema reference.
-- `planner.md` — instructions to emit `plan.md`. Guides through the
-  coverage taxonomy (§5.3), priority assignment, the small-browse
-  budget, and the omitted-areas reporting.
-- `execute.md` — instructions for one task iteration. References
-  `AGENTS.md` for shared conventions; the harness prepends the
-  `selected_task_id` control header.
+- `agents.md` - the project constitution (`AGENTS.md` of the run):
+  anonymization and observed-facts rules, Browser tool use, file-write
+  conventions, the Capabilities schema (`{{CAPABILITIES_SCHEMA}}`) and
+  the Product observation schema (`{{PRODUCT_OBSERVATION_SCHEMA}}`),
+  both rendered as JSON Schema at run time.
+- `planner.md` - the planner prompt on a Shopify shop: the browse
+  budget of 4 `navigate` calls with start pages from
+  `collections.json` and `products.json`, the 14 Fixed areas verbatim,
+  shop-specific tasks, omitted areas and the shape of `plan.md`.
+- `planner_generic.md` - the planner prompt on a generic site. It is a
+  full copy of `planner.md` with its title and its browse section
+  rewritten: the planner picks start URLs from the homepage links and
+  the sitemap, on the same origin only, and writes them as paths.
+- `planner_focus.md` - the Focus hint, added after either planner
+  prompt when the run has a focus, with `{{FOCUS}}` replaced (§5.14).
+- `execute.md` - instructions for one task Iteration on a Shopify shop.
+  References `AGENTS.md` for shared conventions.
 - `execute_generic.md` - the executor prompt on a generic site. It is
-  `execute.md` plus the rule to record each product page that the
-  executor opens with the `record_product_observation` tool (§5.6).
+  `execute.md` plus the start pages of a generic site and the rule to
+  record each product page that the executor opens with the
+  `record_product_observation` tool (§5.6).
+- `synthesize_manual.md` - the prompt of the manual call: keep only
+  what the parts show, mark the rest unknown, let no sentence
+  contradict `capabilities.json`, use generic words for the site's own
+  names, and write no Run notes.
+- `synthesize_manual_rewrite.md` - the prompt of the one rewrite call
+  for the Run notes of the manual, with `{{LINES}}` replaced by the
+  lines and their run words (§5.10).
+- `site_graph.md` and `site_graph_repair.md` - the graph prompt and its
+  repair prompt (§5.13).
 
-Prompts are shipped as importable resources; not user-templated in
-v0.1.
+Prompts are shipped as package files and are not user-templated.
 
 ### 5.9 Prefetch
 
-`shop_arena.explore.prefetch.run(url) -> PrefetchResult` performs a fixed,
-small fetch using `httpx`:
+`prefetch(url, outDir, options)` in `src/explore/prefetch.ts` performs a
+fixed, small fetch with `fetch`, in this order:
+
+1. `/robots.txt`. A network error stops prefetch (`network_error`). A
+   body with a status other than 200 counts as empty. When the rules for
+   `User-Agent: *` forbid `/`, prefetch stops (`robots_disallow`).
+2. `/`, saved as `index.html`, then the homepage gates (below).
+3. `/sitemap.xml`, unless `robots.txt` forbids it for `*`. Prefetch keeps
+   at most 1 MiB and marks a longer body as cut. It does not follow the
+   child sitemaps of a sitemap index.
+4. `/products.json?page=1&limit=250`, the platform probe. While a page
+   returns a product list, prefetch reads the next page, until a page
+   has fewer than 250 products or 200 pages are read. The pages are
+   merged into one `products.json`.
+5. The Platform path: `shopify` when the homepage has a Shopify marker
+   (`cdn.shopify.com`, `myshopify.com`, `Shopify.theme`,
+   `shopify-section`) or the probe returned a product list, else
+   `generic`.
+6. On the Shopify path only, this fixed plan:
 
 ```
-critical_html  = ["/", "/cart", "/search",
-                  "/policies/refund-policy",
-                  "/policies/privacy-policy",
-                  "/policies/terms-of-service",
-                  "/policies/shipping-policy",
-                  "/pages/about", "/pages/contact", "/pages/faq"]
-json_endpoints = ["/products.json?page=N&limit=250",  # paginated; see below
-                  "/collections.json?limit=50",
-                  "/search/suggest.json?q=a&resources[type]=product",
-                  "/cart.js"]
-plus           = ["/sitemap.xml", "/robots.txt"]
+/collections.json?limit=50                        -> collections.json
+/search/suggest.json?q=a&resources[type]=product  -> search_suggest.json
+/cart.js                                          -> cart.js
+/cart                                             -> cart.html
+/search                                           -> search.html
+/policies/refund-policy                           -> policies/refund-policy.html
+/policies/privacy-policy                          -> policies/privacy-policy.html
+/policies/terms-of-service                        -> policies/terms-of-service.html
+/policies/shipping-policy                         -> policies/shipping-policy.html
+/pages/about, /pages/contact, /pages/faq          -> pages/<name>.html
 ```
 
-`/products.json` is walked across every page until a page returns
-fewer than 250 products (or a safety cap is hit), and the merged
-``{"products": [...]}`` document is written verbatim to
-``prefetch/products.json``. Each page request appears as its own entry
-in ``prefetch.json`` so the per-URL log stays honest.
+7. `prefetch.json`: `base_url`, `platform`, `user_agent`, `started_at`,
+   `finished_at`, and one entry for each request with its status,
+   content type, size, saved file or error.
 
-This is intentionally bounded — it captures *enough* to seed the
-planner, not the whole shop. (The legacy crawler at
-`shop-snap/src/collector/crawler.py` is broader and slower; we
-deliberately do not adopt it here.)
+This is intentionally bounded. It captures *enough* to seed the
+planner, not the whole shop. (The legacy `shop-snap` crawler is
+broader and slower; we deliberately do not adopt it here, §6 F.)
 
-Behavior:
+**Homepage gates**, in this order. Each one throws
+`ShopUnreachableError` with a `reason` before any browser starts:
 
-- **Bot-block detection.** If `/` returns 403/429/503, contains a
-  Cloudflare challenge marker, or `robots.txt` blocks `User-Agent: *`
-  on `/`, abort with `ShopUnreachableError`.
-- **Rate limit.** ≥ 500 ms between requests.
-- **User-Agent.** `ShopExplore/<version> (+https://github.com/...)`.
-- Output is written verbatim plus a `prefetch.json` summary listing
-  `url → status, content_type, bytes`.
+1. A network error: `network_error`.
+2. A bot check of the site: a captcha marker, an interstitial marker,
+   or a rate-limit marker on a page served with HTTP 503: `bot_check`.
+   This gate comes before the status gate, because the bot-check page
+   of a site often comes with HTTP 503.
+3. An unknown status or a status of 400 or more (this includes 403,
+   429 and 503): `http_status`.
+4. A Cloudflare challenge marker: `cloudflare_challenge`. Because the
+   status gate comes first, a challenge page served with 403 or 503
+   stops with `http_status` (§8.2).
 
-Prefetch is the only network code in `shop_arena.explore`. The agents do all
-further browsing through playwright.
+The gates are the same on both paths. The marker lists are in
+`src/explore/bot-check.ts` (§5.16).
 
-### 5.10 Synthesis
+Other behavior:
 
-After the harness loop returns, `shop_arena.explore.synthesize(run_dir)`
-runs (no further harness involvement):
+- **Rate limit.** ≥ 500 ms between requests (`rateLimitMs`).
+- **Timeout.** 30 s for each request.
+- **User-Agent.** `ShopExplore/0.1.0 (+https://github.com/...)`.
+- Output is written verbatim, next to `prefetch.json`.
 
-1. **Capabilities merge** (deterministic). Read every
+Prefetch is the only HTTP client code in Storefront exploration. The
+agents do all further browsing through the Browser tools. The new
+browser of each Iteration opens `/`, and it reads `/cart.js` only when
+the prefetched `cart.js` parses as a cart (§3).
+
+### 5.10 Merge and synthesis
+
+After the harness loop returns, these steps run with no further harness
+involvement:
+
+1. **Capabilities merge** (`merge`, deterministic). Read every
    `parts/*.caps.json`, deep-merge into one `capabilities.json`,
-   validate against the v0.1 schema. Conflicts → `manifest.json`.
-2. **Stats** (deterministic). Compute `stats.json` from
-   `prefetch/products.json`, `prefetch/collections.json`, and
-   `capabilities.json`.
-3. **Manual prose** (one LLM call, no browsing). Concatenate
-   `parts/*.md` and `capabilities.json`, send to the configured LLM
-   (default the same as the agent runtime's underlying model) with the
-   merge prompt. Output: `manual.md`. The merge prompt re-applies
-   anonymization rules as a final pass on the prose.
-4. **Manifest** (deterministic). Write `manifest.json`:
-   `{domain, run_id, runtime, started_at, finished_at, harness_status,
-     iters, plan_tasks_total, plan_tasks_done, plan_tasks_blocked,
-     omitted_areas, capability_conflicts, coverage_gaps, fixed_area_gaps,
-     paths}`.
+   validate against the 0.3 schema. Conflicts → `manifest.json`.
+2. **Stats** (`merge`, deterministic). On a Shopify shop, compute
+   `stats.json` from `prefetch/products.json`,
+   `prefetch/collections.json` and `capabilities.json`. On a generic
+   site, compute it from the Product observation fragments and
+   `capabilities.json` (§5.6). When `capabilities.json` has no
+   `shop.currency`, write the currency of the stats prices into it.
+3. **Manifest** (`merge`, deterministic). Write `manifest.json`:
 
-Synthesis failure modes (loud — no silent fallback):
+   ```
+   { run_id, domain, runtime, model, platform, focus, harness_status,
+     iters: { plan, exec }, plan_tasks_total, plan_tasks_done,
+     plan_tasks_blocked, omitted_areas: [{ area, reason }],
+     capability_conflicts, coverage_gaps, fixed_area_gaps: [{ area, reason }],
+     stop: { reason, iteration, blocked_tasks } | null, merged_at,
+     paths: { manual, capabilities, stats, manifest, site_graph, prefetch, run } }
+   ```
 
-- Capabilities schema invalid → exit non-zero, no `manual.md` emitted.
-- Manual LLM call empty / < 200 chars → exit non-zero, no `manual.md` /
-  `manifest.json` emitted. Earlier revisions silently concatenated
-  `parts/*.md` and set `manifest.json:manual_fallback=true`; that path
-  masked LLM-client misconfiguration (the `_NoOpLLMClient` always
-  returned `""`) and was removed deliberately.
-- Manual LLM call raises (network error, timeout, runtime missing
-  `complete()`) → exit non-zero, no `manual.md` / `manifest.json`
-  emitted. Runtimes that do not implement `harness.runtimes.LLMCompleter`
-  (e.g. `replay`) require an explicit `llm=` argument to
-  `shop_arena.explore.pipeline.explore`.
+   - `harness_status`, `iters` and `stop` come from `explore.json`. The
+     task counts, `coverage_gaps` and `fixed_area_gaps` come from the
+     Plan tasks in the harness `run.json` when the run ended, not from
+     `plan.md`. `omitted_areas` comes from `plan.md`.
+   - A `fixed_area_gaps` reason is `not in the plan`,
+     `not started when the run ended`, `in progress when the run ended`,
+     or `blocked: <reason>`, where the reason is the text that the
+     executor added after the planned brief.
+   - `coverage_gaps` holds only the areas that prefetch evidenced. On a
+     generic site, prefetch evidences only `homepage_sections`,
+     `header_navigation` and `footer` (from `index.html`), so the
+     unfinished areas of a generic run are in `fixed_area_gaps`.
+   - `stop.blocked_tasks` lists every Plan task that is blocked when the
+     run ends, not only the tasks that met a bot check.
+4. **Manual prose** (`synthesize`, one LLM call, no browsing).
+   Concatenate `parts/*.md` and `capabilities.json`, send them with
+   `synthesize_manual.md` to `LlmClient.complete` with the model of the
+   run. A reply line with a run word is a Run note. The run words are a
+   short closed list in `synthesize.ts`, for example "this session",
+   "the run", "bot check", "snapshot", "captured", "originally planned"
+   and "was not tested"; the list is narrow, so that storefront prose
+   such as "once per session" does not match. When the reply has Run
+   notes, the step logs their count and makes one more completion with
+   `synthesize_manual_rewrite.md`. It gets only those lines and their
+   run words, not the parts. The reply is one JSON array with one
+   string for each line, bare or in one fenced block; each string
+   replaces its line in place, and an empty string removes the line.
+   There is no second rewrite. Then the final Anonymization scan
+   (§5.15) checks the manual, `capabilities.json` and `stats.json`.
+   Only a clean scan writes `manual.md`.
+5. **Site state graph** (`graph`, §5.13).
+
+Synthesis failure modes (loud, no silent fallback). Each one fails its
+step with `StepFailedError`, and the CLI exits 1:
+
+- A fragment that breaks the Capabilities schema, or an invalid merged
+  document → `CapabilitiesValidationError`; merge writes no
+  `capabilities.json`, `stats.json` or `manifest.json`, and no
+  `manual.md` is emitted. A Product observation fragment that breaks its
+  schema fails merge too.
+- Manual LLM call empty / < 200 chars → `ManualRenderError`, no
+  `manual.md` emitted. (`manifest.json` is already written by merge.)
+  An early Python revision silently concatenated `parts/*.md` and set
+  `manifest.json:manual_fallback=true`; that path masked LLM-client
+  misconfiguration and was removed deliberately.
+- Manual LLM call raises (network error, timeout) → no `manual.md`
+  emitted.
+- The rewrite reply is not one JSON array with one string for each Run
+  note, or a line of the rewritten manual still has a run word →
+  `ManualRunNoteError`, no `manual.md` emitted. The message names each
+  line that still has run words.
+- The final scan finds a leak → `AnonymizationLeakError`, no
+  `manual.md` emitted.
 
 ### 5.11 CLI surface
 
 ```
-shop-explore <url> [--out PATH] [--runtime {pi,claude_code}]
-                   [--max-iters N] [--timeout SECONDS]
-                   [--prefetch-only] [--synthesize-only]
+shopgym explore <url> [--out <dir>] [--model <provider/id>]
+                      [--brand-term <word>]... [--max-iters <n>]
+                      [--timeout <ms>] [--from <step>]
+                      [--force-resume] [--focus <text>]
 ```
 
-- `--prefetch-only` runs §5.9 and exits; useful for debugging.
-- `--synthesize-only PATH` re-runs §5.10 against an existing run_dir
-  (mirrors the legacy `--merge-only` flag, but pure-Python this time).
+- `--from prefetch|explore|merge|synthesize|graph` forces that step and
+  every step after it. `--from merge` and `--from graph` send no site
+  traffic when the earlier steps are up to date (§5.13).
+- `--brand-term` is repeatable. `--focus` must not be blank.
+- The progress lines go to stderr. The last line of stdout is the path
+  of `manual.md`. The log line at the end gives the final status and,
+  for a stopped run, the stop reason and Iteration.
+- Exit code: 0 when the harness run is `completed` or `stopped`; 1 for
+  any other final status and for any error.
+- The CLI reads the model keys with the repository credentials loader.
 
 Library equivalent:
 
-```python
-from shop_arena.explore import explore, ExploreConfig
+```ts
+import { loadCredentials } from '@shop-gym/core';
+import { exploreStorefront } from '@shop-gym/shop-arena/explore';
 
-result = explore(ExploreConfig(url="https://example-shop.com",
-                                runtime="pi"))
-assert result.manual_path.exists()
+const result = await exploreStorefront({
+  url: 'https://shop.example',
+  credentials: loadCredentials(process.cwd(), process.env),
+  focus: 'Video Games',
+  brandTerms: ['Zephyr', 'Nova Pass'],
+});
+console.log(result.manualPath, result.finalStatus, result.stop);
 ```
 
 ### 5.12 Module layout
 
 ```
-packages/shop_arena/src/shop_arena/explore/
-├── __init__.py            # public re-exports: explore, ExploreConfig, ExploreResult
-├── cli.py                 # thin argparse → explore()
-├── config.py              # ExploreConfig, ExploreResult (pydantic v2)
-├── prefetch.py            # PrefetchResult, run(url)
-├── capabilities.py        # Capabilities schema + merge_fragments()
-├── stats.py               # compute_stats(prefetch, capabilities)
-├── synthesize.py          # synthesize(run_dir, llm) → manual.md, manifest.json
-├── pipeline.py            # explore() — orchestrates the four steps
-├── prompts/
-│   ├── agents.md
-│   ├── planner.md
-│   └── execute.md
-└── py.typed
+packages/shop-arena/src/explore/
+├── index.ts              # public re-exports (§8.1)
+├── pipeline.ts           # exploreStorefront, the five steps, manifest, Caller stop
+├── prefetch.ts           # prefetch, the gates, the Platform path, readPlatform
+├── bot-check.ts          # Cloudflare, captcha, interstitial and rate-limit markers
+├── browser.ts            # IterationBrowser: a new browser for each Iteration,
+│                         #   start_state.json, snapshot tool, bot-check notice
+│                         #   and refusal, Navigation cap
+├── files.ts              # run-dir-scoped read_file, write_file, list_dir, ReadBudget
+├── capabilities.ts       # Capabilities 0.3 schema, parseCapabilities, mergeFragments
+├── observations.ts       # Product observation schema, tool, Verifier, reader
+├── stats.ts              # computeStats (catalog), computeObservedStats (sample)
+├── coverage.ts           # evidencedAreas, coverageGaps, FIXED_AREAS, fixedAreaGaps
+├── anonymization.ts      # brandTokens, leakScanner, Verifier, publishedLeaks
+├── synthesize.ts         # renderManual (the manual call and the Run-note rewrite)
+├── graph.ts              # renderSiteGraph (§5.13)
+├── trajectory-digest.ts  # Trajectory digest of an executor Iteration (§5.13)
+├── testing.ts            # fixture storefronts for the tests
+└── prompts/              # §5.8
 ```
 
-Tests live under `packages/shop_arena/tests/explore/` and exercise:
+The CLI command is `packages/cli/src/commands/explore.ts`.
 
-- Prefetch against a recorded `respx`/`httpx` cassette.
-- Capabilities schema round-trip + merge edge cases.
-- Stats computation against fixture prefetches.
-- A full harness e2e using `harness.runtimes.replay` against a
-  recorded `shop_arena.explore` cassette (one fixture storefront).
-- Anonymization regex scan over the synthesized manual.
+Tests are co-located `*.test.ts` files and exercise:
+
+- `prefetch.test.ts`: the gates, platform detection, the generic path,
+  `robots.txt` and the sitemap, against local HTTP servers.
+- `capabilities.test.ts`: schema round trip, 0.2 documents, merge edge
+  cases.
+- `coverage.test.ts`: coverage gaps and Fixed area gaps.
+- `anonymization.test.ts`: brand tokens, Brand terms, the scanner, the
+  final scan, the Verifier and its reopen cap.
+- `browser.test.ts` and `files.test.ts`: the start state, the snapshot
+  tool, and the file tools that stay in the run directory.
+- `pipeline.test.ts`: `exploreStorefront` end to end with `FakeRuntime`
+  scripts against a Shopify fixture and a generic fixture with fake
+  brand names: steps and resume, the Fixed areas, Product observations
+  and stats, the Focus hint, bot checks and the Navigation cap, Brand
+  terms and the final scan, and the graph step.
 
 ### 5.13 Site state graph
 
@@ -1036,6 +1424,157 @@ used the final prompt. The runs keep these results:
   model still breaks some rules, and the breaks change from run to
   run. A reviewer must still read each graph.
 
+### 5.14 Focus hint
+
+A large site, such as a marketplace, has many departments. The `focus`
+option (`--focus <text>`, for example `--focus "Video Games"`) keeps a
+run in one part of it.
+
+- The explore step adds `prompts/planner_focus.md` after the planner
+  prompt of either platform, and replaces `{{FOCUS}}` with the focus
+  text. The composition is plain text concatenation. With no focus, the
+  planner prompt does not change.
+- The hint tells the planner to pick its listing pages, product pages
+  and search queries inside the focus, for its own browse and for the
+  briefs. The browse budget does not change.
+- The planner keeps every Fixed area, also the site-wide ones (header,
+  footer, cart, checkout entry, account entries, info pages, floating
+  widgets). A task can open a page outside the focus when it needs that
+  page.
+- The executors see only their brief, so the planner writes the focus
+  into each brief that opens a listing page, a product page or a
+  search. The executor prompts do not get the focus.
+- If no part of the site matches the focus, the planner plans as if
+  there were no focus and says so in the plan summary.
+- The code does not block navigation outside the focus. The focus is a
+  hint, not a filter.
+- The explore step writes `focus.json` (`{ "focus": <text or null> }`)
+  before the harness runs. A later call on the same `outDir` with a
+  different focus, or with no focus, fails before any step runs,
+  because a resumed harness run keeps the plan of its first planner.
+- `manifest.json:focus` records the focus, or `null`. A focus names a
+  department, not a brand, so it can be published.
+- The CLI refuses a blank `--focus`.
+
+### 5.15 Brand terms and the final scan
+
+**Brand tokens.** `brandTokens(hostname, html)` takes its tokens from:
+
+- the hostname labels of 4 or more characters, other than `www` and the
+  top-level label;
+- the brand segment of the homepage `<title>`. The title splits at a
+  `|`, `:`, `·` or dash that has spaces on both sides, and after a `.`,
+  `!` or `?` that a space follows. The brand segment is the segment whose
+  compact text (lowercase letters and digits only) matches a hostname
+  label, alone or joined with the labels after it. When no segment
+  matches, every segment counts, because a false alarm is safer than a
+  missed brand;
+- `og:site_name`.
+
+Words shorter than 3 characters and stop words (such as `the`, `shop`,
+`store`, `home`) give no token. So the words of a tagline, such as
+"Spend less. Shop more.", do not become brand tokens when a segment
+names the brand.
+
+**Brand terms.** The repeatable `--brand-term <word>` (option
+`brandTerms`) adds words or phrases that the title does not name, such
+as sub-brands: for example `--brand-term Zephyr --brand-term "Nova
+Pass"`. A term matches as a whole word. A term of more than one word
+matches as a phrase: its words in order, with only spaces or
+punctuation between them, so "Nova Pass" does not match "nova" alone. A
+term with no letter or digit fails the call. The run keeps the terms in
+`<outDir>/brand_terms.json`, which is never published and which Shop
+generation does not read. A later call with no terms uses the stored
+terms again; a call with terms replaces them.
+
+**One scanner, three uses.** `leakScanner` matches, line by line, the
+host (with or without `www.`, so also every absolute URL on the host),
+email addresses, the brand tokens and the Brand terms. It is used in
+three places:
+
+1. The `anonymization` Verifier, after each executor Iteration, on the
+   `parts/<task_id>.md` of the selected task only (§5.7).
+2. The final scan of the `synthesize` step (`publishedLeaks`), on
+   `manual.md`, `capabilities.json` and `stats.json`. In a `.json` file
+   the scan reads only the values, because the keys are schema names.
+   A hit fails the step with a `StepFailedError` whose cause is an
+   `AnonymizationLeakError` that lists each `file:line`, and `manual.md`
+   is not written. The final scan catches
+   a leak that a blocked task left behind or that synthesis wrote.
+3. The same scan in the `graph` step, on `site_graph.json` (§5.13).
+
+`manifest.json` is not scanned, because it records the `domain` by
+design. A leak gets no repair call and no rewrite: the person who runs
+exploration fixes the part or adds a Brand term, then runs
+`--from synthesize` or `--from graph`.
+
+### 5.16 Bot checks and the Navigation cap
+
+Storefront exploration never tries to pass a bot check.
+`src/explore/bot-check.ts` finds one by HTML markers:
+
+| Kind                 | Markers                                                         |
+| -------------------- | --------------------------------------------------------------- |
+| Cloudflare challenge | element names, a token prefix and text of the challenge page    |
+| Captcha page         | the two prompts and the form path of a marketplace captcha page |
+| Interstitial page    | the heading of a page with one button to go on to the shop      |
+| Rate-limit page      | the page title; it counts only on a page served with HTTP 503   |
+
+The lists hold page text and URL paths only, with no domain. A
+rate-limit title can also be on a normal error page, so it counts only
+with HTTP 503.
+
+**In prefetch**, a bot-check homepage stops the run before any browser
+starts (§5.9).
+
+**In a run**, `IterationBrowser` (`src/explore/browser.ts`) wraps the
+Browser tools:
+
+- After each tool call that loaded a document (any tool, not only
+  `navigate`), it reads the page HTML and the HTTP status of the
+  main-frame document, and looks for a marker. It checks the start page
+  of an Iteration at the first tool call.
+- On a bot check, the tool result gets a notice: the page is a bot
+  check, not a page of the shop; do not try to pass it; mark the Plan
+  task `[!]` with the reason "bot check" after a `;` in its brief, and
+  end the Iteration. The notice works for the planner too: the planner
+  does not open the page again and plans only from the pages that it
+  could read.
+- Before each `click`, `type`, `select` and `press`, it reads the page
+  again. On a bot-check page it refuses the action, and the result is
+  the notice. `navigate` and `back` stay allowed, so the agent can leave
+  the page.
+- The planner and executor prompts say the same rule. A cookie banner,
+  an age gate or a popup over a shop page is not a bot check.
+
+**The bot-check stop.** After each Iteration, the harness
+`onIterationEnd` hook counts the Iterations in a row that came to a
+bot-check page. The planner Iteration counts. At 2 in a row, the
+explore step returns a Caller stop with the reason `bot_check`.
+
+**The Navigation cap.** `NAVIGATION_CAP` is 200 `navigate` calls in
+one call of the explore step, over all its Iterations. The start page
+of an Iteration does not count. At the cap, `navigate` refuses with a
+note, and the run stops after that Iteration with the reason
+`navigation_cap`. The cap is a constant, not an option. A resume starts
+a new count. When both stops apply, the reason is `bot_check`.
+
+**A stopped run.** The stop acts only between Iterations and never cuts
+an Agent run in the middle. The harness ends the run with the final
+status `stopped` (harness spec, §5.10 Caller stop), so the run can
+resume later. The harness ignores a stop after an Iteration that failed
+the run. Then:
+
+- `explore.json` records `stop: { reason, iteration }`, and
+  `ExploreResult.stop` returns it.
+- Merge, synthesize and graph run on the finished parts. Each Fixed
+  area that did not end done is in `fixed_area_gaps` with its reason.
+- `manifest.json:stop` is `{ reason, iteration, blocked_tasks }`, or
+  `null` when the run did not stop early.
+- `shopgym explore` logs the reason and the Iteration, and exits 0,
+  because the run published a manual. No person needs to act during a
+  run.
+
 ---
 
 ## 6. Alternatives
@@ -1060,39 +1599,50 @@ Rejected for v0.1: less robust than schema-validated fragments. May
 revisit if structured-output guarantees from the underlying LLM mature.
 
 **E. Deterministic anonymization scrubber** (regex + brand block-list)
-as a hard gate. Deferred: requires curated block-lists per store; the
-prompt-rule version is sufficient to ship and we can layer a scrubber
-later without changing the artifact contract.
+that rewrites leaks before publishing. Partly taken (2026-11-05): the
+final scan (§5.15) is a hard gate with the same markers as the
+Verifier, and the Brand terms are a block list for each run. The scan
+fails the run; it does not rewrite text. A scrubber that rewrites is
+still deferred (§8.3).
 
 **F. Use the full `shop-snap` crawler for prefetch.** Rejected: it's
 designed for byte-perfect snapshots (assets, CSS, JS, ≤ 1000 pages) and
 takes minutes. We need < 30 s of seed data, not a snapshot.
 
+**G. Pass bot checks** (captcha solving, proxies, user agent rotation,
+stealth browsers). Rejected: exploration reads only what a site shows
+to a polite visitor. A bot check blocks its Plan task, and two in a row
+stop the run (§5.16).
+
+**H. A focus filter** that blocks navigation outside the focus.
+Rejected: the site-wide Fixed areas (header, cart, checkout entry,
+account entries) need pages outside the focus. The focus is a hint in
+the plan (§5.14).
+
+**I. A CLI option for the Navigation cap.** Not taken: the cap is a
+fixed constant, and the planner keeps its fixed limit of 4 navigations.
+
 ---
 
-## 7. Milestones
+## 7. Execution Table
 
-**M1 — Prefetch + capabilities schema + stats.** Pure Python, no LLM.
-Unit-tested against recorded fixtures. Deliverable: `shop-explore
---prefetch-only <url>` writes `prefetch/` + a draft empty
-`capabilities.json` skeleton.
-
-**M2 — Prompts + AGENTS.md + harness wiring.** Author `agents.md`,
-`planner.md`, `execute.md`. Implement `pipeline.explore()` calling
-`run_plan_exec_loop` with a stub runtime. Deliverable: e2e under
-`harness.runtimes.replay` against a hand-crafted cassette.
-
-**M3 — Synthesis.** Implement deterministic capabilities merge, stats,
-and the single-call LLM manual merge. Deliverable: full Shop Manual
-emitted on the replay fixture; SC2 + SC3 pass.
-
-**M4 — Real-runtime smoke.** Record cassettes by running the live `pi`
-runtime against 2 fixture storefronts (one with a cart drawer + mega
-menu, one minimal). Add `HARNESS_SMOKE_*`-style gates. Deliverable:
-documented fixture set, smoke-test green locally.
-
-**M5 — v0.1.0.** README, CLI help, module CHANGELOG, docs/specs index
-updated. Tag `shop-explore-v0.1.0`.
+| Item                                                                                      | Status                                                         | Date       |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------- |
+| M1 to M5: v0.1 in Python (prefetch, schemas, stats, prompts, harness wiring, synthesis, replay tests, `shop-explore` CLI) | Done; removed at the v1.1 cutover                              | -          |
+| v1.1 TypeScript port on `runPipeline`, `runPlanExecLoop` and the Browser tools; Capabilities 0.2 | Done                                                           | 2026-09-30 |
+| `shopgym explore` CLI (v1.1 M10)                                                          | Done                                                           | -          |
+| Fresh browser per Iteration; anonymization scope and reopen cap; coverage counts only done tasks | Done                                                           | 2026-11-05 |
+| Platform paths (§5.9)                                                                     | Done                                                           | 2026-11-05 |
+| Marketplace Plan tasks, platform-neutral briefs, `fixed_area_gaps` (§5.7)                 | Done                                                           | 2026-11-05 |
+| Capabilities 0.3, through the Shop generation manual merge (§5.5)                         | Done                                                           | 2026-11-05 |
+| Catalog statistics from an observed sample (§5.6)                                         | Done                                                           | 2026-11-05 |
+| Brand segment, Brand terms and the final scan (§5.15)                                     | Done                                                           | 2026-11-05 |
+| Focus hint (§5.14)                                                                        | Done                                                           | 2026-11-05 |
+| Harness Caller stop, bot-check stop and Navigation cap (§5.16)                            | Done                                                           | 2026-11-05 |
+| First run on a generic site: the Video Games Shop Manual (§8.4)                           | Done; 11 parts written offline; accepted by the user 2026-11-11 | 2026-11-06 |
+| Site state graph (§5.13)                                                                  | Done; first graph accepted                                     | 2026-11-12 |
+| This spec, updated for the items above                                                    | Done                                                           | 2026-11-12 |
+| Findings of the first generic run (§8.2, items 6 to 9)                                    | Open                                                           | -          |
 
 ---
 
@@ -1100,31 +1650,57 @@ updated. Tag `shop-explore-v0.1.0`.
 
 ### 8.1 Public surface (informative)
 
-- **Types** (`shop_arena.explore.config`): `ExploreConfig`,
-  `ExploreResult`, `RuntimeName`.
-- **Schemas** (`shop_arena.explore.capabilities`, `shop_arena.explore.stats`):
-  `Capabilities` (pydantic v2), `Stats`.
-- **Functions**: `explore(config) -> ExploreResult`,
-  `prefetch.run(url) -> PrefetchResult`,
-  `synthesize.synthesize(run_dir) -> SynthesisResult`,
-  `capabilities.merge_fragments(parts_dir) -> Capabilities`.
-- **Errors**: `ShopUnreachableError`, `PrefetchError`,
-  `CapabilitiesValidationError`, `SynthesisError`.
+Exported from `@shop-gym/shop-arena` and `@shop-gym/shop-arena/explore`:
+
+- **Pipeline** (`pipeline.ts`): `exploreStorefront(options) ->
+  ExploreResult`, `EXPLORE_STEPS`, `DEFAULT_MODEL`,
+  `DEFAULT_MAX_ITERS`, `DEFAULT_TIMEOUT_MS`, `DEFAULT_OUTPUT_ROOT`,
+  `parseModel`, `runId`; types `ExploreOptions`, `ExploreResult`,
+  `ExploreOutcome`, `ExploreStep`, `ExploreStop`, `ExploreStopReason`
+  (`bot_check` | `navigation_cap`), `Manifest`.
+- **Prefetch** (`prefetch.ts`): `prefetch`, `normalizeBase`,
+  `robotsDisallowsRoot`, `ShopUnreachableError`; types `Platform`,
+  `PrefetchEntry`, `PrefetchOptions`, `PrefetchReport`,
+  `UnreachableReason` (`network_error` | `robots_disallow` |
+  `http_status` | `cloudflare_challenge` | `bot_check`).
+- **Capabilities** (`capabilities.ts`): `capabilitiesSchema`,
+  `capabilitiesJsonSchema`, `parseCapabilities`, `mergeFragments`,
+  `CAPABILITY_KEYS`, `CapabilitiesValidationError`; types
+  `Capabilities`, `Conflict`, `MergeResult`.
+- **Coverage** (`coverage.ts`): `FIXED_AREAS`, `fixedAreaGaps`,
+  `coverageGaps`, `evidencedAreas`, `parseOmittedAreas`; type
+  `FixedAreaGap`.
+- **Stats** (`stats.ts`): `computeStats`, `computeObservedStats`,
+  `STATS_SOURCES`; types `Stats`, `StatsSource`.
+- **Product observations** (`observations.ts`):
+  `productObservationSchema`, `productObservationJsonSchema`,
+  `productObservationTool`, `productObservationVerifier`,
+  `readObservations`; type `ProductObservation`.
+- **Anonymization** (`anonymization.ts`): `brandTokens`, `leakScanner`,
+  `publishedLeaks`, `formatLeaks`, `anonymizationVerifier`,
+  `AnonymizationLeakError`; types `Leak`, `LeakScanner`.
+- **Synthesis and graph**: `renderManual`, `buildManualPrompt`,
+  `concatParts`, `MANUAL_MIN_CHARS`, `ManualRenderError`,
+  `ManualRunNoteError`, `SiteGraphReplyError`; type `ManualPrompts`.
+- **File tools** (`files.ts`): `fileTools`, `ReadBudget`; type
+  `FileToolsOptions`.
+
+`bot-check.ts` and `NAVIGATION_CAP` are internal.
 
 ### 8.2 Open questions
 
-1. **LLM provider for synthesis.** Reuse the agent runtime's LLM
-   (extra adapter), or go direct (`anthropic` SDK with a configurable
-   model)? Direct is simpler; runtime-coupling is cleaner. Lean
-   toward direct for v0.1.
-2. **Run id collision policy.** Currently abort if `<out_dir>` is
-   non-empty. Should we add `--force` to overwrite? Lean no.
-3. **Fixture storefronts.** Pick 2–3 public dev demo stores
-   for the test cassettes that we have license to redistribute
-   anonymized snapshots of.
+1. ~~**LLM provider for synthesis.**~~ **Resolved:** synthesis and the
+   graph step use the `LlmClient` of the run (default `PiLlmClient`)
+   with the model of the run.
+2. ~~**Run id collision policy.**~~ **Resolved:** a call on an existing
+   `outDir` resumes it: it skips the complete steps and resumes an
+   unfinished harness run (§5.2).
+3. ~~**Fixture storefronts.**~~ **Resolved:** the tests use hand-written
+   local fixture storefronts with fake brand names
+   (`src/explore/testing.ts`), not recordings of real shops.
 4. **Capabilities schema versioning.** Field-additive only within
-   `0.x`; bump to `1.x` for any field rename or removal. Document
-   migration in `CHANGELOG`.
+   `0.x`; bump to `1.x` for any field rename or removal. 0.2 and 0.3
+   were additive.
 5. ~~**Stats from prefetch is a sample.** `/products.json?limit=50`
    caps at 50 products; for accurate `products_total` we may need
    pagination. v0.1 reports the sample size and a `truncated: true`
@@ -1132,22 +1708,123 @@ updated. Tag `shop-explore-v0.1.0`.
    prefetch paginates `/products.json?page=N&limit=250` until the
    storefront's last (short) page or a safety cap; `Stats.products_total`
    is exact (T6.4). The `products_truncated` flag was removed.
+6. **Rules for each path in `robots.txt`.** Prefetch checks `robots.txt`
+   only for `/` and `/sitemap.xml`. The executors can open a path, such
+   as a cart path, that `robots.txt` forbids for `*`. The team accepted
+   this risk for the first generic run; the policy question is open.
+7. **Prefetch reason for a Cloudflare challenge.** The status gate comes
+   before the Cloudflare gate, so a challenge homepage served with 403
+   or 503 stops with `http_status`, not `cloudflare_challenge`. Both
+   stop the run. A change of the gate order is a code change.
+8. ~~**Findings of the first generic run** (§8.4).~~ **Resolved
+   (2026-11-12):**
+   - Run notes: the synthesis prompt forbids them, and the `synthesize`
+     step rewrites them once or fails (§5.10).
+   - `stats.json` writes `null` for an unknown stat, never 0, and the
+     Shop generation manual merge keeps it `null` (§5.6).
+   - The `read_file` calls of one Iteration have a Read budget of
+     200,000 characters (§5.7).
+   - When no part gives `shop.currency`, merge takes it from the stats
+     prices (§5.6, §5.10).
+   - Blank homepage: a local test reproduces the cause. With the
+     `x-shopgym-episode` header, a page that fetches its content from
+     another origin sends a CORS preflight, the API does not allow the
+     header, and the fetch fails, so the page has no title and no
+     content. Without the header there is no preflight. The Iteration
+     browsers now send no episode header; a Live storefront has no use
+     for it. The cause on the live site is not confirmed, because the
+     live site may not be visited again: the blank page also fits a
+     site that blocks headless browsers.
+   - Same episode id in all Iteration browsers: there is no episode id
+     now, so this finding goes away.
+9. **Findings of the 2026-11-11 criteria check**, still open:
+   - `execute_generic.md` names predictive search as a request that can
+     be evidence, but the `search_predictive` brief says "no network or
+     API capture".
+   - A malformed Product observation fragment fails the merge step, so
+     one bad fragment stops the manual.
+   - A brand token with letters or digits joined to it, such as
+     `Zephyr01`, passes the scan, because a token matches only as a
+     whole word.
 
 ### 8.3 Future directions (non-blocking)
 
-- **Deterministic anonymization scrubber** (Alternative E) as a
-  hard gate before publishing.
-- **Cross-shop manual diff/merge** in `shop_arena.gen` consuming N
-  manuals.
+- **Deterministic anonymization scrubber** (Alternative E) that
+  rewrites leaks. Today the final scan only fails the run.
+- ~~**Cross-shop manual diff/merge**~~ **Done:** the `manual_merge`
+  step of Shop generation (`src/gen/manual_merge`) merges one or more
+  Shop Manuals.
 - **Mobile viewport pass** as a second planner (currently desktop
-  1440×900 only).
-- **Headed-mode debug runs** wired through the playwright skill's
-  `--headed` flag.
+  1280×800 only, the `BrowserSession` default).
+- **Headed-mode debug runs** through the `headless` option of
+  `BrowserSession`. The explore step does not pass it yet.
 - **Authenticated flows** (account, wishlists) once we have a
   stable test-account story.
+- **Shop Manual input from a recording** made by a person or a
+  computer-use agent (user, 2026-11-06). The offline parts of the first
+  generic run (§8.4) came from such captures. Not yet specified.
 - **Uses of the Site state graph** (§5.13). Shop generation can carry
   the graph into a SandboxShop and add a `weights` block from shopper
   behavior data. A Build loop Verifier can walk each transition. Task
   generation (`docs/specs/shop_guru/task_generation_proposal.md`) can
   list the transitions that its tasks do not reach. Named flows, such
   as search to purchase, can go on top of the transitions.
+
+### 8.4 The first run on a generic site
+
+The first run on a generic site explored a large marketplace with
+`--focus "Video Games"` and Brand terms. Its Shop Manual is the
+**Video Games Shop Manual**. It is in the gitignored
+`outputs/shop_manuals/` folder of the person who ran it, with a
+`provenance/README.md` that records how each file was made. No
+committed file names the site.
+
+- **Live run (2026-11-05, UTC 2026-11-06, model `openai/gpt-5.5`).** This was the
+  second live run; the first one ran before the fixes of 2026-11-05.
+  Prefetch took the `generic` path. The planner wrote the 14 Fixed
+  areas, and the executors finished 3 of them: `header_navigation`,
+  `cart_drawer` and `collection_filters`. The browser found three
+  bot-check pages (two interstitial pages and one rate-limit page with
+  HTTP 503) at once, and no page action ran on them.
+  `product_variants`, `product_reviews` and `search_results` were
+  blocked with "bot check". `homepage_sections` was blocked because the
+  homepage showed blank in the new headless browser. After the second
+  Iteration in a row with a bot check (`exec-0008`), the run stopped
+  with the reason `bot_check`. `manifest.json` records
+  `harness_status: stopped`, the stop with its 4 blocked tasks, and 11
+  `fixed_area_gaps`: the 4 blocked areas and 7 areas that were not
+  started.
+- **Offline parts (2026-11-06).** The 11 missing parts were written
+  from page captures, not by the harness. On 2026-11-05 a browsing
+  agent that the user ran saved the pages signed out at 1280×800, and
+  the user cleared two human checks by hand. A script turned the saved
+  pages into text outlines with no scripts, hidden elements, form
+  values, query strings or session ids. Four subagents wrote the parts
+  from the outlines with the executor rules and did no browsing. The three Product observation
+  fragments were written by hand with the key method of the tool. No
+  per-Iteration Verifier ran on these parts; a check with the merge code
+  found 0 conflicts and 0 leaks. `plan.md` marks the 11 tasks done.
+- **Merge and synthesis (2026-11-06).** A `--from merge` run with no
+  site traffic merged the 14 parts with 0 conflicts and wrote a
+  `manual.md` of 111,882 characters (12 H2 and 95 H3 sections). The
+  final scan passed. `capabilities.json` (0.3) and `stats.json`
+  (`observed_sample`, `sample_size` 3) parse with the Shop generation
+  schemas, and the manual splits into the 6 Shop generation parts. The
+  Site state graph came later (§5.13).
+- **Decision (user, 2026-11-11).** The offline-filled manual counts for
+  the exit criterion of the first generic run, with its provenance kept
+  next to it.
+- **Known limits.**
+  - `run.json`, `explore.json` and the harness fields of
+    `manifest.json` (`harness_status`, the task counts, `stop`,
+    `coverage_gaps`, `fixed_area_gaps`) describe only the live harness
+    run. Merge takes the task counts from `run.json`, not from
+    `plan.md`, so they do not count the offline parts.
+  - 7 prose lines tell about the run, not the storefront. All come from
+    the 3 parts that the harness wrote. The `synthesize` step of
+    version 1.4 rewrites such lines or fails (§8.2), but this manual
+    was written before it.
+  - Not captured: single reviews and review sort, checkout after the
+    sign-in wall, registration after its entry page, the returns page,
+    a true no-results page, carousel paging, hover states, mobile, and
+    signed-in states.

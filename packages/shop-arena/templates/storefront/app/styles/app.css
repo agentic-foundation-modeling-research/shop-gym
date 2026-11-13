@@ -107,6 +107,58 @@ input {
   line-height: 1.2;
 }
 
+/* The shop draws its own checkboxes and radios: `appearance: none` drops the native widget. */
+input[type="checkbox"],
+input[type="radio"] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  min-height: 0;
+  margin: 0;
+  border: 1px solid var(--color-muted);
+  border-radius: 0.2rem;
+  background: var(--color-bg);
+  padding: 0;
+  cursor: pointer;
+}
+
+input[type="radio"] {
+  border-radius: 50%;
+}
+
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+
+input[type="checkbox"]:checked::before {
+  content: "";
+  width: 0.3rem;
+  height: 0.6rem;
+  border: solid var(--color-bg);
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+input[type="radio"]:checked::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--color-bg);
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  cursor: not-allowed;
+}
+
 label {
   display: grid;
   gap: 0.35rem;
@@ -817,6 +869,50 @@ html:has(.cart-popup) {
   color: transparent;
 }
 
+.rating-block {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.rating-histogram {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 20rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.rating-histogram li > a,
+.rating-histogram li {
+  display: grid;
+  grid-template-columns: 4rem 1fr 2rem;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.rating-histogram li > a {
+  grid-column: 1 / -1;
+}
+
+.rating-histogram a[aria-current="true"] {
+  font-weight: 600;
+}
+
+.histogram-bar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.histogram-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--color-star);
+}
+
 .review-list {
   display: grid;
   gap: 1.5rem;
@@ -837,19 +933,25 @@ html:has(.cart-popup) {
   margin: 0;
 }
 
-.reviews-sort {
+.reviews-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
 }
 
-.reviews-sort select {
+.reviews-controls select {
   height: var(--control-height);
   border: 1px solid var(--color-border);
   background: var(--color-bg);
   padding: 0 0.75rem;
   font: inherit;
+}
+
+.reviews-verified-choice {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .badge {
@@ -997,12 +1099,6 @@ html:has(.cart-popup) {
   align-items: center;
   border: 1px solid var(--color-border);
   padding: 0.5rem 0.75rem;
-}
-
-.choice input {
-  width: auto;
-  height: auto;
-  min-height: 0;
 }
 
 .data-table {
@@ -1165,15 +1261,91 @@ html:has(.cart-popup) {
   align-items: center;
 }
 
-.address-default-choice input {
-  width: auto;
-  height: auto;
-  min-height: 0;
-}
-
 .address-book-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   justify-content: center;
+}
+
+.facet-layout {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.facet-panel h2,
+.facet h3 {
+  margin: 0;
+}
+
+.facet-panel h2 {
+  font-size: 1.25rem;
+}
+
+.facet {
+  gap: 0.5rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.facet h3 {
+  font-size: 1rem;
+}
+
+.facet-values {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.facet-value {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.facet-value[aria-current="true"] {
+  font-weight: 700;
+}
+
+/* `list-style: none` hides the browser disclosure triangle; the chevron is the shop marker. */
+.facet-more summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  margin-bottom: 0.35rem;
+  list-style: none;
+}
+
+.facet-more summary::after {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-0.15rem) rotate(45deg);
+}
+
+.facet-more[open] summary::after {
+  transform: translateY(0.1rem) rotate(-135deg);
+}
+
+.facet-price {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.facet-price input {
+  width: 7rem;
+}
+
+@media (min-width: 750px) {
+  .facet-layout {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
 }

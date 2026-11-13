@@ -26,6 +26,9 @@ Options:
   --out <dir>                   Shop directory (default: outputs/shops/<name>)
   --data <dir>                  Copy the products, collections and images of this
                                 Dataset; the catalog and image options do not apply
+  --bundle <dir>                Map this complete Source bundle into the Dataset and
+                                the hidden users/; not with --data, and the catalog
+                                and image options do not apply
   --gen-backend                 Let the build agent extend the backend copy
   --from <step>                 Rerun from this step: ${GEN_STEPS.join(' | ')}
   --model <provider/id>         Model for the synthesis steps (default: ${DEFAULT_MODEL})
@@ -51,6 +54,7 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
     name: { type: 'string' },
     out: { type: 'string' },
     data: { type: 'string' },
+    bundle: { type: 'string' },
     'gen-backend': { type: 'boolean' },
     from: { type: 'string' },
     model: { type: 'string' },
@@ -76,6 +80,7 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
   }
   const outDir = stringOption(args, 'out');
   const sourceDataDir = stringOption(args, 'data');
+  const bundleDir = stringOption(args, 'bundle');
   const from: GenStepName | undefined = enumOption(args, 'from', GEN_STEPS);
   const imageBackend = enumOption(args, 'image-backend', IMAGE_BACKENDS);
   const maxIters = integerOption(args, 'max-iters');
@@ -99,6 +104,7 @@ export function parseGenArgs(argv: readonly string[]): GenArgs {
       },
       ...(outDir !== undefined ? { outDir } : {}),
       ...(sourceDataDir !== undefined ? { sourceDataDir } : {}),
+      ...(bundleDir !== undefined ? { bundleDir } : {}),
       ...(from !== undefined ? { from } : {}),
       ...(imageBackend !== undefined ? { imageBackend } : {}),
       ...(maxIters !== undefined ? { maxIters } : {}),

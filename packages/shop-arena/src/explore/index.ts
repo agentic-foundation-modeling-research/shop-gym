@@ -32,7 +32,7 @@ export {
   fixedAreaGaps,
   parseOmittedAreas,
 } from './coverage.js';
-export { fileTools } from './files.js';
+export { type FileToolsOptions, ReadBudget, fileTools } from './files.js';
 export { SiteGraphReplyError } from './graph.js';
 export {
   type ProductObservation,
@@ -79,7 +79,9 @@ export {
 } from './stats.js';
 export {
   MANUAL_MIN_CHARS,
+  type ManualPrompts,
   ManualRenderError,
+  ManualRunNoteError,
   buildManualPrompt,
   concatParts,
   renderManual,

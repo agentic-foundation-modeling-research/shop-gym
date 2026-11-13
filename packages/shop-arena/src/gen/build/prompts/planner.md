@@ -16,9 +16,18 @@ Skim only what you need:
 1. `artifact/manual/manual.md` for the structural ground truth. Per-area
    slices live under `artifact/manual/parts/`; the executor reads those.
 2. `artifact/manual/capabilities.json` for the closed capability schema.
-3. The file names under `artifact/storefront/app/` to confirm the template
+3. `artifact/manual/site_graph.json`, when it exists: the Site state graph
+   of the source shop, read as a list of flows to make. Each transition is
+   a flow of the source shop. Each `navigate` transition between two pages
+   is a flow that the built shop must support on its own routes
+   (`/products/<handle>`, `/search?q=...`), never on the source
+   `url_pattern`s. In the brief of the task that builds the `from` page,
+   name its flows in a few words. A header or footer control is a
+   transition from `home`: name it in the `gen_navigation` brief. The
+   `site_graph` verifier walks these flows (see `AGENTS.md` section 4).
+4. The file names under `artifact/storefront/app/` to confirm the template
    layout. Do not read file bodies. Skip `node_modules/`.
-4. When backend generation is enabled: `artifact/backend/src/schema/*.ts`
+5. When backend generation is enabled: `artifact/backend/src/schema/*.ts`
    file names, to know which GraphQL domains the backend already serves.
 
 ---
@@ -35,7 +44,7 @@ em dash character U+2014; the parser rejects any other separator.
 - [ ] gen_navigation — implement header, footer, mega menu and mobile nav from the navigation data and `artifact/manual/parts/navigation.md`; announcement bar per `parts/standard.md`; every collection handle reachable [priority: 8]
 - [ ] gen_homepage — render hero, featured collections, and any promo banner per `artifact/manual/parts/homepage.md`; bind to live GraphQL queries [priority: 7]
 - [ ] gen_collections — collection list and detail with the filter / sort affordances `capabilities.collection` and `artifact/manual/parts/collections.md` declare [priority: 6]
-- [ ] gen_product — product detail with variant pickers, gallery, and the rules `capabilities.product` and `artifact/manual/parts/product.md` declare; Reviews per the Reviews section of `parts/standard.md` [priority: 5]
+- [ ] gen_product — product detail with variant pickers, gallery, and the rules `capabilities.product` and `artifact/manual/parts/product.md` declare; Reviews and related products per the Reviews and Related products sections of `parts/standard.md` [priority: 5]
 - [ ] gen_cart_search — cart surfaces exactly as `capabilities.cart` and `artifact/manual/parts/cart_and_search.md` declare; predictive search per `capabilities.search` [priority: 4]
 - [ ] gen_info_pages — every page in `info_pages_present` per `artifact/manual/parts/info_pages.md`; wire into routes and the footer [priority: 3]
 - [ ] gen_account — restyle the prebuilt account pages to the theme and the Account section of `artifact/manual/parts/standard.md`; keep their behavior and form selectors [priority: 3]

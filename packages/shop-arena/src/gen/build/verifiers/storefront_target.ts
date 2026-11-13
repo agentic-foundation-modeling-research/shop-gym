@@ -1,7 +1,8 @@
 /**
  * What the HTTP-level storefront verifiers share: the served storefront
  * (URL plus a hook that brings the server up to date with the iteration's
- * edits), the seeded customer used for logged-in checks, the Discount code
+ * edits), the seeded customer used for logged-in checks and that customer's
+ * first order, the Discount code
  * that the functional checks apply, and the fixed checkout form used by
  * the functional checks.
  */
@@ -66,6 +67,30 @@ export async function readSeededCustomer(dataDir: string): Promise<SeededCustome
       const { email, password } = item as { email?: unknown; password?: unknown };
       if (typeof email === 'string' && typeof password === 'string') {
         return { email, password };
+      }
+    }
+  }
+  return undefined;
+}
+
+/** The id of the first order in `orders.json` placed by `email`; `undefined` when none. */
+export async function readSeededOrderId(
+  dataDir: string,
+  email: string,
+): Promise<string | undefined> {
+  const raw = await fs.readFile(path.join(dataDir, 'orders.json'), 'utf-8').catch(() => undefined);
+  if (raw === undefined) {
+    return undefined;
+  }
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    return undefined;
+  }
+  for (const order of parsed) {
+    if (typeof order === 'object' && order !== null) {
+      const { id, email: orderEmail } = order as { id?: unknown; email?: unknown };
+      if (orderEmail === email && (typeof id === 'number' || typeof id === 'string')) {
+        return String(id);
       }
     }
   }

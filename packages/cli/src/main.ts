@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 import { ZodError } from 'zod';
 
+import * as bundle from './commands/bundle.js';
 import * as doctor from './commands/doctor.js';
 import * as explore from './commands/explore.js';
 import * as gen from './commands/gen.js';
@@ -22,6 +23,7 @@ interface Command {
 
 const COMMANDS: Readonly<Record<string, Command>> = {
   explore,
+  bundle,
   gen,
   host,
   guru,
@@ -34,6 +36,7 @@ const USAGE = `Usage: shopgym <command> [args]
 
 Commands:
   explore <url>                      Explore a live storefront into a Shop Manual
+  bundle <adapter> <src> --out <dir> Build a Source bundle from a source dataset
   gen <manual_dir>... --name <shop>  Generate a SandboxShop from Shop Manuals
   host start|stop|restart|list       Run published shops locally
   guru build|explore|solve|eval      Benchmark stages for a hosted shop

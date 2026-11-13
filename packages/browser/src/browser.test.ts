@@ -259,3 +259,84 @@ describe('evaluate', () => {
     }
   }, 30_000);
 });
+
+/**
+ * A page whose heading comes from a fetch to another origin, as on a site
+ * that renders its homepage from an API. The API allows the page origin
+ * but no extra request header in a CORS preflight.
+ */
+describe('BrowserSession and a page that fetches from another origin', () => {
+  interface ApiRequest {
+    readonly method: string;
+    readonly preflightHeaders: string | undefined;
+  }
+  const apiRequests: ApiRequest[] = [];
+  let pageServer: http.Server;
+  let apiServer: http.Server;
+  let pageUrl = '';
+
+  beforeAll(async () => {
+    apiServer = http.createServer((req, res) => {
+      const preflight = req.headers['access-control-request-headers'];
+      apiRequests.push({
+        method: req.method ?? '',
+        preflightHeaders: Array.isArray(preflight) ? preflight[0] : preflight,
+      });
+      res.setHeader('access-control-allow-origin', new URL(pageUrl).origin);
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, { 'access-control-allow-headers': 'content-type' }).end();
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ title: 'Lumen Market', heading: 'Fetched heading' }));
+    });
+    await new Promise<void>((resolve) => apiServer.listen(0, '127.0.0.1', resolve));
+    const apiUrl = `http://127.0.0.1:${(apiServer.address() as AddressInfo).port}`;
+    pageServer = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(`<!doctype html><html><head><title></title></head><body><h1></h1><script>
+fetch(${JSON.stringify(`${apiUrl}/content`)})
+  .then((response) => response.json())
+  .then((content) => {
+    document.title = content.title;
+    document.querySelector('h1').textContent = content.heading;
+  })
+  .catch(() => {})
+  .finally(() => { document.body.dataset.done = 'true'; });
+</script></body></html>`);
+    });
+    await new Promise<void>((resolve) => pageServer.listen(0, '127.0.0.1', resolve));
+    pageUrl = `http://127.0.0.1:${(pageServer.address() as AddressInfo).port}/`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => pageServer.close(() => resolve()));
+    await new Promise<void>((resolve) => apiServer.close(() => resolve()));
+  });
+
+  beforeEach(() => {
+    apiRequests.length = 0;
+  });
+
+  /** The title and heading of the page after its fetch ends. */
+  async function render(options: { episodeId?: string }): Promise<[string, string]> {
+    const rendered = await BrowserSession.launch(options);
+    try {
+      await rendered.page.goto(pageUrl);
+      await rendered.page.waitForFunction(() => document.body.dataset.done === 'true');
+      return [await rendered.page.title(), (await rendered.page.textContent('h1')) ?? ''];
+    } finally {
+      await rendered.close();
+    }
+  }
+
+  it('shows a blank page when the episode header fails the CORS preflight', async () => {
+    expect(await render({ episodeId: 'ep-cors' })).toEqual(['', '']);
+    expect(apiRequests).toEqual([{ method: 'OPTIONS', preflightHeaders: 'x-shopgym-episode' }]);
+  }, 30_000);
+
+  it('sends no episode header and no preflight without an episode id', async () => {
+    expect(await render({})).toEqual(['Lumen Market', 'Fetched heading']);
+    expect(apiRequests).toEqual([{ method: 'GET', preflightHeaders: undefined }]);
+  }, 30_000);
+});
