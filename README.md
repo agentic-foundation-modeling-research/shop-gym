@@ -180,7 +180,8 @@ sizing and `--image-backend` do not apply with `--data`. Output layout:
 
 ```
 outputs/shops/mock_shop/
-  manual/        merged shop manual (manual.md, capabilities.json, parts/ with standard.md)
+  manual/        merged shop manual (manual.md, capabilities.json, parts/ with standard.md,
+                 site_graph.json when the manual has one)
   data/          SandboxShop dataset (store, products, collections, ..., images/)
   runs/build/    harness run of the build loop (plan.md, iters/, artifact/)
   final_eval/    visual + functional sweep report (advisory)
@@ -204,6 +205,24 @@ makes three to five Discount codes, five Personas, fifteen seeded orders
 with mixed statuses, and Reviews. See the
 [ShopArena](docs/specs/shop_arena/standard_account_checkout.md) and
 [ShopBackend](docs/specs/shop_backend/account_discount_reviews.md) specs.
+
+When the manual has a `site_graph.json`, `gen` checks it with
+`parseSiteGraph` and copies it into `manual/`. A manual without a graph
+still works. When `gen` merges several manuals, it does not merge their
+graphs, and the Merged manual has no graph. The build planner reads the
+graph as a list of flows to make. The `site_graph` Verifier then walks
+each `navigate` transition between two pages on the built shop, as a
+guest. It maps each page type onto a route of the built shop (for
+example `product` onto `/products/<handle>`), never onto the source URL
+patterns. It loads the built page of `from`, finds a link or a form to
+the route of `to`, and loads that target. It fails, and names the
+transition, when one of these steps does not work. Some transitions are
+only advisory: they show in the Verifier details but do not fail it.
+These are overlays, effects other than `navigate`, `load` triggers,
+transitions from the cart or from a `page` page, and member, checkout
+and `other` pages. `PAGE_TYPE_RULES` in
+`packages/shop-arena/src/gen/build/verifiers/site_graph.ts` holds the
+mapping.
 
 The build agent runs shell commands on your machine, without a sandbox
 ([ADR 0015](docs/adr/0015-build-loop-runs-on-the-host.md)). It can read

@@ -16,9 +16,18 @@ Skim only what you need:
 1. `artifact/manual/manual.md` for the structural ground truth. Per-area
    slices live under `artifact/manual/parts/`; the executor reads those.
 2. `artifact/manual/capabilities.json` for the closed capability schema.
-3. The file names under `artifact/storefront/app/` to confirm the template
+3. `artifact/manual/site_graph.json`, when it exists: the Site state graph
+   of the source shop, read as a list of flows to make. Each transition is
+   a flow of the source shop. Each `navigate` transition between two pages
+   is a flow that the built shop must support on its own routes
+   (`/products/<handle>`, `/search?q=...`), never on the source
+   `url_pattern`s. In the brief of the task that builds the `from` page,
+   name its flows in a few words. A header or footer control is a
+   transition from `home`: name it in the `gen_navigation` brief. The
+   `site_graph` verifier walks these flows (see `AGENTS.md` section 4).
+4. The file names under `artifact/storefront/app/` to confirm the template
    layout. Do not read file bodies. Skip `node_modules/`.
-4. When backend generation is enabled: `artifact/backend/src/schema/*.ts`
+5. When backend generation is enabled: `artifact/backend/src/schema/*.ts`
    file names, to know which GraphQL domains the backend already serves.
 
 ---
