@@ -238,9 +238,10 @@ console.log(result.manualPath, result.finalStatus);
 
 Options: `outDir` (defaults to `outputs/shop_manuals/<domain>/<run_id>/`),
 `model`, `maxIters`, `timeoutMs`, `rateLimitMs`, `from` (force a step and
-its dependents: `prefetch` | `explore` | `merge` | `synthesize`),
+its dependents: `prefetch` | `explore` | `merge` | `synthesize` | `graph`),
 `forceResume` (resume a harness run that ended in a refused status),
 `focus` (a hint that keeps the planner in one part of the site),
+`brandTerms` (extra brand words or phrases for the Anonymization checks),
 `runtime` / `llm` (inject an `AgentRuntime` / `LlmClient`, used by tests),
 `onEvent`, `log`, `signal`.
 
