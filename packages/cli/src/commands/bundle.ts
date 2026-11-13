@@ -4,6 +4,7 @@ import {
   BUNDLE_ADAPTERS,
   BUNDLE_STEPS,
   type BundleOptionsInput,
+  DEFAULT_IMAGES_PER_PRODUCT,
   DEFAULT_MIN_EVENTS_BEFORE,
   buildBundle,
 } from '@shop-gym/shop-arena';
@@ -18,7 +19,9 @@ export const USAGE = `Usage: shopgym bundle <adapter> <src> --out <dir> --catego
 Build a raw Source bundle (bundle.json, catalog/, events/) from a source
 dataset: pick modeled users at random, keep the products in their
 histories, and fill up with the most reviewed products of the same
-categories.
+categories. Then download the first large images of each product into
+catalog/images/. The download requests only the image URLs of the
+dataset, a few at a time, and stops after 10 refused requests in a row.
 
 Adapters: ${BUNDLE_ADAPTERS.join(', ')}
   <src> is the dataset directory with review_categories/<name>.jsonl and
@@ -35,7 +38,11 @@ Options:
                               (default: ${DEFAULT_MIN_EVENTS_BEFORE})
   --reviews-per-product <n>   Keep at most n reviews of a product, plus the reviews
                               of modeled users (default: no cap)
+  --images-per-product <n>    Large images to download per product; 0 turns the
+                              download off (default: ${DEFAULT_IMAGES_PER_PRODUCT})
   --from <step>               Rerun from this step: ${BUNDLE_STEPS.join(' | ')}
+                              (--from images retries the failed images and keeps
+                              the files already on disk)
   -h, --help                  Show this help
 
 Prints the bundle directory on the last line of stdout.`;
@@ -54,6 +61,7 @@ export function parseBundleArgs(argv: readonly string[]): BundleArgs {
     seed: { type: 'string' },
     'min-events-before': { type: 'string' },
     'reviews-per-product': { type: 'string' },
+    'images-per-product': { type: 'string' },
     from: { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   });
@@ -86,6 +94,10 @@ export function parseBundleArgs(argv: readonly string[]): BundleArgs {
   };
   const minEventsBefore = integerOption(args, 'min-events-before');
   const reviewsPerProduct = integerOption(args, 'reviews-per-product');
+  const imagesPerProduct =
+    stringOption(args, 'images-per-product') === '0'
+      ? 0
+      : integerOption(args, 'images-per-product');
   const from = enumOption(args, 'from', BUNDLE_STEPS);
   return {
     help: false,
@@ -100,6 +112,7 @@ export function parseBundleArgs(argv: readonly string[]): BundleArgs {
       seed: required('seed'),
       ...(minEventsBefore !== undefined ? { minEventsBefore } : {}),
       ...(reviewsPerProduct !== undefined ? { reviewsPerProduct } : {}),
+      ...(imagesPerProduct !== undefined ? { imagesPerProduct } : {}),
       ...(from !== undefined ? { from } : {}),
     },
   };
