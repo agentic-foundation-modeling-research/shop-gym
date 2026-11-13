@@ -9,8 +9,9 @@
  * one more step from `gen/build/verifiers/browser_steps.ts`. The last tests
  * serve the same build over more backends: on the test Dataset with fewer
  * Discount codes, for the announcement bar, with more Reviews, for a
- * filtered list that has more than one page, and with a brand and a
- * category path on each product, for the "Filters" panel.
+ * filtered list that has more than one page, with a brand and a category
+ * path on each product, for the "Filters" panel, and with related products
+ * for the test product, for the "You may also like" block.
  *
  * Not gated: it runs in every `pnpm test`. It needs `pnpm` on PATH,
  * Playwright Chromium and a built `packages/shop_backend`.
@@ -114,6 +115,11 @@ const MARKETPLACE_FIELDS: Readonly<
   },
   'cartanvil-mackerel-and-sardines-70g': { brand: 'Cartanvil', category_path: ['Cats', 'Food'] },
   'carthaeum-toothbrush': { brand: 'Carthaeum', category_path: ['Cats', 'Dental'] },
+};
+/** Related products of the test product, as product handles. */
+const RELATED = {
+  bought_together: ['carthaeum-toothbrush'],
+  also_bought: ['cartanvil-mackerel-and-sardines-70g'],
 };
 /** A sidecar runner that does not build: the copy that `beforeAll` built is served again. */
 const NO_BUILD: NonNullable<StorefrontSidecarOptions['runner']> = async () => ({
@@ -299,6 +305,36 @@ async function serveWithMarketplaceFields(): Promise<string> {
     runner: NO_BUILD,
   });
   return servers.sidecar.url;
+}
+
+/**
+ * Serve the copy that `beforeAll` built over a new backend on the test
+ * Dataset with `RELATED` on the test product; resolves to its URL.
+ */
+async function serveWithRelatedProducts(): Promise<string> {
+  const dataDir = path.join(workDir, 'related-data');
+  await fs.cp(FIXTURE_DIR, dataDir, { recursive: true });
+  const file = path.join(dataDir, 'products.json');
+  const products = JSON.parse(await fs.readFile(file, 'utf-8')) as { handle: string }[];
+  const withRelated = products.map((product) =>
+    product.handle === PRODUCT.handle ? { ...product, related: RELATED } : product,
+  );
+  await fs.writeFile(file, JSON.stringify(withRelated));
+  const servers = await serve(loadShopData(dataDir), 'storefront-related.log', {
+    runner: NO_BUILD,
+  });
+  return servers.sidecar.url;
+}
+
+/** Title and link of each product card in the product page's "You may also like" block. */
+async function relatedProductCards(): Promise<string[]> {
+  const block = session.page.getByRole('region', { name: 'You may also like', exact: true });
+  const links = await block.locator('.product-card-link').all();
+  return Promise.all(
+    links.map(
+      async (link) => `${await link.locator('h3').innerText()} ${await link.getAttribute('href')}`,
+    ),
+  );
 }
 
 /** The "Filters" panel of a search or collection page. */
@@ -580,6 +616,18 @@ describe('storefront template in a browser', () => {
     expect(await reviewsSection().count()).toBe(0);
     expect(await session.page.getByRole('img', { name: /out of 5\.0 stars/ }).count()).toBe(0);
     expect(await session.page.getByRole('list', { name: 'Rating histogram' }).count()).toBe(0);
+  }, 60_000);
+
+  it('recommends four products by ranking for a product with no related products', async () => {
+    const outcome = await viewProduct(session.page, sidecar.url, PRODUCT.handle);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    // The test Dataset's products share no type or tag with it: Dataset order.
+    expect(await relatedProductCards()).toEqual([
+      'AisleArena Anti Tick Collar /products/aislearena-anti-tick-collar',
+      'AgoraCage Skin and coat chicken with grains 12lb dog /products/agoracage-skin-and-coat-chicken-with-grains-12lb',
+      'Cartanvil Mackerel and Sardines 70g /products/cartanvil-mackerel-and-sardines-70g',
+      'Carthaeum Toothbrush /products/carthaeum-toothbrush',
+    ]);
   }, 60_000);
 
   it('adds a product to the cart', async () => {
@@ -991,5 +1039,17 @@ describe('storefront template in a browser', () => {
     expect(await productTitles()).toEqual(['AgoraCage Skin and coat chicken with grains 12lb dog']);
     const clear = filtersPanel().getByRole('link', { name: 'Clear all filters', exact: true });
     expect(await clear.getAttribute('href')).toBe('/collections/dog-essentials');
+  }, 60_000);
+
+  it('recommends the related products first: bought together, then also bought', async () => {
+    const url = await serveWithRelatedProducts();
+    const outcome = await viewProduct(session.page, url, PRODUCT.handle);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await relatedProductCards()).toEqual([
+      'Carthaeum Toothbrush /products/carthaeum-toothbrush',
+      'Cartanvil Mackerel and Sardines 70g /products/cartanvil-mackerel-and-sardines-70g',
+      'AisleArena Anti Tick Collar /products/aislearena-anti-tick-collar',
+      'AgoraCage Skin and coat chicken with grains 12lb dog /products/agoracage-skin-and-coat-chicken-with-grains-12lb',
+    ]);
   }, 60_000);
 });

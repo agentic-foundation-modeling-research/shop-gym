@@ -397,6 +397,17 @@ export const PRODUCT_QUERY = `#graphql
   ${PRODUCT_VARIANT_FRAGMENT}
 `;
 
+export const PRODUCT_RECOMMENDATIONS_QUERY = `#graphql
+  query ProductRecommendations($productId: ID!) {
+    productRecommendations(productId: $productId) {
+      ...ProductCardFields
+    }
+  }
+  ${IMAGE_FRAGMENT}
+  ${MONEY_FRAGMENT}
+  ${PRODUCT_CARD_FRAGMENT}
+`;
+
 export const SEARCH_QUERY = `#graphql
   query Search($query: String!, $productFilters: [ProductFilter!]) {
     search(

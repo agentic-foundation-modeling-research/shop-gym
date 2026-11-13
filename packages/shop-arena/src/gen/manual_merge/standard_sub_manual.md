@@ -3,8 +3,8 @@
 Every SandboxShop gets this Sub-manual. It describes the pages that
 Storefront exploration cannot observe on a Live storefront: the customer
 account, the checkout and the order confirmation. It also gives the rules
-for the announcement bar and for Reviews, and the list of behavior that the
-shop's backend supports.
+for the announcement bar, for Reviews and for related products, and the
+list of behavior that the shop's backend supports.
 
 - Account pages follow Shopify classic customer accounts. The layout
   reference is the Dawn theme **v15.5.0**, the last Dawn release with
@@ -31,6 +31,9 @@ Sources, read on 2026-10-29:
   `header.liquid` (account icon), `assets/customer.css`, `assets/global.js`
   (slideshow) and `locales/en.default.json`, at
   https://github.com/Shopify/dawn/tree/v15.5.0
+- Dawn v15.5.0, read on 2026-11-12: `sections/related-products.liquid`
+  (four products by default) and `locales/en.default.schema.json` (the
+  default heading "You may also like").
 - Dawn v16.0.0 release notes: https://github.com/Shopify/dawn/releases/tag/v16.0.0
 - https://help.shopify.com/en/manual/checkout-settings/customize-checkout-configurations/one-page-checkout
 - https://help.shopify.com/en/manual/fulfillment/setup/order-status-page/order-confirmation-numbers
@@ -359,6 +362,22 @@ Reviews are read-only data from the backend.
 - Do not show: "Write a Review", Review photos, an AI summary, topic
   chips, age or height filters, or helpful-vote buttons.
 
+## Related products
+
+Dawn's related products section, on the product page.
+
+- A section with the heading "You may also like", below the product
+  details and above the Reviews section. The heading gives the section its
+  accessible name.
+- One product card for each product from the backend's
+  `productRecommendations`, in the backend's order: up to four cards.
+  Each card has the product image, the title, the vendor and the price,
+  and links to the product page.
+- The backend puts the product's related products first and fills the rest
+  with similar products. Never choose, sort or type these products in the
+  storefront code.
+- When the backend returns no products, there is no section.
+
 ## Supported behavior
 
 The shop's backend supports only the behavior in this list. When a Shop
@@ -408,6 +427,7 @@ keep the standard text above.
   the announcement bar.
 - Reviews for each product, with paging and the four sort orders, and the
   rating and count metafields.
+- Up to four recommended products for each product.
 
 ### Not supported
 
