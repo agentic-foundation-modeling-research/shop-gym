@@ -107,9 +107,56 @@ input {
   line-height: 1.2;
 }
 
+/* The shop draws its own checkboxes and radios: `appearance: none` drops the native widget. */
 input[type="checkbox"],
 input[type="radio"] {
-  accent-color: var(--color-accent);
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  min-height: 0;
+  margin: 0;
+  border: 1px solid var(--color-muted);
+  border-radius: 0.2rem;
+  background: var(--color-bg);
+  padding: 0;
+  cursor: pointer;
+}
+
+input[type="radio"] {
+  border-radius: 50%;
+}
+
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+
+input[type="checkbox"]:checked::before {
+  content: "";
+  width: 0.3rem;
+  height: 0.6rem;
+  border: solid var(--color-bg);
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+input[type="radio"]:checked::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--color-bg);
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  cursor: not-allowed;
 }
 
 label {
@@ -907,11 +954,6 @@ html:has(.cart-popup) {
   align-items: center;
 }
 
-.reviews-verified-choice input {
-  height: auto;
-  min-height: 0;
-}
-
 .badge {
   border: 1px solid var(--color-border);
   border-radius: 999px;
@@ -1057,12 +1099,6 @@ html:has(.cart-popup) {
   align-items: center;
   border: 1px solid var(--color-border);
   padding: 0.5rem 0.75rem;
-}
-
-.choice input {
-  width: auto;
-  height: auto;
-  min-height: 0;
 }
 
 .data-table {
@@ -1225,12 +1261,6 @@ html:has(.cart-popup) {
   align-items: center;
 }
 
-.address-default-choice input {
-  width: auto;
-  height: auto;
-  min-height: 0;
-}
-
 .address-book-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1280,9 +1310,27 @@ html:has(.cart-popup) {
   font-weight: 700;
 }
 
+/* `list-style: none` hides the browser disclosure triangle; the chevron is the shop marker. */
 .facet-more summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   cursor: pointer;
   margin-bottom: 0.35rem;
+  list-style: none;
+}
+
+.facet-more summary::after {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-0.15rem) rotate(45deg);
+}
+
+.facet-more[open] summary::after {
+  transform: translateY(0.1rem) rotate(-135deg);
 }
 
 .facet-price {

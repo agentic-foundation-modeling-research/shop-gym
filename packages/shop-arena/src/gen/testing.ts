@@ -509,11 +509,12 @@ export class ScriptedJudge implements LlmClient {
 }
 
 /**
- * The stub's stylesheet: shop styles for every control, and the open cart
- * drawer as a fixed panel over a full-viewport backdrop with square corners.
+ * The stub's stylesheet: shop styles for every control and link, and the
+ * open cart drawer as a fixed panel over a full-viewport backdrop with
+ * square corners.
  */
 const STUB_STYLES =
-  '<style>button,input,select,textarea{background:#fff;border:1px solid #223344;border-radius:4px}input[type=checkbox],input[type=radio]{accent-color:#223344}.cart-backdrop{border-radius:0;position:fixed;inset:0;border:0;background:rgba(0,0,0,.4)}.cart-drawer{position:fixed;top:0;right:0;bottom:0;width:min(320px,100%);padding:16px;box-sizing:border-box;background:#fff}</style>';
+  '<style>button,input,select,textarea{background:#fff;border:1px solid #223344;border-radius:4px}input[type=checkbox],input[type=radio]{appearance:none;width:16px;height:16px}a{color:#223344}.cart-backdrop{border-radius:0;position:fixed;inset:0;border:0;background:rgba(0,0,0,.4)}.cart-drawer{position:fixed;top:0;right:0;bottom:0;width:min(320px,100%);padding:16px;box-sizing:border-box;background:#fff}</style>';
 
 function stubHtml(body: string, loggedIn: boolean): string {
   const logout = loggedIn

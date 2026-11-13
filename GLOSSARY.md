@@ -133,7 +133,7 @@ _Avoid_: hosting sidecar
 The advisory check of a built shop after the Build loop: a visual sweep that screenshots and judges the canonical pages and the open cart drawer, a functional sweep that runs a fixed sign-up-to-order script, and a Page lint of the same pages. Its result never fails Shop generation.
 
 **Page lint**:
-The deterministic check of the canonical pages and the open cart drawer of a built shop, in the Build loop (`page_lint`) and in the Final eval. A visible control with the browser's default look, the variant title "Default Title" on screen, a cart drawer backdrop that does not cover the window with square corners, or a drawer image wider than the drawer fails it.
+The deterministic check of the canonical pages and the open cart drawer of a built shop, in the Build loop (`page_lint`) and in the Final eval. A visible control with the browser's default look (also a native checkbox, radio or range input), a `summary` that shows the browser disclosure triangle, a link in the browser's default blue, a button whose box cuts its label, the variant title "Default Title" on screen, a cart drawer backdrop that does not cover the window with square corners, or a drawer image wider than the drawer fails it.
 _Avoid_: style lint, CSS check
 
 **Source bundle**:
