@@ -621,7 +621,7 @@ all of them were open and waiting for review.
 | K7 | `shopgym gen --bundle`: catalog, Personas with orders, Reviews, Clock offset, `users/`, `sourceBundle` | #84 | done |
 | K8 | Site state graph in the SandboxShop, the build planner, and the `site_graph` Verifier | #76 | done |
 | K9 | The POC run (§8.2), and its fix: the build `visual_judge` also judges the order page of the first seeded order of the Persona that it logs in with | #85 | done |
-| K10 | Lasting docs: this spec, ADR 0018, `GLOSSARY.md` terms, README | this PR | done |
+| K10 | Lasting docs: this spec, ADR 0018, `GLOSSARY.md` terms, README | #86 | done |
 | K11 | Storefront exploration run 2 findings: unknown stats, Run notes, the Read budget, currency | #82 | done |
 | - | Empty-bundle path, rewrite step, personal Tasks, graph weights, more adapters (§4) | - | planned |
 
