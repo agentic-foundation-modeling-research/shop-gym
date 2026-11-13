@@ -206,8 +206,12 @@ and the footer links every page and policy. Every bundle time moves by
 the same whole number of days, so that the cutoff falls on the Episode
 clock start (2026-01-01). The bundle profiles, the map from bundle user
 id to customer id, and the User events at the cutoff or later go to
-`users/`, which the backend does not serve. The catalog sizing and
-`--image-backend` do not apply with `--bundle`. Output layout:
+`users/`, which the backend does not serve. The products keep the brand
+and seller names of the bundle, and the store name still comes from the
+fake-brand allowlist
+([ADR 0018](docs/adr/0018-gen-also-reads-a-source-bundle.md)). The
+catalog sizing and `--image-backend` do not apply with `--bundle`. Output
+layout:
 
 ```
 outputs/shops/mock_shop/
@@ -376,7 +380,10 @@ that each image `path` names a file on disk. See
 [`packages/shop-arena/README.md`](packages/shop-arena/README.md#bundle) for
 the field map, the fill rules and the step layout. To make a shop from the
 bundle, run `shopgym gen <manual dir> --name <name> --bundle <bundle dir>`
-(see [Generate a SandboxShop](#2-generate-a-sandboxshop)).
+(see [Generate a SandboxShop](#2-generate-a-sandboxshop)). The
+[Source bundles spec](docs/specs/shop_arena/source_bundles.md) describes
+the whole design, the marketplace storefront features, and what is still
+planned (an empty bundle for every shop, a rewrite step, personal Tasks).
 
 ## Common commands
 

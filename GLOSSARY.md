@@ -154,6 +154,10 @@ A source user that the sampling picks, with enough User events before the Cutoff
 **Cutoff**:
 The one time that splits the User events of a Source bundle: events before it are a user's history, and purchases after it are Task targets. In a SandboxShop made from the bundle, the Cutoff falls on the Episode clock start: the Reviews and orders before it are the shop history, and the User events at it or later stay hidden in `users/`.
 
+**Task target**:
+A purchase of a Modeled user at the Cutoff or later: the hidden fact that a personal Task can ask an agent to reach, such as "buy what this user bought next". The sampling keeps the product of each Task target, also when the product first shows after the Cutoff. In a SandboxShop, the Task targets stay hidden in `users/future_events.jsonl` with the other User events at the Cutoff or later.
+_Avoid_: answer, ground truth
+
 **Clock offset**:
 The whole number of days that Shop generation adds to every time of a Source bundle, so that the Cutoff falls on the Episode clock start (2026-01-01). The Shop manifest records it.
 _Avoid_: time shift, date offset
@@ -192,6 +196,10 @@ _Avoid_: password recovery email
 A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read, sort and filter Reviews (by rating and by Verified Buyer); they cannot write or vote on them.
 _Avoid_: rating (one field of a Review), testimonial
 
+**Rating histogram**:
+The number of the Reviews of one product at each star rating, from 5 stars down to 1 star, from the same Reviews as the product rating. The product page shows it near the title, and the bar of each rating with Reviews links to the Reviews of that rating.
+_Avoid_: rating breakdown, star chart
+
 **Brand**:
 The optional maker name of a product in the Dataset, as its catalog gives it. It is not the `vendor`: the vendor is the seller name that the Storefront API shows, and every product has one. The "Brand" Facet reads the brand.
 _Avoid_: vendor (a different field)
@@ -199,6 +207,14 @@ _Avoid_: vendor (a different field)
 **Facet**:
 One way to narrow the products of a search or a collection page, with values and a product count for each value: category, Brand, price and rating. The backend returns facets only when some product of the Dataset has a Brand or a category path, and the storefront shows them in its "Filters" panel. The count of a value is the number of products that choosing it would give.
 _Avoid_: refinement; filter (the input that chooses a value)
+
+**Department**:
+A top-level node of the category paths of a catalog, such as `Video Games` in the category path `["Video Games", "Accessories"]`. In a SandboxShop made from a Source bundle, each node of a category path is one collection, and the main menu links each Department and the nodes one level below it.
+_Avoid_: top category, section
+
+**Related products**:
+The other products that a product page shows under "You may also like", at most four: first the ones that the Dataset lists as bought together, then as also bought, then the products with the same product type, then with more shared tags. In a Source bundle, the also-bought list comes from co-purchases: the products that at least two users bought with this one before the Cutoff.
+_Avoid_: recommendations (the `productRecommendations` query that returns them), cross-sell
 
 **Episode**:
 One attempt by one agent at one Task on one SandboxShop. The backend keeps the state of each Episode (cart, login, orders) apart from all others, by the episode id in the `x-shopgym-episode` header.
