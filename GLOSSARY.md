@@ -130,7 +130,11 @@ A child process that serves a backend copy or a built storefront during Shop gen
 _Avoid_: hosting sidecar
 
 **Final eval**:
-The advisory check of a built shop after the Build loop: a visual sweep that screenshots and judges the canonical pages, and a functional sweep that runs a fixed sign-up-to-order script. Its result never fails Shop generation.
+The advisory check of a built shop after the Build loop: a visual sweep that screenshots and judges the canonical pages and the open cart drawer, a functional sweep that runs a fixed sign-up-to-order script, and a Page lint of the same pages. Its result never fails Shop generation.
+
+**Page lint**:
+The deterministic check of the canonical pages and the open cart drawer of a built shop, in the Build loop (`page_lint`) and in the Final eval. A visible control with the browser's default look, the variant title "Default Title" on screen, a cart drawer backdrop that does not cover the window with square corners, or a drawer image wider than the drawer fails it.
+_Avoid_: style lint, CSS check
 
 **Source bundle**:
 A directory in one format for every source dataset: `bundle.json`, a catalog of products with variants, their reviews, and the User events of the Modeled users. A raw bundle has only the source facts. A complete bundle also has the fields that a shop needs, such as a price and an inventory on every variant, and User profiles. `shopgym bundle` writes a complete bundle, and `shopgym gen --bundle` makes the Dataset of a SandboxShop from one. The core validator checks each level.

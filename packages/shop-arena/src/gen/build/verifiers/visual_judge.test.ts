@@ -45,6 +45,9 @@ const PAGE = `<!doctype html><html><head><title>Sample Shop</title>
 <div class="grid">${Array.from({ length: 8 }, (_, i) => `<div class="card">Product ${i + 1}<br>$${10 + i}.00</div>`).join('')}</div></main>
 <footer><a href="/pages/about-us">About</a> <a href="/policies/privacy-policy">Privacy</a></footer></body></html>`;
 
+/** The open cart drawer that `PAGE` shows for `?cart=open` while `drawerShown` is set. */
+const DRAWER = `<div class="cart-popup"><button class="cart-backdrop" aria-label="Close cart drawer"></button><aside id="cart-drawer" role="dialog"><h2>Cart</h2><p>Your cart is empty.</p></aside></div>`;
+
 class ScriptedJudge implements LlmClient {
   readonly requests: CompleteRequest[] = [];
   constructor(private readonly reply: () => string) {}
@@ -81,12 +84,14 @@ let url: string;
 let runDir: string;
 let manualDir: string;
 let requestedPaths: string[] = [];
+let drawerShown = false;
 
 beforeAll(async () => {
   server = http.createServer((req, res) => {
     requestedPaths.push(req.url ?? '');
     res.writeHead(200, { 'content-type': 'text/html' });
-    res.end(PAGE);
+    const drawer = drawerShown && (req.url ?? '').includes('cart=open');
+    res.end(drawer ? PAGE.replace('</main>', `</main>${DRAWER}`) : PAGE);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
@@ -113,6 +118,7 @@ afterAll(async () => {
 beforeEach(async () => {
   runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'visual-judge-'));
   requestedPaths = [];
+  drawerShown = false;
 });
 
 function ctx(selectedTaskId: string, iterId = 'exec-0001'): VerifierContext {
@@ -234,6 +240,44 @@ describe('visual_judge', () => {
     },
     60_000,
   );
+
+  it('captures and judges the open cart drawer when the storefront has one', async () => {
+    drawerShown = true;
+    const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));
+    const verifier = visualJudgeVerifier({
+      target: { url },
+      dataDir: FIXTURE_DIR,
+      llm: judge,
+      model: MODEL,
+    });
+    const result = await verifier.run(ctx('gen_cart_search'));
+    expect(result.verdict).toBe('pass');
+    const route = '/products/shopliseum-mushroom-dog-toys?cart=open';
+    const pages = (result.details as { pages: { route: string }[] }).pages;
+    expect(pages.map((page) => page.route)).toContain(route);
+    expect(result.details).toMatchObject({ cartDrawer: route });
+    const checksDir = path.join(runDir, 'iters', 'exec-0001', 'checks', 'visual_judge');
+    expect(await fs.readdir(checksDir)).toEqual(
+      expect.arrayContaining(['cart-drawer__desktop.png', 'cart-drawer__mobile.png']),
+    );
+    const prompts = judge.requests.map((request) => (request.prompt as PromptContent).text);
+    expect(prompts.filter((text) => text.includes(`Route: \`${route}\``))).toHaveLength(1);
+  }, 60_000);
+
+  it('notes a storefront without a cart drawer and judges its other pages', async () => {
+    const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));
+    const verifier = visualJudgeVerifier({
+      target: { url },
+      dataDir: FIXTURE_DIR,
+      llm: judge,
+      model: MODEL,
+    });
+    const result = await verifier.run(ctx('gen_cart_search'));
+    expect(result.verdict).toBe('pass');
+    const pages = (result.details as { pages: { route: string }[] }).pages;
+    expect(pages.map((page) => page.route)).toEqual(['/cart', expect.stringMatching(/^\/search/)]);
+    expect(result.details).toMatchObject({ cartDrawer: 'the storefront has no cart drawer' });
+  }, 60_000);
 
   it('logs in as the seeded customer after the login page and before the account page', async () => {
     const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));

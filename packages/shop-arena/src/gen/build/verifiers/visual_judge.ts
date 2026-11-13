@@ -9,11 +9,14 @@
  * Cart and checkout routes are judged with a line in the cart: the
  * verifier adds the first sampled product before capturing, so the model
  * sees the populated state the shopper sees rather than the empty-cart
- * message. Account routes other than the login page are captured after
- * logging in as the first seeded customer, so the profile shows the orders
- * table; the detail page of that customer's first order is judged after
- * them. Screenshots of the failing pages are returned as `images` so the
- * harness can show them to the next executor iteration.
+ * message. For the `cart_search` bucket the verifier also captures the
+ * open cart drawer over the sampled product page (`?cart=open`) when the
+ * storefront has a cart drawer. Account routes other than the login page
+ * are captured after logging in as the first seeded customer, so the
+ * profile shows the orders table; the detail page of that customer's first
+ * order is judged after them. Screenshots of the failing pages are
+ * returned as `images` so the harness can show them to the next executor
+ * iteration.
  */
 
 import * as fs from 'node:fs/promises';
@@ -32,6 +35,7 @@ import {
   loadJudgeRubric,
   mapConcurrent,
 } from './page_judge.js';
+import { cartDrawerRoute, opensCartDrawer } from './shop_pages.js';
 import {
   type StorefrontTarget,
   prepareTarget,
@@ -86,6 +90,7 @@ export function visualJudgeVerifier(options: VisualJudgeOptions): Verifier {
       const session = await BrowserSession.launch({ episodeId: `visual-judge-${ctx.iterId}` });
       const captures: Awaited<ReturnType<typeof capturePage>>[] = [];
       let cartSeed: string | undefined;
+      let cartDrawer: string | undefined;
       let accountSeed: string | undefined;
       try {
         if (buckets.includes('cart_search') || buckets.includes('checkout')) {
@@ -93,6 +98,26 @@ export function visualJudgeVerifier(options: VisualJudgeOptions): Verifier {
         }
         for (const route of routes.filter((r) => !needsLogin(r))) {
           captures.push(await capturePage({ session, baseUrl: options.target.url, route, outDir }));
+        }
+        if (buckets.includes('cart_search')) {
+          const productHandle = sampleProductHandles(handles, caps)[0];
+          const route = productHandle === undefined ? undefined : cartDrawerRoute(productHandle);
+          if (route === undefined) {
+            cartDrawer = 'the dataset has no product';
+          } else if (await opensCartDrawer(session.page, options.target.url, route)) {
+            captures.push(
+              await capturePage({
+                session,
+                baseUrl: options.target.url,
+                route,
+                outDir,
+                slug: 'cart-drawer',
+              }),
+            );
+            cartDrawer = route;
+          } else {
+            cartDrawer = 'the storefront has no cart drawer';
+          }
         }
         const memberRoutes = routes.filter(needsLogin);
         if (memberRoutes.length > 0) {
@@ -125,6 +150,7 @@ export function visualJudgeVerifier(options: VisualJudgeOptions): Verifier {
         pages: pages.map(pageDetails),
         retryBudget: budget,
         ...(cartSeed === undefined ? {} : { cartSeed }),
+        ...(cartDrawer === undefined ? {} : { cartDrawer }),
         ...(accountSeed === undefined ? {} : { accountSeed }),
       };
       if (failed.length === 0) {

@@ -615,7 +615,8 @@ above. With `storefront: { sidecar, dataDir, manualDir?, judge? }` (a
 manual directory and `{ llm, model }` for the judge) the order becomes
 `owned_files`, `typecheck`, `build`, `routes_200`, the backend verifiers
 (backend tasks), `data_in_use`, `nav_coverage`, `cart_conformance`,
-`account_flow`, `discount_flow`, `visual_judge`:
+`account_flow`, `discount_flow`, `site_graph` (with a manual), `page_lint`,
+`visual_judge`:
 
 | Verifier | Applies to | Checks |
 | --- | --- | --- |
@@ -625,7 +626,8 @@ manual directory and `{ llm, model }` for the judge) the order becomes
 | `cart_conformance` | `gen_cart_search`, `gen_product`, `gen_checkout`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order; after the add, the update and the remove, `GET /cart.js` returns the backend cart in the AJAX cart fields |
 | `account_flow` | `gen_account`, `visual_fix` | in one `BrowserSession` episode with the browser steps of the Final eval: sign up, log out, "Forgot your password?" shows the sent message, log in, add an address, edit it; stops at the first failed step and names it |
 | `discount_flow` | `gen_checkout`, `visual_fix` | in one `BrowserSession` episode: add the first sampled product, apply the Discount code from the Dataset that `readApplicableDiscountCode` picks (the checkout "Total" changes; skipped when no code surely applies), then an unknown code shows "Enter a valid discount code" and the "Total" stays |
-| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` and `checkout` routes and the first seeded customer logged in before `/account` and the detail page of that customer's first order judged after it (`gen_account` gets the `account` bucket, `gen_checkout` the `checkout` bucket with `/checkout`); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
+| `page_lint` | every page task, `visual_fix` | walks the task's canonical pages (the same list and order as the Final eval, `walkShopPages` in `shop_pages.ts`) at desktop and mobile size and fails on: a visible `button`, text/number/email/password/search `input`, `select` or `textarea` whose background color and image, border style, width and color all equal the same bare element in an empty page of the same browser, or a checkbox or radio whose `appearance` and `accent-color` equal it (`unstyled_control`); visible "Default Title" text (`placeholder_title`); and on the open cart drawer (`/products/<handle>?cart=open`, `cart_search` bucket, skipped when the storefront has no `#cart-drawer`), a `.cart-backdrop` that does not cover the viewport or has a corner radius (`drawer_backdrop`) or an image wider than the drawer content box (`drawer_image`). Each problem names the page, the viewports, a CSS selector and the element text; never advisory |
+| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` and `checkout` routes and the first seeded customer logged in before `/account` and the detail page of that customer's first order judged after it (`gen_account` gets the `account` bucket, `gen_checkout` the `checkout` bucket with `/checkout`); for `cart_search` also the open cart drawer over the first sampled product when the storefront has one (`details.cartDrawer`); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
 
 `runBuildLoop` always passes `storefront` (its `judge` option supplies
 the visual judge; `generateShop` sets it to the synthesis model) and
@@ -650,11 +652,15 @@ build); `SHOPGYM_LIVE=1` sends one real judge call from
 llm, model, outDir, log?, signal? })` evaluates an already-running shop;
 the `final_eval` pipeline step boots the build artifacts and calls it
 with `outDir = <shopDir>/final_eval`.
-The visual sweep screenshots fourteen canonical pages (home, a collection,
-a product, search, cart, checkout, the thank-you page of a guest order,
-account login, account register, account profile, the order list, an order
-detail, the address book, a policy page) at both viewports and judges each
-with the same rubric as `visual_judge`; the functional sweep is a fixed
+The visual sweep screenshots fifteen canonical pages (home, a collection,
+a product, search, the open cart drawer, cart, checkout, the thank-you page
+of a guest order, account login, account register, account profile, the
+order list, an order detail, the address book, a policy page) at both
+viewports and judges each with the same rubric as `visual_judge`. The page
+list and its walk (`walkShopPages`) are the ones the `page_lint` verifier
+uses, and the page lint runs the same rules on the same pages in its own
+episode (`pageLint` in `report.json`, a "Page lint" table in `summary.md`,
+counted in the totals); the functional sweep is a fixed
 browser script: sign up, log out, "Forgot your password?", log in, add an
 address, edit it, add to cart,
 apply a Discount code, checkout, view order, and
@@ -662,9 +668,11 @@ apply a Discount code, checkout, view order, and
 recorded as `skipped: not supported by backend`. The sweep's code is a
 Dataset code with no minimum subtotal: a percent or fixed-amount code
 first, else a free-shipping code.
-Pages and steps the dataset cannot set up (no product, no seeded customer,
-no order, no such code) are recorded as `skipped` with a reason. Output under `outDir`:
-`report.json` (counts, `visual.pages[]`, `functional.steps[]`),
+Pages and steps the dataset or the storefront cannot set up (no product,
+no seeded customer, no order, no such code, no cart drawer) are recorded as
+`skipped` with a reason. Output under `outDir`:
+`report.json` (counts, `visual.pages[]`, `functional.steps[]`,
+`pageLint.pages[]`),
 `summary.md`, `pages/<name>.json`, `screenshots/<name>__<viewport>.png`.
 The result carries `passed`, `failed`, `skipped`, `reportPath` and the
 report.

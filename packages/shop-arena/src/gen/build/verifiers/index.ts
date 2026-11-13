@@ -5,7 +5,7 @@
  * `routes_200`), the backend verifiers when `genBackend`, `data_in_use`,
  * and the storefront checks that need a served tree (`nav_coverage`,
  * `cart_conformance`, `account_flow`, `discount_flow`, `site_graph` when
- * the manual has a Site state graph, `visual_judge`).
+ * the manual has a Site state graph, `page_lint`, `visual_judge`).
  * Each verifier decides per task whether it applies, so the order only
  * matters within one task's set.
  */
@@ -23,6 +23,7 @@ import { type SchemaIntrospector, dataInUseVerifier, introspectSidecar } from '.
 import { discountFlowVerifier } from './discount_flow.js';
 import { navCoverageVerifier } from './nav_coverage.js';
 import type { OwnedFilesVerifier } from './owned_files.js';
+import { pageLintVerifier } from './page_lint.js';
 import { routes200Verifier } from './routes_200.js';
 import { sandboxContractVerifier } from './sandbox_contract.js';
 import { siteGraphVerifier } from './site_graph.js';
@@ -103,6 +104,7 @@ export function buildVerifiers(options: BuildVerifierOptions): Verifier[] {
         siteGraphVerifier({ target, dataDir: storefront.dataDir, graph: storefront.siteGraph }),
       );
     }
+    verifiers.push(pageLintVerifier({ target, dataDir: storefront.dataDir }));
     if (storefront.judge !== undefined) {
       verifiers.push(
         visualJudgeVerifier({
@@ -199,6 +201,24 @@ export {
   routeSlug,
 } from './page_judge.js';
 export {
+  CART_BACKDROP_SELECTOR,
+  CHECKED_INPUT_TYPES,
+  type LintFinding,
+  type LintRule,
+  type LintScope,
+  type LintShopPagesOptions,
+  type LintedPage,
+  PAGE_LINT_NAME,
+  PLACEHOLDER_VARIANT_TITLE,
+  type PageLintIssue,
+  type PageLintOptions,
+  type PageLintResult,
+  lintLoadedPage,
+  lintShopPages,
+  pageLintVerifier,
+  renderLintFeedback,
+} from './page_lint.js';
+export {
   ROUTES_200_NAME,
   type RouteProbe,
   type Routes200Options,
@@ -221,6 +241,16 @@ export {
   readSiteGraph,
   siteGraphVerifier,
 } from './site_graph.js';
+export {
+  CART_DRAWER_SELECTOR,
+  type CanonicalPage,
+  type SkippedPage,
+  type WalkShopPagesOptions,
+  cartDrawerRoute,
+  opensCartDrawer,
+  pageInBuckets,
+  walkShopPages,
+} from './shop_pages.js';
 export {
   STOREFRONT_DIRNAME,
   type StorefrontBuilder,

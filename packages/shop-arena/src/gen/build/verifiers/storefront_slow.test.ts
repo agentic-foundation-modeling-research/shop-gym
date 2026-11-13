@@ -1,6 +1,6 @@
 /**
- * Storefront verifiers and the final-eval functional sweep against the
- * real storefront template over the in-process sandbox backend.
+ * Storefront verifiers, the page lint and the final eval against the real
+ * storefront template over the in-process sandbox backend.
  *
  * Gated by `SHOPGYM_SLOW_TESTS=1`: it seeds the template (real
  * `pnpm install`), builds it, and boots it through `StorefrontSidecar`.
@@ -11,6 +11,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { CompleteRequest, Completion, LlmClient } from '@shop-gym/agent';
+import { BrowserSession } from '@shop-gym/browser';
 import type { VerifierContext } from '@shop-gym/harness';
 import { createSandboxServer, loadShopData } from '@shop-gym/shop-backend';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -20,12 +21,17 @@ import { runFinalEval } from '../../final_eval/final_eval.js';
 import { defaultBackendTemplateDir, seedTemplate } from '../seed.js';
 import { freePort } from '../sidecar.js';
 import { StorefrontSidecar } from '../storefront_sidecar.js';
+import { addToCart } from './browser_steps.js';
 import { cartConformanceVerifier } from './cart_conformance.js';
 import { navCoverageVerifier } from './nav_coverage.js';
+import { type PageLintResult, lintLoadedPage, pageLintVerifier } from './page_lint.js';
 import { routes200Verifier } from './routes_200.js';
+import { cartDrawerRoute } from './shop_pages.js';
 import { storefrontTypecheckVerifier } from './storefront_commands.js';
 
 const FIXTURE_DIR = path.join(defaultBackendTemplateDir(), 'tests', 'fixtures', 'sandbox_shop_v0');
+/** A fixture product whose only variant is the placeholder "Default Title". */
+const SINGLE_VARIANT_PRODUCT = 'agoracage-skin-and-coat-chicken-with-grains-12lb';
 const USAGE = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 };
 
 class PassingJudge implements LlmClient {
@@ -122,6 +128,34 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)(
       ]);
     }, 120_000);
 
+    it('page_lint passes every canonical page and the open cart drawer', async () => {
+      const result = await pageLintVerifier({ target: target(), dataDir: FIXTURE_DIR }).run(
+        ctx('visual_fix'),
+      );
+      expect(result.verdict, result.feedback).toBe('pass');
+      const pages = (result.details as { pages: PageLintResult[] }).pages;
+      expect(pages.filter((page) => page.status !== 'pass')).toEqual([]);
+      expect(pages.map((page) => page.name)).toContain('cartDrawer');
+    }, 300_000);
+
+    it('shows no "Default Title" for a product with one variant', async () => {
+      const session = await BrowserSession.launch({ episodeId: 'slow-default-title' });
+      try {
+        const added = await addToCart(session.page, sidecar.url, SINGLE_VARIANT_PRODUCT);
+        expect(added.ok, added.detail).toBe(true);
+        for (const [route, scope] of [
+          [`/products/${SINGLE_VARIANT_PRODUCT}`, 'page'],
+          ['/cart', 'page'],
+          [cartDrawerRoute(SINGLE_VARIANT_PRODUCT), 'cartDrawer'],
+        ] as const) {
+          await session.page.goto(`${sidecar.url}${route}`, { waitUntil: 'load' });
+          expect(await lintLoadedPage(session.page, scope), route).toEqual([]);
+        }
+      } finally {
+        await session.close();
+      }
+    }, 120_000);
+
     it('final_eval captures every canonical page and passes the functional sweep', async () => {
       const result = await runFinalEval({
         dataDir: FIXTURE_DIR,
@@ -131,9 +165,10 @@ describe.skipIf(!process.env.SHOPGYM_SLOW_TESTS)(
         model: { provider: 'fake', id: 'judge' },
         outDir: path.join(workDir, 'final_eval'),
       });
-      const { visual, functional } = result.report;
+      const { visual, functional, pageLint } = result.report;
       expect(visual.pages.filter((page) => page.status === 'skipped')).toEqual([]);
       expect(visual.failed).toBe(0);
+      expect(pageLint.pages.filter((page) => page.status !== 'pass')).toEqual([]);
       expect(functional.steps.map((step) => [step.name, step.status, step.detail])).toEqual([
         ['signUp', 'pass', expect.any(String)],
         ['logOut', 'pass', expect.any(String)],
