@@ -9,7 +9,13 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import { type Step, type StepReport, runPipeline } from '@shop-gym/core';
+import {
+  BUNDLE_FILES,
+  type Step,
+  type StepReport,
+  bundleManifestSchema,
+  runPipeline,
+} from '@shop-gym/core';
 import type { FinalStatus } from '@shop-gym/harness';
 
 import { STOREFRONT_TEMPLATE_DIR } from '../templates.js';
@@ -28,11 +34,12 @@ import { BackendSidecar, freePort } from './build/sidecar.js';
 import { StorefrontSidecar } from './build/storefront_sidecar.js';
 import { type GenConfigInput, parseGenConfig } from './config.js';
 import { type GenContext, type GenDeps, createGenContext } from './context.js';
-import { DATA_DIR, dataSynthStep } from './data_synth/index.js';
+import { DATA_DIR, bundleClock, dataSynthStep } from './data_synth/index.js';
 import { DATA_VALIDATION_FILE, dataValidationStep } from './data_validation/index.js';
 import { runFinalEval } from './final_eval/final_eval.js';
+import { readJsonFile } from './io.js';
 import { MANUAL_DIR, manualMergeStep } from './manual_merge/index.js';
-import { SHOP_JSON, publishShop } from './publish/publish.js';
+import { SHOP_JSON, type SourceBundleLineage, publishShop } from './publish/publish.js';
 
 export const BUILD_RUN_DIR = path.join('runs', 'build');
 export const FINAL_EVAL_DIR = 'final_eval';
@@ -180,16 +187,37 @@ export function finalEvalStep(): Step<GenContext> {
   };
 }
 
-export function publishStep(): Step<GenContext> {
+/** What `shop.json` records about the Source bundle in `bundleDir`. */
+async function readBundleLineage(bundleDir: string): Promise<SourceBundleLineage> {
+  const manifest = await readJsonFile(
+    path.join(bundleDir, BUNDLE_FILES.manifest),
+    bundleManifestSchema,
+  );
+  return {
+    dir: bundleDir,
+    name: manifest.name,
+    cutoff: manifest.cutoff,
+    clockOffsetDays: bundleClock(manifest.cutoff).offsetDays,
+    sources: manifest.sources,
+  };
+}
+
+/** @param bundleDir The Source bundle of the shop; its manifest is an input too. */
+export function publishStep(bundleDir?: string): Step<GenContext> {
   return {
     id: 'publish',
-    inputs: [BUILD_RUN_JSON, BUILD_INFO_JSON],
+    inputs: [
+      BUILD_RUN_JSON,
+      BUILD_INFO_JSON,
+      ...(bundleDir === undefined ? [] : [path.join(bundleDir, BUNDLE_FILES.manifest)]),
+    ],
     outputs: [STOREFRONT_DIRNAME, BACKEND_DIRNAME, SHOP_JSON],
     run: async (ctx) => {
       const result = await publishShop({
         runDir: path.join(ctx.outDir, BUILD_RUN_DIR),
         shopDir: ctx.outDir,
         sourceManuals: ctx.context.manualDirs,
+        ...(bundleDir === undefined ? {} : { sourceBundle: await readBundleLineage(bundleDir) }),
       });
       ctx.log(`[publish] ${result.manifest.name}: ${result.manifestPath}`);
     },
@@ -200,11 +228,11 @@ export function publishStep(): Step<GenContext> {
 export function genSteps(ctx: GenContext): Step<GenContext>[] {
   return [
     manualMergeStep(ctx.manualDirs),
-    dataSynthStep(ctx.sourceDataDir),
+    dataSynthStep(ctx.sourceDataDir, ctx.bundleDir),
     dataValidationStep(),
     buildStep(),
     finalEvalStep(),
-    publishStep(),
+    publishStep(ctx.bundleDir),
   ];
 }
 

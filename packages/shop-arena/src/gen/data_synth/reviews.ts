@@ -47,7 +47,8 @@ const TITLE_MIN = 3;
 const TITLE_MAX = 80;
 const BODY_MIN = 20;
 const BODY_MAX = 600;
-const FIRST_NAMES = [
+/** The first names of synthetic reviewers and Personas. */
+export const FIRST_NAMES = [
   'Maya',
   'Tom',
   'Ana',
@@ -79,7 +80,8 @@ const FIRST_NAMES = [
   'Ruth',
   'Felix',
 ];
-const LAST_INITIALS = [...'ABCDEFGHJKLMNPRSTW'];
+/** The last initials of synthetic reviewers. */
+export const LAST_INITIALS = [...'ABCDEFGHJKLMNPRSTW'];
 
 /**
  * Draws ratings at random from a bag that holds `RATINGS` and is filled

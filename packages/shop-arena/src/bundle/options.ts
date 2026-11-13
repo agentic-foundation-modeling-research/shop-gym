@@ -6,13 +6,15 @@
 
 import { z } from 'zod';
 
+import { DEFAULT_CONCURRENCY, DEFAULT_MODEL } from '../gen/config.js';
+
 /** Source datasets that have an adapter. */
 export const BUNDLE_ADAPTERS = ['amazon_reviews_2023'] as const;
 
 export type BundleAdapter = (typeof BUNDLE_ADAPTERS)[number];
 
 /** Pipeline step ids in execution order. */
-export const BUNDLE_STEPS = ['sample', 'images', 'publish'] as const;
+export const BUNDLE_STEPS = ['sample', 'complete', 'images', 'publish'] as const;
 
 export type BundleStepName = (typeof BUNDLE_STEPS)[number];
 
@@ -40,6 +42,10 @@ export const bundleOptionsSchema = z.strictObject({
   minEventsBefore: z.number().int().nonnegative().default(DEFAULT_MIN_EVENTS_BEFORE),
   /** Keep at most this many reviews of one product, plus the reviews of modeled users. */
   reviewsPerProduct: z.number().int().positive().optional(),
+  /** `provider/model-id` for the LLM fills of the complete step. */
+  model: z.string().min(1).default(DEFAULT_MODEL),
+  /** Parallel LLM calls in the complete step. */
+  concurrency: z.number().int().positive().default(DEFAULT_CONCURRENCY),
   /** Large images to download per product, the first ones first; 0 turns the download off. */
   imagesPerProduct: z.number().int().nonnegative().default(DEFAULT_IMAGES_PER_PRODUCT),
   /** Force this step and everything after it. */
