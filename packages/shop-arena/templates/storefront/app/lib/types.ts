@@ -86,12 +86,21 @@ export interface ProductDetail extends ProductSummary {
   readonly rating: { readonly value: string } | null;
   /** The `reviews.rating_count` metafield; null when the product has no Reviews. */
   readonly ratingCount: { readonly value: string } | null;
+  /** The number of the product's Reviews at each star rating, from 5 stars down to 1 star. */
+  readonly ratingHistogram: readonly RatingCount[];
   readonly reviews: {
     readonly nodes: readonly Review[];
     readonly pageInfo: {
       readonly hasNextPage: boolean;
     };
   };
+}
+
+/** The number of a product's Reviews with one star rating. */
+export interface RatingCount {
+  /** 1 to 5. */
+  readonly rating: number;
+  readonly count: number;
 }
 
 /** One read-only product Review. */

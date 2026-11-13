@@ -143,7 +143,7 @@ A request that an agent sends with the "Forgot your password?" form in an Episod
 _Avoid_: password recovery email
 
 **Review**:
-A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read and sort Reviews; they cannot write or vote on them.
+A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read, sort and filter Reviews (by rating and by Verified Buyer); they cannot write or vote on them.
 _Avoid_: rating (one field of a Review), testimonial
 
 **Episode**:
