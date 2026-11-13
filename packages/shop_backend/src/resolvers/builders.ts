@@ -300,7 +300,11 @@ export function buildProductVariantNode(
   };
 }
 
-function resolveAvailableForSale(
+/**
+ * Whether `variant` is for sale: from the tracked stock count in `entry`
+ * when there is one, otherwise from the dataset flag `variant.available`.
+ */
+export function resolveAvailableForSale(
   variant: ProductVariant,
   entry: InventoryEntry | undefined,
 ): boolean {

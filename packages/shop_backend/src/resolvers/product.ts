@@ -19,7 +19,9 @@
  *     variant, otherwise the first variant, otherwise `null`.
  *   - `Collection.products` — nested products connection. Resolves member
  *     handles against `data.productsByHandle`; for the synthetic `"all"`
- *     handle, returns the full dataset.
+ *     handle, returns the full dataset. `filters` narrows the members and
+ *     the connection's `filters` lists their facets (see `facets.ts`).
+ *     `Query.products` has no facets and returns an empty `filters`.
  *
  * Sort keys per spec §5.3:
  *   - `products`: TITLE / PRICE (min variant price) / CREATED_AT /
@@ -42,7 +44,7 @@ import type {
   QueryProductsArgs,
   SelectedOptionInput,
 } from '../__generated__/resolvers-types.js';
-import { type Connection, paginate } from '../data/pagination.js';
+import { type Connection, mapConnection, paginate } from '../data/pagination.js';
 import type { Collection, Product, SandboxShopData } from '../data/types.js';
 import { encodeVariantAvailability, encodeVariantExistence } from '../encoded_variants.js';
 import {
@@ -55,13 +57,15 @@ import {
   gid,
   matchesSearch,
 } from './builders.js';
+import { type FilterNode, applyProductFilters } from './facets.js';
 import type { ResolverContext } from './index.js';
 
 // ── Connection shapes ─────────────────────────────────────────────────────
 
-/** Connection with the `totalCount` extension exposed on `ProductConnection`. */
+/** Connection with the `totalCount` and `filters` of `ProductConnection`. */
 export interface ProductConnectionNode extends Connection<ProductNode> {
   readonly totalCount: number;
+  readonly filters: readonly FilterNode[];
 }
 
 /**
@@ -118,7 +122,7 @@ export const productResolvers = {
         ),
       );
       const connection = paginate(nodes, args);
-      return { ...connection, totalCount: filtered.length };
+      return { ...connection, totalCount: filtered.length, filters: [] };
     },
 
     collection: (
@@ -187,8 +191,9 @@ export const productResolvers = {
       args: CollectionProductsArgs,
       ctx: ResolverContext,
     ): ProductConnectionNode => {
-      const products = collectionProducts(ctx.data, parent.handle);
-      const nodes = products.map((p) =>
+      const members = collectionProducts(ctx.data, parent.handle);
+      const { products, filters } = applyProductFilters(members, args.filters, ctx.data);
+      const connection = mapConnection(paginate(products, args), (p) =>
         buildProductNode(
           p,
           ctx.data.store,
@@ -197,8 +202,7 @@ export const productResolvers = {
           ctx.imageUrlMode,
         ),
       );
-      const connection = paginate(nodes, args);
-      return { ...connection, totalCount: nodes.length };
+      return { ...connection, totalCount: products.length, filters };
     },
   },
 };

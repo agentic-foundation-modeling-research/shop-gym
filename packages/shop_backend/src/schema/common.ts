@@ -4,6 +4,9 @@
  */
 
 export const commonTypeDefs = /* GraphQL */ `
+  """A value encoded as a JSON string."""
+  scalar JSON
+
   type Image {
     id: ID
     url: String!

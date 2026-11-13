@@ -1,12 +1,16 @@
 /**
  * Read-only product Reviews from `reviews.json` (`@sandbox`).
  *
- *   - `Product.reviews(first, after, sortKey)` pages the product's Reviews
- *     in one of four orders. Ties put the more recent Review first, then
- *     keep the `reviews.json` order, so every read gives the same list.
+ *   - `Product.reviews(first, after, sortKey, rating, verifiedBuyer)` keeps
+ *     the product's Reviews that match the star rating and the Verified
+ *     Buyer flag, when given, and pages them in one of four orders. Ties put
+ *     the more recent Review first, then keep the `reviews.json` order, so
+ *     every read gives the same list.
+ *   - `Product.ratingHistogram` counts the product's Reviews at each star
+ *     rating, from 5 stars down to 1 star.
  *   - `ratingMetafields` computes the standard product metafields
  *     `reviews.rating` and `reviews.rating_count` from the same Reviews, so
- *     the stars and the count always agree with the list.
+ *     the stars, the counts and the list always agree.
  */
 
 import type { ProductReviewsArgs, ReviewSortKeys } from '../__generated__/resolvers-types.js';
@@ -27,10 +31,18 @@ export interface ReviewNode {
   readonly variant: ProductVariantNode | null;
 }
 
+export interface ReviewRatingCountNode {
+  readonly rating: number;
+  readonly count: number;
+}
+
 /** Namespace of the standard product rating metafields. */
 const RATING_NAMESPACE = 'reviews';
 const RATING_KEY = 'rating';
 const RATING_COUNT_KEY = 'rating_count';
+
+/** The star ratings of a Review, from the top of the scale down. */
+const STAR_RATINGS = [5, 4, 3, 2, 1] as const;
 
 export const reviewResolvers = {
   Product: {
@@ -40,11 +52,24 @@ export const reviewResolvers = {
       ctx: ResolverContext,
     ): Connection<ReviewNode> => {
       const reviews = ctx.data.reviewsByProductHandle.get(parent.handle) ?? [];
-      const sorted = sortReviews(reviews, args.sortKey ?? 'MOST_RECENT');
+      const matching = reviews.filter((review) => matchesFilters(review, args));
+      const sorted = sortReviews(matching, args.sortKey ?? 'MOST_RECENT');
       return paginate(
         sorted.map((review) => buildReviewNode(review, parent.variants)),
         args,
       );
+    },
+
+    ratingHistogram: (
+      parent: ProductNode,
+      _args: unknown,
+      ctx: ResolverContext,
+    ): readonly ReviewRatingCountNode[] => {
+      const reviews = ctx.data.reviewsByProductHandle.get(parent.handle) ?? [];
+      return STAR_RATINGS.map((rating) => ({
+        rating,
+        count: reviews.filter((review) => review.rating === rating).length,
+      }));
     },
   },
 };
@@ -55,15 +80,14 @@ export const reviewResolvers = {
  * rounded half up to one decimal, in Shopify's `rating` JSON shape.
  */
 export function ratingMetafields(reviews: readonly Review[]): readonly Metafield[] {
-  if (reviews.length === 0) return [];
-  const sum = reviews.reduce((total, review) => total + review.rating, 0);
-  const tenths = Math.round((sum * 10) / reviews.length);
+  const rating = averageRating(reviews);
+  if (rating === null) return [];
   return [
     {
       namespace: RATING_NAMESPACE,
       key: RATING_KEY,
       value: JSON.stringify({
-        value: (tenths / 10).toFixed(1),
+        value: rating.toFixed(1),
         scale_min: '1.0',
         scale_max: '5.0',
       }),
@@ -78,11 +102,28 @@ export function ratingMetafields(reviews: readonly Review[]): readonly Metafield
   ];
 }
 
+/** The mean rating of `reviews`, rounded half up to one decimal; `null` when there are none. */
+export function averageRating(reviews: readonly Review[]): number | null {
+  if (reviews.length === 0) return null;
+  const sum = reviews.reduce((total, review) => total + review.rating, 0);
+  return Math.round((sum * 10) / reviews.length) / 10;
+}
+
 /** Whether `metafield` is one of the two that `ratingMetafields` computes. */
 export function isRatingMetafield(metafield: Metafield): boolean {
   return (
     metafield.namespace === RATING_NAMESPACE &&
     (metafield.key === RATING_KEY || metafield.key === RATING_COUNT_KEY)
+  );
+}
+
+/** Whether `review` has the star rating and the Verified Buyer flag of `args`, when given. */
+function matchesFilters(review: Review, args: Partial<ProductReviewsArgs>): boolean {
+  const rating = args.rating ?? null;
+  const verifiedBuyer = args.verifiedBuyer ?? null;
+  return (
+    (rating === null || review.rating === rating) &&
+    (verifiedBuyer === null || review.verified_buyer === verifiedBuyer)
   );
 }
 

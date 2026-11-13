@@ -52,6 +52,8 @@ export interface GenContext {
   readonly manualDirs: readonly string[];
   /** Absolute directory of the source Dataset whose catalog the shop copies. */
   readonly sourceDataDir?: string;
+  /** Absolute directory of the Source bundle that the Dataset comes from. */
+  readonly bundleDir?: string;
   readonly credentials: Credentials;
   readonly llm: LlmClient;
   readonly runtime: AgentRuntime;
@@ -77,6 +79,7 @@ export function createGenContext(config: GenConfig, deps: GenDeps): GenContext {
     ...(config.sourceDataDir !== undefined
       ? { sourceDataDir: path.resolve(config.sourceDataDir) }
       : {}),
+    ...(config.bundleDir !== undefined ? { bundleDir: path.resolve(config.bundleDir) } : {}),
     credentials,
     llm: deps.llm,
     runtime: deps.runtime,

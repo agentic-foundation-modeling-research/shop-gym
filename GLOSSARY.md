@@ -37,6 +37,14 @@ _Avoid_: real shop, source storefront, original shop
 The ShopArena process (`shopgym explore`) that browses one Live storefront and writes one Shop Manual.
 _Avoid_: ShopExplore, explore (alone)
 
+**Platform path**:
+The way that Storefront exploration reads one Live storefront, as prefetch decides it: `shopify` when the homepage has a Shopify marker or the first `/products.json` page returns a product list, else `generic`. On the `shopify` path, prefetch also reads the catalog endpoints and the policy pages, and `stats.json` comes from the catalog. On the `generic` path, prefetch stops after `robots.txt`, the homepage, `sitemap.xml` and that first `/products.json` request, the planner picks start pages from their links, and `stats.json` comes from the Product observations. `manifest.json` records `platform`.
+_Avoid_: platform mode, site type
+
+**Focus hint**:
+The `--focus` text, such as "Video Games", that tells the planner of Storefront exploration which part of a large Live storefront to explore. The planner picks its listing pages, product pages and search queries in that part and writes the focus into the briefs. It still plans every Fixed area, and navigation outside the focus is not blocked. `manifest.json` records `focus`, and a resumed run must pass the same focus.
+_Avoid_: department filter, scope
+
 **Bot check**:
 A page that a site shows in place of the page that was asked for, to find out whether the visitor is a person, for example a Cloudflare challenge, a captcha page, an interstitial page with one button to go on, or a rate-limit page served with HTTP 503. Storefront exploration finds it by markers in the page HTML and never tries to pass it: its Browser tools refuse to click, type, select or press on it. A bot-check homepage stops prefetch. In a Harness run, the Plan task that meets a Bot check is marked blocked with the note "bot check", and two Iterations in a row with a Bot check end the run with a Caller stop.
 _Avoid_: captcha (for all kinds), block page
@@ -44,6 +52,14 @@ _Avoid_: captcha (for all kinds), block page
 **Navigation cap**:
 The fixed number of `navigate` calls (200) that one run of the explore step may make, over all its Iterations. It is a constant, not an option, and a resumed run starts a new count. At the cap, `navigate` refuses, and the run ends with a Caller stop after that Iteration.
 _Avoid_: page budget, navigation limit
+
+**Read budget**:
+The fixed number of characters (200,000) that all `read_file` calls of one Iteration of the explore step may return. It starts again at the start of each Iteration. When it is spent, `read_file` fails and tells the agent to work from what it already read.
+_Avoid_: read limit, file budget
+
+**Run note**:
+A line of a Shop Manual that tells about the exploration run and not about the storefront, for example what the run tested, captured or planned, where it stopped, or what its Iterations, snapshots, Bot checks or browser session did. The `synthesize` step finds run notes by a closed list of run words, asks one LLM call to rewrite only those lines, and fails when a rewritten line still has a run word.
+_Avoid_: process note, session note
 
 **Shop Manual**:
 The anonymized description of one storefront's structure, features, and UX: prose in `manual.md`, Capabilities in `capabilities.json`, the Site state graph in `site_graph.json`, and catalog statistics in `stats.json`.
@@ -81,7 +97,7 @@ A self-contained, deterministic, hostable shop: a Dataset, a storefront, its own
 _Avoid_: sandbox shop, generated shop, published shop, mock shop
 
 **Shop manifest**:
-The `shop.json` file that marks a directory as a SandboxShop that is ready to host. It records the source Shop Manuals, the templates used, whether the backend was generated, and the final status of the Build loop.
+The `shop.json` file that marks a directory as a SandboxShop that is ready to host. It records the source Shop Manuals, the Source bundle (when the shop has one) with its Cutoff, Clock offset and licenses, the templates used, whether the backend was generated, and the final status of the Build loop.
 _Avoid_: publish manifest
 
 **Merged manual**:
@@ -116,6 +132,40 @@ _Avoid_: hosting sidecar
 **Final eval**:
 The advisory check of a built shop after the Build loop: a visual sweep that screenshots and judges the canonical pages, and a functional sweep that runs a fixed sign-up-to-order script. Its result never fails Shop generation.
 
+**Source bundle**:
+A directory in one format for every source dataset: `bundle.json`, a catalog of products with variants, their reviews, and the User events of the Modeled users. A raw bundle has only the source facts. A complete bundle also has the fields that a shop needs, such as a price and an inventory on every variant, and User profiles. `shopgym bundle` writes a complete bundle, and `shopgym gen --bundle` makes the Dataset of a SandboxShop from one. The core validator checks each level.
+_Avoid_: dataset bundle, source dump
+
+**Complete step**:
+The step of `shopgym bundle` that turns a raw Source bundle into a complete one. Rules fill the catalog fields that they can derive, an LLM names the variants and writes the User profiles, and each filled field gets a Provenance mark.
+
+**Provenance**:
+The mark on a Source bundle record that tells where a field comes from: `source`, `inferred` (derived from other source values by a rule), `synthetic` (written by a model, or made up by a seeded rule) or `rewritten`. A field that is not marked comes from the source.
+
+**Adapter**:
+The code that reads one source dataset and writes a raw Source bundle. It maps the source fields to the bundle fields, and marks the values that it infers.
+
+**User event**:
+One dated action of one Modeled user in a Source bundle, such as a `review` or a `purchase`, from a closed list of event types. Each event records how exact its time is and whether it comes from the source or is inferred.
+
+**Modeled user**:
+A source user that the sampling picks, with enough User events before the Cutoff and at least one purchase after it. Only Modeled users get User events, and only their reviews keep a user id.
+
+**Cutoff**:
+The one time that splits the User events of a Source bundle: events before it are a user's history, and purchases after it are Task targets. In a SandboxShop made from the bundle, the Cutoff falls on the Episode clock start: the Reviews and orders before it are the shop history, and the User events at it or later stay hidden in `users/`.
+
+**Task target**:
+A purchase of a Modeled user at the Cutoff or later: the hidden fact that a personal Task can ask an agent to reach, such as "buy what this user bought next". The sampling keeps the product of each Task target, also when the product first shows after the Cutoff. In a SandboxShop, the Task targets stay hidden in `users/future_events.jsonl` with the other User events at the Cutoff or later.
+_Avoid_: answer, ground truth
+
+**Clock offset**:
+The whole number of days that Shop generation adds to every time of a Source bundle, so that the Cutoff falls on the Episode clock start (2026-01-01). The Shop manifest records it.
+_Avoid_: time shift, date offset
+
+**User profile**:
+What a Modeled user is like as of the Cutoff, in a complete Source bundle: demographics, preferences (price sensitivity, category interests, brands, focus aspects), habits and a narrative. An LLM writes it from the user's history before the Cutoff. It has no account fields: Shop generation makes those for a Persona.
+_Avoid_: persona, customer
+
 ### ShopBackend
 
 **Dataset**:
@@ -123,7 +173,7 @@ The read-only JSON files and images under a SandboxShop's `data/` directory: sto
 _Avoid_: shop data, catalog (the catalog is only one part of it)
 
 **Catalog**:
-The products, collections and product images of a Dataset. Data synthesis makes it from the Shop Manual, or `shopgym gen --data` copies it from an existing Dataset.
+The products, collections and product images of a Dataset. Data synthesis makes it from the Shop Manual, `shopgym gen --data` copies it from an existing Dataset, or `shopgym gen --bundle` maps it from a complete Source bundle.
 _Avoid_: inventory (the stock levels are a separate Dataset file)
 
 **Discount code**:
@@ -131,7 +181,7 @@ A code in the Dataset's commerce settings that lowers the price of a cart: a per
 _Avoid_: coupon, promo code
 
 **Persona**:
-A customer account in the Dataset's `customers.json`, with an email and password that a Task's setup can log in with, saved addresses, and seeded orders in `orders.json` that its order history shows.
+A customer account in the Dataset's `customers.json`, with an email and password that a Task's setup can log in with, saved addresses, and seeded orders in `orders.json` that its order history shows. In a SandboxShop made from a Source bundle, each Modeled user is one Persona, and its orders come from the user's purchases before the Cutoff.
 _Avoid_: seeded customer
 
 **Address book**:
@@ -143,8 +193,28 @@ A request that an agent sends with the "Forgot your password?" form in an Episod
 _Avoid_: password recovery email
 
 **Review**:
-A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read and sort Reviews; they cannot write or vote on them.
+A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read, sort and filter Reviews (by rating and by Verified Buyer); they cannot write or vote on them.
 _Avoid_: rating (one field of a Review), testimonial
+
+**Rating histogram**:
+The number of the Reviews of one product at each star rating, from 5 stars down to 1 star, from the same Reviews as the product rating. The product page shows it near the title, and the bar of each rating with Reviews links to the Reviews of that rating.
+_Avoid_: rating breakdown, star chart
+
+**Brand**:
+The optional maker name of a product in the Dataset, as its catalog gives it. It is not the `vendor`: the vendor is the seller name that the Storefront API shows, and every product has one. The "Brand" Facet reads the brand.
+_Avoid_: vendor (a different field)
+
+**Facet**:
+One way to narrow the products of a search or a collection page, with values and a product count for each value: category, Brand, price and rating. The backend returns facets only when some product of the Dataset has a Brand or a category path, and the storefront shows them in its "Filters" panel. The count of a value is the number of products that choosing it would give.
+_Avoid_: refinement; filter (the input that chooses a value)
+
+**Department**:
+A top-level node of the category paths of a catalog, such as `Video Games` in the category path `["Video Games", "Accessories"]`. In a SandboxShop made from a Source bundle, each node of a category path is one collection, and the main menu links each Department and the nodes one level below it.
+_Avoid_: top category, section
+
+**Related products**:
+The other products that a product page shows under "You may also like", at most four: first the ones that the Dataset lists as bought together, then as also bought, then the products with the same product type, then with more shared tags. In a Source bundle, the also-bought list comes from co-purchases: the products that at least two users bought with this one before the Cutoff.
+_Avoid_: recommendations (the `productRecommendations` query that returns them), cross-sell
 
 **Episode**:
 One attempt by one agent at one Task on one SandboxShop. The backend keeps the state of each Episode (cart, login, orders) apart from all others, by the episode id in the `x-shopgym-episode` header.
@@ -234,7 +304,7 @@ _Avoid_: episode
 The SDK-independent, ordered record of one Agent run: messages, tool calls, tool results, and token usage.
 
 **BrowserSession**:
-One Chromium browser, context, and page bound to one Episode id, so that every request it sends carries the episode header.
+One Chromium browser, context, and page. With an Episode id, every request it sends carries the episode header. Storefront exploration gives no Episode id, so its requests to a Live storefront carry no such header.
 _Avoid_: session (alone)
 
 **Browser tools**:

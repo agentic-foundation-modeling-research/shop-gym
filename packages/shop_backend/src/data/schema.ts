@@ -102,6 +102,32 @@ export const productImageSchema = z
   })
   .readonly();
 
+/** Products that shoppers buy with a product, as product handles. */
+export const productRelatedSchema = z
+  .object({
+    /** Products bought in the same order. */
+    bought_together: stringList,
+    /** Products that buyers of this product also bought, in other orders. */
+    also_bought: stringList,
+  })
+  .readonly();
+
+/** The record in a public catalog dataset that a product comes from. */
+export const productSourceSchema = z
+  .object({
+    /** Dataset name, e.g. "amazon_reviews_2023". */
+    dataset: z.string(),
+    /** The record id in that dataset. */
+    id: z.string(),
+  })
+  .readonly();
+
+/**
+ * Where a field value comes from: copied from the source record, inferred
+ * from other source data, made up, or rewritten from a source value.
+ */
+export const provenanceMarkSchema = z.enum(['source', 'inferred', 'synthetic', 'rewritten']);
+
 /** Element of `products.json`. */
 export const productSchema = z
   .object({
@@ -109,6 +135,7 @@ export const productSchema = z
     title: z.string(),
     handle: z.string(),
     description_html: z.string(),
+    /** The seller name that the Storefront API shows as `Product.vendor`. */
     vendor: z.string(),
     product_type: z.string(),
     tags: stringList,
@@ -119,6 +146,19 @@ export const productSchema = z
     options: z.array(productOptionSchema).readonly(),
     variants: z.array(productVariantSchema).readonly(),
     images: z.array(productImageSchema).readonly(),
+    /** The maker's name as the catalog gives it; absent when the catalog has none. */
+    brand: z.string().optional(),
+    /** Category from the department down to the leaf, e.g. ["Pets", "Dogs", "Dry Food"]. */
+    category_path: z.array(z.string().min(1)).min(1).readonly().optional(),
+    /** Catalog facts by name, e.g. {"flavor": "Chicken"}. */
+    attributes: z.record(z.string(), z.string()).readonly().optional(),
+    related: productRelatedSchema.optional(),
+    source: productSourceSchema.optional(),
+    /**
+     * Field path to provenance mark, e.g. {"variants[].price": "inferred"}.
+     * Fields with no entry come from the source when `source` is set.
+     */
+    provenance: z.record(z.string(), provenanceMarkSchema).readonly().optional(),
   })
   .readonly();
 
@@ -455,6 +495,8 @@ export const reviewSchema = z
     created_at: z.iso.datetime(),
     verified_buyer: z.boolean(),
     helpful_count: z.number().int().min(0),
+    /** The seeded account that wrote the Review; references `customers.json[].id`. */
+    customer_id: z.number().optional(),
   })
   .readonly();
 

@@ -1,7 +1,8 @@
 /**
  * `synth_identity`: descriptor, tone, currency, country from the manual,
- * and from a summary of the catalog copied from a source Dataset; name from the
- * allowlist.
+ * and from a summary of the catalog copied from a source Dataset or mapped
+ * from a Source bundle; name from the allowlist. The currency and country
+ * of a Source bundle win over the ones the LLM picks.
  */
 
 import * as fs from 'node:fs/promises';
@@ -50,8 +51,22 @@ function summarizeCatalog(catalog: Catalog) {
   };
 }
 
-/** @param catalog The catalog copied from a source Dataset, or `undefined` when the catalog is synthesized. */
-export async function synthIdentity(sc: SynthContext, catalog?: Catalog): Promise<Identity> {
+/** The currency and, when known, the country that a shop must use instead of the ones the LLM picks. */
+export interface Market {
+  readonly currency: string;
+  readonly country?: string;
+}
+
+/**
+ * @param catalog The catalog copied from a source Dataset or mapped from
+ *   a Source bundle, or `undefined` when the catalog is synthesized.
+ * @param market The currency and country of that catalog.
+ */
+export async function synthIdentity(
+  sc: SynthContext,
+  catalog?: Catalog,
+  market?: Market,
+): Promise<Identity> {
   const file = path.join(sc.shopDir, IDENTITY_FILE);
   const existing = await readJsonIfExists(file, identitySchema);
   if (existing !== undefined) {
@@ -76,8 +91,8 @@ export async function synthIdentity(sc: SynthContext, catalog?: Catalog): Promis
     name: pickBrandName(`${sc.config.name}\0${draft.descriptor}`, sc.allowlist),
     descriptor: draft.descriptor.trim(),
     tone: draft.tone.map((t) => t.trim()),
-    currency: draft.currency.toUpperCase(),
-    country: draft.country.toUpperCase(),
+    currency: market?.currency ?? draft.currency.toUpperCase(),
+    country: market?.country ?? draft.country.toUpperCase(),
   };
   await writeJsonFile(file, identity);
   return identity;

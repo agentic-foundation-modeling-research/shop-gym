@@ -13,6 +13,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+import { bundleSourceSchema } from '@shop-gym/core';
 import type { FinalStatus } from '@shop-gym/harness';
 import { z } from 'zod';
 
@@ -41,6 +42,21 @@ const templateFingerprintSchema = z.object({
   seededAt: z.string(),
 });
 
+/** The Source bundle a shop was generated from. */
+export const sourceBundleLineageSchema = z.object({
+  /** Absolute bundle directory. */
+  dir: z.string(),
+  name: z.string(),
+  /** The bundle cutoff, in bundle time. */
+  cutoff: z.string(),
+  /** Whole days added to every bundle time in the shop, so that the cutoff falls on the Episode clock start. */
+  clockOffsetDays: z.number().int(),
+  /** The source datasets, with their licenses. */
+  sources: z.array(bundleSourceSchema),
+});
+
+export type SourceBundleLineage = z.infer<typeof sourceBundleLineageSchema>;
+
 export const shopManifestSchema = z.object({
   name: z.string(),
   /**
@@ -48,6 +64,8 @@ export const shopManifestSchema = z.object({
    * Absent in manifests published before the lineage was recorded.
    */
   sourceManuals: z.array(z.string()).optional(),
+  /** Absent when the shop was not generated from a Source bundle. */
+  sourceBundle: sourceBundleLineageSchema.optional(),
   templates: z.object({
     storefront: templateFingerprintSchema,
     backend: templateFingerprintSchema,
@@ -66,6 +84,8 @@ export interface PublishOptions {
   readonly shopDir: string;
   /** Absolute directories of the Shop Manuals the shop was generated from. */
   readonly sourceManuals: readonly string[];
+  /** The Source bundle the shop was generated from. */
+  readonly sourceBundle?: SourceBundleLineage;
 }
 
 export interface PublishResult {
@@ -77,7 +97,7 @@ export interface PublishResult {
 export class PublishError extends Error {}
 
 export async function publishShop(options: PublishOptions): Promise<PublishResult> {
-  const { runDir, shopDir, sourceManuals } = options;
+  const { runDir, shopDir, sourceManuals, sourceBundle } = options;
   const artifactDir = path.join(runDir, 'artifact');
   const build = await readJson<BuildRunInfo>(path.join(runDir, BUILD_JSON));
   if (build === undefined) {
@@ -92,6 +112,7 @@ export async function publishShop(options: PublishOptions): Promise<PublishResul
   const manifest: ShopManifest = {
     name: path.basename(path.resolve(shopDir)),
     sourceManuals: [...sourceManuals],
+    ...(sourceBundle !== undefined ? { sourceBundle } : {}),
     templates,
     genBackend: build.genBackend,
     publishedAt: new Date().toISOString(),

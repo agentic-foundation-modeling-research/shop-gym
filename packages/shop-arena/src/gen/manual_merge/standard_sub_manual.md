@@ -3,8 +3,8 @@
 Every SandboxShop gets this Sub-manual. It describes the pages that
 Storefront exploration cannot observe on a Live storefront: the customer
 account, the checkout and the order confirmation. It also gives the rules
-for the announcement bar and for Reviews, and the list of behavior that the
-shop's backend supports.
+for the announcement bar, for Reviews and for related products, and the
+list of behavior that the shop's backend supports.
 
 - Account pages follow Shopify classic customer accounts. The layout
   reference is the Dawn theme **v15.5.0**, the last Dawn release with
@@ -31,6 +31,9 @@ Sources, read on 2026-10-29:
   `header.liquid` (account icon), `assets/customer.css`, `assets/global.js`
   (slideshow) and `locales/en.default.json`, at
   https://github.com/Shopify/dawn/tree/v15.5.0
+- Dawn v15.5.0, read on 2026-11-12: `sections/related-products.liquid`
+  (four products by default) and `locales/en.default.schema.json` (the
+  default heading "You may also like").
 - Dawn v16.0.0 release notes: https://github.com/Shopify/dawn/releases/tag/v16.0.0
 - https://help.shopify.com/en/manual/checkout-settings/customize-checkout-configurations/one-page-checkout
 - https://help.shopify.com/en/manual/fulfillment/setup/order-status-page/order-confirmation-numbers
@@ -313,7 +316,17 @@ Reviews are read-only data from the backend.
 - The stars round to the nearest half star: a decimal part from 0.3 to 0.7
   shows a half star, and a decimal part above 0.7 shows a full star.
 - The accessible name is "<rating> out of <scale max> stars".
-- A product with no Reviews shows no stars and no count.
+- Under the stars, a rating histogram from the backend's
+  `ratingHistogram`: a list with the accessible name "Rating histogram"
+  and one row for each star rating, from "5 stars" down to "1 star". Each
+  row shows the label, a bar as wide as that rating's share of the
+  Reviews, and the count.
+- A row with a count above 0 is a link to the Reviews section with only
+  that rating (`?reviews_rating=<n>#reviews`). The link keeps the current
+  sort and the Verified Buyer filter. Its accessible name is
+  "<label>, <count> reviews", for example "4 stars, 2 reviews" or
+  "2 stars, 1 review". A row with a count of 0 is not a link.
+- A product with no Reviews shows no stars, no count and no histogram.
 
 ### Reviews section
 
@@ -321,6 +334,13 @@ Reviews are read-only data from the backend.
   the stars and the number of Reviews at the top.
 - A sort control with the options "Most recent", "Highest rating",
   "Lowest rating" and "Most helpful". The default is "Most recent".
+- A "Rating" filter with the options "All ratings" (the default) and
+  "5 stars" down to "1 star", and a "Verified Buyers only" checkbox.
+- The sort and the filters are in one form with an "Apply" button. They
+  stay in the URL: `reviews_sort`, `reviews_rating=<n>` and
+  `reviews_verified=true`.
+- When no Review matches the filters, the section stays and shows
+  "No reviews match these filters." in place of the Reviews.
 - One block for each Review, with:
   - the stars for its rating (1 to 5);
   - its title and text;
@@ -332,8 +352,8 @@ Reviews are read-only data from the backend.
     "<count> people found this helpful" for a larger count, for example
     "12 people found this helpful". It is not a button. A count of 0 shows
     no text.
-- A "Show more reviews" button loads the next page of Reviews. It is
-  hidden when there are no more Reviews.
+- A "Show more reviews" button loads the next page of Reviews, with the
+  same sort and filters. It is hidden when there are no more Reviews.
 - Show only the fields that have data. Leave out an element that has no
   data.
 - A product with no Reviews has no Reviews section.
@@ -341,6 +361,22 @@ Reviews are read-only data from the backend.
   from the backend.
 - Do not show: "Write a Review", Review photos, an AI summary, topic
   chips, age or height filters, or helpful-vote buttons.
+
+## Related products
+
+Dawn's related products section, on the product page.
+
+- A section with the heading "You may also like", below the product
+  details and above the Reviews section. The heading gives the section its
+  accessible name.
+- One product card for each product from the backend's
+  `productRecommendations`, in the backend's order: up to four cards.
+  Each card has the product image, the title, the vendor and the price,
+  and links to the product page.
+- The backend puts the product's related products first and fills the rest
+  with similar products. Never choose, sort or type these products in the
+  storefront code.
+- When the backend returns no products, there is no section.
 
 ## Supported behavior
 
@@ -391,6 +427,7 @@ keep the standard text above.
   the announcement bar.
 - Reviews for each product, with paging and the four sort orders, and the
   rating and count metafields.
+- Up to four recommended products for each product.
 
 ### Not supported
 
