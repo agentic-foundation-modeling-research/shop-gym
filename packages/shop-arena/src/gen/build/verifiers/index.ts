@@ -4,12 +4,14 @@
  * first, then the storefront verifiers (`typecheck`, `build`,
  * `routes_200`), the backend verifiers when `genBackend`, `data_in_use`,
  * and the storefront checks that need a served tree (`nav_coverage`,
- * `cart_conformance`, `account_flow`, `discount_flow`, `visual_judge`).
+ * `cart_conformance`, `account_flow`, `discount_flow`, `site_graph` when
+ * the manual has a Site state graph, `visual_judge`).
  * Each verifier decides per task whether it applies, so the order only
  * matters within one task's set.
  */
 
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
+import type { SiteGraph } from '@shop-gym/core';
 import type { Verifier } from '@shop-gym/harness';
 
 import type { BackendSidecar } from '../sidecar.js';
@@ -23,6 +25,7 @@ import { navCoverageVerifier } from './nav_coverage.js';
 import type { OwnedFilesVerifier } from './owned_files.js';
 import { routes200Verifier } from './routes_200.js';
 import { sandboxContractVerifier } from './sandbox_contract.js';
+import { siteGraphVerifier } from './site_graph.js';
 import { storefrontBuildVerifier, storefrontTypecheckVerifier } from './storefront_commands.js';
 import type { StorefrontTarget } from './storefront_target.js';
 import type { CommandRunner } from './subprocess.js';
@@ -42,6 +45,8 @@ export interface StorefrontVerifierOptions {
   readonly manualDir?: string;
   /** The visual judge; omitted means no `visual_judge` verifier. */
   readonly judge?: StorefrontJudge;
+  /** The Site state graph of the manual; omitted means no `site_graph` verifier. */
+  readonly siteGraph?: SiteGraph;
 }
 
 export interface BuildVerifierOptions {
@@ -93,6 +98,11 @@ export function buildVerifiers(options: BuildVerifierOptions): Verifier[] {
       accountFlowVerifier({ target }),
       discountFlowVerifier({ target, dataDir: storefront.dataDir }),
     );
+    if (storefront.siteGraph !== undefined) {
+      verifiers.push(
+        siteGraphVerifier({ target, dataDir: storefront.dataDir, graph: storefront.siteGraph }),
+      );
+    }
     if (storefront.judge !== undefined) {
       verifiers.push(
         visualJudgeVerifier({
@@ -202,6 +212,15 @@ export {
   readOnlyDrift,
   sandboxContractVerifier,
 } from './sandbox_contract.js';
+export {
+  PAGE_TYPE_RULES,
+  type PageTypeRule,
+  SITE_GRAPH_NAME,
+  type SiteGraphVerifierOptions,
+  type TransitionCheck,
+  readSiteGraph,
+  siteGraphVerifier,
+} from './site_graph.js';
 export {
   STOREFRONT_DIRNAME,
   type StorefrontBuilder,
