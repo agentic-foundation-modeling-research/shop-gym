@@ -11,6 +11,11 @@
  * markers; on a bot check the tool result tells the agent not to try to
  * pass it, and `click`, `type`, `select` and `press` on that page are
  * refused. `navigate` refuses after `NAVIGATION_CAP` calls in one run.
+ *
+ * The browsers send no `x-shopgym-episode` header. A live storefront does
+ * not know it, and the extra header makes each cross-origin fetch of a
+ * page send a CORS preflight, which a site that does not allow the header
+ * fails, so a page that renders from such a fetch stays blank.
  */
 
 import type { Tool, ToolContext, ToolResult } from '@shop-gym/agent';
@@ -74,8 +79,6 @@ export interface StartState {
 }
 
 export interface IterationBrowserOptions {
-  /** Sent as `x-shopgym-episode` by every browser. */
-  readonly episodeId: string;
   /** The storefront origin. A site path given to `navigate`, such as `/cart`, opens on it. */
   readonly baseUrl: string;
   /** The page that every Iteration starts on. */
@@ -345,7 +348,7 @@ const NAVIGATION_CAP_REFUSAL = [
 ].join('\n');
 
 function launchSession(options: IterationBrowserOptions): Promise<BrowserSession> {
-  return BrowserSession.launch({ episodeId: options.episodeId, baseUrl: options.baseUrl });
+  return BrowserSession.launch({ baseUrl: options.baseUrl });
 }
 
 /**

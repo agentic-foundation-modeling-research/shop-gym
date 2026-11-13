@@ -221,13 +221,13 @@ describe('mergeStats', () => {
       info_pages_count: 2,
       feature_count: 4,
     });
-  // A site with no catalog endpoint shows no totals, so they are 0.
+  // A site with no catalog endpoint shows no totals, so they are unknown.
   const observedSeed = {
     source: 'observed_sample',
     sample_size: 3,
-    products_total: 0,
-    collections_total: 0,
-    products_per_collection: { avg: 0, median: 0, max: 0 },
+    products_total: null,
+    collections_total: null,
+    products_per_collection: null,
     price: { min: 44.5, max: 79, median: 59, currency: 'USD' },
     products_with_variants_pct: 0.5,
     variant_axes_observed: ['edition', 'color'],
@@ -244,7 +244,7 @@ describe('mergeStats', () => {
     });
   });
 
-  it('keeps the zero totals of an observed sample out of the merged totals', () => {
+  it('keeps the unknown totals of an observed sample out of the merged totals', () => {
     const merged = mergeStats([catalogSeed(), statsSchema.parse(observedSeed)], seed({}));
     expect(merged).toMatchObject({
       source: 'observed_sample',
@@ -254,6 +254,48 @@ describe('mergeStats', () => {
       products_per_collection: { avg: 10, median: 10, max: 12 },
       price: { min: 10, max: 120, median: 47, currency: 'USD' },
       variant_axes_observed: ['size', 'edition', 'color'],
+    });
+  });
+
+  it('keeps a number unknown when no seed knows it, and writes no 0 for it', () => {
+    const merged = mergeStats(
+      [
+        statsSchema.parse({
+          ...observedSeed,
+          price: null,
+          products_with_variants_pct: null,
+          navigation_depth_max: null,
+          homepage_section_count: null,
+          info_pages_count: null,
+        }),
+      ],
+      seed({}),
+    );
+    expect(merged).toMatchObject({
+      source: 'observed_sample',
+      sample_size: 3,
+      products_total: null,
+      collections_total: null,
+      products_per_collection: null,
+      price: null,
+      products_with_variants_pct: null,
+      navigation_depth_max: null,
+      homepage_section_count: null,
+      info_pages_count: null,
+    });
+  });
+
+  it('keeps the zero totals of an older observed seed out of the merged totals', () => {
+    const older = statsSchema.parse({
+      ...observedSeed,
+      products_total: 0,
+      collections_total: 0,
+      products_per_collection: { avg: 0, median: 0, max: 0 },
+    });
+    expect(mergeStats([older], seed({}))).toMatchObject({
+      products_total: null,
+      collections_total: null,
+      products_per_collection: null,
     });
   });
 

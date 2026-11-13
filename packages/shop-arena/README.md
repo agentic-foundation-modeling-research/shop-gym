@@ -147,7 +147,10 @@ and `sample_size` is the number of products read. On a generic site
 variant stats come from one fragment for each page. When more than one task
 recorded the same page, the first fragment in filename order counts. The
 prices use the most frequent currency, and the observed axes are sorted. The
-product and collection totals and the products per collection stay 0.
+product and collection totals and the products per collection are `null`,
+because a sample does not show them. On each path a stat that the run did
+not see is `null`, never 0. When no part gives `shop.currency`, the merge
+step writes the currency of the stats prices into `capabilities.json`.
 
 With a `focus` (for example `"Video Games"`), the explore step adds
 `prompts/planner_focus.md` after the planner prompt of either platform,
@@ -167,7 +170,15 @@ the pi runtime, a new headless `BrowserSession` for every iteration
 shop serves it, and writes `run/iters/<id>/start_state.json`), the
 `browserTools` from `@shop-gym/browser`, and three run-dir-scoped file
 tools (`read_file`, `write_file`, `list_dir`) that let the agent write
-`plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. Every iteration
+`plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. The iteration
+browser sends no `x-shopgym-episode` header: on a live site the header
+makes each cross-origin fetch of a page send a CORS preflight, and a site
+that does not allow the header fails the fetch, which can leave the page
+blank. The `read_file` calls of one iteration return at most 200,000
+characters in total (`fileTools({ readBudget })` with a `ReadBudget`
+that the explore step resets at the start of each iteration); after that,
+`read_file` fails and tells the agent to work from what it already read.
+Every iteration
 browser has the storefront origin as its base URL, so `navigate` opens a
 site path such as `/cart`. `src/explore/browser.ts` also gives the agent
 its own `snapshot` tool. It shows at most 50,000 characters of the
@@ -221,6 +232,18 @@ the executors write only what they saw and leave the rest `null` or
 not contradict `capabilities.json`; and both put site-specific lists,
 internal request names and the site's own feature names into generic
 words.
+
+The synthesis prompt also forbids run notes: lines that tell about the
+exploration run and not about the storefront. The `synthesize` step
+finds such lines by a short closed list of run words, for example "this
+session", "bot check", "snapshot", "the run" or "was not tested". When
+the manual has such lines, the step makes one more completion with
+`prompts/synthesize_manual_rewrite.md`. That completion gets only those
+lines and their run words, and its reply (one JSON array with one string
+for each line, bare or in one fenced block) replaces them in place; an
+empty string removes its line. If the reply is not such an array, or a
+line of the rewritten manual still has a run word, the step fails with
+`ManualRunNoteError` and writes no `manual.md`.
 
 ```ts
 import { loadCredentials } from '@shop-gym/core';
@@ -413,7 +436,7 @@ const result = await build.runBuildLoop({
   genBackend: true, // adds the gen_backend task and the backend verifiers
   runtime, // any AgentRuntime, e.g. the pi adapter
   model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-  tools: fileTools(), // read_file / write_file / list_dir; run_command and screenshot_page are added
+  tools: fileTools(), // read_file / write_file / list_dir; run_command and screenshot_page are added; `{ readBudget }` caps the read_file characters
   maxIters: 12,
 });
 console.log(result.finalStatus, result.build.backendUrl);

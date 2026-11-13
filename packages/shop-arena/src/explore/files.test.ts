@@ -7,10 +7,10 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import type { ToolContent, ToolContext, ToolResult } from '@shop-gym/agent';
+import type { Tool, ToolContent, ToolContext, ToolResult } from '@shop-gym/agent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { fileTools, resolveInside } from './files.js';
+import { ReadBudget, fileTools, resolveInside } from './files.js';
 
 let base: string;
 let run: string;
@@ -29,8 +29,12 @@ afterEach(async () => {
   await fs.rm(base, { recursive: true, force: true });
 });
 
-function call(name: string, params: Record<string, unknown>): Promise<ToolResult> {
-  const tool = fileTools().find((t) => t.name === name);
+function call(
+  name: string,
+  params: Record<string, unknown>,
+  tools: readonly Tool[] = fileTools(),
+): Promise<ToolResult> {
+  const tool = tools.find((t) => t.name === name);
   if (tool === undefined) throw new Error(`no tool ${name}`);
   const ctx: ToolContext = { cwd: run, callId: 'call-1', signal: new AbortController().signal };
   return tool.execute(params, ctx);
@@ -101,5 +105,49 @@ describe('fileTools', () => {
     expect(result.isError).toBe(true);
     expect(text(result.content)).toBe('Error: path goes through a broken symlink: dangling');
     await expect(fs.readdir(outside)).resolves.toEqual(['secret.txt']);
+  });
+});
+
+describe('fileTools with a read budget', () => {
+  it('returns at most the budget over all read_file calls, then refuses to read', async () => {
+    await fs.writeFile(path.join(run, 'notes.txt'), 'abcdefghij');
+    const tools = fileTools({ readBudget: new ReadBudget(15) });
+
+    const first = await call('read_file', { path: 'notes.txt' }, tools);
+    expect(text(first.content)).toBe('abcdefghij');
+    const second = await call('read_file', { path: 'notes.txt' }, tools);
+    expect(text(second.content)).toBe(
+      'abcde\n\n[truncated: 5 more characters; next offset 5]\n\n[the read_file budget of 15 characters for this agent run is spent]',
+    );
+    const third = await call('read_file', { path: 'notes.txt', offset: 5 }, tools);
+    expect(third.isError).toBe(true);
+    expect(text(third.content)).toBe(
+      'Error: the read_file budget of 15 characters for this agent run is spent; work from what you already read',
+    );
+  });
+
+  it('reads again after a reset', async () => {
+    await fs.writeFile(path.join(run, 'notes.txt'), 'abcdefghij');
+    const budget = new ReadBudget(10);
+    const tools = fileTools({ readBudget: budget });
+    await call('read_file', { path: 'notes.txt' }, tools);
+    expect((await call('read_file', { path: 'notes.txt' }, tools)).isError).toBe(true);
+
+    budget.reset();
+    expect(text((await call('read_file', { path: 'notes.txt' }, tools)).content)).toBe(
+      'abcdefghij\n\n[the read_file budget of 10 characters for this agent run is spent]',
+    );
+  });
+
+  it('names the budget in the read_file description', () => {
+    const readFile = fileTools({ readBudget: new ReadBudget(15) }).find(
+      (tool) => tool.name === 'read_file',
+    );
+    expect(readFile?.description).toContain(
+      'All read_file calls of one agent run return at most 15 characters in total.',
+    );
+    expect(fileTools().find((tool) => tool.name === 'read_file')?.description).not.toContain(
+      'in total',
+    );
   });
 });
