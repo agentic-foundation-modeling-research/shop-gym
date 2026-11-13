@@ -224,6 +224,27 @@ describe('validateBundle', () => {
     ]);
   });
 
+  it('needs the local file of an image path, inside catalog/', async () => {
+    const image = (name: string) => ({ source_url: `https://images.example/${name}`, path: name });
+    const products = [
+      { ...RAW.products[0], images: [image('images/p1.jpg')] },
+      { ...RAW.products[1], images: [image('images/p1.jpg'), image('images/p2.jpg')] },
+      {
+        product_id: 'P3',
+        title: 'Brightmoor Cable',
+        variants: [{ variant_id: 'V4' }],
+        images: [{ path: '../bundle.json' }],
+      },
+    ];
+    writeBundle({ manifest: MANIFEST, products });
+    fs.mkdirSync(path.join(dir, 'catalog', 'images'));
+    fs.writeFileSync(path.join(dir, 'catalog', 'images', 'p1.jpg'), 'jpeg bytes');
+    expect(await problemsOf(validateBundle(dir, 'raw'))).toEqual([
+      'catalog/products.jsonl:2 (product_id "P2"): images[1].path: no file "images/p2.jpg"',
+      'catalog/products.jsonl:3 (product_id "P3"): images[0].path: must be a relative path inside catalog/ (got "../bundle.json")',
+    ]);
+  });
+
   it('keeps event types and page types to their closed lists', async () => {
     const events = [
       ...EVENT_TYPES.map((event_type, i) => ({ ...RAW.events[0], event_id: `ok${i}`, event_type })),

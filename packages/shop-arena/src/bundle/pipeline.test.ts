@@ -4,7 +4,7 @@ import * as path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { type BundleOptionsInput, buildBundle } from './index.js';
+import { type BundleOptionsInput, type FetchImage, buildBundle } from './index.js';
 
 /**
  * A tiny hand-written Amazon Reviews 2023 category, cutoff 2022-07-16.
@@ -149,6 +149,7 @@ function options(overrides: Partial<BundleOptionsInput> = {}): BundleOptionsInpu
     products: 5,
     users: 1,
     seed: '7',
+    imagesPerProduct: 0,
     ...overrides,
   };
 }
@@ -300,6 +301,14 @@ describe('buildBundle on Amazon Reviews 2023', () => {
         reviews: 13,
         reviews_over_cap: 0,
       }),
+      images: {
+        per_product: 0,
+        picked: 0,
+        downloaded: 0,
+        on_disk: 0,
+        failed: [],
+        not_requested: 0,
+      },
       validation: {
         level: 'raw',
         counts: { products: 5, variants: 6, reviews: 13, profiles: 0, events: 7 },
@@ -356,14 +365,16 @@ describe('buildBundle on Amazon Reviews 2023', () => {
     const first = await buildBundle(options());
     expect(first.reports.map((r) => [r.id, r.status])).toEqual([
       ['sample', 'ran'],
+      ['images', 'ran'],
       ['publish', 'ran'],
     ]);
     const again = await buildBundle(options());
-    expect(again.reports.map((r) => r.status)).toEqual(['skipped', 'skipped']);
+    expect(again.reports.map((r) => r.status)).toEqual(['skipped', 'skipped', 'skipped']);
     const fromPublish = await buildBundle(options({ from: 'publish' }));
-    expect(fromPublish.reports.map((r) => r.status)).toEqual(['skipped', 'ran']);
+    expect(fromPublish.reports.map((r) => r.status)).toEqual(['skipped', 'skipped', 'ran']);
+    // The new seed picks the same products here, so only the manifest changes.
     const newSeed = await buildBundle(options({ seed: '8' }));
-    expect(newSeed.reports.map((r) => r.status)).toEqual(['ran', 'ran']);
+    expect(newSeed.reports.map((r) => r.status)).toEqual(['ran', 'skipped', 'ran']);
     expect(readJson(newSeed.manifestPath).sample).toMatchObject({ seed: '8' });
   });
 
@@ -371,5 +382,224 @@ describe('buildBundle on Amazon Reviews 2023', () => {
     const bad = [...REVIEWS.slice(0, 2), { ...REVIEWS[2], rating: 4.5 }];
     writeLines(path.join(sourceDir, 'review_categories', `${CATEGORY}.jsonl`), bad);
     await expect(buildBundle(options())).rejects.toThrow(`${CATEGORY}.jsonl:3: rating:`);
+  });
+});
+
+/** The large image URL of the `n`-th image (from 1) of a product. */
+function imageUrl(productId: string, n: number): string {
+  return `https://images.example/${productId}-${n}.jpg`;
+}
+
+/** Rewrite the meta file so that every product has `count` images. */
+function writeMetaWithImages(count: number): void {
+  const rows = META.map((row) => ({
+    ...row,
+    images: Array.from({ length: count }, (_, i) => ({
+      thumb: `https://images.example/${String(row.parent_asin)}-${i + 1}-thumb.jpg`,
+      large: imageUrl(String(row.parent_asin), i + 1),
+      variant: i === 0 ? 'MAIN' : `PT0${i}`,
+      hi_res: null,
+    })),
+  }));
+  writeLines(path.join(sourceDir, 'meta_categories', `meta_${CATEGORY}.jsonl`), rows);
+}
+
+/** The answer of the fake web to one request: a response, or an error to throw. */
+type Answer = (url: string, attempt: number) => Response | Error;
+
+interface FakeWeb {
+  readonly fetch: FetchImage;
+  /** Every requested URL, in request order. */
+  readonly requested: string[];
+  /** Every `init` that a request passed. */
+  readonly inits: Parameters<FetchImage>[1][];
+  /** The most requests that were open at one time. */
+  readonly maxOpen: () => number;
+}
+
+/** A fake `fetch` that answers after a short wait, so that requests overlap. */
+function fakeWeb(answer: Answer): FakeWeb {
+  const requested: string[] = [];
+  const inits: Parameters<FetchImage>[1][] = [];
+  let open = 0;
+  let maxOpen = 0;
+  const fetch: FetchImage = async (url, init) => {
+    const attempt = requested.filter((seen) => seen === url).length;
+    requested.push(url);
+    inits.push(init);
+    open += 1;
+    maxOpen = Math.max(maxOpen, open);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    open -= 1;
+    const result = answer(url, attempt);
+    if (result instanceof Error) throw result;
+    return result;
+  };
+  return { fetch, requested, inits, maxOpen: () => maxOpen };
+}
+
+function image(url: string): Response {
+  return new Response(`bytes of ${url}`, { headers: { 'content-type': 'image/jpeg' } });
+}
+
+function status(code: number): Response {
+  return new Response('no', { status: code, headers: { 'content-type': 'text/plain' } });
+}
+
+/** Records the backoff waits instead of waiting. */
+function fakeSleep(): { readonly sleep: (ms: number) => Promise<void>; readonly waits: number[] } {
+  const waits: number[] = [];
+  return { sleep: async (ms) => void waits.push(ms), waits };
+}
+
+interface ImageRecord {
+  readonly source_url: string;
+  readonly path?: string;
+}
+
+function imagesOf(dir: string): Map<string, readonly ImageRecord[]> {
+  return new Map(
+    readJsonl(dir, 'catalog/products.jsonl').map((p) => [
+      String(p.product_id),
+      p.images as ImageRecord[],
+    ]),
+  );
+}
+
+const KEPT = ['G1', 'G2', 'G3', 'G4', 'G8'];
+
+describe('buildBundle images', () => {
+  beforeEach(() => writeMetaWithImages(2));
+
+  it('downloads the first image of each kept product and records its path next to the source URL', async () => {
+    const web = fakeWeb(image);
+    const result = await buildBundle(options({ imagesPerProduct: 1 }), {
+      fetch: web.fetch,
+      sleep: fakeSleep().sleep,
+    });
+    expect([...web.requested].sort()).toEqual(KEPT.map((id) => imageUrl(id, 1)));
+    for (const init of web.inits) {
+      expect(init.redirect).toBe('manual');
+      expect(init.signal.aborted).toBe(false);
+    }
+    expect(web.maxOpen()).toBeGreaterThan(1);
+    expect(web.maxOpen()).toBeLessThanOrEqual(4);
+    for (const [id, images] of imagesOf(result.bundleDir)) {
+      expect(images).toEqual([
+        { source_url: imageUrl(id, 1), path: expect.stringMatching(/^images\/[0-9a-f]{16}\.jpg$/) },
+        { source_url: imageUrl(id, 2) },
+      ]);
+      const file = path.join(result.bundleDir, 'catalog', images[0]?.path ?? '');
+      expect(fs.readFileSync(file, 'utf-8')).toBe(`bytes of ${imageUrl(id, 1)}`);
+    }
+    expect(readJson(result.reportPath).images).toEqual({
+      per_product: 1,
+      picked: 5,
+      downloaded: 5,
+      on_disk: 0,
+      failed: [],
+      not_requested: 0,
+    });
+  });
+
+  it('retries with backoff, records a failed image in the report, and still publishes the bundle', async () => {
+    const timeout = () => new DOMException('The operation timed out.', 'TimeoutError');
+    const web = fakeWeb((url, attempt) => {
+      if (url === imageUrl('G2', 1)) return status(404);
+      if (url === imageUrl('G3', 1)) return status(503);
+      if (url === imageUrl('G4', 1)) return attempt === 0 ? timeout() : image(url);
+      if (url === imageUrl('G8', 1)) return timeout();
+      return image(url);
+    });
+    const { sleep, waits } = fakeSleep();
+    const result = await buildBundle(options({ imagesPerProduct: 1 }), { fetch: web.fetch, sleep });
+    const count = (url: string) => web.requested.filter((seen) => seen === url).length;
+    expect(KEPT.map((id) => count(imageUrl(id, 1)))).toEqual([1, 1, 4, 2, 4]);
+    expect([...waits].sort((a, b) => a - b)).toEqual([1000, 1000, 1000, 2000, 2000, 4000, 4000]);
+    expect(readJson(result.reportPath).images).toEqual({
+      per_product: 1,
+      picked: 5,
+      downloaded: 2,
+      on_disk: 0,
+      failed: [
+        { source_url: imageUrl('G2', 1), error: 'HTTP 404' },
+        { source_url: imageUrl('G3', 1), error: 'HTTP 503' },
+        { source_url: imageUrl('G8', 1), error: 'timed out after 30 s' },
+      ],
+      not_requested: 0,
+    });
+    const images = imagesOf(result.bundleDir);
+    expect(images.get('G1')?.[0]?.path).toBeDefined();
+    expect(images.get('G4')?.[0]?.path).toBeDefined();
+    for (const id of ['G2', 'G3', 'G8']) {
+      expect(images.get(id)?.[0]).toEqual({ source_url: imageUrl(id, 1) });
+    }
+  });
+
+  it('skips the images already on disk when the step runs again', async () => {
+    const { sleep } = fakeSleep();
+    const failing = fakeWeb((url) => (url === imageUrl('G2', 1) ? status(404) : image(url)));
+    await buildBundle(options({ imagesPerProduct: 1 }), { fetch: failing.fetch, sleep });
+
+    const retry = fakeWeb(image);
+    const again = await buildBundle(options({ imagesPerProduct: 1, from: 'images' }), {
+      fetch: retry.fetch,
+      sleep,
+    });
+    expect(retry.requested).toEqual([imageUrl('G2', 1)]);
+    expect(readJson(again.reportPath).images).toMatchObject({ downloaded: 1, on_disk: 4 });
+    expect(imagesOf(again.bundleDir).get('G2')?.[0]?.path).toBeDefined();
+
+    const more = fakeWeb(image);
+    const two = await buildBundle(options({ imagesPerProduct: 2 }), { fetch: more.fetch, sleep });
+    expect(two.reports.map((r) => r.status)).toEqual(['skipped', 'ran', 'ran']);
+    expect([...more.requested].sort()).toEqual(KEPT.map((id) => imageUrl(id, 2)));
+    expect(readJson(two.reportPath).images).toMatchObject({ picked: 10, on_disk: 5 });
+    for (const images of imagesOf(two.bundleDir).values()) {
+      expect(images.every((record) => record.path !== undefined)).toBe(true);
+    }
+  });
+
+  it('stops after ten refusals in a row, never retries a refusal, and still publishes', async () => {
+    writeMetaWithImages(4);
+    const refusals = [
+      () => status(403),
+      () => status(429),
+      () => new Response('<html>check</html>', { headers: { 'content-type': 'text/html' } }),
+    ];
+    let answered = 0;
+    const web = fakeWeb(() => {
+      const refuse = refusals[answered % refusals.length];
+      answered += 1;
+      return refuse !== undefined ? refuse() : status(403);
+    });
+    const { sleep, waits } = fakeSleep();
+    const result = await buildBundle(options({ imagesPerProduct: 4 }), { fetch: web.fetch, sleep });
+    expect(web.requested.length).toBeGreaterThanOrEqual(10);
+    expect(web.requested.length).toBeLessThan(20);
+    expect(new Set(web.requested).size).toBe(web.requested.length);
+    expect(waits).toEqual([]);
+    const report = readJson(result.reportPath).images as Record<string, unknown>;
+    expect(report).toMatchObject({
+      picked: 20,
+      downloaded: 0,
+      not_requested: 20 - web.requested.length,
+      stopped: expect.stringContaining('10 refused requests in a row'),
+    });
+    const errors = (report.failed as { error: string }[]).map((failure) => failure.error);
+    expect(new Set(errors)).toEqual(new Set(['HTTP 403', 'HTTP 429', 'not an image (text/html)']));
+    for (const images of imagesOf(result.bundleDir).values()) {
+      expect(images.every((record) => record.path === undefined)).toBe(true);
+    }
+  });
+
+  it('downloads nothing when imagesPerProduct is 0', async () => {
+    const web = fakeWeb(image);
+    const result = await buildBundle(options({ imagesPerProduct: 0 }), { fetch: web.fetch });
+    expect(web.requested).toEqual([]);
+    expect(imagesOf(result.bundleDir).get('G1')).toEqual([
+      { source_url: imageUrl('G1', 1) },
+      { source_url: imageUrl('G1', 2) },
+    ]);
   });
 });

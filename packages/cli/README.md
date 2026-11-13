@@ -55,15 +55,21 @@ Builds a raw Source bundle from one category of a source dataset.
 ```
 shopgym bundle <adapter> <src> --out <dir> --category <name> --cutoff <date>
                --products <n> --users <n> --seed <s>
-               [--min-events-before <n>] [--reviews-per-product <n>] [--from <step>]
+               [--min-events-before <n>] [--reviews-per-product <n>]
+               [--images-per-product <n>] [--from <step>]
 ```
 
 The only adapter is `amazon_reviews_2023`. `<src>` holds
 `review_categories/<name>.jsonl` and `meta_categories/meta_<name>.jsonl`.
 `--cutoff` is a date (midnight UTC) or a UTC time. `--min-events-before`
 defaults to 5. Without `--reviews-per-product`, every review of a kept
-product stays. `--from` must be `sample` or `publish`. Prints the bundle
-directory on stdout.
+product stays. `--images-per-product` (default 1) sets the large images
+to download per product into `catalog/images/`; 0 turns the download
+off. The download stops after 10 refused requests in a row, and
+`report.json` lists the failed images. `--from` must be `sample`,
+`images` or `publish`; `--from images` tries the missing images again
+and skips the files already on disk. Prints the bundle directory on
+stdout.
 
 ### `shopgym gen <manual_dir>... --name <name>`
 

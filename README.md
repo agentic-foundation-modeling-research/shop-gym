@@ -301,7 +301,7 @@ category files under `outputs/` (gitignored) and run:
 node packages/cli/dist/main.js bundle amazon_reviews_2023 outputs/sources/amazon_reviews_2023/raw \
   --category Video_Games --out outputs/bundles/vg_10k --cutoff 2022-07-16 \
   --products 10000 --users 200 --seed 7 --reviews-per-product 50
-# -> outputs/bundles/vg_10k/{bundle.json,catalog/products.jsonl,catalog/reviews.jsonl,events/events.jsonl,report.json}
+# -> outputs/bundles/vg_10k/{bundle.json,catalog/products.jsonl,catalog/reviews.jsonl,catalog/images/,events/events.jsonl,report.json}
 ```
 
 The sampling starts from the users. It picks `--users` users at random
@@ -313,7 +313,18 @@ verified review also gives an inferred `purchase` event. Only modeled users
 get User events. `--reviews-per-product` keeps a seeded choice of the
 reviews of each product, and always keeps the reviews of modeled users.
 The same options and seed give the same bytes. On Video_Games (4.6M review
-rows) a run takes about 45 s and 2.7 GB of memory. See
+rows) a run takes about 45 s and 2.7 GB of memory, before the images.
+
+Then the bundle downloads the first `--images-per-product` (default 1)
+large images of each product into `catalog/images/`, and records the
+local `path` next to the `source_url` of each image. The download
+requests only the image URLs of the dataset, four at a time, with a
+30 s time limit and three retries with backoff. It never tries to get
+past a block: a refusal (a redirect, a 401, 403 or 429, or an answer that
+is not an image) is not retried, and 10 refusals in a row stop the
+download. Failed images are listed in `report.json` and do not fail the
+bundle. `--from images` tries the missing images again and skips the
+files already on disk. `--images-per-product 0` turns the download off. See
 [`packages/shop-arena/README.md`](packages/shop-arena/README.md#bundle) for
 the field map and the step layout.
 
