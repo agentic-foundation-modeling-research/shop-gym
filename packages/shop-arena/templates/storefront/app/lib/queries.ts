@@ -15,6 +15,20 @@ export const IMAGE_FRAGMENT = `#graphql
   }
 `;
 
+export const FILTER_FRAGMENT = `#graphql
+  fragment FilterFields on Filter {
+    id
+    label
+    type
+    values {
+      id
+      label
+      count
+      input
+    }
+  }
+`;
+
 export const MENU_FRAGMENT = `#graphql
   fragment MenuFields on Menu {
     id
@@ -285,7 +299,7 @@ export const COLLECTIONS_QUERY = `#graphql
 `;
 
 export const COLLECTION_QUERY = `#graphql
-  query Collection($handle: String!) {
+  query Collection($handle: String!, $filters: [ProductFilter!]) {
     collection(handle: $handle) {
       id
       handle
@@ -295,8 +309,11 @@ export const COLLECTION_QUERY = `#graphql
       image {
         ...ImageFields
       }
-      products(first: 50) {
+      products(first: 50, filters: $filters) {
         totalCount
+        filters {
+          ...FilterFields
+        }
         nodes {
           ...ProductCardFields
         }
@@ -306,6 +323,7 @@ export const COLLECTION_QUERY = `#graphql
   ${IMAGE_FRAGMENT}
   ${MONEY_FRAGMENT}
   ${PRODUCT_CARD_FRAGMENT}
+  ${FILTER_FRAGMENT}
 `;
 
 export const PRODUCT_QUERY = `#graphql
@@ -365,9 +383,17 @@ export const PRODUCT_QUERY = `#graphql
 `;
 
 export const SEARCH_QUERY = `#graphql
-  query Search($query: String!) {
-    search(query: $query, first: 50, types: [PRODUCT, PAGE, ARTICLE]) {
+  query Search($query: String!, $productFilters: [ProductFilter!]) {
+    search(
+      query: $query
+      first: 50
+      types: [PRODUCT, PAGE, ARTICLE]
+      productFilters: $productFilters
+    ) {
       totalCount
+      productFilters {
+        ...FilterFields
+      }
       nodes {
         __typename
         ... on Product {
@@ -394,6 +420,7 @@ export const SEARCH_QUERY = `#graphql
   ${IMAGE_FRAGMENT}
   ${MONEY_FRAGMENT}
   ${PRODUCT_CARD_FRAGMENT}
+  ${FILTER_FRAGMENT}
 `;
 
 export const PAGE_QUERY = `#graphql
