@@ -26,7 +26,7 @@ The current GraphQL contract is the per-domain SDL under `src/schema/`
 | --- | --- |
 | Shop | `shop`, `Shop.paymentSettings`, `Shop.primaryDomain`, `Shop.brand`, policies, `Shop.metafield(s)` |
 | Menu | `menu(handle)` |
-| Product | `product(handle)`, `products(...)`, product options, variants, images, encoded variant fields, inventory-backed `availableForSale` / `quantityAvailable`, `Product.metafield(s)`, `Product.reviews(...)` (sandbox-only) |
+| Product | `product(handle)`, `products(...)`, product options, variants, images, encoded variant fields, inventory-backed `availableForSale` / `quantityAvailable`, `Product.metafield(s)`, `Product.reviews(...)` and `Product.ratingHistogram` (sandbox-only) |
 | Collection | `collection(handle)`, `collections(...)`, `Collection.products(...)`, `Collection.metafield(s)` |
 | Content | `page(handle)`, `blog(handle)`, `blogs(...)`, `Blog.articles(...)`, `Blog.articleByHandle(...)` |
 | Search | `search(...)`, `predictiveSearch(...)`, `productRecommendations(productId)` |
@@ -185,16 +185,21 @@ request order.
 ### Reviews
 
 `reviews.json` lists read-only product Reviews. `Product.reviews(first,
-after, sortKey)` (sandbox-only) pages them in the order `MOST_RECENT` (the
-default), `HIGHEST_RATING`, `LOWEST_RATING` or `MOST_HELPFUL`; ties put the
-more recent Review first, then keep the file order. Each `Review` has a
+after, sortKey, rating, verifiedBuyer)` (sandbox-only) pages them in the order
+`MOST_RECENT` (the default), `HIGHEST_RATING`, `LOWEST_RATING` or
+`MOST_HELPFUL`; ties put the more recent Review first, then keep the file
+order. `rating` (1 to 5) and `verifiedBuyer` keep only the Reviews with that
+star rating and that Verified Buyer flag, before the sort and the paging.
+Each `Review` has a
 `rating` (1 to 5), `title`, `body`, `reviewerName`, `createdAt`,
 `verifiedBuyer`, `helpfulCount` and the `variant` bought. The product
 metafields `reviews.rating` (Shopify's `rating` JSON, the mean rounded to one
 decimal, for example `{"value":"4.5","scale_min":"1.0","scale_max":"5.0"}`)
 and `reviews.rating_count` (`number_integer`) are computed from the same
 Reviews, and a product with no Reviews has neither. `metafields.json` entries
-with these two keys are ignored.
+with these two keys are ignored. `Product.ratingHistogram` (sandbox-only)
+counts the same Reviews at each star rating, as five `{ rating, count }`
+entries from 5 stars down to 1 star; a rating with no Reviews has the count 0.
 
 ### Example query
 
