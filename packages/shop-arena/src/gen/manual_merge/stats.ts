@@ -3,25 +3,34 @@
 import { z } from 'zod';
 
 import type { Capabilities } from '../../explore/capabilities.js';
-import { STATS_SOURCES, type Stats } from '../../explore/stats.js';
+import { STATS_SOURCES, type Stats, capabilityCounts } from '../../explore/stats.js';
 
 /**
- * A seed `stats.json`. A file from before `source` and `sample_size` has
- * neither field; it came from the Shopify catalog endpoints and read
- * `products_total` products.
+ * A seed `stats.json`. A `null` number is unknown. A file from before
+ * `source` and `sample_size` has neither field; it came from the Shopify
+ * catalog endpoints and read `products_total` products.
  */
 export const statsSchema = z.object({
   source: z.enum(STATS_SOURCES).optional(),
   sample_size: z.number().int().nonnegative().optional(),
-  products_total: z.number(),
-  collections_total: z.number(),
-  products_per_collection: z.object({ avg: z.number(), median: z.number(), max: z.number() }),
-  price: z.object({ min: z.number(), max: z.number(), median: z.number(), currency: z.string() }),
-  products_with_variants_pct: z.number(),
+  products_total: z.number().nullable(),
+  collections_total: z.number().nullable(),
+  products_per_collection: z
+    .object({ avg: z.number(), median: z.number(), max: z.number() })
+    .nullable(),
+  price: z
+    .object({
+      min: z.number(),
+      max: z.number(),
+      median: z.number(),
+      currency: z.string().nullable(),
+    })
+    .nullable(),
+  products_with_variants_pct: z.number().nullable(),
   variant_axes_observed: z.array(z.string()),
-  navigation_depth_max: z.number(),
-  homepage_section_count: z.number(),
-  info_pages_count: z.number(),
+  navigation_depth_max: z.number().nullable(),
+  homepage_section_count: z.number().nullable(),
+  info_pages_count: z.number().nullable(),
   feature_count: z.number(),
 });
 
@@ -40,23 +49,26 @@ function mean(values: readonly number[]): number {
   return values.length === 0 ? 0 : values.reduce((a, b) => a + b, 0) / values.length;
 }
 
-/** Counts true booleans and list lengths anywhere in the document. */
-function countFeatures(value: unknown): number {
-  if (value === true) return 1;
-  if (Array.isArray(value)) return value.length;
-  if (typeof value === 'object' && value !== null) {
-    return Object.values(value).reduce<number>((sum, v) => sum + countFeatures(v), 0);
-  }
-  return 0;
+/** The values that are not `null`. */
+function known<T>(values: readonly (T | null)[]): T[] {
+  return values.filter((value): value is T => value !== null);
+}
+
+/** The rounded median of the known values, or `null` when no value is known. */
+function knownMedian(values: readonly (number | null)[]): number | null {
+  const numbers = known(values);
+  return numbers.length === 0 ? null : Math.round(median(numbers));
 }
 
 /**
  * Merges the seed stats into one `Stats`.
  *
- * The totals and the products per collection come only from the seeds
- * that read a catalog endpoint, because an observed-sample seed shows 0
- * for the counts its site does not show. The merged `source` is
- * `observed_sample` when any seed is, and `sample_size` adds up the seeds.
+ * Each number comes from the seeds that know it, and it stays `null` when
+ * no seed knows it, so an unknown number never becomes 0. The totals and
+ * the products per collection come only from the seeds that read a
+ * catalog endpoint, because an older observed-sample seed shows 0 for the
+ * counts its site does not show. The merged `source` is `observed_sample`
+ * when any seed is, and `sample_size` adds up the seeds.
  *
  * @throws Error when `seeds` is empty.
  */
@@ -65,33 +77,37 @@ export function mergeStats(seeds: readonly SeedStats[], capabilities: Capabiliti
     throw new Error('mergeStats requires at least one seed');
   }
   const catalog = seeds.filter((s) => s.source !== 'observed_sample');
-  const priced = seeds.filter((s) => s.price.max > 0);
+  const perCollection = known(catalog.map((s) => s.products_per_collection));
+  // An older seed with no price wrote 0 for each price number.
+  const priced = known(seeds.map((s) => s.price)).filter((price) => price.max > 0);
+  const variantShares = known(seeds.map((s) => s.products_with_variants_pct));
   const currency =
-    capabilities.shop.currency ?? seeds.find((s) => s.price.currency !== '')?.price.currency ?? '';
+    capabilities.shop.currency ?? priced.find((price) => price.currency)?.currency ?? null;
   return {
     source: catalog.length === seeds.length ? 'catalog_endpoint' : 'observed_sample',
-    sample_size: seeds.reduce((sum, s) => sum + (s.sample_size ?? s.products_total), 0),
-    products_total: Math.round(median(catalog.map((s) => s.products_total))),
-    collections_total: Math.round(median(catalog.map((s) => s.collections_total))),
-    products_per_collection: {
-      avg: mean(catalog.map((s) => s.products_per_collection.avg)),
-      median: median(catalog.map((s) => s.products_per_collection.median)),
-      max: Math.max(0, ...catalog.map((s) => s.products_per_collection.max)),
-    },
+    // A seed with no `sample_size` is an older catalog seed, which knows its total.
+    sample_size: seeds.reduce((sum, s) => sum + (s.sample_size ?? s.products_total ?? 0), 0),
+    products_total: knownMedian(catalog.map((s) => s.products_total)),
+    collections_total: knownMedian(catalog.map((s) => s.collections_total)),
+    products_per_collection:
+      perCollection.length === 0
+        ? null
+        : {
+            avg: mean(perCollection.map((p) => p.avg)),
+            median: median(perCollection.map((p) => p.median)),
+            max: Math.max(...perCollection.map((p) => p.max)),
+          },
     price:
       priced.length === 0
-        ? { min: 0, max: 0, median: 0, currency }
+        ? null
         : {
-            min: Math.min(...priced.map((s) => s.price.min)),
-            max: Math.max(...priced.map((s) => s.price.max)),
-            median: median(priced.map((s) => s.price.median)),
+            min: Math.min(...priced.map((price) => price.min)),
+            max: Math.max(...priced.map((price) => price.max)),
+            median: median(priced.map((price) => price.median)),
             currency,
           },
-    products_with_variants_pct: mean(seeds.map((s) => s.products_with_variants_pct)),
+    products_with_variants_pct: variantShares.length === 0 ? null : mean(variantShares),
     variant_axes_observed: [...new Set(seeds.flatMap((s) => s.variant_axes_observed))],
-    navigation_depth_max: capabilities.site_shell.nav_depth ?? 0,
-    homepage_section_count: capabilities.homepage.section_count ?? 0,
-    info_pages_count: capabilities.info_pages_present.length,
-    feature_count: countFeatures(capabilities),
+    ...capabilityCounts(capabilities),
   };
 }

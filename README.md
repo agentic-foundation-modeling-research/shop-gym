@@ -82,7 +82,8 @@ shopgym explore https://example-shop.com
 ```
 
 Options: `--out <dir>`, `--max-iters <n>`, `--timeout <ms>`,
-`--from prefetch|explore|merge|synthesize|graph`, `--force-resume`, `--focus <text>`.
+`--from prefetch|explore|merge|synthesize|graph`, `--force-resume`, `--focus <text>`,
+`--brand-term <word>` (repeatable).
 Re-running with the same output directory resumes the unfinished step.
 
 After merge, the `graph` step writes `site_graph.json`, the Site state
@@ -135,7 +136,10 @@ executors record one product observation (price, currency, variant facts)
 for each product page that they open, with a tool that takes a key of the
 page from the browser. The price and variant stats come from these
 observations, and each product page counts once. The product and
-collection totals stay 0.
+collection totals are `null`. On each platform a stat that the run did not
+see is `null`, never 0, and `gen` keeps it unknown when it merges manuals.
+When no part gives the shop currency, the merge step takes it from the
+observed prices into `capabilities.json`.
 
 On a large site, `--focus "<text>"` keeps the run in one part of the site,
 for example `--focus "Video Games"`. The planner gets the focus as a hint: it
@@ -148,14 +152,24 @@ same output directory must pass the same `--focus`.
 
 Exploration never tries to pass a bot check. Prefetch stops on a captcha,
 interstitial or rate-limit homepage with the reason `bot_check`, and on a
-Cloudflare challenge homepage with the reason `cloudflare_challenge`. In a
+Cloudflare challenge homepage with the reason `cloudflare_challenge` (or
+`http_status`, when the challenge comes with an HTTP error status). In a
 run, the Browser tools refuse `click`, `type`, `select` and `press` on a
 bot-check page, a Plan task that meets a bot check is marked blocked with
 the note "bot check", and the run goes on. Two
 Iterations in a row with a bot check, or the navigation cap of 200
 `navigate` calls per run, stop the run. A stopped run still writes the
-manual from the finished parts, lists the unfinished areas as
-`coverage_gaps`, records the stop in `manifest.json`, and exits 0.
+manual from the finished parts, lists each Fixed area that did not end done
+in `fixed_area_gaps` with its reason, records the stop in `manifest.json`,
+and exits 0.
+
+`manual.md` tells about the storefront, not about the run. When the
+synthesized manual has run notes, lines with run words such as "this
+session", "bot check" or "was not tested", the `synthesize` step makes
+one more LLM call that rewrites only those lines. If a rewritten line
+still has a run word, the step fails and writes no manual. The
+`read_file` calls of one Iteration return at most 200,000 characters in
+total, so that an agent does not spend its context on its own files.
 
 ### 2. Generate a SandboxShop
 

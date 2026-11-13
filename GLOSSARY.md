@@ -37,6 +37,14 @@ _Avoid_: real shop, source storefront, original shop
 The ShopArena process (`shopgym explore`) that browses one Live storefront and writes one Shop Manual.
 _Avoid_: ShopExplore, explore (alone)
 
+**Platform path**:
+The way that Storefront exploration reads one Live storefront, as prefetch decides it: `shopify` when the homepage has a Shopify marker or the first `/products.json` page returns a product list, else `generic`. On the `shopify` path, prefetch also reads the catalog endpoints and the policy pages, and `stats.json` comes from the catalog. On the `generic` path, prefetch stops after `robots.txt`, the homepage, `sitemap.xml` and that first `/products.json` request, the planner picks start pages from their links, and `stats.json` comes from the Product observations. `manifest.json` records `platform`.
+_Avoid_: platform mode, site type
+
+**Focus hint**:
+The `--focus` text, such as "Video Games", that tells the planner of Storefront exploration which part of a large Live storefront to explore. The planner picks its listing pages, product pages and search queries in that part and writes the focus into the briefs. It still plans every Fixed area, and navigation outside the focus is not blocked. `manifest.json` records `focus`, and a resumed run must pass the same focus.
+_Avoid_: department filter, scope
+
 **Bot check**:
 A page that a site shows in place of the page that was asked for, to find out whether the visitor is a person, for example a Cloudflare challenge, a captcha page, an interstitial page with one button to go on, or a rate-limit page served with HTTP 503. Storefront exploration finds it by markers in the page HTML and never tries to pass it: its Browser tools refuse to click, type, select or press on it. A bot-check homepage stops prefetch. In a Harness run, the Plan task that meets a Bot check is marked blocked with the note "bot check", and two Iterations in a row with a Bot check end the run with a Caller stop.
 _Avoid_: captcha (for all kinds), block page
@@ -44,6 +52,14 @@ _Avoid_: captcha (for all kinds), block page
 **Navigation cap**:
 The fixed number of `navigate` calls (200) that one run of the explore step may make, over all its Iterations. It is a constant, not an option, and a resumed run starts a new count. At the cap, `navigate` refuses, and the run ends with a Caller stop after that Iteration.
 _Avoid_: page budget, navigation limit
+
+**Read budget**:
+The fixed number of characters (200,000) that all `read_file` calls of one Iteration of the explore step may return. It starts again at the start of each Iteration. When it is spent, `read_file` fails and tells the agent to work from what it already read.
+_Avoid_: read limit, file budget
+
+**Run note**:
+A line of a Shop Manual that tells about the exploration run and not about the storefront, for example what the run tested, captured or planned, where it stopped, or what its Iterations, snapshots, Bot checks or browser session did. The `synthesize` step finds run notes by a closed list of run words, asks one LLM call to rewrite only those lines, and fails when a rewritten line still has a run word.
+_Avoid_: process note, session note
 
 **Shop Manual**:
 The anonymized description of one storefront's structure, features, and UX: prose in `manual.md`, Capabilities in `capabilities.json`, the Site state graph in `site_graph.json`, and catalog statistics in `stats.json`.
@@ -234,7 +250,7 @@ _Avoid_: episode
 The SDK-independent, ordered record of one Agent run: messages, tool calls, tool results, and token usage.
 
 **BrowserSession**:
-One Chromium browser, context, and page bound to one Episode id, so that every request it sends carries the episode header.
+One Chromium browser, context, and page. With an Episode id, every request it sends carries the episode header. Storefront exploration gives no Episode id, so its requests to a Live storefront carry no such header.
 _Avoid_: session (alone)
 
 **Browser tools**:

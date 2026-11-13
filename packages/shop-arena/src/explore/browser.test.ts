@@ -23,10 +23,13 @@ const LONG_LINE = `<!doctype html><html><head><title>Long line</title></head><bo
 let server: http.Server;
 let baseUrl = '';
 const requested: string[] = [];
+/** The `x-shopgym-episode` header of each request, or `undefined` when it has none. */
+const episodeHeaders: (string | string[] | undefined)[] = [];
 
 beforeAll(async () => {
   server = http.createServer((req, res) => {
     requested.push(req.url ?? '');
+    episodeHeaders.push(req.headers['x-shopgym-episode']);
     switch (req.url) {
       case '/':
         return res.writeHead(200, { 'content-type': 'text/html' }).end(HOME);
@@ -66,7 +69,6 @@ async function closedUrl(path: string): Promise<string> {
 describe('IterationBrowser.start', { timeout: 30_000 }, () => {
   it('records the start URL and the cart lines', async () => {
     const browser = await IterationBrowser.launch({
-      episodeId: 'iteration-browser',
       baseUrl,
       startUrl: `${baseUrl}/`,
       cartUrl: `${baseUrl}/cart.js`,
@@ -82,10 +84,26 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
     }
   });
 
+  it('sends no episode header, so a cross-origin fetch of a page needs no CORS preflight', async () => {
+    episodeHeaders.length = 0;
+    const browser = await IterationBrowser.launch({
+      baseUrl,
+      startUrl: `${baseUrl}/`,
+      cartUrl: `${baseUrl}/cart.js`,
+    });
+    try {
+      await browser.start();
+      await browser.start();
+    } finally {
+      await browser.close();
+    }
+    expect(episodeHeaders.length).toBeGreaterThanOrEqual(4);
+    expect(episodeHeaders.every((header) => header === undefined)).toBe(true);
+  });
+
   it('records no cart and sends no cart request when the shop has no cart URL', async () => {
     requested.length = 0;
     const browser = await IterationBrowser.launch({
-      episodeId: 'iteration-browser',
       baseUrl,
       startUrl: `${baseUrl}/`,
     });
@@ -102,7 +120,6 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
     ['/page-cart.js', 'did not return a cart'],
   ])('records why the cart at %s could not be read', async (cartPath, reason) => {
     const browser = await IterationBrowser.launch({
-      episodeId: 'iteration-browser',
       baseUrl,
       startUrl: `${baseUrl}/`,
       cartUrl: `${baseUrl}${cartPath}`,
@@ -121,7 +138,6 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
   it('records why the cart request failed', async () => {
     const cartUrl = await closedUrl('/cart.js');
     const browser = await IterationBrowser.launch({
-      episodeId: 'iteration-browser',
       baseUrl,
       startUrl: `${baseUrl}/`,
       cartUrl,
@@ -138,7 +154,6 @@ describe('IterationBrowser.start', { timeout: 30_000 }, () => {
 
   it('records why the start URL did not load', async () => {
     const browser = await IterationBrowser.launch({
-      episodeId: 'iteration-browser',
       baseUrl,
       startUrl: await closedUrl('/'),
       cartUrl: `${baseUrl}/cart.js`,
@@ -188,8 +203,7 @@ async function snapshotParts(browser: IterationBrowser): Promise<string[]> {
 }
 
 describe('IterationBrowser snapshot', { timeout: 30_000 }, () => {
-  const launch = () =>
-    IterationBrowser.launch({ episodeId: 'iteration-browser', baseUrl, startUrl: `${baseUrl}/` });
+  const launch = () => IterationBrowser.launch({ baseUrl, startUrl: `${baseUrl}/` });
 
   it('shows a short page whole, with no note', async () => {
     const browser = await launch();
