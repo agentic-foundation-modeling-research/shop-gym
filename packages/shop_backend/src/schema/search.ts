@@ -1,5 +1,6 @@
 /**
- * Search domain: full-text search and predictive search.
+ * Search domain: full-text search and predictive search. `search` takes
+ * `productFilters` and returns the facets of its product results.
  */
 
 export const searchTypeDefs = /* GraphQL */ `
@@ -15,6 +16,7 @@ export const searchTypeDefs = /* GraphQL */ `
       reverse: Boolean
       unavailableProducts: SearchUnavailableProductsType
       prefix: SearchPrefixQueryType
+      productFilters: [ProductFilter!]
     ): SearchResultItemConnection!
     predictiveSearch(
       query: String!
@@ -31,6 +33,8 @@ export const searchTypeDefs = /* GraphQL */ `
     edges: [SearchResultItemEdge!]!
     totalCount: Int!
     pageInfo: PageInfo!
+    """The facets of the product results; empty when the shop has no marketplace data."""
+    productFilters: [Filter!]!
   }
 
   type SearchResultItemEdge {

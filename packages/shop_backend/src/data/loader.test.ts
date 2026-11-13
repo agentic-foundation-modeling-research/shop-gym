@@ -17,6 +17,16 @@ const FIXTURE_DIR = path.resolve(
   '../../tests/fixtures/sandbox_shop_v0',
 );
 
+/** Every optional marketplace field of a product, with fake names. */
+const MARKETPLACE_FIELDS = {
+  brand: 'Pawsome Labs',
+  category_path: ['Pets', 'Dogs', 'Dry Food'],
+  attributes: { flavor: 'Chicken', life_stage: 'Adult' },
+  related: { bought_together: ['other-handle'], also_bought: [] },
+  source: { dataset: 'amazon_reviews_2023', id: 'B000FAKE01' },
+  provenance: { 'variants[].price': 'inferred', description_html: 'rewritten' },
+};
+
 /**
  * Copy the canonical fixture into a fresh tmpdir so each test can mutate it
  * (drop files, corrupt JSON, etc.) without touching the committed copy.
@@ -263,6 +273,61 @@ describe('loadShopData', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(InvalidDatasetError);
       expect((err as InvalidDatasetError).path).toBe(`$[0].${field}`);
+    }
+  });
+
+  it('loads a product and a Review without the marketplace fields', () => {
+    const data = loadShopData(FIXTURE_DIR);
+    const [product] = data.products;
+    const [review] = data.reviews;
+
+    expect(product?.brand).toBeUndefined();
+    expect(product?.category_path).toBeUndefined();
+    expect(product?.related).toBeUndefined();
+    expect(review?.customer_id).toBeUndefined();
+  });
+
+  it('loads the marketplace fields of a product and a Review', () => {
+    tmpDir = copyFixture();
+    const productsPath = path.join(tmpDir, 'products.json');
+    const products = JSON.parse(fs.readFileSync(productsPath, 'utf8')) as Record<string, unknown>[];
+    const [product] = products;
+    if (product === undefined) throw new Error('fixture has no products');
+    Object.assign(product, MARKETPLACE_FIELDS);
+    fs.writeFileSync(productsPath, JSON.stringify(products));
+    const reviewsPath = path.join(tmpDir, 'reviews.json');
+    const reviews = JSON.parse(fs.readFileSync(reviewsPath, 'utf8')) as Record<string, unknown>[];
+    const [review] = reviews;
+    if (review === undefined) throw new Error('fixture has no Reviews');
+    review.customer_id = 7;
+    fs.writeFileSync(reviewsPath, JSON.stringify(reviews));
+
+    const data = loadShopData(tmpDir);
+    expect(data.products[0]).toMatchObject(MARKETPLACE_FIELDS);
+    expect(data.reviews[0]?.customer_id).toBe(7);
+  });
+
+  it.each([
+    ['category_path', []],
+    ['category_path', ['Pets', '']],
+    ['related', { bought_together: ['other-handle'] }],
+    ['provenance', { brand: 'guessed' }],
+    ['source', { dataset: 'amazon_reviews_2023' }],
+  ])('throws InvalidDatasetError when a product has %s %j', (field, value) => {
+    tmpDir = copyFixture();
+    const productsPath = path.join(tmpDir, 'products.json');
+    const products = JSON.parse(fs.readFileSync(productsPath, 'utf8')) as Record<string, unknown>[];
+    const [product] = products;
+    if (product === undefined) throw new Error('fixture has no products');
+    product[field] = value;
+    fs.writeFileSync(productsPath, JSON.stringify(products));
+
+    try {
+      loadShopData(tmpDir);
+      expect.fail('expected loadShopData to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(InvalidDatasetError);
+      expect((err as InvalidDatasetError).path).toMatch(new RegExp(`^\\$\\[0\\]\\.${field}`));
     }
   });
 

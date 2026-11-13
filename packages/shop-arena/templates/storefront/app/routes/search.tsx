@@ -1,9 +1,11 @@
 import { Form, Link, type LoaderFunctionArgs, useLoaderData } from 'react-router';
+import { FacetLayout } from '~/components/facets';
 import { ProductCard } from '~/components/storefront';
 import { getAppContext } from '~/lib/context';
+import { productFiltersOf } from '~/lib/facets';
 import { SEARCH_QUERY } from '~/lib/queries';
 import { storefrontQuery } from '~/lib/storefront';
-import type { Page, ProductSummary } from '~/lib/types';
+import type { Filter, Page, ProductSummary } from '~/lib/types';
 
 interface ArticleResult {
   readonly __typename: 'Article';
@@ -29,6 +31,7 @@ type SearchNode = ProductResult | PageResult | ArticleResult;
 interface SearchData {
   readonly search: {
     readonly totalCount: number;
+    readonly productFilters: readonly Filter[];
     readonly nodes: readonly SearchNode[];
   };
 }
@@ -44,7 +47,10 @@ export function meta() {
 export async function loader({ context, request }: LoaderFunctionArgs): Promise<SearchLoaderData> {
   const url = new URL(request.url);
   const query = url.searchParams.get('q') ?? '';
-  const data = await storefrontQuery<SearchData>(getAppContext(context), SEARCH_QUERY, { query });
+  const data = await storefrontQuery<SearchData>(getAppContext(context), SEARCH_QUERY, {
+    query,
+    productFilters: productFiltersOf(url),
+  });
   return { ...data, query };
 }
 
@@ -65,12 +71,14 @@ export default function Search() {
         </label>
         <button type="submit">Search</button>
       </Form>
-      <p className="muted">{data.search.totalCount} result(s)</p>
-      <ul className="search-results">
-        {data.search.nodes.map((node) => (
-          <li key={node.id}>{renderSearchResult(node)}</li>
-        ))}
-      </ul>
+      <FacetLayout filters={data.search.productFilters}>
+        <p className="muted">{data.search.totalCount} result(s)</p>
+        <ul className="search-results">
+          {data.search.nodes.map((node) => (
+            <li key={node.id}>{renderSearchResult(node)}</li>
+          ))}
+        </ul>
+      </FacetLayout>
     </div>
   );
 }

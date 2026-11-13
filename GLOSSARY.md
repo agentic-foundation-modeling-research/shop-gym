@@ -81,7 +81,7 @@ A self-contained, deterministic, hostable shop: a Dataset, a storefront, its own
 _Avoid_: sandbox shop, generated shop, published shop, mock shop
 
 **Shop manifest**:
-The `shop.json` file that marks a directory as a SandboxShop that is ready to host. It records the source Shop Manuals, the templates used, whether the backend was generated, and the final status of the Build loop.
+The `shop.json` file that marks a directory as a SandboxShop that is ready to host. It records the source Shop Manuals, the Source bundle (when the shop has one) with its Cutoff, Clock offset and licenses, the templates used, whether the backend was generated, and the final status of the Build loop.
 _Avoid_: publish manifest
 
 **Merged manual**:
@@ -116,6 +116,36 @@ _Avoid_: hosting sidecar
 **Final eval**:
 The advisory check of a built shop after the Build loop: a visual sweep that screenshots and judges the canonical pages, and a functional sweep that runs a fixed sign-up-to-order script. Its result never fails Shop generation.
 
+**Source bundle**:
+A directory in one format for every source dataset: `bundle.json`, a catalog of products with variants, their reviews, and the User events of the Modeled users. A raw bundle has only the source facts. A complete bundle also has the fields that a shop needs, such as a price and an inventory on every variant, and User profiles. `shopgym bundle` writes a complete bundle, and `shopgym gen --bundle` makes the Dataset of a SandboxShop from one. The core validator checks each level.
+_Avoid_: dataset bundle, source dump
+
+**Complete step**:
+The step of `shopgym bundle` that turns a raw Source bundle into a complete one. Rules fill the catalog fields that they can derive, an LLM names the variants and writes the User profiles, and each filled field gets a Provenance mark.
+
+**Provenance**:
+The mark on a Source bundle record that tells where a field comes from: `source`, `inferred` (derived from other source values by a rule), `synthetic` (written by a model, or made up by a seeded rule) or `rewritten`. A field that is not marked comes from the source.
+
+**Adapter**:
+The code that reads one source dataset and writes a raw Source bundle. It maps the source fields to the bundle fields, and marks the values that it infers.
+
+**User event**:
+One dated action of one Modeled user in a Source bundle, such as a `review` or a `purchase`, from a closed list of event types. Each event records how exact its time is and whether it comes from the source or is inferred.
+
+**Modeled user**:
+A source user that the sampling picks, with enough User events before the Cutoff and at least one purchase after it. Only Modeled users get User events, and only their reviews keep a user id.
+
+**Cutoff**:
+The one time that splits the User events of a Source bundle: events before it are a user's history, and purchases after it are Task targets. In a SandboxShop made from the bundle, the Cutoff falls on the Episode clock start: the Reviews and orders before it are the shop history, and the User events at it or later stay hidden in `users/`.
+
+**Clock offset**:
+The whole number of days that Shop generation adds to every time of a Source bundle, so that the Cutoff falls on the Episode clock start (2026-01-01). The Shop manifest records it.
+_Avoid_: time shift, date offset
+
+**User profile**:
+What a Modeled user is like as of the Cutoff, in a complete Source bundle: demographics, preferences (price sensitivity, category interests, brands, focus aspects), habits and a narrative. An LLM writes it from the user's history before the Cutoff. It has no account fields: Shop generation makes those for a Persona.
+_Avoid_: persona, customer
+
 ### ShopBackend
 
 **Dataset**:
@@ -123,7 +153,7 @@ The read-only JSON files and images under a SandboxShop's `data/` directory: sto
 _Avoid_: shop data, catalog (the catalog is only one part of it)
 
 **Catalog**:
-The products, collections and product images of a Dataset. Data synthesis makes it from the Shop Manual, or `shopgym gen --data` copies it from an existing Dataset.
+The products, collections and product images of a Dataset. Data synthesis makes it from the Shop Manual, `shopgym gen --data` copies it from an existing Dataset, or `shopgym gen --bundle` maps it from a complete Source bundle.
 _Avoid_: inventory (the stock levels are a separate Dataset file)
 
 **Discount code**:
@@ -131,7 +161,7 @@ A code in the Dataset's commerce settings that lowers the price of a cart: a per
 _Avoid_: coupon, promo code
 
 **Persona**:
-A customer account in the Dataset's `customers.json`, with an email and password that a Task's setup can log in with, saved addresses, and seeded orders in `orders.json` that its order history shows.
+A customer account in the Dataset's `customers.json`, with an email and password that a Task's setup can log in with, saved addresses, and seeded orders in `orders.json` that its order history shows. In a SandboxShop made from a Source bundle, each Modeled user is one Persona, and its orders come from the user's purchases before the Cutoff.
 _Avoid_: seeded customer
 
 **Address book**:
@@ -145,6 +175,14 @@ _Avoid_: password recovery email
 **Review**:
 A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read and sort Reviews; they cannot write or vote on them.
 _Avoid_: rating (one field of a Review), testimonial
+
+**Brand**:
+The optional maker name of a product in the Dataset, as its catalog gives it. It is not the `vendor`: the vendor is the seller name that the Storefront API shows, and every product has one. The "Brand" Facet reads the brand.
+_Avoid_: vendor (a different field)
+
+**Facet**:
+One way to narrow the products of a search or a collection page, with values and a product count for each value: category, Brand, price and rating. The backend returns facets only when some product of the Dataset has a Brand or a category path, and the storefront shows them in its "Filters" panel. The count of a value is the number of products that choosing it would give.
+_Avoid_: refinement; filter (the input that chooses a value)
 
 **Episode**:
 One attempt by one agent at one Task on one SandboxShop. The backend keeps the state of each Episode (cart, login, orders) apart from all others, by the episode id in the `x-shopgym-episode` header.

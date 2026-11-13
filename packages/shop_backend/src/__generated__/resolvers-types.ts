@@ -1,4 +1,4 @@
-import type { GraphQLResolveInfo } from 'graphql';
+import type { GraphQLResolveInfo, GraphQLScalarType, GraphQLScalarTypeConfig } from 'graphql';
 import type { ResolverContext } from '../resolvers/index.js';
 export type Maybe<T> = T | null;
 export type InputMaybe<T> = Maybe<T>;
@@ -16,6 +16,8 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
+  /** A value encoded as a JSON string. */
+  JSON: { input: string; output: string; }
 };
 
 export type AppliedGiftCard = {
@@ -401,6 +403,7 @@ export type CollectionMetafieldsArgs = {
 export type CollectionProductsArgs = {
   after: InputMaybe<Scalars['String']['input']>;
   before: InputMaybe<Scalars['String']['input']>;
+  filters: InputMaybe<ReadonlyArray<ProductFilter>>;
   first: InputMaybe<Scalars['Int']['input']>;
   last: InputMaybe<Scalars['Int']['input']>;
 };
@@ -602,6 +605,30 @@ export type DiscountCodeHint = {
   readonly code: Scalars['String']['output'];
   /** Short shopper-facing text that tells what the code does. */
   readonly hint: Scalars['String']['output'];
+};
+
+/** One facet of a product list: the values a shopper can filter by, with counts. */
+export type Filter = {
+  readonly __typename?: 'Filter';
+  readonly id: Scalars['String']['output'];
+  readonly label: Scalars['String']['output'];
+  readonly type: FilterType;
+  readonly values: ReadonlyArray<FilterValue>;
+};
+
+export type FilterType =
+  | 'BOOLEAN'
+  | 'LIST'
+  | 'PRICE_RANGE';
+
+export type FilterValue = {
+  readonly __typename?: 'FilterValue';
+  /** The products the list would have with this value, with the other facets' filters kept. */
+  readonly count: Scalars['Int']['output'];
+  readonly id: Scalars['String']['output'];
+  /** The ProductFilter that selects this value. */
+  readonly input: Scalars['JSON']['output'];
+  readonly label: Scalars['String']['output'];
 };
 
 export type HasMetafieldsIdentifier = {
@@ -1035,6 +1062,12 @@ export type PredictiveSearchType =
   | 'PRODUCT'
   | 'QUERY';
 
+/** Matches a product when the price of one of its variants is in the range. */
+export type PriceRangeFilter = {
+  readonly max?: InputMaybe<Scalars['Float']['input']>;
+  readonly min?: InputMaybe<Scalars['Float']['input']>;
+};
+
 export type Product = {
   readonly __typename?: 'Product';
   readonly adjacentVariants: ReadonlyArray<ProductVariant>;
@@ -1115,6 +1148,8 @@ export type ProductVariantsArgs = {
 export type ProductConnection = {
   readonly __typename?: 'ProductConnection';
   readonly edges: ReadonlyArray<ProductEdge>;
+  /** The facets of the list; empty when the shop has no marketplace data. */
+  readonly filters: ReadonlyArray<Filter>;
   readonly nodes: ReadonlyArray<Product>;
   readonly pageInfo: PageInfo;
   readonly totalCount: Maybe<Scalars['Int']['output']>;
@@ -1124,6 +1159,25 @@ export type ProductEdge = {
   readonly __typename?: 'ProductEdge';
   readonly cursor: Scalars['String']['output'];
   readonly node: Product;
+};
+
+/**
+ * One filter on a product list; set one field per entry. Entries with the same
+ * field match when any of them matches. Entries with different fields must all
+ * match. variantOption entries group by option name.
+ */
+export type ProductFilter = {
+  readonly available?: InputMaybe<Scalars['Boolean']['input']>;
+  /** The maker's name as the catalog gives it. */
+  readonly brand?: InputMaybe<Scalars['String']['input']>;
+  /** A category from the department down; matches the products in it or below it. */
+  readonly categoryPath?: InputMaybe<ReadonlyArray<Scalars['String']['input']>>;
+  readonly price?: InputMaybe<PriceRangeFilter>;
+  readonly productType?: InputMaybe<Scalars['String']['input']>;
+  readonly productVendor?: InputMaybe<Scalars['String']['input']>;
+  /** The mean Review rating, rounded to one decimal. Products with no Reviews never match. */
+  readonly rating?: InputMaybe<RatingRangeFilter>;
+  readonly variantOption?: InputMaybe<VariantOptionFilter>;
 };
 
 export type ProductOption = {
@@ -1321,11 +1375,17 @@ export type QuerySearchArgs = {
   first: InputMaybe<Scalars['Int']['input']>;
   last: InputMaybe<Scalars['Int']['input']>;
   prefix: InputMaybe<SearchPrefixQueryType>;
+  productFilters: InputMaybe<ReadonlyArray<ProductFilter>>;
   query: Scalars['String']['input'];
   reverse: InputMaybe<Scalars['Boolean']['input']>;
   sortKey: InputMaybe<SearchSortKeys>;
   types: InputMaybe<ReadonlyArray<SearchType>>;
   unavailableProducts: InputMaybe<SearchUnavailableProductsType>;
+};
+
+export type RatingRangeFilter = {
+  readonly max?: InputMaybe<Scalars['Float']['input']>;
+  readonly min?: InputMaybe<Scalars['Float']['input']>;
 };
 
 /** One read-only product Review from reviews.json. */
@@ -1393,6 +1453,8 @@ export type SearchResultItemConnection = {
   readonly edges: ReadonlyArray<SearchResultItemEdge>;
   readonly nodes: ReadonlyArray<SearchResultItem>;
   readonly pageInfo: PageInfo;
+  /** The facets of the product results; empty when the shop has no marketplace data. */
+  readonly productFilters: ReadonlyArray<Filter>;
   readonly totalCount: Scalars['Int']['output'];
 };
 
@@ -1492,6 +1554,11 @@ export type UserError = {
   readonly __typename?: 'UserError';
   readonly field: Maybe<ReadonlyArray<Scalars['String']['output']>>;
   readonly message: Scalars['String']['output'];
+};
+
+export type VariantOptionFilter = {
+  readonly name: Scalars['String']['input'];
+  readonly value: Scalars['String']['input'];
 };
 
 export type VisitorConsent = {
@@ -1659,6 +1726,9 @@ export type ResolversTypes = {
   CustomerUserError: ResolverTypeWrapper<CustomerUserError>;
   DiscountApplicationTargetType: DiscountApplicationTargetType;
   DiscountCodeHint: ResolverTypeWrapper<DiscountCodeHint>;
+  Filter: ResolverTypeWrapper<Filter>;
+  FilterType: FilterType;
+  FilterValue: ResolverTypeWrapper<FilterValue>;
   Float: ResolverTypeWrapper<Scalars['Float']['output']>;
   HasMetafieldsIdentifier: HasMetafieldsIdentifier;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
@@ -1666,6 +1736,7 @@ export type ResolversTypes = {
   ImageConnection: ResolverTypeWrapper<ImageConnection>;
   ImageEdge: ResolverTypeWrapper<ImageEdge>;
   Int: ResolverTypeWrapper<Scalars['Int']['output']>;
+  JSON: ResolverTypeWrapper<Scalars['JSON']['output']>;
   Language: ResolverTypeWrapper<Language>;
   LanguageCode: LanguageCode;
   Localization: ResolverTypeWrapper<Localization>;
@@ -1700,9 +1771,11 @@ export type ResolversTypes = {
   PredictiveSearchLimitScope: PredictiveSearchLimitScope;
   PredictiveSearchResult: ResolverTypeWrapper<Omit<PredictiveSearchResult, 'collections' | 'products'> & { collections: ReadonlyArray<ResolversTypes['Collection']>, products: ReadonlyArray<ResolversTypes['Product']> }>;
   PredictiveSearchType: PredictiveSearchType;
+  PriceRangeFilter: PriceRangeFilter;
   Product: ResolverTypeWrapper<Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'reviews' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<ResolversTypes['ProductVariant']>, metafield?: Maybe<ResolversTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversTypes['Metafield']>>, options: ReadonlyArray<ResolversTypes['ProductOption']>, reviews: ResolversTypes['ReviewConnection'], selectedOrFirstAvailableVariant?: Maybe<ResolversTypes['ProductVariant']>, variants: ResolversTypes['ProductVariantConnection'] }>;
   ProductConnection: ResolverTypeWrapper<Omit<ProductConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['ProductEdge']>, nodes: ReadonlyArray<ResolversTypes['Product']> }>;
   ProductEdge: ResolverTypeWrapper<Omit<ProductEdge, 'node'> & { node: ResolversTypes['Product'] }>;
+  ProductFilter: ProductFilter;
   ProductOption: ResolverTypeWrapper<Omit<ProductOption, 'optionValues'> & { optionValues: ReadonlyArray<ResolversTypes['ProductOptionValue']> }>;
   ProductOptionValue: ResolverTypeWrapper<Omit<ProductOptionValue, 'firstSelectableVariant'> & { firstSelectableVariant?: Maybe<ResolversTypes['ProductVariant']> }>;
   ProductPriceRange: ResolverTypeWrapper<ProductPriceRange>;
@@ -1712,6 +1785,7 @@ export type ResolversTypes = {
   ProductVariantConnection: ResolverTypeWrapper<Omit<ProductVariantConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['ProductVariantEdge']>, nodes: ReadonlyArray<ResolversTypes['ProductVariant']> }>;
   ProductVariantEdge: ResolverTypeWrapper<Omit<ProductVariantEdge, 'node'> & { node: ResolversTypes['ProductVariant'] }>;
   Query: ResolverTypeWrapper<{}>;
+  RatingRangeFilter: RatingRangeFilter;
   Review: ResolverTypeWrapper<Omit<Review, 'variant'> & { variant?: Maybe<ResolversTypes['ProductVariant']> }>;
   ReviewConnection: ResolverTypeWrapper<Omit<ReviewConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['ReviewEdge']>, nodes: ReadonlyArray<ResolversTypes['Review']> }>;
   ReviewEdge: ResolverTypeWrapper<Omit<ReviewEdge, 'node'> & { node: ResolversTypes['Review'] }>;
@@ -1735,6 +1809,7 @@ export type ResolversTypes = {
   Swatch: ResolverTypeWrapper<Swatch>;
   SwatchMedia: ResolverTypeWrapper<SwatchMedia>;
   UserError: ResolverTypeWrapper<UserError>;
+  VariantOptionFilter: VariantOptionFilter;
   VisitorConsent: VisitorConsent;
 };
 
@@ -1810,6 +1885,8 @@ export type ResolversParentTypes = {
   CustomerRecoverPayload: CustomerRecoverPayload;
   CustomerUserError: CustomerUserError;
   DiscountCodeHint: DiscountCodeHint;
+  Filter: Filter;
+  FilterValue: FilterValue;
   Float: Scalars['Float']['output'];
   HasMetafieldsIdentifier: HasMetafieldsIdentifier;
   ID: Scalars['ID']['output'];
@@ -1817,6 +1894,7 @@ export type ResolversParentTypes = {
   ImageConnection: ImageConnection;
   ImageEdge: ImageEdge;
   Int: Scalars['Int']['output'];
+  JSON: Scalars['JSON']['output'];
   Language: Language;
   Localization: Localization;
   LocalizationCountry: LocalizationCountry;
@@ -1845,9 +1923,11 @@ export type ResolversParentTypes = {
   PaymentMethod: PaymentMethod;
   PaymentSettings: PaymentSettings;
   PredictiveSearchResult: Omit<PredictiveSearchResult, 'collections' | 'products'> & { collections: ReadonlyArray<ResolversParentTypes['Collection']>, products: ReadonlyArray<ResolversParentTypes['Product']> };
+  PriceRangeFilter: PriceRangeFilter;
   Product: Omit<Product, 'adjacentVariants' | 'metafield' | 'metafields' | 'options' | 'reviews' | 'selectedOrFirstAvailableVariant' | 'variants'> & { adjacentVariants: ReadonlyArray<ResolversParentTypes['ProductVariant']>, metafield?: Maybe<ResolversParentTypes['Metafield']>, metafields: ReadonlyArray<Maybe<ResolversParentTypes['Metafield']>>, options: ReadonlyArray<ResolversParentTypes['ProductOption']>, reviews: ResolversParentTypes['ReviewConnection'], selectedOrFirstAvailableVariant?: Maybe<ResolversParentTypes['ProductVariant']>, variants: ResolversParentTypes['ProductVariantConnection'] };
   ProductConnection: Omit<ProductConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['ProductEdge']>, nodes: ReadonlyArray<ResolversParentTypes['Product']> };
   ProductEdge: Omit<ProductEdge, 'node'> & { node: ResolversParentTypes['Product'] };
+  ProductFilter: ProductFilter;
   ProductOption: Omit<ProductOption, 'optionValues'> & { optionValues: ReadonlyArray<ResolversParentTypes['ProductOptionValue']> };
   ProductOptionValue: Omit<ProductOptionValue, 'firstSelectableVariant'> & { firstSelectableVariant?: Maybe<ResolversParentTypes['ProductVariant']> };
   ProductPriceRange: ProductPriceRange;
@@ -1856,6 +1936,7 @@ export type ResolversParentTypes = {
   ProductVariantConnection: Omit<ProductVariantConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['ProductVariantEdge']>, nodes: ReadonlyArray<ResolversParentTypes['ProductVariant']> };
   ProductVariantEdge: Omit<ProductVariantEdge, 'node'> & { node: ResolversParentTypes['ProductVariant'] };
   Query: {};
+  RatingRangeFilter: RatingRangeFilter;
   Review: Omit<Review, 'variant'> & { variant?: Maybe<ResolversParentTypes['ProductVariant']> };
   ReviewConnection: Omit<ReviewConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['ReviewEdge']>, nodes: ReadonlyArray<ResolversParentTypes['Review']> };
   ReviewEdge: Omit<ReviewEdge, 'node'> & { node: ResolversParentTypes['Review'] };
@@ -1874,6 +1955,7 @@ export type ResolversParentTypes = {
   Swatch: Swatch;
   SwatchMedia: SwatchMedia;
   UserError: UserError;
+  VariantOptionFilter: VariantOptionFilter;
   VisitorConsent: VisitorConsent;
 };
 
@@ -2341,6 +2423,22 @@ export type DiscountCodeHintResolvers<ContextType = ResolverContext, ParentType 
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type FilterResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Filter'] = ResolversParentTypes['Filter']> = {
+  id?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  label?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  type?: Resolver<ResolversTypes['FilterType'], ParentType, ContextType>;
+  values?: Resolver<ReadonlyArray<ResolversTypes['FilterValue']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type FilterValueResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['FilterValue'] = ResolversParentTypes['FilterValue']> = {
+  count?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  input?: Resolver<ResolversTypes['JSON'], ParentType, ContextType>;
+  label?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type ImageResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Image'] = ResolversParentTypes['Image']> = {
   altText?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   height?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
@@ -2360,6 +2458,10 @@ export type ImageEdgeResolvers<ContextType = ResolverContext, ParentType extends
   node?: Resolver<Maybe<ResolversTypes['Image']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
+
+export interface JsonScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['JSON'], any> {
+  name: 'JSON';
+}
 
 export type LanguageResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['Language'] = ResolversParentTypes['Language']> = {
   isoCode?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -2621,6 +2723,7 @@ export type ProductResolvers<ContextType = ResolverContext, ParentType extends R
 
 export type ProductConnectionResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['ProductConnection'] = ResolversParentTypes['ProductConnection']> = {
   edges?: Resolver<ReadonlyArray<ResolversTypes['ProductEdge']>, ParentType, ContextType>;
+  filters?: Resolver<ReadonlyArray<ResolversTypes['Filter']>, ParentType, ContextType>;
   nodes?: Resolver<ReadonlyArray<ResolversTypes['Product']>, ParentType, ContextType>;
   pageInfo?: Resolver<ResolversTypes['PageInfo'], ParentType, ContextType>;
   totalCount?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
@@ -2759,6 +2862,7 @@ export type SearchResultItemConnectionResolvers<ContextType = ResolverContext, P
   edges?: Resolver<ReadonlyArray<ResolversTypes['SearchResultItemEdge']>, ParentType, ContextType>;
   nodes?: Resolver<ReadonlyArray<ResolversTypes['SearchResultItem']>, ParentType, ContextType>;
   pageInfo?: Resolver<ResolversTypes['PageInfo'], ParentType, ContextType>;
+  productFilters?: Resolver<ReadonlyArray<ResolversTypes['Filter']>, ParentType, ContextType>;
   totalCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
@@ -2893,9 +2997,12 @@ export type Resolvers<ContextType = ResolverContext> = {
   CustomerRecoverPayload?: CustomerRecoverPayloadResolvers<ContextType>;
   CustomerUserError?: CustomerUserErrorResolvers<ContextType>;
   DiscountCodeHint?: DiscountCodeHintResolvers<ContextType>;
+  Filter?: FilterResolvers<ContextType>;
+  FilterValue?: FilterValueResolvers<ContextType>;
   Image?: ImageResolvers<ContextType>;
   ImageConnection?: ImageConnectionResolvers<ContextType>;
   ImageEdge?: ImageEdgeResolvers<ContextType>;
+  JSON?: GraphQLScalarType;
   Language?: LanguageResolvers<ContextType>;
   Localization?: LocalizationResolvers<ContextType>;
   LocalizationCountry?: LocalizationCountryResolvers<ContextType>;
