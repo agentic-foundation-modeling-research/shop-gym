@@ -7,8 +7,9 @@
  * episode. Assertions read only pages and the episode's StateSnapshot from
  * the Control API. To cover one more page or flow, add a test that calls
  * one more step from `gen/build/verifiers/browser_steps.ts`. The last tests
- * serve the same build over more backends, each on the test Dataset with
- * fewer Discount codes, for the announcement bar.
+ * serve the same build over more backends: on the test Dataset with fewer
+ * Discount codes, for the announcement bar, and on the test Dataset with a
+ * brand and a category path on each product, for the "Filters" panel.
  *
  * Not gated: it runs in every `pnpm test`. It needs `pnpm` on PATH,
  * Playwright Chromium and a built `packages/shop_backend`.
@@ -38,8 +39,10 @@ import {
   addAddress,
   addToCart,
   applyDiscountCode,
+  chooseFacetValue,
   deleteAddress,
   editAddress,
+  filterByPrice,
   logIn,
   logOut,
   placeOrder,
@@ -96,6 +99,26 @@ const WORK_ADDRESS = {
   zip: 'H3B 2B6',
 };
 const WORK_ADDRESS_CHANGES = { address2: 'Floor 25', zip: 'H3B 4W8' };
+/** A brand and a category path for each product of the test Dataset. */
+const MARKETPLACE_FIELDS: Readonly<
+  Record<string, { readonly brand: string; readonly category_path: readonly string[] }>
+> = {
+  'aislearena-anti-tick-collar': { brand: 'AisleArena', category_path: ['Dogs', 'Collars'] },
+  'shopliseum-mushroom-dog-toys': { brand: 'Shopliseum', category_path: ['Dogs', 'Toys'] },
+  'agoracage-skin-and-coat-chicken-with-grains-12lb': {
+    brand: 'AgoraCage',
+    category_path: ['Dogs', 'Food'],
+  },
+  'cartanvil-mackerel-and-sardines-70g': { brand: 'Cartanvil', category_path: ['Cats', 'Food'] },
+  'carthaeum-toothbrush': { brand: 'Carthaeum', category_path: ['Cats', 'Dental'] },
+};
+/** A sidecar runner that does not build: the copy that `beforeAll` built is served again. */
+const NO_BUILD: NonNullable<StorefrontSidecarOptions['runner']> = async () => ({
+  exitCode: 0,
+  stdout: '',
+  stderr: '',
+  timedOut: false,
+});
 
 let workDir: string;
 let storefrontDir: string;
@@ -105,6 +128,8 @@ let sidecar: StorefrontSidecar;
 const started: Servers[] = [];
 let session: BrowserSession;
 let orderNumber: number | undefined;
+/** URL of the sidecar over the test Dataset with brands and category paths. */
+let marketplaceUrl: string;
 
 /** Number of the order placed by the checkout test; fails the test when none was placed. */
 function placedOrderNumber(): number {
@@ -207,9 +232,54 @@ async function serveWithDiscountCodes(count: number): Promise<string> {
   const servers = await serve(
     { ...data, commerce: { ...data.commerce, discount_codes: discountCodes } },
     `storefront-${count}-codes.log`,
-    { runner: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }) },
+    { runner: NO_BUILD },
   );
   return servers.sidecar.url;
+}
+
+/**
+ * Serve the copy that `beforeAll` built over a new backend on the test
+ * Dataset with `MARKETPLACE_FIELDS` on its products; resolves to its URL.
+ */
+async function serveWithMarketplaceFields(): Promise<string> {
+  const dataDir = path.join(workDir, 'marketplace-data');
+  await fs.cp(FIXTURE_DIR, dataDir, { recursive: true });
+  const file = path.join(dataDir, 'products.json');
+  const products = JSON.parse(await fs.readFile(file, 'utf-8')) as { handle: string }[];
+  const withFields = products.map((product) => ({
+    ...product,
+    ...MARKETPLACE_FIELDS[product.handle],
+  }));
+  await fs.writeFile(file, JSON.stringify(withFields));
+  const servers = await serve(loadShopData(dataDir), 'storefront-marketplace.log', {
+    runner: NO_BUILD,
+  });
+  return servers.sidecar.url;
+}
+
+/** The "Filters" panel of a search or collection page. */
+function filtersPanel() {
+  return session.page.getByRole('complementary', { name: 'Filters', exact: true });
+}
+
+/** Names of the value links of facet `label` in the "Filters" panel, in page order. */
+async function facetValues(label: string): Promise<string[]> {
+  return (
+    await filtersPanel()
+      .getByRole('region', { name: label, exact: true })
+      .getByRole('link')
+      .allInnerTexts()
+  ).map(normalized);
+}
+
+/** Titles of the product cards on the page, in page order. */
+async function productTitles(): Promise<string[]> {
+  return session.page.locator('.product-card h3').allInnerTexts();
+}
+
+/** The values of query parameter `name` in page path `url`. */
+function paramValues(url: string | undefined, name: string): string[] {
+  return new URL(url ?? '', marketplaceUrl).searchParams.getAll(name);
 }
 
 /** Text of each order history row, in page order. */
@@ -692,5 +762,90 @@ describe('storefront template in a browser', () => {
     );
     expect(outcome.ok, outcome.detail).toBe(true);
     expect(await pageText()).not.toContain('WELCOME10');
+  }, 60_000);
+
+  it('shows no Filters panel for a Dataset with no brands or category paths', async () => {
+    for (const listPath of ['/search?q=dog', '/collections/dog-essentials']) {
+      await session.page.goto(`${sidecar.url}${listPath}`, { waitUntil: 'load' });
+      expect(await productTitles(), listPath).not.toEqual([]);
+      expect(await filtersPanel().count(), listPath).toBe(0);
+    }
+  }, 60_000);
+
+  it('narrows search results by one brand, then by two', async () => {
+    marketplaceUrl = await serveWithMarketplaceFields();
+    await session.page.goto(`${marketplaceUrl}/search?q=dog`, { waitUntil: 'load' });
+    expect(await facetValues('Brand')).toEqual([
+      'AgoraCage (1)',
+      'AisleArena (1)',
+      'Carthaeum (1)',
+      'Shopliseum (1)',
+    ]);
+    const one = await chooseFacetValue(
+      session.page,
+      marketplaceUrl,
+      '/search?q=dog',
+      'Brand',
+      'Shopliseum',
+    );
+    expect(one.ok, one.detail).toBe(true);
+    expect(paramValues(one.url, 'filter.brand')).toEqual(['"Shopliseum"']);
+    expect(await productTitles()).toEqual(['Shopliseum Mushroom Dog Toys']);
+    expect(await pageText()).toContain('1 result(s)');
+
+    const two = await chooseFacetValue(
+      session.page,
+      marketplaceUrl,
+      one.url ?? '',
+      'Brand',
+      'AisleArena',
+    );
+    expect(two.ok, two.detail).toBe(true);
+    expect(paramValues(two.url, 'q')).toEqual(['dog']);
+    expect(paramValues(two.url, 'filter.brand')).toEqual(['"Shopliseum"', '"AisleArena"']);
+    expect((await productTitles()).sort()).toEqual([
+      'AisleArena Anti Tick Collar',
+      'Shopliseum Mushroom Dog Toys',
+    ]);
+  }, 60_000);
+
+  it('drills down a collection by category', async () => {
+    const dogs = await chooseFacetValue(
+      session.page,
+      marketplaceUrl,
+      '/collections/dog-essentials',
+      'Category',
+      'Dogs',
+    );
+    expect(dogs.ok, dogs.detail).toBe(true);
+    expect(await facetValues('Category')).toEqual([
+      'Dogs (3)',
+      'Collars (1)',
+      'Food (1)',
+      'Toys (1)',
+    ]);
+    const toys = await chooseFacetValue(
+      session.page,
+      marketplaceUrl,
+      dogs.url ?? '',
+      'Category',
+      'Toys',
+    );
+    expect(toys.ok, toys.detail).toBe(true);
+    expect(paramValues(toys.url, 'filter.categoryPath')).toEqual(['["Dogs","Toys"]']);
+    expect(await productTitles()).toEqual(['Shopliseum Mushroom Dog Toys']);
+  }, 60_000);
+
+  it('narrows a collection by a price range and links back to no filters', async () => {
+    const outcome = await filterByPrice(
+      session.page,
+      marketplaceUrl,
+      '/collections/dog-essentials',
+      { min: 20, max: 60 },
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await productTitles()).toEqual(['AgoraCage Skin and coat chicken with grains 12lb dog']);
+    const clear = filtersPanel().getByRole('link', { name: 'Clear all filters', exact: true });
+    expect(await clear.getAttribute('href')).toBe('/collections/dog-essentials');
   }, 60_000);
 });

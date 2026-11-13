@@ -24,6 +24,10 @@
  *       - `PRICE`: ascending min variant price. Pages and articles have no
  *         price, so they sort to the end.
  *     `reverse` flips the final order (matches `Query.products` semantics).
+ *   - `productFilters` narrows the product results (see `facets.ts`), and
+ *     the connection's `productFilters` lists the facets of the products
+ *     that match the query. Any product filter leaves out pages and
+ *     articles, which have no product fields to filter by.
  *   - `prefix` and `unavailableProducts` arguments are accepted by the SDL
  *     but ignored at this milestone.
  *   - `Query.predictiveSearch` returns up to `limit` matches per type
@@ -48,7 +52,7 @@ import type {
   SearchSortKeys,
   SearchType,
 } from '../__generated__/resolvers-types.js';
-import { type Connection, paginate } from '../data/pagination.js';
+import { type Connection, mapConnection, paginate } from '../data/pagination.js';
 import type { Blog, Collection, Product } from '../data/types.js';
 import {
   type CollectionNode,
@@ -58,6 +62,7 @@ import {
   matchesSearch,
 } from './builders.js';
 import { type ArticleNode, type PageNode, buildArticleNode, buildPageNode } from './content.js';
+import { type FilterNode, applyProductFilters } from './facets.js';
 import type { ResolverContext } from './index.js';
 
 /**
@@ -73,9 +78,10 @@ export type { PredictiveSearchLimitScope, PredictiveSearchType, SearchType };
 /** Tagged union of nodes that may appear under `SearchResultItem`. */
 export type SearchResultItemNode = ProductNode | PageNode | ArticleNode;
 
-/** Connection with the non-null `totalCount` exposed on `SearchResultItemConnection`. */
+/** Connection with the `totalCount` and `productFilters` of `SearchResultItemConnection`. */
 export interface SearchResultItemConnectionNode extends Connection<SearchResultItemNode> {
   readonly totalCount: number;
+  readonly productFilters: readonly FilterNode[];
 }
 
 /** Single query suggestion emitted under `PredictiveSearchResult.queries`. */
@@ -127,9 +133,12 @@ const SAME_TYPE_BONUS = 1000;
 
 // ── Internal scored entry ─────────────────────────────────────────────────
 
-/** Pre-pagination scored entry used while sorting. */
+/**
+ * Pre-pagination scored entry used while sorting. The node is built only for
+ * the entries on the returned page.
+ */
 interface ScoredEntry {
-  readonly node: SearchResultItemNode;
+  readonly toNode: () => SearchResultItemNode;
   readonly score: number;
   readonly price: number;
 }
@@ -150,16 +159,24 @@ export const searchResolvers = {
     ): SearchResultItemConnectionNode => {
       const types = normalizeTypes(args.types);
       const query = args.query;
+      const productFilters = args.productFilters ?? [];
 
       const scored: ScoredEntry[] = [];
-      if (types.has('PRODUCT')) collectProducts(scored, ctx, query);
-      if (types.has('PAGE')) collectPages(scored, ctx, query);
-      if (types.has('ARTICLE')) collectArticles(scored, ctx, query);
+      let facets: readonly FilterNode[] = [];
+      if (types.has('PRODUCT')) {
+        const matched = ctx.data.products.filter((p) => matchesSearch(query, productHaystack(p)));
+        const filtered = applyProductFilters(matched, productFilters, ctx.data);
+        collectProducts(scored, ctx, query, filtered.products);
+        facets = filtered.filters;
+      }
+      if (productFilters.length === 0) {
+        if (types.has('PAGE')) collectPages(scored, ctx, query);
+        if (types.has('ARTICLE')) collectArticles(scored, ctx, query);
+      }
 
       const sorted = sortResults(scored, args.sortKey ?? 'RELEVANCE', args.reverse ?? false);
-      const nodes = sorted.map((entry) => entry.node);
-      const connection = paginate(nodes, args);
-      return { ...connection, totalCount: nodes.length };
+      const connection = mapConnection(paginate(sorted, args), (entry) => entry.toNode());
+      return { ...connection, totalCount: sorted.length, productFilters: facets };
     },
 
     productRecommendations: (
@@ -216,17 +233,22 @@ export const searchResolvers = {
 
 // ── Collection helpers ────────────────────────────────────────────────────
 
-function collectProducts(out: ScoredEntry[], ctx: ResolverContext, query: string): void {
-  for (const product of ctx.data.products) {
-    if (!matchesSearch(query, productHaystack(product))) continue;
+function collectProducts(
+  out: ScoredEntry[],
+  ctx: ResolverContext,
+  query: string,
+  products: readonly Product[],
+): void {
+  for (const product of products) {
     out.push({
-      node: buildProductNode(
-        product,
-        ctx.data.store,
-        ctx.baseUrl,
-        ctx.data.inventoryByVariantId,
-        ctx.imageUrlMode,
-      ),
+      toNode: () =>
+        buildProductNode(
+          product,
+          ctx.data.store,
+          ctx.baseUrl,
+          ctx.data.inventoryByVariantId,
+          ctx.imageUrlMode,
+        ),
       score: scoreProduct(query, product),
       price: minVariantPrice(product),
     });
@@ -237,7 +259,7 @@ function collectPages(out: ScoredEntry[], ctx: ResolverContext, query: string): 
   for (const page of ctx.data.pages) {
     if (!matchesSearch(query, page.title)) continue;
     out.push({
-      node: buildPageNode(page),
+      toNode: () => buildPageNode(page),
       score: countMatches(query, page.title),
       price: Number.POSITIVE_INFINITY,
     });
@@ -254,7 +276,7 @@ function forEachArticleMatch(out: ScoredEntry[], blog: Blog, query: string): voi
   for (const article of blog.articles) {
     if (!matchesSearch(query, article.title)) continue;
     out.push({
-      node: buildArticleNode(article, blog.handle),
+      toNode: () => buildArticleNode(article, blog.handle),
       score: countMatches(query, article.title),
       price: Number.POSITIVE_INFINITY,
     });

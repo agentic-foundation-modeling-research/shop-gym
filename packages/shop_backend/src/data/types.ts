@@ -33,8 +33,11 @@ import type {
   policySchema,
   productImageSchema,
   productOptionSchema,
+  productRelatedSchema,
   productSchema,
+  productSourceSchema,
   productVariantSchema,
+  provenanceMarkSchema,
   reviewSchema,
   shippingMethodSchema,
   storeBrandColorsSchema,
@@ -54,6 +57,9 @@ export type Product = z.infer<typeof productSchema>;
 export type ProductOption = z.infer<typeof productOptionSchema>;
 export type ProductVariant = z.infer<typeof productVariantSchema>;
 export type ProductImage = z.infer<typeof productImageSchema>;
+export type ProductRelated = z.infer<typeof productRelatedSchema>;
+export type ProductSource = z.infer<typeof productSourceSchema>;
+export type ProvenanceMark = z.infer<typeof provenanceMarkSchema>;
 
 export type Collection = z.infer<typeof collectionSchema>;
 

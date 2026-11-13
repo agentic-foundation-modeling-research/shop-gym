@@ -126,7 +126,25 @@ export interface CollectionDetail extends CollectionSummary {
   readonly products: {
     readonly nodes: readonly ProductSummary[];
     readonly totalCount: number | null;
+    readonly filters: readonly Filter[];
   };
+}
+
+/** One value of a facet, e.g. a brand, with the number of products it gives. */
+export interface FilterValue {
+  readonly id: string;
+  readonly label: string;
+  readonly count: number;
+  /** The JSON of the product filter that selects this value, e.g. `{"brand":"Acme"}`. */
+  readonly input: string;
+}
+
+/** One facet of a product list; the backend returns none for a shop without marketplace data. */
+export interface Filter {
+  readonly id: string;
+  readonly label: string;
+  readonly type: 'BOOLEAN' | 'LIST' | 'PRICE_RANGE';
+  readonly values: readonly FilterValue[];
 }
 
 export interface Page {

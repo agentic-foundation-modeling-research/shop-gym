@@ -1177,3 +1177,67 @@ html:has(.cart-popup) {
   gap: 0.75rem;
   justify-content: center;
 }
+
+.facet-layout {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.facet-panel h2,
+.facet h3 {
+  margin: 0;
+}
+
+.facet-panel h2 {
+  font-size: 1.25rem;
+}
+
+.facet {
+  gap: 0.5rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.facet h3 {
+  font-size: 1rem;
+}
+
+.facet-values {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.facet-value {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.facet-value[aria-current="true"] {
+  font-weight: 700;
+}
+
+.facet-more summary {
+  cursor: pointer;
+  margin-bottom: 0.35rem;
+}
+
+.facet-price {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.facet-price input {
+  width: 7rem;
+}
+
+@media (min-width: 750px) {
+  .facet-layout {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
+}

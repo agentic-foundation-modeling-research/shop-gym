@@ -172,6 +172,14 @@ _Avoid_: password recovery email
 A read-only opinion of one product in the Dataset's optional `reviews.json`: the variant bought, a rating from 1 to 5, a title, a text, the reviewer's first name and last initial, a date, a Verified Buyer flag, and a helpful count. The product's `reviews.rating` and `reviews.rating_count` metafields are computed from its Reviews. Shoppers read and sort Reviews; they cannot write or vote on them.
 _Avoid_: rating (one field of a Review), testimonial
 
+**Brand**:
+The optional maker name of a product in the Dataset, as its catalog gives it. It is not the `vendor`: the vendor is the seller name that the Storefront API shows, and every product has one. The "Brand" Facet reads the brand.
+_Avoid_: vendor (a different field)
+
+**Facet**:
+One way to narrow the products of a search or a collection page, with values and a product count for each value: category, Brand, price and rating. The backend returns facets only when some product of the Dataset has a Brand or a category path, and the storefront shows them in its "Filters" panel. The count of a value is the number of products that choosing it would give.
+_Avoid_: refinement; filter (the input that chooses a value)
+
 **Episode**:
 One attempt by one agent at one Task on one SandboxShop. The backend keeps the state of each Episode (cart, login, orders) apart from all others, by the episode id in the `x-shopgym-episode` header.
 _Avoid_: session, run
