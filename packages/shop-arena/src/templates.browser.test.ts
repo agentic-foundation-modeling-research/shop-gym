@@ -7,8 +7,11 @@
  * episode. Assertions read only pages and the episode's StateSnapshot from
  * the Control API. To cover one more page or flow, add a test that calls
  * one more step from `gen/build/verifiers/browser_steps.ts`. The last tests
- * serve the same build over more backends, each on the test Dataset with
- * fewer Discount codes, for the announcement bar.
+ * serve the same build over more backends: on the test Dataset with fewer
+ * Discount codes, for the announcement bar, with more Reviews, for a
+ * filtered list that has more than one page, with a brand and a category
+ * path on each product, for the "Filters" panel, and with related products
+ * for the test product, for the "You may also like" block.
  *
  * Not gated: it runs in every `pnpm test`. It needs `pnpm` on PATH,
  * Playwright Chromium and a built `packages/shop_backend`.
@@ -38,8 +41,11 @@ import {
   addAddress,
   addToCart,
   applyDiscountCode,
+  chooseFacetValue,
   deleteAddress,
   editAddress,
+  filterByPrice,
+  filterReviewsByRating,
   logIn,
   logOut,
   placeOrder,
@@ -47,6 +53,7 @@ import {
   rejectDiscountCode,
   requestPasswordReset,
   showMoreReviews,
+  showVerifiedReviews,
   sortReviews,
   stepThroughAnnouncements,
   viewOrder,
@@ -96,6 +103,31 @@ const WORK_ADDRESS = {
   zip: 'H3B 2B6',
 };
 const WORK_ADDRESS_CHANGES = { address2: 'Floor 25', zip: 'H3B 4W8' };
+/** A brand and a category path for each product of the test Dataset. */
+const MARKETPLACE_FIELDS: Readonly<
+  Record<string, { readonly brand: string; readonly category_path: readonly string[] }>
+> = {
+  'aislearena-anti-tick-collar': { brand: 'AisleArena', category_path: ['Dogs', 'Collars'] },
+  'shopliseum-mushroom-dog-toys': { brand: 'Shopliseum', category_path: ['Dogs', 'Toys'] },
+  'agoracage-skin-and-coat-chicken-with-grains-12lb': {
+    brand: 'AgoraCage',
+    category_path: ['Dogs', 'Food'],
+  },
+  'cartanvil-mackerel-and-sardines-70g': { brand: 'Cartanvil', category_path: ['Cats', 'Food'] },
+  'carthaeum-toothbrush': { brand: 'Carthaeum', category_path: ['Cats', 'Dental'] },
+};
+/** Related products of the test product, as product handles. */
+const RELATED = {
+  bought_together: ['carthaeum-toothbrush'],
+  also_bought: ['cartanvil-mackerel-and-sardines-70g'],
+};
+/** A sidecar runner that does not build: the copy that `beforeAll` built is served again. */
+const NO_BUILD: NonNullable<StorefrontSidecarOptions['runner']> = async () => ({
+  exitCode: 0,
+  stdout: '',
+  stderr: '',
+  timedOut: false,
+});
 
 let workDir: string;
 let storefrontDir: string;
@@ -105,6 +137,8 @@ let sidecar: StorefrontSidecar;
 const started: Servers[] = [];
 let session: BrowserSession;
 let orderNumber: number | undefined;
+/** URL of the sidecar over the test Dataset with brands and category paths. */
+let marketplaceUrl: string;
 
 /** Number of the order placed by the checkout test; fails the test when none was placed. */
 function placedOrderNumber(): number {
@@ -150,6 +184,21 @@ function normalized(text: string): string {
 /** The product page's "Reviews" section. */
 function reviewsSection() {
   return session.page.getByRole('region', { name: 'Reviews', exact: true });
+}
+
+/** The rating histogram near the product title. */
+function ratingHistogram() {
+  return session.page
+    .getByRole('region', { name: PRODUCT.title, exact: true })
+    .getByRole('list', { name: 'Rating histogram', exact: true });
+}
+
+/** The text of the chosen option of the Reviews control `label`. */
+async function chosenOption(label: string): Promise<string | null> {
+  return reviewsSection()
+    .getByLabel(label, { exact: true })
+    .locator('option:checked')
+    .textContent();
 }
 
 /** Text of each Review block in the "Reviews" section, in page order. */
@@ -207,9 +256,110 @@ async function serveWithDiscountCodes(count: number): Promise<string> {
   const servers = await serve(
     { ...data, commerce: { ...data.commerce, discount_codes: discountCodes } },
     `storefront-${count}-codes.log`,
-    { runner: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }) },
+    { runner: NO_BUILD },
   );
   return servers.sidecar.url;
+}
+
+/**
+ * Serve the copy that `beforeAll` built over a new backend on the test
+ * Dataset with `count` more five-star Reviews of Verified Buyers for the
+ * test product; resolves to its URL. The new sidecar's runner does nothing,
+ * so the copy is not built again.
+ */
+async function serveWithMoreReviews(count: number): Promise<string> {
+  const dataDir = path.join(workDir, 'more-reviews-data');
+  await fs.cp(FIXTURE_DIR, dataDir, { recursive: true });
+  const reviews = loadShopData(FIXTURE_DIR).reviews;
+  const model = reviews.find((review) => review.product_handle === PRODUCT.handle);
+  if (model === undefined) throw new Error(`no Review of ${PRODUCT.handle} to copy`);
+  const more = Array.from({ length: count }, (_, index) => ({
+    ...model,
+    id: 1000 + index,
+    title: `More five stars ${index + 1}`,
+    rating: 5,
+    verified_buyer: true,
+  }));
+  await fs.writeFile(path.join(dataDir, 'reviews.json'), JSON.stringify([...reviews, ...more]));
+  const servers = await serve(loadShopData(dataDir), 'storefront-more-reviews.log', {
+    runner: NO_BUILD,
+  });
+  return servers.sidecar.url;
+}
+
+/**
+ * Serve the copy that `beforeAll` built over a new backend on the test
+ * Dataset with `MARKETPLACE_FIELDS` on its products; resolves to its URL.
+ */
+async function serveWithMarketplaceFields(): Promise<string> {
+  const dataDir = path.join(workDir, 'marketplace-data');
+  await fs.cp(FIXTURE_DIR, dataDir, { recursive: true });
+  const file = path.join(dataDir, 'products.json');
+  const products = JSON.parse(await fs.readFile(file, 'utf-8')) as { handle: string }[];
+  const withFields = products.map((product) => ({
+    ...product,
+    ...MARKETPLACE_FIELDS[product.handle],
+  }));
+  await fs.writeFile(file, JSON.stringify(withFields));
+  const servers = await serve(loadShopData(dataDir), 'storefront-marketplace.log', {
+    runner: NO_BUILD,
+  });
+  return servers.sidecar.url;
+}
+
+/**
+ * Serve the copy that `beforeAll` built over a new backend on the test
+ * Dataset with `RELATED` on the test product; resolves to its URL.
+ */
+async function serveWithRelatedProducts(): Promise<string> {
+  const dataDir = path.join(workDir, 'related-data');
+  await fs.cp(FIXTURE_DIR, dataDir, { recursive: true });
+  const file = path.join(dataDir, 'products.json');
+  const products = JSON.parse(await fs.readFile(file, 'utf-8')) as { handle: string }[];
+  const withRelated = products.map((product) =>
+    product.handle === PRODUCT.handle ? { ...product, related: RELATED } : product,
+  );
+  await fs.writeFile(file, JSON.stringify(withRelated));
+  const servers = await serve(loadShopData(dataDir), 'storefront-related.log', {
+    runner: NO_BUILD,
+  });
+  return servers.sidecar.url;
+}
+
+/** Title and link of each product card in the product page's "You may also like" block. */
+async function relatedProductCards(): Promise<string[]> {
+  const block = session.page.getByRole('region', { name: 'You may also like', exact: true });
+  const links = await block.locator('.product-card-link').all();
+  return Promise.all(
+    links.map(
+      async (link) => `${await link.locator('h3').innerText()} ${await link.getAttribute('href')}`,
+    ),
+  );
+}
+
+/** The "Filters" panel of a search or collection page. */
+function filtersPanel() {
+  return session.page.getByRole('complementary', { name: 'Filters', exact: true });
+}
+
+/** Names of the value links of facet `label` in the "Filters" panel, in page order. */
+async function facetValues(label: string): Promise<string[]> {
+  return (
+    await filtersPanel()
+      .getByRole('region', { name: label, exact: true })
+      .getByRole('link')
+      .allInnerTexts()
+  ).map(normalized);
+}
+
+/** Titles of the product cards on the page, in page order. */
+async function productTitles(): Promise<string[]> {
+  return session.page.locator('.product-card h3').allInnerTexts();
+}
+
+/** The values of query parameter `name` in page path `url`. */
+function paramValues(url: string | undefined, name: string): string[] {
+  return new URL(url ?? '', marketplaceUrl).searchParams.getAll(name);
 }
 
 /** Text of each order history row, in page order. */
@@ -317,11 +467,15 @@ describe('storefront template in a browser', () => {
     ]);
     const firstReview = reviews.locator('article').first();
     expect(await firstReview.getByRole('img', { name: '2 out of 5 stars' }).count()).toBe(1);
-    // No "Write a Review" and no helpful-vote buttons: sorting and paging only.
+    // No "Write a Review" and no helpful-vote buttons: sorting, filtering and paging only.
     expect(await reviews.getByRole('button').allInnerTexts()).toEqual([
-      'Sort',
+      'Apply',
       'Show more reviews',
     ]);
+    expect(await chosenOption('Rating')).toBe('All ratings');
+    expect(await reviews.getByLabel('Verified Buyers only', { exact: true }).isChecked()).toBe(
+      false,
+    );
   }, 60_000);
 
   it('shows more Reviews until there are no more', async () => {
@@ -358,6 +512,79 @@ describe('storefront template in a browser', () => {
     ]);
   }, 60_000);
 
+  it('shows the rating histogram near the title, with a link for each rating that has Reviews', async () => {
+    const outcome = await viewProduct(session.page, sidecar.url, PRODUCT.handle);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect((await ratingHistogram().getByRole('listitem').allInnerTexts()).map(normalized)).toEqual(
+      ['5 stars 2', '4 stars 2', '3 stars 1', '2 stars 1', '1 star 0'],
+    );
+    const links = ratingHistogram().getByRole('link');
+    expect(await Promise.all((await links.all()).map((link) => link.getAttribute('href')))).toEqual(
+      [5, 4, 3, 2].map((rating) => `${PRODUCT_PATH}?reviews_rating=${rating}#reviews`),
+    );
+    expect(
+      await ratingHistogram().getByRole('link', { name: '2 stars, 1 review', exact: true }).count(),
+    ).toBe(1);
+  }, 60_000);
+
+  it('filters the Reviews by star rating from the histogram and keeps the sort', async () => {
+    const outcome = await filterReviewsByRating(
+      session.page,
+      sidecar.url,
+      `${PRODUCT_PATH}?reviews_sort=most_helpful`,
+      4,
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(outcome.url).toBe(`${PRODUCT_PATH}?reviews_sort=most_helpful&reviews_rating=4`);
+    expect(await reviewTitles()).toEqual(['Good, but the stem came off', 'Bright colours']);
+    expect(await chosenOption('Sort by')).toBe('Most helpful');
+    expect(await chosenOption('Rating')).toBe('4 stars');
+    const current = ratingHistogram().getByRole('link', { name: '4 stars, 2 reviews' });
+    expect(await current.getAttribute('aria-current')).toBe('true');
+  }, 60_000);
+
+  it('shows only the Reviews of Verified Buyers and keeps the sort', async () => {
+    const outcome = await showVerifiedReviews(
+      session.page,
+      sidecar.url,
+      `${PRODUCT_PATH}?reviews_sort=highest_rating`,
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(outcome.url).toBe(
+      `${PRODUCT_PATH}?reviews_sort=highest_rating&reviews_rating=&reviews_verified=true`,
+    );
+    expect(await reviewTitles()).toEqual([
+      'Still squeaking after a month',
+      "Our puppy's favourite",
+      'Good, but the stem came off',
+      'Fine for gentle chewers',
+    ]);
+    expect(await chosenOption('Sort by')).toBe('Highest rating');
+  }, 60_000);
+
+  it('keeps the Verified Buyer filter when a histogram bar sets the star rating', async () => {
+    const outcome = await filterReviewsByRating(
+      session.page,
+      sidecar.url,
+      `${PRODUCT_PATH}?reviews_verified=true`,
+      4,
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(outcome.url).toBe(`${PRODUCT_PATH}?reviews_rating=4&reviews_verified=true`);
+    expect(await reviewTitles()).toEqual(['Good, but the stem came off']);
+  }, 60_000);
+
+  it('keeps the Reviews section when no Review matches the filters', async () => {
+    await session.page.goto(`${sidecar.url}${PRODUCT_PATH}?reviews_rating=1`, {
+      waitUntil: 'load',
+    });
+    expect(await reviewsSection().locator('article').count()).toBe(0);
+    expect(normalized(await reviewsSection().innerText())).toContain(
+      'No reviews match these filters.',
+    );
+    expect(await chosenOption('Rating')).toBe('1 star');
+  }, 60_000);
+
   it('shows a half star for a 4.5 rating', async () => {
     const outcome = await viewProduct(session.page, sidecar.url, HALF_STAR_PRODUCT);
     expect(outcome.ok, outcome.detail).toBe(true);
@@ -388,6 +615,19 @@ describe('storefront template in a browser', () => {
     expect(outcome.ok, outcome.detail).toBe(true);
     expect(await reviewsSection().count()).toBe(0);
     expect(await session.page.getByRole('img', { name: /out of 5\.0 stars/ }).count()).toBe(0);
+    expect(await session.page.getByRole('list', { name: 'Rating histogram' }).count()).toBe(0);
+  }, 60_000);
+
+  it('recommends four products by ranking for a product with no related products', async () => {
+    const outcome = await viewProduct(session.page, sidecar.url, PRODUCT.handle);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    // The test Dataset's products share no type or tag with it: Dataset order.
+    expect(await relatedProductCards()).toEqual([
+      'AisleArena Anti Tick Collar /products/aislearena-anti-tick-collar',
+      'AgoraCage Skin and coat chicken with grains 12lb dog /products/agoracage-skin-and-coat-chicken-with-grains-12lb',
+      'Cartanvil Mackerel and Sardines 70g /products/cartanvil-mackerel-and-sardines-70g',
+      'Carthaeum Toothbrush /products/carthaeum-toothbrush',
+    ]);
   }, 60_000);
 
   it('adds a product to the cart', async () => {
@@ -692,5 +932,124 @@ describe('storefront template in a browser', () => {
     );
     expect(outcome.ok, outcome.detail).toBe(true);
     expect(await pageText()).not.toContain('WELCOME10');
+  }, 60_000);
+
+  it('keeps the star rating and the Verified Buyer filters on the next page', async () => {
+    // With four more, the test product has six five-star Reviews of Verified Buyers.
+    const url = await serveWithMoreReviews(4);
+    const outcome = await showMoreReviews(
+      session.page,
+      url,
+      `${PRODUCT_PATH}?reviews_sort=most_helpful&reviews_rating=5&reviews_verified=true`,
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(outcome.url).toBe(
+      `${PRODUCT_PATH}?reviews_sort=most_helpful&reviews_rating=5&reviews_verified=true&reviews_pages=2`,
+    );
+    const reviews = reviewsSection().locator('article');
+    expect(await reviews.count()).toBe(6);
+    expect(
+      await reviews
+        .filter({ has: session.page.getByRole('img', { name: '5 out of 5 stars', exact: true }) })
+        .filter({ has: session.page.getByText('Verified Buyer', { exact: true }) })
+        .count(),
+    ).toBe(6);
+  }, 60_000);
+
+  it('shows no Filters panel for a Dataset with no brands or category paths', async () => {
+    for (const listPath of ['/search?q=dog', '/collections/dog-essentials']) {
+      await session.page.goto(`${sidecar.url}${listPath}`, { waitUntil: 'load' });
+      expect(await productTitles(), listPath).not.toEqual([]);
+      expect(await filtersPanel().count(), listPath).toBe(0);
+    }
+  }, 60_000);
+
+  it('narrows search results by one brand, then by two', async () => {
+    marketplaceUrl = await serveWithMarketplaceFields();
+    await session.page.goto(`${marketplaceUrl}/search?q=dog`, { waitUntil: 'load' });
+    expect(await facetValues('Brand')).toEqual([
+      'AgoraCage (1)',
+      'AisleArena (1)',
+      'Carthaeum (1)',
+      'Shopliseum (1)',
+    ]);
+    const one = await chooseFacetValue(
+      session.page,
+      marketplaceUrl,
+      '/search?q=dog',
+      'Brand',
+      'Shopliseum',
+    );
+    expect(one.ok, one.detail).toBe(true);
+    expect(paramValues(one.url, 'filter.brand')).toEqual(['"Shopliseum"']);
+    expect(await productTitles()).toEqual(['Shopliseum Mushroom Dog Toys']);
+    expect(await pageText()).toContain('1 result(s)');
+
+    const two = await chooseFacetValue(
+      session.page,
+      marketplaceUrl,
+      one.url ?? '',
+      'Brand',
+      'AisleArena',
+    );
+    expect(two.ok, two.detail).toBe(true);
+    expect(paramValues(two.url, 'q')).toEqual(['dog']);
+    expect(paramValues(two.url, 'filter.brand')).toEqual(['"Shopliseum"', '"AisleArena"']);
+    expect((await productTitles()).sort()).toEqual([
+      'AisleArena Anti Tick Collar',
+      'Shopliseum Mushroom Dog Toys',
+    ]);
+  }, 60_000);
+
+  it('drills down a collection by category', async () => {
+    const dogs = await chooseFacetValue(
+      session.page,
+      marketplaceUrl,
+      '/collections/dog-essentials',
+      'Category',
+      'Dogs',
+    );
+    expect(dogs.ok, dogs.detail).toBe(true);
+    expect(await facetValues('Category')).toEqual([
+      'Dogs (3)',
+      'Collars (1)',
+      'Food (1)',
+      'Toys (1)',
+    ]);
+    const toys = await chooseFacetValue(
+      session.page,
+      marketplaceUrl,
+      dogs.url ?? '',
+      'Category',
+      'Toys',
+    );
+    expect(toys.ok, toys.detail).toBe(true);
+    expect(paramValues(toys.url, 'filter.categoryPath')).toEqual(['["Dogs","Toys"]']);
+    expect(await productTitles()).toEqual(['Shopliseum Mushroom Dog Toys']);
+  }, 60_000);
+
+  it('narrows a collection by a price range and links back to no filters', async () => {
+    const outcome = await filterByPrice(
+      session.page,
+      marketplaceUrl,
+      '/collections/dog-essentials',
+      { min: 20, max: 60 },
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await productTitles()).toEqual(['AgoraCage Skin and coat chicken with grains 12lb dog']);
+    const clear = filtersPanel().getByRole('link', { name: 'Clear all filters', exact: true });
+    expect(await clear.getAttribute('href')).toBe('/collections/dog-essentials');
+  }, 60_000);
+
+  it('recommends the related products first: bought together, then also bought', async () => {
+    const url = await serveWithRelatedProducts();
+    const outcome = await viewProduct(session.page, url, PRODUCT.handle);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(await relatedProductCards()).toEqual([
+      'Carthaeum Toothbrush /products/carthaeum-toothbrush',
+      'Cartanvil Mackerel and Sardines 70g /products/cartanvil-mackerel-and-sardines-70g',
+      'AisleArena Anti Tick Collar /products/aislearena-anti-tick-collar',
+      'AgoraCage Skin and coat chicken with grains 12lb dog /products/agoracage-skin-and-coat-chicken-with-grains-12lb',
+    ]);
   }, 60_000);
 });

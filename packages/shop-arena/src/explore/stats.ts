@@ -4,10 +4,13 @@
  * On a Shopify shop the catalog numbers come from the prefetched Shopify
  * JSON endpoints (`source: catalog_endpoint`). On a generic site they come
  * from the product observation fragments of the executors
- * (`source: observed_sample`), and the totals that such a site does not
- * show stay 0. `sample_size` is the number of products that the numbers
- * come from. The feature counts come from the merged capabilities on both
- * paths.
+ * (`source: observed_sample`). `sample_size` is the number of products
+ * that the numbers come from. The feature counts come from the merged
+ * capabilities on both paths.
+ *
+ * A number that the run does not know is `null`, never 0: a total that the
+ * site does not show, a mean or a median of no values, and a capabilities
+ * count that is `null`. So 0 always means "none".
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -20,19 +23,26 @@ import { type ProductObservation, readObservations } from './observations.js';
 export const STATS_SOURCES = ['catalog_endpoint', 'observed_sample'] as const;
 export type StatsSource = (typeof STATS_SOURCES)[number];
 
+/** Catalog and feature statistics. A `null` number is unknown. */
 export interface Stats {
   readonly source: StatsSource;
   /** The number of products that the catalog numbers come from. */
   readonly sample_size: number;
-  readonly products_total: number;
-  readonly collections_total: number;
-  readonly products_per_collection: { avg: number; median: number; max: number };
-  readonly price: { min: number; max: number; median: number; currency: string };
-  readonly products_with_variants_pct: number;
+  /** `null` when the site shows no total. */
+  readonly products_total: number | null;
+  /** `null` when the site shows no total. */
+  readonly collections_total: number | null;
+  /** `null` when no collection gives its product count. */
+  readonly products_per_collection: { avg: number; median: number; max: number } | null;
+  /** `null` when no price is known. The currency is `null` when no source gives it. */
+  readonly price: { min: number; max: number; median: number; currency: string | null } | null;
+  /** `null` when the sample has no product. */
+  readonly products_with_variants_pct: number | null;
   readonly variant_axes_observed: readonly string[];
-  readonly navigation_depth_max: number;
-  readonly homepage_section_count: number;
-  readonly info_pages_count: number;
+  readonly navigation_depth_max: number | null;
+  readonly homepage_section_count: number | null;
+  /** `null` when the run found no info page. */
+  readonly info_pages_count: number | null;
   readonly feature_count: number;
 }
 
@@ -101,14 +111,16 @@ function featureCount(value: unknown): number {
   return 0;
 }
 
-function cartCurrency(prefetchDir: string): string {
+function cartCurrency(prefetchDir: string): string | null {
   const path = join(prefetchDir, 'cart.js');
-  if (!existsSync(path)) return '';
+  if (!existsSync(path)) return null;
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
-    return isObject(parsed) && typeof parsed.currency === 'string' ? parsed.currency : '';
+    return isObject(parsed) && typeof parsed.currency === 'string' && parsed.currency !== ''
+      ? parsed.currency
+      : null;
   } catch {
-    return '';
+    return null;
   }
 }
 
@@ -148,13 +160,16 @@ export function computeStats(prefetchDir: string, capabilities: Capabilities): S
     sample_size: products.length,
     products_total: products.length,
     collections_total: collections.length,
-    products_per_collection: {
-      avg: perCollection.length === 0 ? 0 : sum(perCollection) / perCollection.length,
-      median: median(perCollection),
-      max: perCollection.length === 0 ? 0 : Math.max(...perCollection),
-    },
+    products_per_collection:
+      perCollection.length === 0
+        ? null
+        : {
+            avg: sum(perCollection) / perCollection.length,
+            median: median(perCollection),
+            max: Math.max(...perCollection),
+          },
     price: priceStats(prices, capabilities.shop.currency ?? cartCurrency(prefetchDir)),
-    products_with_variants_pct: products.length === 0 ? 0 : withVariants / products.length,
+    products_with_variants_pct: products.length === 0 ? null : withVariants / products.length,
     variant_axes_observed: variantAxes(products),
     ...capabilityCounts(capabilities),
   };
@@ -184,8 +199,8 @@ function mainCurrency(observations: readonly ProductObservation[]): string | und
  * `sample_size`, the variant share and the variant axes. The axes are
  * sorted, because the sample has no page order. The price numbers use only
  * the observations in the main currency, so that one currency labels them.
- * Products total, collections total and products per collection stay 0,
- * because the site does not show them.
+ * Products total, collections total and products per collection are
+ * `null`, because the site does not show them.
  *
  * @throws Error when a fragment is not valid JSON or does not match the schema.
  */
@@ -199,36 +214,51 @@ export function computeObservedStats(partsDir: string, capabilities: Capabilitie
   return {
     source: 'observed_sample',
     sample_size: observations.length,
-    products_total: 0,
-    collections_total: 0,
-    products_per_collection: { avg: 0, median: 0, max: 0 },
-    price: priceStats(prices, currency ?? capabilities.shop.currency ?? ''),
-    products_with_variants_pct: observations.length === 0 ? 0 : withVariants / observations.length,
+    products_total: null,
+    collections_total: null,
+    products_per_collection: null,
+    price: priceStats(prices, currency ?? capabilities.shop.currency),
+    products_with_variants_pct:
+      observations.length === 0 ? null : withVariants / observations.length,
     variant_axes_observed: normalizeAxes(observations.flatMap((o) => o.variant_axes)).sort(),
     ...capabilityCounts(capabilities),
   };
 }
 
-function priceStats(prices: readonly number[], currency: string): Stats['price'] {
-  return {
-    min: prices.length === 0 ? 0 : Math.min(...prices),
-    max: prices.length === 0 ? 0 : Math.max(...prices),
-    median: median(prices),
-    currency,
-  };
+/**
+ * `capabilities` with `shop.currency` taken from the prices of `stats`
+ * when no part gave it, because the prices show the currency of the shop.
+ * A currency that a part gave is kept.
+ */
+export function withPriceCurrency(capabilities: Capabilities, stats: Stats): Capabilities {
+  const currency = stats.price?.currency ?? null;
+  if (capabilities.shop.currency !== null || currency === null) return capabilities;
+  return { ...capabilities, shop: { ...capabilities.shop, currency } };
 }
 
-/** The structural counts that both paths take from the merged capabilities. */
-function capabilityCounts(
+/** The price numbers of `prices`, or `null` when there is no price. */
+function priceStats(prices: readonly number[], currency: string | null): Stats['price'] {
+  if (prices.length === 0) return null;
+  return { min: Math.min(...prices), max: Math.max(...prices), median: median(prices), currency };
+}
+
+/**
+ * The structural counts that both paths take from the merged capabilities.
+ * A `null` capability stays `null`. The info pages list has no unknown
+ * state, and nearly every storefront has an info page, so an empty list
+ * gives `null` and not 0.
+ */
+export function capabilityCounts(
   capabilities: Capabilities,
 ): Pick<
   Stats,
   'navigation_depth_max' | 'homepage_section_count' | 'info_pages_count' | 'feature_count'
 > {
   return {
-    navigation_depth_max: capabilities.site_shell.nav_depth ?? 0,
-    homepage_section_count: capabilities.homepage.section_count ?? 0,
-    info_pages_count: capabilities.info_pages_present.length,
+    navigation_depth_max: capabilities.site_shell.nav_depth,
+    homepage_section_count: capabilities.homepage.section_count,
+    info_pages_count:
+      capabilities.info_pages_present.length === 0 ? null : capabilities.info_pages_present.length,
     feature_count: featureCount(capabilities),
   };
 }

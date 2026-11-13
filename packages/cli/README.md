@@ -1,7 +1,7 @@
 # @shop-gym/cli
 
 `shopgym` is the single command-line entry point for ShopGym: storefront
-exploration, shop generation, hosting published shops, ShopGuru benchmarks,
+exploration, Source bundles, shop generation, hosting published shops, ShopGuru benchmarks,
 trajectory inspection, the review reports site and an environment check.
 
 ```bash
@@ -48,13 +48,39 @@ run keeps them in `brand_terms.json` in the run directory, and a rerun
 without `--brand-term` uses them again. To drop the stored terms, delete
 that file.
 
+### `shopgym bundle <adapter> <src> --out <dir>`
+
+Builds a complete Source bundle from one category of a source dataset.
+
+```
+shopgym bundle <adapter> <src> --out <dir> --category <name> --cutoff <date>
+               --products <n> --users <n> --seed <s>
+               [--min-events-before <n>] [--reviews-per-product <n>]
+               [--model <provider/id>] [--concurrency <n>]
+               [--images-per-product <n>] [--from <step>]
+```
+
+The only adapter is `amazon_reviews_2023`. `<src>` holds
+`review_categories/<name>.jsonl` and `meta_categories/meta_<name>.jsonl`.
+`--cutoff` is a date (midnight UTC) or a UTC time. `--min-events-before`
+defaults to 5. Without `--reviews-per-product`, every review of a kept
+product stays. `--model` (default `openai/gpt-5.5`) names the variants and
+writes the User profiles in the complete step, with `--concurrency`
+parallel calls; the key comes from `.env`. `--images-per-product`
+(default 1) sets the large images to download per product into
+`catalog/images/`; 0 turns the download off. The download stops after 10
+refused requests in a row, and `report.json` lists the failed images.
+`--from` must be `sample`, `complete`, `images` or `publish`; `--from
+images` tries the missing images again and skips the files already on
+disk. Prints the bundle directory on stdout.
+
 ### `shopgym gen <manual_dir>... --name <name>`
 
 Generates a SandboxShop from one or more shop manuals.
 
 ```
-shopgym gen <manual_dir>... --name <name> [--out <dir>] [--data <dir>]
-            [--gen-backend] [--from <step>] [--model <ref>] [--build-model <ref>]
+shopgym gen <manual_dir>... --name <name> [--out <dir>]
+            [--data <dir> | --bundle <dir>] [--gen-backend] [--from <step>] [--model <ref>] [--build-model <ref>]
             [--image-backend placeholder|openai] [--max-iters <n>]
             [--collections <n>] [--products-per-collection <n>]
             [--images-per-product <n>] [--concurrency <n>] [--force-resume]
@@ -66,8 +92,12 @@ and the judges. The build agent runs on `--build-model`, default
 `openai/gpt-6-sol`, even if `--model` is set. `--data` copies the products,
 collections and images of an existing SandboxShop Dataset. Data synthesis then
 makes no catalog, so `--collections`, `--products-per-collection`,
-`--images-per-product` and `--image-backend` do not apply. Prints the published
-shop directory on stdout.
+`--images-per-product` and `--image-backend` do not apply. `--bundle` makes the
+Dataset from a complete Source bundle: the catalog, the Personas with their
+orders and the Reviews before the cutoff, with every time shifted so that the
+cutoff falls on the Episode clock start. It also writes the hidden `users/`
+directory. It cannot be used with `--data`, and the same catalog and image
+options do not apply. Prints the published shop directory on stdout.
 
 ### `shopgym host start|stop|restart|list`
 

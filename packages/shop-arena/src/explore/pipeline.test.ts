@@ -19,9 +19,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { AnonymizationLeakError } from './anonymization.js';
 import { IterationBrowser, NAVIGATION_CAP } from './browser.js';
 import type { FixedAreaGap } from './coverage.js';
+import { READ_BUDGET_CHARS } from './files.js';
 import { SiteGraphReplyError } from './graph.js';
 import { type ExploreStep, exploreStorefront, parseModel, runId } from './pipeline.js';
 import { DEFAULT_USER_AGENT, PRODUCTS_PAGE_LIMIT, ShopUnreachableError } from './prefetch.js';
+import { ManualRunNoteError } from './synthesize.js';
 import {
   BOT_CHECK_PAGE,
   type FixturePage,
@@ -106,6 +108,18 @@ hero followed by a featured collection grid.
 | Navigation | single-row header |
 | Floating Surfaces | none observed |
 `;
+
+/** Two manual lines that tell about the run, not about the storefront. */
+const RUN_NOTE_LINES = [
+  '- **Behavior:** The drawer opens on add; the quantity stepper was not tested in this session.',
+  '- **UX Notes:** The run stopped at a bot check before checkout.',
+] as const;
+
+/** `MANUAL` with a Cart section of the two run-note lines. */
+const RUN_NOTE_MANUAL = MANUAL.replace(
+  '## UX Patterns Summary',
+  ['## Cart', '', ...RUN_NOTE_LINES, '', '## UX Patterns Summary'].join('\n'),
+);
 
 const SCRIPTS: readonly FakeScript[] = [
   { writeFiles: { 'plan.md': PLAN(' ', ' ') }, reply: 'planned' },
@@ -378,13 +392,21 @@ function isGraphRequest(request: CompleteRequest): boolean {
   return promptText(request.prompt).startsWith(title);
 }
 
+function isRunNoteRewriteRequest(request: CompleteRequest): boolean {
+  const title = readPrompt('synthesize_manual_rewrite.md').split('\n', 1)[0] ?? '';
+  return promptText(request.prompt).startsWith(title);
+}
+
 /**
- * A scripted completion client: the synthesis call gets `text`, and the
- * graph calls get `graphs` in order, the last one again after the end.
- * With no `graphs`, each graph call gets the empty graph.
+ * A scripted completion client: the synthesis call gets `text`, the
+ * run-note rewrite call gets `runNoteRewrite`, and the graph calls get
+ * `graphs` in order, the last one again after the end. With no `graphs`,
+ * each graph call gets the empty graph.
  */
 class StubLlm implements LlmClient {
   readonly requests: CompleteRequest[] = [];
+  /** The reply to the run-note rewrite call. */
+  runNoteRewrite = '[]';
   private readonly graphs: readonly string[];
 
   constructor(
@@ -407,11 +429,20 @@ class StubLlm implements LlmClient {
     return request;
   }
 
+  /** The run-note rewrite requests, in order. */
+  runNoteRewriteRequests(): CompleteRequest[] {
+    return this.requests.filter(isRunNoteRewriteRequest);
+  }
+
   async complete(request: CompleteRequest): Promise<Completion> {
     this.requests.push(request);
     const index = Math.min(this.graphRequests().length, this.graphs.length) - 1;
     return {
-      text: isGraphRequest(request) ? (this.graphs[index] ?? '') : this.text,
+      text: isRunNoteRewriteRequest(request)
+        ? this.runNoteRewrite
+        : isGraphRequest(request)
+          ? (this.graphs[index] ?? '')
+          : this.text,
       model: request.model.id,
       stopReason: 'end_turn',
       usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costUsd: 0 },
@@ -679,6 +710,9 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     const stats = readJson(result.statsPath);
     expect(stats.source).toBe('catalog_endpoint');
     expect(stats.sample_size).toBe(2);
+    // No part gave the menu depth or an info page, so they are unknown, not 0.
+    expect(stats.navigation_depth_max).toBeNull();
+    expect(stats.info_pages_count).toBeNull();
   });
 
   it('does not ask the Shopify executors for product observations', async () => {
@@ -879,6 +913,84 @@ describe('exploreStorefront', { timeout: 60_000 }, () => {
     ).rejects.toThrow(/manual response too short/);
     expect(existsSync(join(outDir, 'manual.md'))).toBe(false);
     expect(existsSync(join(outDir, 'capabilities.json'))).toBe(true);
+  });
+
+  it('asks once for a rewrite of the run-note lines and publishes the manual with no run note', async () => {
+    const llm = new StubLlm(RUN_NOTE_MANUAL);
+    llm.runNoteRewrite = fencedJson([
+      '- **Behavior:** The drawer opens on add; the quantity stepper behavior is unknown.',
+      '',
+    ]);
+    const { result, logs } = await explore({ scripts: SCRIPTS, llm });
+
+    expect(readFileSync(result.manualPath, 'utf8')).toBe(
+      MANUAL.replace(
+        '## UX Patterns Summary',
+        [
+          '## Cart',
+          '',
+          '- **Behavior:** The drawer opens on add; the quantity stepper behavior is unknown.',
+          '',
+          '## UX Patterns Summary',
+        ].join('\n'),
+      ),
+    );
+    const [rewrite, ...others] = llm.runNoteRewriteRequests();
+    expect(others).toEqual([]);
+    expect(promptText(rewrite?.prompt ?? '')).toContain(
+      JSON.stringify(
+        [
+          { text: RUN_NOTE_LINES[0], run_words: ['was not tested', 'this session'] },
+          { text: RUN_NOTE_LINES[1], run_words: ['the run', 'bot check'] },
+        ],
+        null,
+        2,
+      ),
+    );
+    // Only the run-note lines go to the rewrite call, not the parts.
+    expect(promptText(rewrite?.prompt ?? '')).not.toContain('## Per-task parts');
+    expect(logs).toContain('the manual has 2 run-note lines; asking once for a rewrite');
+  });
+
+  it('tells the synthesizer to write no run notes', async () => {
+    const { llm } = await explore({ scripts: SCRIPTS });
+
+    const synthesizer = promptText(llm.requests[0]?.prompt ?? '').replace(/\s+/g, ' ');
+    expect(synthesizer).toContain(
+      '**No run notes.** Write about the storefront, not about the run',
+    );
+  });
+
+  it('asks for no rewrite when the manual has no run note', async () => {
+    const { llm } = await explore({ scripts: SCRIPTS });
+    expect(llm.runNoteRewriteRequests()).toEqual([]);
+  });
+
+  it('fails the synthesize step when a rewritten line still tells about the run, and writes no manual', async () => {
+    const llm = new StubLlm(RUN_NOTE_MANUAL);
+    llm.runNoteRewrite = JSON.stringify([
+      '- **Behavior:** The drawer opens on add.',
+      RUN_NOTE_LINES[1],
+    ]);
+    await expect(explore({ scripts: SCRIPTS, llm })).rejects.toSatisfy(
+      (error) =>
+        error instanceof StepFailedError &&
+        error.cause instanceof ManualRunNoteError &&
+        error.cause.message.includes('line 12: the run, bot check'),
+    );
+    expect(existsSync(join(outDir, 'manual.md'))).toBe(false);
+  });
+
+  it('fails the synthesize step when the rewrite reply does not give one line for each run-note line', async () => {
+    const llm = new StubLlm(RUN_NOTE_MANUAL);
+    llm.runNoteRewrite = JSON.stringify(['- **Behavior:** The drawer opens on add.']);
+    await expect(explore({ scripts: SCRIPTS, llm })).rejects.toSatisfy(
+      (error) =>
+        error instanceof StepFailedError &&
+        error.cause instanceof ManualRunNoteError &&
+        error.cause.message.includes('one JSON array of 2 strings'),
+    );
+    expect(existsSync(join(outDir, 'manual.md'))).toBe(false);
   });
 
   it('starts every Iteration in a fresh browser, so a cart made in one is not in the next', async () => {
@@ -1175,7 +1287,6 @@ const REF_RE = /^(?:f\d+)?e\d+$/;
  */
 async function withRefs(siteUrl: string, calls: readonly ScriptedCall[]): Promise<ScriptedCall[]> {
   const browser = await IterationBrowser.launch({
-    episodeId: 'refs',
     baseUrl: siteUrl,
     startUrl: `${siteUrl}/`,
   });
@@ -1684,17 +1795,29 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
     ).toBe(true);
 
     // With no Shopify prefetch files, merge and synthesis still publish the
-    // manual, and the catalog counts stay 0.
+    // manual, and the catalog counts stay unknown.
     for (const file of ['robots.txt', 'index.html', 'sitemap.xml', 'prefetch.json']) {
       expect(existsSync(join(result.prefetchDir, file)), file).toBe(true);
     }
     for (const file of ['products.json', 'collections.json', 'cart.js']) {
       expect(existsSync(join(result.prefetchDir, file)), file).toBe(false);
     }
-    const stats = readJson(result.statsPath);
-    expect(stats.products_total).toBe(0);
-    expect(stats.collections_total).toBe(0);
-    expect(stats.products_per_collection).toEqual({ avg: 0, median: 0, max: 0 });
+    // The run recorded no product page and saw no menu depth and no info
+    // page, so those numbers are unknown too. No unknown number is 0.
+    expect(readJson(result.statsPath)).toEqual({
+      source: 'observed_sample',
+      sample_size: 0,
+      products_total: null,
+      collections_total: null,
+      products_per_collection: null,
+      price: null,
+      products_with_variants_pct: null,
+      variant_axes_observed: [],
+      navigation_depth_max: null,
+      homepage_section_count: 2,
+      info_pages_count: null,
+      feature_count: 4,
+    });
     expect(readJson(result.manifestPath).coverage_gaps).toEqual([]);
     expect(readFileSync(result.manualPath, 'utf8')).toBe(MANUAL);
   });
@@ -1739,13 +1862,31 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
       sample_size: 3,
       price: { min: 44.5, max: 79, median: 59.99, currency: 'USD' },
       variant_axes_observed: ['color', 'edition', 'platform'],
-      // The site shows no catalog totals, so they stay 0.
-      products_total: 0,
-      collections_total: 0,
-      products_per_collection: { avg: 0, median: 0, max: 0 },
+      // The site shows no catalog totals, so they are unknown.
+      products_total: null,
+      collections_total: null,
+      products_per_collection: null,
       homepage_section_count: 2,
     });
     expect(stats.products_with_variants_pct).toBeCloseTo(0.667, 3);
+  });
+
+  it('fills shop.currency from the observed prices when no part gives it', async () => {
+    const { result } = await explore({
+      url: site.url,
+      scripts: [...genericScripts(site.url).slice(0, 2), productExecutor(site.url, OBSERVED)],
+    });
+
+    // The homepage part gives no shop block, but the product pages show prices in USD.
+    expect(readJson(result.capabilitiesPath).shop.currency).toBe('USD');
+    expect(readJson(result.statsPath).price.currency).toBe('USD');
+  });
+
+  it('keeps shop.currency unknown when the run saw no price', async () => {
+    const { result } = await explore({ url: site.url, scripts: genericScripts(site.url) });
+
+    expect(readJson(result.capabilitiesPath).shop.currency).toBeNull();
+    expect(readJson(result.statsPath).price).toBeNull();
   });
 
   it('counts a product page once when two tasks record it', async () => {
@@ -2242,6 +2383,44 @@ describe('exploreStorefront on a generic site', { timeout: 60_000 }, () => {
       plan_tasks_done: 1,
       stop: { reason: 'navigation_cap', iteration: 'exec-0001', blocked_tasks: [] },
     });
+  });
+
+  it('gives each Iteration a read_file budget that starts again in the next Iteration', async () => {
+    const notes = 'x'.repeat(10_000);
+    const read = { tool: 'read_file', arguments: { path: 'notes.txt' } };
+    const reads = Math.ceil(READ_BUDGET_CHARS / notes.length);
+    const { result } = await explore({
+      url: site.url,
+      maxIters: 2,
+      scripts: [
+        { writeFiles: { 'plan.md': botCheckPlan([]), 'notes.txt': notes } },
+        {
+          writeFiles: {
+            ...finishedPart('homepage_sections'),
+            'plan.md': botCheckPlan(['homepage_sections']),
+          },
+          toolCalls: Array.from({ length: reads + 1 }, () => read),
+        },
+        {
+          writeFiles: {
+            ...finishedPart('product_variants'),
+            'plan.md': botCheckPlan(['homepage_sections', 'product_variants']),
+          },
+          toolCalls: [read],
+        },
+      ],
+    });
+
+    const first = await toolResults(result.runDir, 'exec-0001');
+    expect(first).toHaveLength(reads + 1);
+    expect(first.at(-2)).toContain(
+      `the read_file budget of ${READ_BUDGET_CHARS} characters for this agent run is spent]`,
+    );
+    expect(first.at(-1)).toBe(
+      `Error: the read_file budget of ${READ_BUDGET_CHARS} characters for this agent run is spent; work from what you already read`,
+    );
+    const second = await toolResults(result.runDir, 'exec-0002');
+    expect(second).toEqual([notes]);
   });
 
   it('gives the graph call each browser action by element name and URL shape', async () => {

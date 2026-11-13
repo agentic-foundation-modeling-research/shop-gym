@@ -173,6 +173,7 @@ describe('runBuildLoop', () => {
       ['build', 'pass'],
       ['routes_200', 'pass'],
       ['data_in_use', 'fail'],
+      ['page_lint', 'pass'],
     ]);
     // `build` and `routes_200` share one storefront build.
     expect(commands.filter((argv) => argv[1] === 'build')).toEqual([['pnpm', 'build']]);

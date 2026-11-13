@@ -47,6 +47,25 @@ const MARKETPLACE_MANUAL_MD = `# Shop Manual - Minimal Homeware Shop
 A full results page with facets on the left and a sort menu above the grid.
 `;
 
+/** A tiny Site state graph: the home page links to one department page. */
+const SITE_GRAPH = {
+  version: '0.1',
+  states: [
+    { id: 'home', kind: 'page', page_type: 'home', url_pattern: '/' },
+    { id: 'department', kind: 'page', page_type: 'collection', url_pattern: '/aisle/{node}' },
+  ],
+  transitions: [
+    {
+      from: 'home',
+      to: 'department',
+      trigger: 'click',
+      action: 'open_department',
+      effect: 'navigate',
+      source: 'site_shell',
+    },
+  ],
+};
+
 describe('mergeCapabilities', () => {
   it('returns the single seed unchanged', async () => {
     const only = seed({ shop: { descriptor: 'Homeware', currency: 'USD' } });
@@ -221,13 +240,13 @@ describe('mergeStats', () => {
       info_pages_count: 2,
       feature_count: 4,
     });
-  // A site with no catalog endpoint shows no totals, so they are 0.
+  // A site with no catalog endpoint shows no totals, so they are unknown.
   const observedSeed = {
     source: 'observed_sample',
     sample_size: 3,
-    products_total: 0,
-    collections_total: 0,
-    products_per_collection: { avg: 0, median: 0, max: 0 },
+    products_total: null,
+    collections_total: null,
+    products_per_collection: null,
     price: { min: 44.5, max: 79, median: 59, currency: 'USD' },
     products_with_variants_pct: 0.5,
     variant_axes_observed: ['edition', 'color'],
@@ -244,7 +263,7 @@ describe('mergeStats', () => {
     });
   });
 
-  it('keeps the zero totals of an observed sample out of the merged totals', () => {
+  it('keeps the unknown totals of an observed sample out of the merged totals', () => {
     const merged = mergeStats([catalogSeed(), statsSchema.parse(observedSeed)], seed({}));
     expect(merged).toMatchObject({
       source: 'observed_sample',
@@ -254,6 +273,48 @@ describe('mergeStats', () => {
       products_per_collection: { avg: 10, median: 10, max: 12 },
       price: { min: 10, max: 120, median: 47, currency: 'USD' },
       variant_axes_observed: ['size', 'edition', 'color'],
+    });
+  });
+
+  it('keeps a number unknown when no seed knows it, and writes no 0 for it', () => {
+    const merged = mergeStats(
+      [
+        statsSchema.parse({
+          ...observedSeed,
+          price: null,
+          products_with_variants_pct: null,
+          navigation_depth_max: null,
+          homepage_section_count: null,
+          info_pages_count: null,
+        }),
+      ],
+      seed({}),
+    );
+    expect(merged).toMatchObject({
+      source: 'observed_sample',
+      sample_size: 3,
+      products_total: null,
+      collections_total: null,
+      products_per_collection: null,
+      price: null,
+      products_with_variants_pct: null,
+      navigation_depth_max: null,
+      homepage_section_count: null,
+      info_pages_count: null,
+    });
+  });
+
+  it('keeps the zero totals of an older observed seed out of the merged totals', () => {
+    const older = statsSchema.parse({
+      ...observedSeed,
+      products_total: 0,
+      collections_total: 0,
+      products_per_collection: { avg: 0, median: 0, max: 0 },
+    });
+    expect(mergeStats([older], seed({}))).toMatchObject({
+      products_total: null,
+      collections_total: null,
+      products_per_collection: null,
     });
   });
 
@@ -311,6 +372,74 @@ describe('runManualMerge', () => {
   it('lists the Standard sub-manual as a step input, so an edit to it reruns the step', async () => {
     const { manualMergeStep } = await import('./index.js');
     expect(manualMergeStep([path.join(root, 'seed')]).inputs).toContain(STANDARD_SUB_MANUAL_PATH);
+  });
+
+  describe('the Site state graph', () => {
+    async function merge(manualDirs: readonly string[], log: (line: string) => void = () => {}) {
+      const { ScriptedFusionLlm } = await import('../testing.js');
+      const { manualMergeStep } = await import('./index.js');
+      const outDir = path.join(root, 'shop');
+      await fs.mkdir(outDir, { recursive: true });
+      await manualMergeStep(manualDirs).run({
+        outDir,
+        context: mergeContext(manualDirs, new ScriptedFusionLlm()),
+        log,
+        signal: new AbortController().signal,
+      });
+      return path.join(outDir, 'manual');
+    }
+
+    it('copies site_graph.json byte for byte and lists it as a step input', async () => {
+      const { writeManualFixture } = await import('../testing.js');
+      const { manualMergeStep } = await import('./index.js');
+      const seedDir = await writeManualFixture(path.join(root, 'seed'));
+      const graphText = JSON.stringify(SITE_GRAPH);
+      await fs.writeFile(path.join(seedDir, 'site_graph.json'), graphText);
+
+      const manualDir = await merge([seedDir]);
+
+      expect(await fs.readFile(path.join(manualDir, 'site_graph.json'), 'utf-8')).toBe(graphText);
+      expect(manualMergeStep([seedDir]).inputs).toContain(path.join(seedDir, 'site_graph.json'));
+    });
+
+    it('writes no graph and lists none as an input when the manual has none', async () => {
+      const { writeManualFixture } = await import('../testing.js');
+      const { manualMergeStep } = await import('./index.js');
+      const seedDir = await writeManualFixture(path.join(root, 'seed'));
+
+      const manualDir = await merge([seedDir]);
+
+      expect(await fs.readdir(manualDir)).not.toContain('site_graph.json');
+      expect(manualMergeStep([seedDir]).inputs).not.toContain(
+        path.join(seedDir, 'site_graph.json'),
+      );
+    });
+
+    it('fails the step when the graph breaks a graph rule', async () => {
+      const { writeManualFixture } = await import('../testing.js');
+      const seedDir = await writeManualFixture(path.join(root, 'seed'));
+      const [transition] = SITE_GRAPH.transitions;
+      await fs.writeFile(
+        path.join(seedDir, 'site_graph.json'),
+        JSON.stringify({ ...SITE_GRAPH, transitions: [{ ...transition, to: 'nowhere' }] }),
+      );
+
+      await expect(merge([seedDir])).rejects.toThrow(/transitions\[0\]\.to names no state/);
+    });
+
+    it('writes no graph for several manuals and logs that it dropped them', async () => {
+      const { writeManualFixture } = await import('../testing.js');
+      const first = await writeManualFixture(path.join(root, 'seed_a'));
+      const second = await writeManualFixture(path.join(root, 'seed_b'));
+      await fs.writeFile(path.join(second, 'manual.md'), MARKETPLACE_MANUAL_MD);
+      await fs.writeFile(path.join(first, 'site_graph.json'), JSON.stringify(SITE_GRAPH));
+      const log: string[] = [];
+
+      const manualDir = await merge([first, second], (line) => log.push(line));
+
+      expect(await fs.readdir(manualDir)).not.toContain('site_graph.json');
+      expect(log).toContainEqual(expect.stringMatching(/site_graph\.json.*not merged/));
+    });
   });
 
   it('merges a 0.2 manual with a 0.3 marketplace manual and keeps the marketplace Capabilities', async () => {

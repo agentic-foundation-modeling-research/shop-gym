@@ -10,7 +10,7 @@
 - `packages/shop-arena` (`@shop-gym/shop-arena`) - **ShopArena**: Environment Factory. `src/explore` turns a live storefront into an anonymized Shop Manual; `src/gen` turns manuals into a deterministic, self-contained **SandboxShop** (data + storefront + backend); `templates/storefront` is the storefront template.
 - `packages/shop-guru` (`@shop-gym/shop-guru`) - **ShopGuru**: benchmark pipeline that generates grounded tasks from a SandboxShop, discovers more with an explorer agent, runs agents in isolated browser episodes, grades, and aggregates.
 - `packages/reports` (`@shop-gym/reports`) - local website for the HTML review reports: committed reports in `pages/`, the shared style in `assets/`, and the server behind `shopgym report`.
-- `packages/cli` (`@shop-gym/cli`) - the `shopgym` binary: `explore | gen | host | guru | trace | report | doctor`.
+- `packages/cli` (`@shop-gym/cli`) - the `shopgym` binary: `explore | bundle | gen | host | guru | trace | report | doctor`.
 
 IMPORTANT: Always refer to `README.md` for project context, setup and common commands. Always keep `README.md` up-to-date.
 

@@ -22,6 +22,14 @@ excerpt below have been filtered to this page; do not penalise the absence
 of features they do not list, and do not infer about pages you have not
 seen.
 
+## Open cart drawer
+
+A route with `?cart=open` shows the open cart drawer over the page. Judge
+the drawer, not the page under it: the backdrop covers the whole viewport
+with square corners, the line items, images, totals and buttons fit inside
+the drawer and look finished, and no placeholder text such as
+"Default Title" shows.
+
 ## Capture policy
 
 Each screenshot is a full-page capture cut at three viewport heights. On a

@@ -147,6 +147,8 @@ The backend rows run only when backend generation is enabled.
 | `cart_conformance`  | `gen_product`, `gen_cart_search`, `gen_checkout`, `visual_fix` | cart and checkout forms add, update, remove and order as the backend records; `/cart.js` shows the backend cart       |
 | `account_flow`      | `gen_account`, `visual_fix`                                    | in a browser: sign up, log out, "Forgot your password?", log in, add and edit an address                              |
 | `discount_flow`     | `gen_checkout`, `visual_fix`                                   | in a browser: a Dataset Discount code changes the checkout total; an unknown code shows "Enter a valid discount code" |
+| `site_graph`        | the task that builds the `from` page, `visual_fix`             | only with `artifact/manual/site_graph.json`: each checked transition has a link or form to the built route of `to`    |
+| `page_lint`         | page tasks (below), `visual_fix`                               | no unstyled control or "Default Title" on the pages and open cart drawer; drawer backdrop and images fit              |
 | `visual_judge`      | page tasks (below), `visual_fix`                               | a model judges the task's pages at desktop and mobile size                                                            |
 
 A storefront that does not build or start fails every verifier that serves it
@@ -156,7 +158,21 @@ A storefront that does not build or start fails every verifier that serves it
 `gen_account` and `gen_checkout`;
 `visual_judge` judges the pages each one builds and every page for
 `visual_fix`. After a task fails `visual_judge` a fixed number of times, its
-`visual_judge` result becomes `advisory`.
+`visual_judge` result becomes `advisory`. `page_lint` checks the same pages
+in a browser, and for `gen_cart_search` and `visual_fix` also the open cart
+drawer (`/products/<handle>?cart=open`); it never becomes `advisory`.
+
+`site_graph` walks the `navigate` transitions of the Site state graph as a
+guest, on the built routes: `home` is `/` (owned by `gen_homepage`, which
+also covers the header and footer), `collection` is `/collections/<handle>`
+(`gen_collections`), `product` is `/products/<handle>` (`gen_product`),
+`search` is `/search` (`gen_cart_search`), `policy` is
+`/policies/<handle>` (`gen_info_pages`), and `login` and `register` are
+`/account/login` and `/account/register` (`gen_account`). `cart` (`/cart`)
+and `page` (`/pages/<handle>`) are checked only as the `to` page. Every
+other transition is advisory: an overlay, an effect other than
+`navigate`, a `load` trigger, a transition from a cart or `page` page, or
+a member, checkout or `other` page.
 
 ---
 

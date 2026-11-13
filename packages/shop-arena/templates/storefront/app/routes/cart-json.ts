@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from 'react-router';
-import { variantTitle } from '~/components/checkout';
+import { variantTitle } from '~/components/storefront';
 import { getAppContext, getCartId } from '~/lib/context';
 import { toCents } from '~/lib/money';
 import { CART_QUERY } from '~/lib/queries';

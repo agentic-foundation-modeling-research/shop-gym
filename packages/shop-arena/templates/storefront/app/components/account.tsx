@@ -1,7 +1,6 @@
 import type { InputHTMLAttributes, ReactNode } from 'react';
 import { Form, Link } from 'react-router';
-import { variantTitle } from '~/components/checkout';
-import { DiscountAmount, Price } from '~/components/storefront';
+import { DiscountAmount, Price, variantTitle } from '~/components/storefront';
 import type { MailingAddress, Money, OrderDetail, OrderLineItem, OrderSummary } from '~/lib/types';
 
 /** Most orders that the order history lists. */

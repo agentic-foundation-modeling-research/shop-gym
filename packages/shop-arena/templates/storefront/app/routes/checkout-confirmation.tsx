@@ -1,6 +1,7 @@
 import { Link, type LoaderFunctionArgs, useLoaderData } from 'react-router';
 import { AddressBlock, orderGid } from '~/components/account';
-import { CheckoutSummary, variantTitle } from '~/components/checkout';
+import { CheckoutSummary } from '~/components/checkout';
+import { variantTitle } from '~/components/storefront';
 import { getAppContext } from '~/lib/context';
 import { COMMERCE_SETTINGS_QUERY, ORDER_QUERY } from '~/lib/queries';
 import { storefrontQuery } from '~/lib/storefront';

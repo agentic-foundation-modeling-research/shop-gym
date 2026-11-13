@@ -100,11 +100,6 @@ export function ShippingPrice({ money }: { readonly money: Money }) {
   return <Price money={money} />;
 }
 
-/** The variant title, or null for the "Default Title" of a product with one variant. */
-export function variantTitle(title: string): string | null {
-  return title === 'Default Title' ? null : title;
-}
-
 /** Checkout's grand total: the currency code, then the amount, e.g. "CAD $45.97". */
 function TotalAmount({ money }: { readonly money: Money }) {
   return (

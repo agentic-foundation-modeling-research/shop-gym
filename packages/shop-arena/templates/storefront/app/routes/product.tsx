@@ -1,19 +1,25 @@
 import { Form, type LoaderFunctionArgs, useLoaderData, useLocation } from 'react-router';
 import { RatingBlock, ReviewsSection } from '~/components/reviews';
-import { Price, ProductImageGallery, VariantChoices } from '~/components/storefront';
+import { Price, ProductGrid, ProductImageGallery, VariantChoices } from '~/components/storefront';
 import { getAppContext } from '~/lib/context';
-import { PRODUCT_QUERY } from '~/lib/queries';
+import { PRODUCT_QUERY, PRODUCT_RECOMMENDATIONS_QUERY } from '~/lib/queries';
 import { REVIEW_PAGE_SIZE, type ReviewView, productRatingOf, reviewViewOf } from '~/lib/reviews';
 import { storefrontQuery } from '~/lib/storefront';
-import type { ProductDetail } from '~/lib/types';
+import type { ProductDetail, ProductSummary } from '~/lib/types';
 
 interface ProductData {
   readonly product: ProductDetail | null;
 }
 
+interface RecommendationsData {
+  readonly productRecommendations: readonly ProductSummary[] | null;
+}
+
 interface ProductLoaderData {
   readonly product: ProductDetail;
   readonly reviewView: ReviewView;
+  /** The "You may also like" products, in backend order. */
+  readonly recommendations: readonly ProductSummary[];
 }
 
 export function meta({
@@ -37,16 +43,24 @@ export async function loader({
     handle: params.handle,
     reviewsFirst: REVIEW_PAGE_SIZE * reviewView.pages,
     reviewsSortKey: reviewView.sort.sortKey,
+    reviewsRating: reviewView.rating,
+    // The filter keeps the Verified Buyers when true; null keeps every reviewer.
+    reviewsVerifiedBuyer: reviewView.verifiedOnly ? true : null,
   });
   const product = data.product;
   if (!product) {
     throw new Response('Product not found.', { status: 404 });
   }
-  return { product, reviewView };
+  const recommended = await storefrontQuery<RecommendationsData>(
+    getAppContext(context),
+    PRODUCT_RECOMMENDATIONS_QUERY,
+    { productId: product.id },
+  );
+  return { product, reviewView, recommendations: recommended.productRecommendations ?? [] };
 }
 
 export default function Product() {
-  const { product, reviewView } = useLoaderData<typeof loader>();
+  const { product, reviewView, recommendations } = useLoaderData<typeof loader>();
   const location = useLocation();
   const selectedVariant = product.selectedOrFirstAvailableVariant;
   const redirectTo = withCartOpenParam(location);
@@ -61,7 +75,14 @@ export default function Product() {
         />
         <section className="stack" aria-labelledby="product-heading">
           <h1 id="product-heading">{product.title}</h1>
-          {rating ? <RatingBlock rating={rating} /> : null}
+          {rating ? (
+            <RatingBlock
+              rating={rating}
+              histogram={product.ratingHistogram}
+              productPath={location.pathname}
+              view={reviewView}
+            />
+          ) : null}
           <p className="muted">{product.vendor}</p>
           <p>
             <Price money={selectedVariant?.price ?? product.priceRange.minVariantPrice} />
@@ -87,6 +108,12 @@ export default function Product() {
           </section>
         </section>
       </div>
+      {recommendations.length > 0 ? (
+        <section className="page-width stack" aria-labelledby="related-products-heading">
+          <h2 id="related-products-heading">You may also like</h2>
+          <ProductGrid products={recommendations} />
+        </section>
+      ) : null}
       <ReviewsSection
         productPath={location.pathname}
         reviews={product.reviews}

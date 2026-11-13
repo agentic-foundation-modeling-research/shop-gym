@@ -107,6 +107,11 @@ input {
   line-height: 1.2;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-accent);
+}
+
 label {
   display: grid;
   gap: 0.35rem;
@@ -817,6 +822,50 @@ html:has(.cart-popup) {
   color: transparent;
 }
 
+.rating-block {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.rating-histogram {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 20rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.rating-histogram li > a,
+.rating-histogram li {
+  display: grid;
+  grid-template-columns: 4rem 1fr 2rem;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.rating-histogram li > a {
+  grid-column: 1 / -1;
+}
+
+.rating-histogram a[aria-current="true"] {
+  font-weight: 600;
+}
+
+.histogram-bar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.histogram-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--color-star);
+}
+
 .review-list {
   display: grid;
   gap: 1.5rem;
@@ -837,19 +886,30 @@ html:has(.cart-popup) {
   margin: 0;
 }
 
-.reviews-sort {
+.reviews-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
 }
 
-.reviews-sort select {
+.reviews-controls select {
   height: var(--control-height);
   border: 1px solid var(--color-border);
   background: var(--color-bg);
   padding: 0 0.75rem;
   font: inherit;
+}
+
+.reviews-verified-choice {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.reviews-verified-choice input {
+  height: auto;
+  min-height: 0;
 }
 
 .badge {
@@ -1176,4 +1236,68 @@ html:has(.cart-popup) {
   flex-wrap: wrap;
   gap: 0.75rem;
   justify-content: center;
+}
+
+.facet-layout {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.facet-panel h2,
+.facet h3 {
+  margin: 0;
+}
+
+.facet-panel h2 {
+  font-size: 1.25rem;
+}
+
+.facet {
+  gap: 0.5rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.facet h3 {
+  font-size: 1rem;
+}
+
+.facet-values {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.facet-value {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.facet-value[aria-current="true"] {
+  font-weight: 700;
+}
+
+.facet-more summary {
+  cursor: pointer;
+  margin-bottom: 0.35rem;
+}
+
+.facet-price {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.facet-price input {
+  width: 7rem;
+}
+
+@media (min-width: 750px) {
+  .facet-layout {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
 }

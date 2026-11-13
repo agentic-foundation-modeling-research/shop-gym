@@ -2,15 +2,18 @@
  * Fixed browser scripts over the storefront template's forms and pages:
  * register, log in, log out, request a password reset with "Forgot your
  * password?", add, edit and delete an address in the address book, step
- * through the announcement bar, open a product page, sort its Reviews and
- * show more of them, add a product to the cart, apply or have a Discount
- * code turned down at checkout, place an order, and open that order's
- * thank-you page, the account order history and an account order page.
- * Each step drives one Playwright page, never throws, and reports what it
- * observed so the callers can record it.
+ * through the announcement bar, open a product page, sort its Reviews,
+ * filter them by star rating or by Verified Buyer and show more of them,
+ * narrow a search or collection page by a value or a price range of its
+ * "Filters" panel, add a product to the cart, apply or have a Discount code
+ * turned down at checkout, place an order, and open that order's thank-you
+ * page, the account order history and an account order page. Each step
+ * drives one Playwright page, never throws, and reports what it observed so
+ * the callers can record it.
  *
- * Forms are submitted with `requestSubmit()` rather than a pointer click so
- * consent or newsletter popups layered over the page cannot intercept them.
+ * Forms are submitted with `requestSubmit()`, links are followed and boxes
+ * are checked through the DOM, rather than with a pointer click, so consent
+ * or newsletter popups layered over the page cannot intercept them.
  */
 
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -734,9 +737,161 @@ export async function showMoreReviews(
   });
 }
 
+/**
+ * Open product page `path` and follow the bar of `rating` stars (1 to 5) in
+ * the "Rating histogram"; ok when the page reloads with Reviews that all
+ * have that star rating. `path` may hold a query.
+ */
+export async function filterReviewsByRating(
+  page: Page,
+  baseUrl: string,
+  path: string,
+  rating: number,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const label = rating === 1 ? '1 star' : `${rating} stars`;
+    const bar = page
+      .getByRole('list', { name: 'Rating histogram', exact: true })
+      .getByRole('link', { name: new RegExp(`^${label}\\b`) });
+    if ((await bar.count()) === 0) {
+      return { ok: false, detail: `no "${label}" link in the rating histogram on ${path}` };
+    }
+    const landed = await follow(page, bar.first());
+    const reviews = reviewsSection(page).locator('article');
+    const total = await reviews.count();
+    const matching = await reviews
+      .filter({ has: page.getByRole('img', { name: `${rating} out of 5 stars`, exact: true }) })
+      .count();
+    return {
+      ok: landed !== path && total > 0 && matching === total,
+      detail: `the "${label}" bar landed on ${landed} with ${total} Reviews, ${matching} of them rated ${rating}`,
+      url: landed,
+    };
+  });
+}
+
+/**
+ * Open product page `path`, check "Verified Buyers only" in the Reviews
+ * section and submit its form; ok when the page reloads with the box
+ * checked and Reviews that all have the "Verified Buyer" badge. `path` may
+ * hold a query.
+ */
+export async function showVerifiedReviews(
+  page: Page,
+  baseUrl: string,
+  path: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const box = reviewsSection(page).getByLabel('Verified Buyers only', { exact: true });
+    if ((await box.count()) === 0) {
+      return { ok: false, detail: `no Reviews "Verified Buyers only" box on ${path}` };
+    }
+    await box.evaluate((element) => {
+      (element as unknown as { checked: boolean }).checked = true;
+    });
+    const landed = await submit(page, box.locator('xpath=ancestor::form'));
+    const checked = await box.isChecked();
+    const reviews = reviewsSection(page).locator('article');
+    const total = await reviews.count();
+    const verified = await reviews
+      .filter({ has: page.getByText('Verified Buyer', { exact: true }) })
+      .count();
+    return {
+      ok: landed !== path && checked && total > 0 && verified === total,
+      detail: `"Verified Buyers only" landed on ${landed} with the box ${checked ? 'checked' : 'clear'} and ${total} Reviews, ${verified} of them from Verified Buyers`,
+      url: landed,
+    };
+  });
+}
+
 /** The product page's "Reviews" section. */
 function reviewsSection(page: Page): Locator {
   return page.getByRole('region', { name: 'Reviews', exact: true });
+}
+
+/**
+ * Open product list `path` (a search or collection page; it may hold a
+ * query) and follow the value `valueLabel` of facet `facetLabel` in the
+ * "Filters" panel; ok when the page reloads with that value marked as
+ * chosen. A value's link reads "<label> (<count>)", e.g. "Acme (2)".
+ */
+export async function chooseFacetValue(
+  page: Page,
+  baseUrl: string,
+  path: string,
+  facetLabel: string,
+  valueLabel: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const link = facetValueLink(page, facetLabel, valueLabel);
+    if ((await link.count()) === 0) {
+      return {
+        ok: false,
+        detail: `no "${valueLabel}" value under "${facetLabel}" in the Filters panel on ${path}`,
+      };
+    }
+    const landed = await follow(page, link);
+    const chosen = (await link.count()) > 0 && (await link.getAttribute('aria-current')) === 'true';
+    return {
+      ok: landed !== path && chosen,
+      detail: `choosing "${valueLabel}" under "${facetLabel}" landed on ${landed} with the value ${chosen ? '' : 'not '}marked as chosen`,
+      url: landed,
+    };
+  });
+}
+
+/**
+ * Open product list `path`, enter `range` in "Min price" and "Max price" of
+ * the "Filters" panel's "Price" facet and press "Apply"; ok when the page
+ * reloads with the range in its URL and in the two fields.
+ */
+export async function filterByPrice(
+  page: Page,
+  baseUrl: string,
+  path: string,
+  range: { readonly min: number; readonly max: number },
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const facet = filtersPanel(page).getByRole('region', { name: 'Price', exact: true });
+    const min = facet.getByLabel('Min price', { exact: true });
+    const max = facet.getByLabel('Max price', { exact: true });
+    if ((await min.count()) === 0 || (await max.count()) === 0) {
+      return {
+        ok: false,
+        detail: `no "Min price" and "Max price" fields in the Filters panel on ${path}`,
+      };
+    }
+    await min.fill(String(range.min));
+    await max.fill(String(range.max));
+    const landed = await submit(page, min.locator('xpath=ancestor::form'));
+    const params = new URL(landed, baseUrl).searchParams;
+    const inUrl =
+      params.get('filter.price.min') === String(range.min) &&
+      params.get('filter.price.max') === String(range.max);
+    const wanted = `${range.min}-${range.max}`;
+    const shown = `${await min.inputValue()}-${await max.inputValue()}`;
+    return {
+      ok: inUrl && shown === wanted,
+      detail: `filtering by price ${wanted} landed on ${landed} with ${shown} in the fields`,
+      url: landed,
+    };
+  });
+}
+
+/** The "Filters" panel of a search or collection page. */
+function filtersPanel(page: Page): Locator {
+  return page.getByRole('complementary', { name: 'Filters', exact: true });
+}
+
+function facetValueLink(page: Page, facetLabel: string, valueLabel: string): Locator {
+  return filtersPanel(page)
+    .getByRole('region', { name: facetLabel, exact: true })
+    .getByRole('link', { name: new RegExp(`^${escapeRegExp(valueLabel)} \\(\\d+\\)$`) })
+    .first();
 }
 
 /** Open the account page of order `orderNumber`; expects 200 and the heading "Order #<number>". */
@@ -833,10 +988,25 @@ async function open(page: Page, url: string): Promise<void> {
 
 /** Submit `form` and wait for the URL to change; resolves with the resulting path. */
 async function submit(page: Page, form: Locator): Promise<string> {
-  const before = pathOf(page.url());
-  await form.evaluate((element) =>
-    (element as unknown as { requestSubmit(): void }).requestSubmit(),
+  return navigateBy(page, () =>
+    form.evaluate((element) => (element as unknown as { requestSubmit(): void }).requestSubmit()),
   );
+}
+
+/**
+ * Follow `link` with a DOM click, which popups over the page cannot
+ * intercept, and wait for the URL to change; resolves with the resulting path.
+ */
+async function follow(page: Page, link: Locator): Promise<string> {
+  return navigateBy(page, () =>
+    link.evaluate((element) => (element as unknown as { click(): void }).click()),
+  );
+}
+
+/** Run `act` and wait for the URL to change; resolves with the resulting path. */
+async function navigateBy(page: Page, act: () => Promise<void>): Promise<string> {
+  const before = pathOf(page.url());
+  await act();
   await page
     .waitForURL((url) => url.pathname + url.search !== before, { timeout: SUBMIT_TIMEOUT_MS })
     .catch(() => undefined);
@@ -881,4 +1051,8 @@ function quoted(texts: readonly string[]): string {
 
 function normalizedText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
