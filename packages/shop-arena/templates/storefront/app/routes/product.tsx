@@ -37,6 +37,9 @@ export async function loader({
     handle: params.handle,
     reviewsFirst: REVIEW_PAGE_SIZE * reviewView.pages,
     reviewsSortKey: reviewView.sort.sortKey,
+    reviewsRating: reviewView.rating,
+    // The filter keeps the Verified Buyers when true; null keeps every reviewer.
+    reviewsVerifiedBuyer: reviewView.verifiedOnly ? true : null,
   });
   const product = data.product;
   if (!product) {
@@ -61,7 +64,14 @@ export default function Product() {
         />
         <section className="stack" aria-labelledby="product-heading">
           <h1 id="product-heading">{product.title}</h1>
-          {rating ? <RatingBlock rating={rating} /> : null}
+          {rating ? (
+            <RatingBlock
+              rating={rating}
+              histogram={product.ratingHistogram}
+              productPath={location.pathname}
+              view={reviewView}
+            />
+          ) : null}
           <p className="muted">{product.vendor}</p>
           <p>
             <Price money={selectedVariant?.price ?? product.priceRange.minVariantPrice} />

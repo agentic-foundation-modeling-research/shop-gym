@@ -1056,8 +1056,14 @@ export type Product = {
   readonly productType: Scalars['String']['output'];
   readonly publishedAt: Maybe<Scalars['String']['output']>;
   /**
+   * The number of the product's Reviews at each star rating, from 5 stars
+   * down to 1 star. A rating that no Review has gets a count of 0.
+   */
+  readonly ratingHistogram: ReadonlyArray<ReviewRatingCount>;
+  /**
    * The product's Reviews. The Storefront API has no Review type; shops show
-   * Reviews through a review app.
+   * Reviews through a review app. The filters apply before the sort and the
+   * paging.
    */
   readonly reviews: ReviewConnection;
   readonly selectedOrFirstAvailableVariant: Maybe<ProductVariant>;
@@ -1096,7 +1102,9 @@ export type ProductMetafieldsArgs = {
 export type ProductReviewsArgs = {
   after: InputMaybe<Scalars['String']['input']>;
   first: InputMaybe<Scalars['Int']['input']>;
+  rating: InputMaybe<Scalars['Int']['input']>;
   sortKey?: InputMaybe<ReviewSortKeys>;
+  verifiedBuyer: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 
@@ -1357,6 +1365,14 @@ export type ReviewEdge = {
   readonly __typename?: 'ReviewEdge';
   readonly cursor: Scalars['String']['output'];
   readonly node: Review;
+};
+
+/** The number of a product's Reviews with one star rating. */
+export type ReviewRatingCount = {
+  readonly __typename?: 'ReviewRatingCount';
+  readonly count: Scalars['Int']['output'];
+  /** 1 to 5. */
+  readonly rating: Scalars['Int']['output'];
 };
 
 /**
@@ -1715,6 +1731,7 @@ export type ResolversTypes = {
   Review: ResolverTypeWrapper<Omit<Review, 'variant'> & { variant?: Maybe<ResolversTypes['ProductVariant']> }>;
   ReviewConnection: ResolverTypeWrapper<Omit<ReviewConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversTypes['ReviewEdge']>, nodes: ReadonlyArray<ResolversTypes['Review']> }>;
   ReviewEdge: ResolverTypeWrapper<Omit<ReviewEdge, 'node'> & { node: ResolversTypes['Review'] }>;
+  ReviewRatingCount: ResolverTypeWrapper<ReviewRatingCount>;
   ReviewSortKeys: ReviewSortKeys;
   SEO: ResolverTypeWrapper<Seo>;
   SearchPrefixQueryType: SearchPrefixQueryType;
@@ -1859,6 +1876,7 @@ export type ResolversParentTypes = {
   Review: Omit<Review, 'variant'> & { variant?: Maybe<ResolversParentTypes['ProductVariant']> };
   ReviewConnection: Omit<ReviewConnection, 'edges' | 'nodes'> & { edges: ReadonlyArray<ResolversParentTypes['ReviewEdge']>, nodes: ReadonlyArray<ResolversParentTypes['Review']> };
   ReviewEdge: Omit<ReviewEdge, 'node'> & { node: ResolversParentTypes['Review'] };
+  ReviewRatingCount: ReviewRatingCount;
   SEO: Seo;
   SearchQuerySuggestion: SearchQuerySuggestion;
   SearchResultItem: ResolversUnionTypes<ResolversParentTypes>['SearchResultItem'];
@@ -2607,6 +2625,7 @@ export type ProductResolvers<ContextType = ResolverContext, ParentType extends R
   priceRange?: Resolver<ResolversTypes['ProductPriceRange'], ParentType, ContextType>;
   productType?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   publishedAt?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  ratingHistogram?: Resolver<ReadonlyArray<ResolversTypes['ReviewRatingCount']>, ParentType, ContextType>;
   reviews?: Resolver<ResolversTypes['ReviewConnection'], ParentType, ContextType, RequireFields<ProductReviewsArgs, 'sortKey'>>;
   selectedOrFirstAvailableVariant?: Resolver<Maybe<ResolversTypes['ProductVariant']>, ParentType, ContextType, Partial<ProductSelectedOrFirstAvailableVariantArgs>>;
   seo?: Resolver<ResolversTypes['SEO'], ParentType, ContextType>;
@@ -2735,6 +2754,12 @@ export type ReviewConnectionResolvers<ContextType = ResolverContext, ParentType 
 export type ReviewEdgeResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['ReviewEdge'] = ResolversParentTypes['ReviewEdge']> = {
   cursor?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   node?: Resolver<ResolversTypes['Review'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type ReviewRatingCountResolvers<ContextType = ResolverContext, ParentType extends ResolversParentTypes['ReviewRatingCount'] = ResolversParentTypes['ReviewRatingCount']> = {
+  count?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  rating?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -2937,6 +2962,7 @@ export type Resolvers<ContextType = ResolverContext> = {
   Review?: ReviewResolvers<ContextType>;
   ReviewConnection?: ReviewConnectionResolvers<ContextType>;
   ReviewEdge?: ReviewEdgeResolvers<ContextType>;
+  ReviewRatingCount?: ReviewRatingCountResolvers<ContextType>;
   SEO?: SeoResolvers<ContextType>;
   SearchQuerySuggestion?: SearchQuerySuggestionResolvers<ContextType>;
   SearchResultItem?: SearchResultItemResolvers<ContextType>;
