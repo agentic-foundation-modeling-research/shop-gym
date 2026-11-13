@@ -1,8 +1,9 @@
 /**
  * Contract: Reviews from the optional `reviews.json`. `Product.reviews` pages
- * a product's Reviews with `first` / `after` in one of four sort orders, and
- * the standard `reviews.rating` and `reviews.rating_count` product
- * metafields are computed from the same Reviews.
+ * a product's Reviews with `first` / `after` in one of four sort orders,
+ * filtered by star rating and by the Verified Buyer flag. The standard
+ * `reviews.rating` and `reviews.rating_count` product metafields and
+ * `Product.ratingHistogram` are computed from the same Reviews.
  */
 
 import * as fs from 'node:fs';
@@ -203,6 +204,83 @@ describe('Product.reviews', () => {
     const page = await reviewPage('cartanvil-mackerel-and-sardines-70g', 'first: 10');
     expect(page).toEqual({ nodes: [], pageInfo: { hasNextPage: false, endCursor: null } });
   });
+
+  // The toy Reviews: ratings 5, 4, 2, 5, 3, 4 in file order; the 2 and the
+  // last 4 are not from Verified Buyers.
+  it.each([
+    ['rating: 5', ['Still squeaking after a month', "Our puppy's favourite"]],
+    ['rating: 4', ['Good, but the stem came off', 'Bright colours']],
+    ['rating: 1', []],
+    [
+      'verifiedBuyer: true',
+      [
+        'Fine for gentle chewers',
+        'Still squeaking after a month',
+        'Good, but the stem came off',
+        "Our puppy's favourite",
+      ],
+    ],
+    ['verifiedBuyer: false', ['Too small for a large dog', 'Bright colours']],
+    ['rating: 4, verifiedBuyer: true', ['Good, but the stem came off']],
+  ])('keeps only the Reviews that match %s', async (filters, titles) => {
+    expect(await reviewTitles(TOYS, `first: 10, ${filters}`)).toEqual(titles);
+  });
+
+  it('sorts and pages the filtered Reviews', async () => {
+    const args = 'first: 2, sortKey: HIGHEST_RATING, verifiedBuyer: true';
+    const first = await reviewPage(TOYS, args);
+    expect(first.nodes.map((node) => node.title)).toEqual([
+      'Still squeaking after a month',
+      "Our puppy's favourite",
+    ]);
+    expect(first.pageInfo.hasNextPage).toBe(true);
+
+    const rest = await reviewPage(TOYS, `${args}, after: "${first.pageInfo.endCursor}"`);
+    expect(rest.nodes.map((node) => node.title)).toEqual([
+      'Good, but the stem came off',
+      'Fine for gentle chewers',
+    ]);
+    expect(rest.pageInfo.hasNextPage).toBe(false);
+  });
+});
+
+interface RatingCount {
+  readonly rating: number;
+  readonly count: number;
+}
+
+/** The `ratingHistogram` of `handle` on `server`. */
+async function ratingHistogram(
+  server: ContractServer,
+  handle: string,
+): Promise<readonly RatingCount[]> {
+  const result = await server.query<{
+    product: { ratingHistogram: readonly RatingCount[] } | null;
+  }>(`{ product(handle: "${handle}") { ratingHistogram { rating count } } }`);
+  const product = result.data?.product;
+  if (product === undefined || product === null) throw new Error(JSON.stringify(result));
+  return product.ratingHistogram;
+}
+
+/** A histogram with these counts of 5, 4, 3, 2 and 1 stars. */
+function histogram(...counts: readonly number[]): readonly RatingCount[] {
+  return counts.map((count, index) => ({ rating: 5 - index, count }));
+}
+
+describe('Product.ratingHistogram', () => {
+  it.each([
+    [TOYS, histogram(2, 2, 1, 1, 0)],
+    ['aislearena-anti-tick-collar', histogram(1, 1, 0, 0, 0)],
+    ['cartanvil-mackerel-and-sardines-70g', histogram(0, 0, 0, 0, 0)],
+  ])('counts the Reviews of %s at each star rating, 5 stars first', async (handle, expected) => {
+    expect(await ratingHistogram(ctx, handle)).toEqual(expected);
+  });
+
+  it('agrees with the Reviews that the rating filter lists', async () => {
+    for (const { rating, count } of await ratingHistogram(ctx, TOYS)) {
+      expect(await reviewTitles(TOYS, `first: 10, rating: ${rating}`)).toHaveLength(count);
+    }
+  });
 });
 
 describe('rating metafields', () => {
@@ -278,5 +356,6 @@ describe('a Dataset without reviews.json', () => {
       rating: null,
       ratingCount: null,
     });
+    expect(await ratingHistogram(withoutReviews, TOYS)).toEqual(histogram(0, 0, 0, 0, 0));
   });
 });

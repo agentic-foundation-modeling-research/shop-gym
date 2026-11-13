@@ -9,13 +9,8 @@ import {
   useLoaderData,
 } from 'react-router';
 import { FormErrors } from '~/components/account';
-import {
-  CheckoutSummary,
-  ShippingPrice,
-  type SummaryTotals,
-  variantTitle,
-} from '~/components/checkout';
-import { DiscountCodeForm, appliedCartDiscount } from '~/components/storefront';
+import { CheckoutSummary, ShippingPrice, type SummaryTotals } from '~/components/checkout';
+import { DiscountCodeForm, appliedCartDiscount, variantTitle } from '~/components/storefront';
 import { ADDRESS_FIELDS } from '~/lib/addresses';
 import { clearCartId, getAppContext, getCartId, getCustomerAccessToken } from '~/lib/context';
 import { loadCustomer } from '~/lib/customer';

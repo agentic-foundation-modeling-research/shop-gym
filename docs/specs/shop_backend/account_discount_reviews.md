@@ -198,13 +198,22 @@ announcement text into the theme.
 
 ### 5.5 Reviews
 
-- `Product.reviews(first, after, sortKey = MOST_RECENT)` (`@sandbox`)
-  returns a `ReviewConnection` with `nodes`, `edges` and `pageInfo`. The
-  Storefront API has no Review type, because shops show Reviews through a
-  review app.
+- `Product.reviews(first, after, sortKey = MOST_RECENT, rating,
+  verifiedBuyer)` (`@sandbox`) returns a `ReviewConnection` with `nodes`,
+  `edges` and `pageInfo`. The Storefront API has no Review type, because
+  shops show Reviews through a review app.
+- Review filters: `rating` (1 to 5) keeps only the Reviews with that star
+  rating, and `verifiedBuyer` keeps only the Reviews with that Verified
+  Buyer flag. An argument that is not given does not filter. The filters
+  apply before the sort and the paging, so the cursors page through the
+  matching Reviews only.
 - `ReviewSortKeys`: `MOST_RECENT`, `HIGHEST_RATING`, `LOWEST_RATING`,
   `MOST_HELPFUL`. Ties put the more recent Review first, then keep the
   `reviews.json` order, so every read gives the same list.
+- `Product.ratingHistogram` (`@sandbox`) returns five `ReviewRatingCount`
+  entries (`rating`, `count`), from 5 stars down to 1 star, from the same
+  Reviews as the rating metafields. A rating that no Review has gets the
+  count 0, and a product with no Reviews gets five zeros.
 - A `Review` has `id`, `rating`, `title`, `body`, `reviewerName`,
   `createdAt`, `verifiedBuyer`, `helpfulCount` and `variant` (`null` when
   the product no longer has that variant).
@@ -213,6 +222,25 @@ announcement text into the theme.
   `reviews.rating_count` are computed from the same Reviews. A product with
   no Reviews has neither metafield.
 - Reviews are read-only. There are no Review mutations.
+
+The Storefront template shows these on the product page:
+
+- Near the title, the stars, the rating and the count, then the rating
+  histogram (a list named "Rating histogram"). The bar of each star
+  rating with Reviews links to the Reviews section with only that rating
+  (`?reviews_rating=<n>#reviews`); the link keeps the other choices and
+  starts again at the first page. A bar with the count 0 has no link.
+- The "Reviews" section, below the product details, has a "Sort by"
+  control (`reviews_sort`: "Most recent", the default, "Highest rating",
+  "Lowest rating" and "Most helpful"), a "Rating" control
+  (`reviews_rating`: "All ratings", the default, or one star rating), a
+  "Verified Buyers only" check box (`reviews_verified=true`) and an
+  "Apply" button. It lists five Reviews per page, and "Show more reviews"
+  (`reviews_pages`) shows the next five with the same sort and filters.
+  When no Review matches the filters, it shows "No reviews match these
+  filters.".
+- A product with no Reviews shows no stars, no histogram and no Reviews
+  section. The URL leaves out each default value.
 
 ### 5.6 StateSnapshot fields
 
@@ -235,7 +263,8 @@ same order fields.
   `addresses.test.ts`, `password_recovery.test.ts`, `discount.test.ts`
   (each kind, minimums, case, one code per cart, inapplicable codes, the
   code on orders, the hint query) and `reviews.test.ts` (list, paging,
-  sorting, rating metafields). A generated shop may not change these
+  sorting, rating metafields, the rating and Verified Buyer filters, and
+  the rating histogram). A generated shop may not change these
   tests.
 - Unit tests next to the resolvers, the pricing rules and the snapshot.
 - The Storefront template browser suite drives the same features through
@@ -274,6 +303,7 @@ same order fields.
 | 6 | `Product.reviews` and the rating metafields | done |
 | 7 | StateSnapshot fields; contract tests; both test Datasets | done |
 | 8 | Profile edits (`customerUpdate`) and account activation | not planned (classic accounts have no profile edits) |
+| 9 | Review filters (`rating`, `verifiedBuyer`), `Product.ratingHistogram`, and their storefront controls | done |
 
 ---
 
@@ -291,7 +321,7 @@ packages/shop_backend/
   src/schema/catalog.ts           Product.reviews, Review types
   src/state/pricing.ts            Discount code pricing rules
   src/state/shop_state.ts         address book and password reset requests in the Episode
-  src/resolvers/review.ts         Review list and rating metafields
+  src/resolvers/review.ts         Review list and filters, rating histogram, rating metafields
   src/sandbox/snapshot.ts         StateSnapshot fields
   tests/contract/                 addresses, password_recovery, discount, reviews
 ```

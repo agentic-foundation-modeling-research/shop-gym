@@ -1,18 +1,13 @@
 /**
- * The visual sweep: the canonical pages of a shop, captured in one browser
- * episode and judged with the build loop's rubric. Pages that need state
- * (a cart line, a logged-in customer, an existing order) set it up through
- * the same fixed browser scripts the functional sweep uses; when the
- * dataset cannot provide that state the page is recorded as skipped.
+ * The visual sweep: the canonical pages of a shop (`walkShopPages`, which
+ * includes the open cart drawer when the storefront has one), captured in
+ * one browser episode and judged with the build loop's rubric. A page whose
+ * state the dataset or the storefront cannot give is recorded as skipped.
  */
-
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
 import type { BrowserSession } from '@shop-gym/browser';
 
-import { addToCart, logIn, placeOrder } from '../build/verifiers/browser_steps.js';
 import {
   type PageCapture,
   type PageJudgement,
@@ -22,27 +17,14 @@ import {
   loadJudgeRubric,
   mapConcurrent,
 } from '../build/verifiers/page_judge.js';
-import { readSeededCustomer } from '../build/verifiers/storefront_target.js';
 import {
-  type DatasetHandles,
-  type PageBucket,
-  SWEEP_CAPS,
-  sampleProductHandles,
-  searchToken,
-} from '../build/verifiers/task_routes.js';
+  type CanonicalPage,
+  type SkippedPage,
+  walkShopPages,
+} from '../build/verifiers/shop_pages.js';
+import type { DatasetHandles } from '../build/verifiers/task_routes.js';
 
 const JUDGE_CONCURRENCY = 3;
-
-export interface CanonicalPage {
-  readonly name: string;
-  readonly route: string;
-  readonly bucket: PageBucket;
-}
-
-export interface SkippedPage extends CanonicalPage {
-  readonly status: 'skipped';
-  readonly reason: string;
-}
 
 export interface JudgedPage extends CanonicalPage {
   readonly status: 'pass' | 'fail';
@@ -69,7 +51,6 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
   const { session, storefrontUrl, handles } = options;
   const rubric = await loadJudgeRubric();
   const captures: { page: CanonicalPage; capture: PageCapture }[] = [];
-  const results: VisualPageResult[] = [];
   const capture = async (page: CanonicalPage): Promise<void> => {
     options.signal?.throwIfAborted();
     options.log(`final_eval: capturing ${page.name} ${page.route}`);
@@ -84,125 +65,15 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
       }),
     });
   };
-  const skip = (page: CanonicalPage, reason: string): void => {
-    results.push({ ...page, status: 'skipped', reason });
-  };
 
-  const collection = handles.collections[0]?.handle;
-  const productHandle = sampleProductHandles(handles, SWEEP_CAPS)[0];
-  const policy = handles.policies[0];
-
-  await capture({ name: 'home', route: '/', bucket: 'homepage' });
-  const collectionPage: CanonicalPage = {
-    name: 'collection',
-    route: `/collections/${collection ?? ''}`,
-    bucket: 'collections',
-  };
-  if (collection === undefined) {
-    skip(collectionPage, 'the dataset has no collection');
-  } else {
-    await capture(collectionPage);
-  }
-  const productPage: CanonicalPage = {
-    name: 'product',
-    route: `/products/${productHandle ?? ''}`,
-    bucket: 'product',
-  };
-  if (productHandle === undefined) {
-    skip(productPage, 'the dataset has no product');
-  } else {
-    await capture(productPage);
-  }
-  await capture({
-    name: 'search',
-    route: `/search?q=${encodeURIComponent(searchToken(handles))}`,
-    bucket: 'cart_search',
+  const skipped = await walkShopPages({
+    session,
+    baseUrl: storefrontUrl,
+    dataDir: options.dataDir,
+    handles,
+    orderEmail: 'visual.sweep@example.com',
+    visit: capture,
   });
-  await capture({ name: 'accountLogin', route: '/account/login', bucket: 'account' });
-  await capture({ name: 'accountRegister', route: '/account/register', bucket: 'account' });
-  const policyPage: CanonicalPage = {
-    name: 'policy',
-    route: `/policies/${policy ?? ''}`,
-    bucket: 'info_pages',
-  };
-  if (policy === undefined) {
-    skip(policyPage, 'the dataset has no policy');
-  } else {
-    await capture(policyPage);
-  }
-
-  const cartPage: CanonicalPage = { name: 'cart', route: '/cart', bucket: 'cart_search' };
-  const checkoutPage: CanonicalPage = {
-    name: 'checkout',
-    route: '/checkout',
-    bucket: 'checkout',
-  };
-  const thankYouPage = (orderNumber: number | undefined): CanonicalPage => ({
-    name: 'thankYou',
-    route: `/checkout/confirmation/${orderNumber ?? ''}`,
-    bucket: 'checkout',
-  });
-  const added =
-    productHandle === undefined
-      ? { ok: false, detail: 'the dataset has no product' }
-      : await addToCart(session.page, storefrontUrl, productHandle);
-  if (added.ok) {
-    await capture(cartPage);
-    await capture(checkoutPage);
-    const order = await placeOrder(session.page, storefrontUrl, 'visual.sweep@example.com');
-    if (order.orderNumber === undefined) {
-      skip(thankYouPage(undefined), `could not place an order: ${order.detail}`);
-    } else {
-      await capture(thankYouPage(order.orderNumber));
-    }
-  } else {
-    skip(cartPage, `could not add to cart: ${added.detail}`);
-    skip(checkoutPage, `could not add to cart: ${added.detail}`);
-    skip(thankYouPage(undefined), `could not add to cart: ${added.detail}`);
-  }
-
-  const profilePage: CanonicalPage = {
-    name: 'accountProfile',
-    route: '/account',
-    bucket: 'account',
-  };
-  const orderListPage: CanonicalPage = {
-    name: 'orderList',
-    route: '/account/orders',
-    bucket: 'account',
-  };
-  const addressesPage: CanonicalPage = {
-    name: 'addresses',
-    route: '/account/addresses',
-    bucket: 'account',
-  };
-  const customer = await readSeededCustomer(options.dataDir);
-  const orderId =
-    customer === undefined ? undefined : await seededOrderId(options.dataDir, customer.email);
-  const orderPage: CanonicalPage = {
-    name: 'orderDetail',
-    route: `/account/orders/${orderId ?? ''}`,
-    bucket: 'account',
-  };
-  const login =
-    customer === undefined
-      ? { ok: false, detail: 'the dataset has no seeded customer' }
-      : await logIn(session.page, storefrontUrl, customer);
-  if (login.ok) {
-    await capture(profilePage);
-    await capture(orderListPage);
-    if (orderId === undefined) {
-      skip(orderPage, 'the seeded customer has no order');
-    } else {
-      await capture(orderPage);
-    }
-    await capture(addressesPage);
-  } else {
-    skip(profilePage, `could not log in: ${login.detail}`);
-    skip(orderListPage, `could not log in: ${login.detail}`);
-    skip(orderPage, `could not log in: ${login.detail}`);
-    skip(addressesPage, `could not log in: ${login.detail}`);
-  }
 
   const judged = await mapConcurrent(
     captures,
@@ -224,26 +95,5 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
       return { ...page, status: judgement.effective, judgement } satisfies JudgedPage;
     },
   );
-  return [...judged, ...results];
-}
-
-/** The id of the first order in `orders.json` placed by `email`. */
-async function seededOrderId(dataDir: string, email: string): Promise<string | undefined> {
-  const raw = await fs.readFile(path.join(dataDir, 'orders.json'), 'utf-8').catch(() => undefined);
-  if (raw === undefined) {
-    return undefined;
-  }
-  const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed)) {
-    return undefined;
-  }
-  for (const order of parsed) {
-    if (typeof order === 'object' && order !== null) {
-      const { id, email: orderEmail } = order as { id?: unknown; email?: unknown };
-      if (orderEmail === email && (typeof id === 'number' || typeof id === 'string')) {
-        return String(id);
-      }
-    }
-  }
-  return undefined;
+  return [...judged, ...skipped];
 }

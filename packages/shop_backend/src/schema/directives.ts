@@ -12,7 +12,7 @@ export const directivesTypeDefs = /* GraphQL */ `
   Marks a field, type, or argument that is specific to the ShopGym sandbox and
   has no counterpart in the Shopify Storefront API.
   """
-  directive @sandbox(reason: String) on FIELD_DEFINITION | OBJECT | INPUT_OBJECT | ENUM | ARGUMENT_DEFINITION
+  directive @sandbox(reason: String) on FIELD_DEFINITION | OBJECT | INPUT_OBJECT | INPUT_FIELD_DEFINITION | ENUM | ARGUMENT_DEFINITION
 
   input VisitorConsent {
     marketing: Boolean

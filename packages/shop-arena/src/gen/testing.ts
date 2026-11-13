@@ -508,11 +508,24 @@ export class ScriptedJudge implements LlmClient {
   }
 }
 
+/**
+ * The stub's stylesheet: shop styles for every control and link, and the
+ * open cart drawer as a fixed panel over a full-viewport backdrop with
+ * square corners.
+ */
+const STUB_STYLES =
+  '<style>button,input,select,textarea{background:#fff;border:1px solid #223344;border-radius:4px}input[type=checkbox],input[type=radio]{appearance:none;width:16px;height:16px}a{color:#223344}.cart-backdrop{border-radius:0;position:fixed;inset:0;border:0;background:rgba(0,0,0,.4)}.cart-drawer{position:fixed;top:0;right:0;bottom:0;width:min(320px,100%);padding:16px;box-sizing:border-box;background:#fff}</style>';
+
 function stubHtml(body: string, loggedIn: boolean): string {
   const logout = loggedIn
     ? '<form method="post" action="/account/logout"><button type="submit">Log out</button></form>'
     : '<a href="/account/login">Log in</a>';
-  return `<!doctype html><html><head><title>Stub</title></head><body><header><nav><a href="/">Home</a><a href="/collections/dog-essentials">Dogs</a>${logout}</nav></header><main>${body}</main><footer><a href="/policies/privacy-policy">Privacy</a></footer></body></html>`;
+  return `<!doctype html><html><head><title>Stub</title>${STUB_STYLES}</head><body><header><nav><a href="/">Home</a><a href="/collections/dog-essentials">Dogs</a>${logout}</nav></header><main>${body}</main><footer><a href="/policies/privacy-policy">Privacy</a></footer></body></html>`;
+}
+
+/** The stub's open cart drawer, which a product page shows with `?cart=open`. */
+function stubCartDrawer(hasCart: boolean): string {
+  return `<div class="cart-popup"><button type="button" class="cart-backdrop" aria-label="Close cart drawer"></button><aside id="cart-drawer" class="cart-drawer" role="dialog" aria-modal="true"><h2>Cart</h2><p>${hasCart ? '1 x Product' : 'Your cart is empty.'}</p><button type="button">Close</button></aside></div>`;
 }
 
 /**
@@ -592,7 +605,8 @@ const STUB_DISCOUNT_CODES: ReadonlySet<string> = new Set(
  * `discount=1` a Discount code applied at checkout, and `address=<JSON>`
  * the one saved address. Checkout takes the codes of
  * `SCRIPTED_DISCOUNT_CODES` in any case and turns down every other code
- * with "Enter a valid discount code".
+ * with "Enter a valid discount code". Every control has shop styles, and a
+ * product page with `?cart=open` shows the open cart drawer.
  */
 export function stubStorefront(options: StubStorefrontOptions = {}): http.Server {
   return http.createServer((req, res) => {
@@ -705,7 +719,7 @@ export function stubStorefront(options: StubStorefrontOptions = {}): http.Server
         return;
       case url.pathname.startsWith('/products/'):
         page(
-          '<h1>Product</h1><form method="post" action="/cart" class="product-form"><input type="hidden" name="redirectTo" value="/cart"><input type="hidden" name="intent" value="add"><input type="radio" name="merchandiseId" value="gid://shopify/ProductVariant/1" checked><button type="submit">Add to cart</button></form>',
+          `<h1>Product</h1><form method="post" action="/cart" class="product-form"><input type="hidden" name="redirectTo" value="/cart"><input type="hidden" name="intent" value="add"><input type="radio" name="merchandiseId" value="gid://shopify/ProductVariant/1" checked><button type="submit">Add to cart</button></form>${url.searchParams.get('cart') === 'open' ? stubCartDrawer(hasCart) : ''}`,
         );
         return;
       case url.pathname === '/cart':

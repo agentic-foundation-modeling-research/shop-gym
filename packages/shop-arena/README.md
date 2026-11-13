@@ -1,15 +1,17 @@
 # @shop-gym/shop-arena
 
-TypeScript ShopArena: storefront exploration (`src/explore/`), SandboxShop
-generation (`src/gen/`), and the storefront template under `templates/`.
-The `shopgym explore` and `shopgym gen` commands in `packages/cli` drive
-it; see `docs/specs/v1_1_typescript_redesign.md`.
+TypeScript ShopArena: storefront exploration (`src/explore/`), Source
+bundles (`src/bundle/`), SandboxShop generation (`src/gen/`), and the
+storefront template under `templates/`. The `shopgym explore`, `shopgym
+bundle` and `shopgym gen` commands in `packages/cli` drive it; see
+`docs/specs/v1_1_typescript_redesign.md`.
 
 Layout:
 
 ```
 src/
   explore/      explore pipeline: prefetch, harness tasks, capability merge, manual synthesis, Site state graph
+  bundle/       Source bundle pipeline: user-first sampling, source adapters (ar23/), complete step (complete/), image download
   gen/
     build/      build loop: template seeding, backend sidecar, owned-file rules, verifiers, prompts
     ...         manual_merge, data_synth, data_validation, final_eval, publish (see Gen)
@@ -147,7 +149,10 @@ and `sample_size` is the number of products read. On a generic site
 variant stats come from one fragment for each page. When more than one task
 recorded the same page, the first fragment in filename order counts. The
 prices use the most frequent currency, and the observed axes are sorted. The
-product and collection totals and the products per collection stay 0.
+product and collection totals and the products per collection are `null`,
+because a sample does not show them. On each path a stat that the run did
+not see is `null`, never 0. When no part gives `shop.currency`, the merge
+step writes the currency of the stats prices into `capabilities.json`.
 
 With a `focus` (for example `"Video Games"`), the explore step adds
 `prompts/planner_focus.md` after the planner prompt of either platform,
@@ -167,7 +172,15 @@ the pi runtime, a new headless `BrowserSession` for every iteration
 shop serves it, and writes `run/iters/<id>/start_state.json`), the
 `browserTools` from `@shop-gym/browser`, and three run-dir-scoped file
 tools (`read_file`, `write_file`, `list_dir`) that let the agent write
-`plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. Every iteration
+`plan.md`, `artifact/parts/*`, and `artifact/evidence/*`. The iteration
+browser sends no `x-shopgym-episode` header: on a live site the header
+makes each cross-origin fetch of a page send a CORS preflight, and a site
+that does not allow the header fails the fetch, which can leave the page
+blank. The `read_file` calls of one iteration return at most 200,000
+characters in total (`fileTools({ readBudget })` with a `ReadBudget`
+that the explore step resets at the start of each iteration); after that,
+`read_file` fails and tells the agent to work from what it already read.
+Every iteration
 browser has the storefront origin as its base URL, so `navigate` opens a
 site path such as `/cart`. `src/explore/browser.ts` also gives the agent
 its own `snapshot` tool. It shows at most 50,000 characters of the
@@ -222,6 +235,18 @@ not contradict `capabilities.json`; and both put site-specific lists,
 internal request names and the site's own feature names into generic
 words.
 
+The synthesis prompt also forbids run notes: lines that tell about the
+exploration run and not about the storefront. The `synthesize` step
+finds such lines by a short closed list of run words, for example "this
+session", "bot check", "snapshot", "the run" or "was not tested". When
+the manual has such lines, the step makes one more completion with
+`prompts/synthesize_manual_rewrite.md`. That completion gets only those
+lines and their run words, and its reply (one JSON array with one string
+for each line, bare or in one fenced block) replaces them in place; an
+empty string removes its line. If the reply is not such an array, or a
+line of the rewritten manual still has a run word, the step fails with
+`ManualRunNoteError` and writes no `manual.md`.
+
 ```ts
 import { loadCredentials } from '@shop-gym/core';
 import { exploreStorefront } from '@shop-gym/shop-arena/explore';
@@ -238,9 +263,10 @@ console.log(result.manualPath, result.finalStatus);
 
 Options: `outDir` (defaults to `outputs/shop_manuals/<domain>/<run_id>/`),
 `model`, `maxIters`, `timeoutMs`, `rateLimitMs`, `from` (force a step and
-its dependents: `prefetch` | `explore` | `merge` | `synthesize`),
+its dependents: `prefetch` | `explore` | `merge` | `synthesize` | `graph`),
 `forceResume` (resume a harness run that ended in a refused status),
 `focus` (a hint that keeps the planner in one part of the site),
+`brandTerms` (extra brand words or phrases for the Anonymization checks),
 `runtime` / `llm` (inject an `AgentRuntime` / `LlmClient`, used by tests),
 `onEvent`, `log`, `signal`.
 
@@ -296,6 +322,103 @@ finished parts, the unfinished areas are coverage gaps, and
 reason and the Iteration, and `shopgym explore` exits 0 for `completed`
 and `stopped`.
 
+## Bundle
+
+`buildBundle(options, deps)` turns one category of a source dataset into
+a complete Source bundle (the `@shop-gym/core` bundle schemas). The only
+adapter is Amazon Reviews 2023 (`src/bundle/ar23/`). `deps.llm` is the
+`LlmClient` of the complete step. It runs four steps on the
+`@shop-gym/core` pipeline runner; `BUNDLE_STEPS` lists them in order:
+
+| Step | Reads | Writes |
+| --- | --- | --- |
+| `sample` | `.bundle/request.json` (the resolved sample options), the source review and meta files | `.bundle/raw/` (a raw bundle), `.bundle/sample.json` (what the adapter read, dropped and kept) |
+| `complete` | `.bundle/raw/`, `.bundle/complete_request.json` (the model) | `.bundle/complete/` (a complete bundle in the same layout, with `users/profiles.jsonl`), `.bundle/complete.json` (what it filled) |
+| `images` | `.bundle/images-request.json` (`imagesPerProduct`), `.bundle/complete/catalog/products.jsonl` | the image files in `catalog/images/`, `.bundle/images/products.jsonl` (the products with local paths), `.bundle/images/report.json` |
+| `publish` | `.bundle/complete/`, `.bundle/sample.json`, `.bundle/complete.json`, `.bundle/images/` | `bundle.json`, `catalog/reviews.jsonl`, `users/`, `events/` copied from the complete bundle, `catalog/products.jsonl` from `images`, and `report.json`, after the bundle passes the `complete` validation level (which also checks that each image `path` names a file) |
+
+`sample` streams each source file twice and keeps only small per-row
+numbers in memory between the passes. It drops exact duplicate reviews
+(same user, asin, time, rating, title and text). Then it samples, user
+first, with one global cutoff (`src/bundle/sample.ts`):
+
+1. Pick `users` modeled users at random (seeded) among the users with at
+   least `minEventsBefore` (default 5) User events before the cutoff and
+   at least one purchase after it.
+2. Keep every product in their histories, before and after the cutoff.
+3. Fill up to `products` with the other products of the same category
+   paths, the most reviewed before the cutoff first.
+4. Keep the reviews of the kept products. `reviewsPerProduct` caps them
+   with a seeded choice per product, and always keeps the reviews of
+   modeled users.
+5. Drop the products first seen after the cutoff, unless a modeled user
+   buys them after the cutoff (Task targets).
+
+AR23 field map: `parent_asin` is the product, each reviewed `asin` a
+variant, `features` the bullets, `details.Brand` the brand, `store` the
+seller, `categories` the category path, the other text `details` the
+attributes, and the large images the image source URLs. The source price
+(a number, or text such as `from 29.99`) goes on every variant, marked
+`inferred`. Each review of a modeled user is a `review` User event, and a
+verified one is also an inferred `purchase` event at the review time
+(precision `order`). Other reviewers have no events and no `user_id`.
+`related.also_bought` comes from co-purchases, marked `inferred`
+(`src/bundle/co_purchase.ts`): the products that at least two users
+bought with this one, the most shared buyers first, at most ten. It
+counts the verified reviews before the cutoff by every reviewer in the
+source, not only the modeled users, and before the per-product review
+cap. Video_Games has no `bought_together` lists, so this is its only
+related-product signal. Products are sorted by id, reviews keep the
+source order, and events are sorted by user and time, so the same
+options and source give the same bytes.
+
+`complete` (`src/bundle/complete/`) fills the fields that the `complete`
+validation level needs and marks each one in the record's `provenance`:
+`inferred` when a rule derives it from other source values, `synthetic`
+when a model writes it or a seeded rule makes it up.
+
+| Field | Fill | Mark |
+| --- | --- | --- |
+| `category_path` | the most common top category of the catalog | `inferred` |
+| `brand` | the seller, else `Generic` | `inferred`, `synthetic` |
+| `description` | the bullets, one per line, else the title | `inferred` |
+| `variants[].price` | the price of another variant, else the median price of the longest category path prefix with prices, else of the catalog | `inferred` |
+| `variants[].inventory` | a seeded whole number from 1 to 50 | `synthetic` |
+| `options`, `variants[].option_values` | for a product with more than one variant: an LLM infers one option and a value per variant from the title, description, bullets and attributes (`prompts/variant_options.md`) | `synthetic` |
+| `users/profiles.jsonl` | one User profile per modeled user: an LLM writes it from the products that the user bought and reviewed before the cutoff, with the catalog's top categories and price range (`prompts/user_profile.md`); each category interest must be a category path of the catalog, and there are no account fields | `{"*": "synthetic"}` |
+
+Each LLM reply is checked with its zod schema and the rules above, and a
+bad reply gets one repair call with the error. The checked replies are
+cached in `.bundle/llm_cache/`, one file per reply named by the hash of
+the model, the prompt and the reply schema. No step owns the cache, so
+`from` and a changed option keep it, and a rerun with the same input
+makes no LLM call and writes the same bytes. Reviews and User events are
+copied without change.
+
+`images` (`src/bundle/images.ts`) picks the first `imagesPerProduct`
+(default 1, 0 turns it off) images of each product that have a
+`source_url` and no `path`, and downloads each distinct URL once to
+`catalog/images/<16 hex digits of the URL hash>.<extension>`. The local
+`path` (relative to `catalog/`) goes next to the `source_url`. The
+download uses `deps.fetch` (the global `fetch` by default) and requests
+only these URLs:
+
+- 4 requests at a time, a 30 s time limit per request, no redirects
+  followed.
+- A network error, a time-out, a 408 or a 5xx is retried 3 times, after
+  1 s, 2 s and 4 s.
+- A refusal (a 3xx, 401, 403 or 429, or an answer that is not
+  `image/*`) is not retried. 10 refusals in a row stop the download, and
+  the report gives the reason and the images not requested.
+- A failed image is listed in `report.json` (`images.failed`) and keeps
+  only its `source_url`; the bundle is still published.
+
+No step owns the image files, so the pipeline never deletes them. A file
+is written under a temporary name and then renamed, so a file on disk is
+complete, and a rerun of `images` (after an interruption, with
+`from: 'images'`, or with a larger `imagesPerProduct`) requests only the
+images that are not on disk.
+
 ## Gen
 
 `generateShop(config, deps)` (also under the `gen` namespace export)
@@ -306,7 +429,7 @@ pipeline runner; `GEN_STEPS` lists them in order:
 | Step | Reads | Writes |
 | --- | --- | --- |
 | `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json`; the checked-in Standard sub-manual `src/gen/manual_merge/standard_sub_manual.md` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section); `parts/` holds the six Sub-manuals cut from `manual.md` and the shop's copy of the Standard sub-manual as `parts/standard.md`. Fusion: for each observed `## Account` or `## Checkout` section in `manual.md`, one LLM call fuses the notes into the copy. Observed labels and layout win. Unsupported behavior and the labels that the browser steps check keep the standard text. With no observed notes, the copy is unchanged and there is no LLM call. Merged stats take the totals only from the `catalog_endpoint` seeds; the merged `source` is `observed_sample` when any seed is, and `sample_size` adds up the seeds |
-| `data_synth` | `manual/`; with `sourceDataDir` (`--data`), also `products.json`, `collections.json` and `images/` of that Dataset | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce`, `reviews` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
+| `data_synth` | `manual/`; with `sourceDataDir` (`--data`), also `products.json`, `collections.json` and `images/` of that Dataset; with `bundleDir` (`--bundle`), also `bundle.json`, `catalog/`, `users/` and `events/` of that Source bundle | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce`, `reviews` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/`; with `bundleDir`, also `users/` |
 | `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity that includes the product and variant of each Review, valid Discount codes, seeded order totals and discounts that follow the backend pricing rules, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
 | `build` | `data/`, `manual/`, `data_validation.json` | `runs/build/` via `build.runBuildLoop` (seed staged in `.shop_gen/build_seed/`); a final status other than `completed` fails the step so the next run resumes it |
 | `final_eval` | `runs/build/run.json`, `runs/build/build.json` | `final_eval/` via `finalEval.runFinalEval` against the build artifacts booted on the recorded backend port (sidecar logs in `final_eval/{backend,storefront}.log`); advisory, never fails the step |
@@ -346,6 +469,58 @@ types, the price range and some titles. The descriptor and tone must fit
 these products. Menus link only to the kept collections. All other files
 come from the manual as usual, so `catalog` and `imageBackend` do not
 apply. A change to the three source paths runs `data_synth` again.
+
+With `bundleDir` (`shopgym gen --bundle <dir>`), `data_synth` maps a
+complete Source bundle into the Dataset. It cannot be used with
+`sourceDataDir`. It first runs `validateBundle(dir, 'complete')`, so an
+incomplete bundle fails the step with a `BundleValidationError`. It does
+not run `collections` through `images`, `navigation`, `customers` or
+`reviews`; `identity` (with the bundle currency and the country of the
+bundle locale), `store`, `pages`, `policies` and `commerce` run as usual.
+All of the mapping is code, from a fixed seed, so the same bundle and the
+same LLM replies give the same bytes:
+
+- Clock. Every bundle time moves by `clockOffsetDays`, the whole days
+  from the cutoff to the Episode clock start (2026-01-01), rounded down.
+  A product or a customer is created when it first shows in the shop
+  history, else at the shifted cutoff.
+- Catalog. Products are sorted by bundle product id and numbered from 1,
+  and so are their variants and images. The handle is the slug of the
+  title (at most 60 characters, cut at a dash), with `-2`, `-3` for
+  repeats. `vendor` is the seller, else the brand. `product_type` is the
+  leaf of `category_path`, and `tags` is the whole path. `sku` is the
+  bundle variant id, and `inventory.json` takes the bundle inventory.
+  `brand`, `category_path`, `attributes`, `source` and `provenance` are
+  copied, and `related` names product handles. A product with no options
+  gets `Title` / `Default Title`; more than three options fail the step.
+- Images. Each local PNG or JPEG `path` is copied to
+  `data/images/<handle>-<n>.<ext>` with its pixel size. Other formats are
+  left out and logged. A `source_url` with no local copy is not used, so
+  the shop needs no network. A product with no image gets one 800x800
+  placeholder.
+- Collections and menus. Each node of a category path is one collection
+  (handle: the slug of the path) that lists every product under it. The
+  main menu links each department and the nodes one level below it. The
+  footer links every page and policy.
+- Reviews. Only the Reviews before the cutoff are kept, sorted by review
+  id. `verified_buyer` and `helpful_count` come from the bundle. A review
+  by a modeled user names that Persona (first name and last initial) and
+  sets `customer_id`; any other reviewer gets a seeded first name and
+  last initial. The backend computes the ratings from these Reviews.
+- Personas and orders. Each modeled user is one Persona with a seeded
+  name pair that no other Persona has (at most 1,200 users), one or two
+  saved addresses, and the email and password that every Persona gets.
+  The purchase events before the cutoff become paid and fulfilled
+  orders, one for each user and `order_id` (else `session_id`, else
+  time), with the event price or the variant price.
+- `users/` (next to `data/`, so the backend never loads it):
+  `profiles.jsonl` (the bundle profiles as they are), `persona_map.json`
+  (bundle user id to customer id) and `future_events.jsonl` (the User
+  events at the cutoff or later, each with a `shop` block of the shifted
+  time and the shop customer id, product id and handle, and variant id).
+
+A change to `bundle.json`, `catalog/`, `users/` or `events/` runs
+`data_synth` again; the `.bundle/` work files and `report.json` do not.
 
 ```ts
 import { PiLlmClient, PiRuntime } from '@shop-gym/agent';
@@ -412,7 +587,7 @@ const result = await build.runBuildLoop({
   genBackend: true, // adds the gen_backend task and the backend verifiers
   runtime, // any AgentRuntime, e.g. the pi adapter
   model: { provider: 'anthropic', id: 'claude-sonnet-4-5' },
-  tools: fileTools(), // read_file / write_file / list_dir; run_command and screenshot_page are added
+  tools: fileTools(), // read_file / write_file / list_dir; run_command and screenshot_page are added; `{ readBudget }` caps the read_file characters
   maxIters: 12,
 });
 console.log(result.finalStatus, result.build.backendUrl);
@@ -440,7 +615,8 @@ above. With `storefront: { sidecar, dataDir, manualDir?, judge? }` (a
 manual directory and `{ llm, model }` for the judge) the order becomes
 `owned_files`, `typecheck`, `build`, `routes_200`, the backend verifiers
 (backend tasks), `data_in_use`, `nav_coverage`, `cart_conformance`,
-`account_flow`, `discount_flow`, `visual_judge`:
+`account_flow`, `discount_flow`, `site_graph` (with a manual), `page_lint`,
+`visual_judge`:
 
 | Verifier | Applies to | Checks |
 | --- | --- | --- |
@@ -450,7 +626,8 @@ manual directory and `{ llm, model }` for the judge) the order becomes
 | `cart_conformance` | `gen_cart_search`, `gen_product`, `gen_checkout`, `visual_fix` | add, update quantity, cart page totals equal the backend cart cost, remove, guest checkout, confirmation page shows the order; after the add, the update and the remove, `GET /cart.js` returns the backend cart in the AJAX cart fields |
 | `account_flow` | `gen_account`, `visual_fix` | in one `BrowserSession` episode with the browser steps of the Final eval: sign up, log out, "Forgot your password?" shows the sent message, log in, add an address, edit it; stops at the first failed step and names it |
 | `discount_flow` | `gen_checkout`, `visual_fix` | in one `BrowserSession` episode: add the first sampled product, apply the Discount code from the Dataset that `readApplicableDiscountCode` picks (the checkout "Total" changes; skipped when no code surely applies), then an unknown code shows "Enter a valid discount code" and the "Total" stays |
-| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` and `checkout` routes and the first seeded customer logged in before `/account` (`gen_account` gets the `account` bucket, `gen_checkout` the `checkout` bucket with `/checkout`); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
+| `page_lint` | every page task, `visual_fix` | walks the task's canonical pages (the same list and order as the Final eval, `walkShopPages` in `shop_pages.ts`) at desktop and mobile size and fails on: a visible `button`, `input` (every type but `hidden` and `image`; for `file`, its `::file-selector-button`), `select` or `textarea` whose background color and image, border style, width and color all equal the same bare element in an empty page of the same browser, or a checkbox, radio or range input whose `appearance` is not `none` (`unstyled_control`; `accent-color` only tints the native widget); a `summary` whose `display`, `list-style-type`, `list-style-image` and `::marker` content equal a bare `summary` in the same open state, so it shows the browser disclosure triangle (`unstyled_summary`); an `a[href]` with text in the bare link color (`unstyled_link`); a button, button input, `role="button"` or link with a button class whose label is more than 1 px larger than its box while its `overflow` hides it (`clipped_label`; icon buttons and `text-overflow: ellipsis` pass); visible "Default Title" text (`placeholder_title`); and on the open cart drawer (`/products/<handle>?cart=open`, `cart_search` bucket, skipped when the storefront has no `#cart-drawer`), a `.cart-backdrop` that does not cover the viewport or has a corner radius (`drawer_backdrop`) or an image wider than the drawer content box (`drawer_image`). Visible means shown (not `display: none`, `visibility: hidden` or `opacity: 0`), at least 2x2 px, on screen, and not clipped away: neither it nor an ancestor has a `clip: rect()` with no width or no height (on an absolutely or fixed positioned element) or a `clip-path: inset()` that covers its box (so a visually hidden input, label or button with `clip: rect(0 0 0 0)` or `clip-path: inset(50%)` does not count). Each problem names the page, the viewports, a CSS selector and the element text; never advisory |
+| `visual_judge` | every page task (`gen_theme` has no page) | desktop and mobile screenshots per route through `BrowserSession`, with a product added to the cart first for `cart_search` and `checkout` routes and the first seeded customer logged in before `/account` and the detail page of that customer's first order judged after it (`gen_account` gets the `account` bucket, `gen_checkout` the `checkout` bucket with `/checkout`); for `cart_search` also the open cart drawer over the first sampled product when the storefront has one (`details.cartDrawer`); one `LlmClient` call per page with the rubric in `src/gen/build/verifiers/prompts/visual_judge.md`; failing pages' screenshots are returned as `images` so the next executor prompt carries them; three failures per task, then advisory (`<runDir>/checks/visual_judge_budget.json`) |
 
 `runBuildLoop` always passes `storefront` (its `judge` option supplies
 the visual judge; `generateShop` sets it to the synthesis model) and
@@ -475,11 +652,15 @@ build); `SHOPGYM_LIVE=1` sends one real judge call from
 llm, model, outDir, log?, signal? })` evaluates an already-running shop;
 the `final_eval` pipeline step boots the build artifacts and calls it
 with `outDir = <shopDir>/final_eval`.
-The visual sweep screenshots fourteen canonical pages (home, a collection,
-a product, search, cart, checkout, the thank-you page of a guest order,
-account login, account register, account profile, the order list, an order
-detail, the address book, a policy page) at both viewports and judges each
-with the same rubric as `visual_judge`; the functional sweep is a fixed
+The visual sweep screenshots fifteen canonical pages (home, a collection,
+a product, search, the open cart drawer, cart, checkout, the thank-you page
+of a guest order, account login, account register, account profile, the
+order list, an order detail, the address book, a policy page) at both
+viewports and judges each with the same rubric as `visual_judge`. The page
+list and its walk (`walkShopPages`) are the ones the `page_lint` verifier
+uses, and the page lint runs the same rules on the same pages in its own
+episode (`pageLint` in `report.json`, a "Page lint" table in `summary.md`,
+counted in the totals); the functional sweep is a fixed
 browser script: sign up, log out, "Forgot your password?", log in, add an
 address, edit it, add to cart,
 apply a Discount code, checkout, view order, and
@@ -487,9 +668,11 @@ apply a Discount code, checkout, view order, and
 recorded as `skipped: not supported by backend`. The sweep's code is a
 Dataset code with no minimum subtotal: a percent or fixed-amount code
 first, else a free-shipping code.
-Pages and steps the dataset cannot set up (no product, no seeded customer,
-no order, no such code) are recorded as `skipped` with a reason. Output under `outDir`:
-`report.json` (counts, `visual.pages[]`, `functional.steps[]`),
+Pages and steps the dataset or the storefront cannot set up (no product,
+no seeded customer, no order, no such code, no cart drawer) are recorded as
+`skipped` with a reason. Output under `outDir`:
+`report.json` (counts, `visual.pages[]`, `functional.steps[]`,
+`pageLint.pages[]`),
 `summary.md`, `pages/<name>.json`, `screenshots/<name>__<viewport>.png`.
 The result carries `passed`, `failed`, `skipped`, `reportPath` and the
 report.
@@ -510,6 +693,7 @@ backend serves its own `data/`. It writes `<shopDir>/shop.json`:
 {
   "name": "<basename of shopDir>",
   "sourceManuals": ["/abs/path/to/outputs/shop_manuals/<host>/<run_id>"],
+  "sourceBundle": { "dir": "/abs/path/to/outputs/bundles/<name>", "name": "<bundle name>", "cutoff": "2022-07-16T00:00:00.000Z", "clockOffsetDays": 1265, "sources": [{ "dataset": "...", "license": "..." }] },
   "templates": { "storefront": { "name": "storefront", "commit": "...", "dirty": false, "contentHash": "...", "files": {}, "seededAt": "..." }, "backend": { "...": "..." } },
   "genBackend": true,
   "publishedAt": "2026-09-30T00:00:00.000Z",
@@ -517,6 +701,9 @@ backend serves its own `data/`. It writes `<shopDir>/shop.json`:
 }
 ```
 
-Calling it again replaces both component directories and rewrites the
-manifest. `publish.readShopManifest(shopDir)` parses and validates it;
+`sourceBundle` is present only for a shop made with `bundleDir`. It
+records the bundle directory, its name and cutoff, the clock offset and
+the sources with their licenses, from `bundle.json`. Calling it again
+replaces both component directories and rewrites the manifest.
+`publish.readShopManifest(shopDir)` parses and validates it;
 `dirty` may be absent in manifests written before the flag existed.

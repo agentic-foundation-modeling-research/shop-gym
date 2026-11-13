@@ -11,8 +11,8 @@ code used by v1.0.
 
 ## Terminology
 
-- **BrowserSession** - a chromium browser, one context, and one page bound
-  to an episode id.
+- **BrowserSession** - a chromium browser, one context, and one page,
+  bound to an episode id when the caller gives one.
 - **Episode header** - `x-shopgym-episode: <id>`, sent on every request so
   the sandbox backend keeps per-episode state apart (redesign §5.6.4).
 - **Aria snapshot** - Playwright's YAML rendering of the accessibility tree.
@@ -31,6 +31,12 @@ Implemented in `packages/browser` (milestone M3 of the v1.1 redesign):
 - `browserTools` with 13 tools (12 plus the gated `evaluate`).
 - `probe`.
 - A vitest suite against a local `node:http` fixture, headless chromium.
+- The episode id is optional (2026-11-12). With no id, the session sends
+  no episode header. Storefront exploration uses this on Live
+  storefronts: with the header, a page that fetches its content from
+  another origin sends a CORS preflight, and an API that does not allow
+  the header fails the fetch and leaves the page blank. A local test
+  shows both cases.
 
 Nothing consumes the package yet; harness (M2), arena explore (M8) and guru
 solve / validate (M9) are the planned callers.
@@ -47,7 +53,7 @@ that honours the episode header.
 
 ```ts
 BrowserSession.launch({
-  episodeId: string; baseUrl?: string; headless?: boolean;        // headless defaults to true
+  episodeId?: string; baseUrl?: string; headless?: boolean;       // headless defaults to true
   viewport?: {width, height};                                     // defaults to 1280x800
   video?: {dir: string}; trace?: {path: string};
   evaluateEnabled?: boolean;                                      // defaults to false
@@ -56,7 +62,9 @@ session.page; session.context; session.storageState(); session.close()
 session.finished: {answer?, infeasible, reason?} | undefined
 ```
 
-The context is created with `extraHTTPHeaders: {'x-shopgym-episode': id}`.
+With an episode id, the context is created with
+`extraHTTPHeaders: {'x-shopgym-episode': id}`; with no id, it sends no
+extra header.
 `close()` writes the trace zip, closes the context (which flushes video),
 then the browser.
 

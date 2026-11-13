@@ -474,6 +474,7 @@ describe('buildVerifiers with a storefront', () => {
       'cart_conformance',
       'account_flow',
       'discount_flow',
+      'page_lint',
       'visual_judge',
     ]);
     const withoutJudge = buildVerifiers({
@@ -492,6 +493,7 @@ describe('buildVerifiers with a storefront', () => {
       'cart_conformance',
       'account_flow',
       'discount_flow',
+      'page_lint',
     ]);
     expect(buildVerifiers({ genBackend: false, sidecar, ownedFiles }).map((v) => v.name)).toEqual([
       'owned_files',

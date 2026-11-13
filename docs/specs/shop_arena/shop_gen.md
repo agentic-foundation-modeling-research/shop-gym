@@ -308,6 +308,32 @@ underlying functions stay plain and testable on their own:
   `host` step passes `PUBLIC_STORE_DOMAIN`, `PORT` and `SESSION_SECRET`
   through the environment instead of a committed `.env`.
 
+### 3.3 Site state graph in the build (2026-11-12)
+
+- `manual_merge` copies `site_graph.json` from a single Shop Manual into
+  `<shopDir>/manual/` after `parseSiteGraph` accepts it, and lists it as
+  a step input. A manual with no graph gives a `manual/` with no graph.
+  Several manuals give no graph, and the step logs that it dropped them.
+- The build planner reads `artifact/manual/site_graph.json` next to
+  `manual.md` and `capabilities.json`, as a list of flows to make. It
+  names the flows that the template does not have in the brief of the
+  task that builds the `from` page; header and footer flows go to
+  `gen_navigation`.
+- `buildVerifiers` adds the `site_graph` Verifier, after
+  `discount_flow`, when the manual has a graph. It walks the transitions
+  over HTTP as a guest, on the built routes. `PAGE_TYPE_RULES` maps each
+  page type: `home`, `collection`, `product`, `search`, `policy`,
+  `login` and `register` are checked at both ends, `cart` and `page`
+  only as the `to` end, and `account`, `addresses`, `order_detail`,
+  `checkout`, `checkout_confirmation` and `other` are advisory. A
+  transition is also advisory when an end is an overlay, the effect is
+  not `navigate`, or the trigger is `load`. A checked transition fails
+  when the `from` page does not answer 200, when no link or form on it
+  leads to the route of `to`, or when that target does not answer 200.
+  The task that builds the `from` page walks it (`gen_homepage` for
+  `home`, which also covers the header and footer); `visual_fix` walks
+  them all.
+
 ---
 
 ## 4. Desired Status

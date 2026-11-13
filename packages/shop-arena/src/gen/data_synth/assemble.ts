@@ -50,8 +50,8 @@ export interface Catalog {
 
 /**
  * The cached drafts, with the catalog (built by `buildProducts` and
- * `buildCollections`, or copied from a source Dataset) and the Reviews of its
- * products.
+ * `buildCollections`, or copied from a source Dataset), the customers and
+ * the Reviews of its products.
  */
 export interface Drafts extends Catalog {
   readonly identity: Identity;
@@ -60,8 +60,12 @@ export interface Drafts extends Catalog {
   readonly policies: readonly PageDraft[];
   readonly commerce: CommerceDraft;
   readonly navigation: NavigationDraft;
-  readonly personas: readonly Persona[];
+  readonly customers: readonly Customer[];
   readonly reviews: readonly Review[];
+  /** The past orders; seeded orders from `synthOrders` when absent. */
+  readonly orders?: readonly Order[];
+  /** The stock of each variant; a seeded stock for each available variant when absent. */
+  readonly inventory?: Inventory;
 }
 
 export interface Dataset {
@@ -161,7 +165,12 @@ function regionName(code: string): string {
   return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code;
 }
 
-function buildCustomer(persona: Persona, country: string): Customer {
+/**
+ * The account of `persona`: an email made from the name, a password and
+ * ids that are stable hashes of the email, and the saved addresses in
+ * `country`.
+ */
+export function buildCustomer(persona: Persona, country: string): Customer {
   const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
   const email = `${slug(persona.first_name)}.${slug(persona.last_name)}@example.com`;
   const addresses = persona.addresses.map((address, i) => ({
@@ -188,17 +197,21 @@ function buildCustomer(persona: Persona, country: string): Customer {
   };
 }
 
-/** Pure assembly of the dataset from drafts; throws `SynthError` when a file would not validate. */
-export function assembleDataset(d: Drafts): Dataset {
+/** A stable random stock for each available variant, and none for the others. */
+function seededInventory(products: readonly Product[]): Inventory {
   const inventory: Record<string, { quantity_available: number }> = {};
-  for (const p of d.products) {
+  for (const p of products) {
     for (const v of p.variants) {
       inventory[String(v.id)] = {
         quantity_available: v.available ? (stableId('stock', String(v.id)) % MAX_STOCK) + 1 : 0,
       };
     }
   }
-  const customers = d.personas.map((p) => buildCustomer(p, d.identity.country));
+  return inventory;
+}
+
+/** Pure assembly of the dataset from drafts; throws `SynthError` when a file would not validate. */
+export function assembleDataset(d: Drafts): Dataset {
   const store = {
     shop_id: stableId('shop', d.identity.name),
     name: d.identity.name,
@@ -216,9 +229,9 @@ export function assembleDataset(d: Drafts): Dataset {
     navigation: d.navigation,
     pages: d.pages,
     policies: d.policies,
-    inventory,
-    customers,
-    orders: synthOrders(customers, d.products, d.commerce, d.identity.currency),
+    inventory: d.inventory ?? seededInventory(d.products),
+    customers: d.customers,
+    orders: d.orders ?? synthOrders(d.customers, d.products, d.commerce, d.identity.currency),
     commerce: d.commerce,
     reviews: d.reviews,
   };

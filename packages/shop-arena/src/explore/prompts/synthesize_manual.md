@@ -200,6 +200,14 @@ If you are unsure whether a sentence leaks identity, cut it.
   "expanded navigation".
 - No internal references (`see parts/...`, `see evidence/...`);
   they would be dangling once the parts are deleted.
+- **No run notes.** Write about the storefront, not about the run that
+  explored it. Do not tell what the run captured, tested, clicked or
+  planned, where it stopped, or what its tasks, Iterations, executors,
+  snapshots, bot checks or browser session did. Write a detail that no
+  part saw as unknown, in the present tense: "The quantity limit of the
+  stepper is unknown.", not "The stepper was not tested in this
+  session.". A line that still tells about the run goes back for one
+  rewrite, and the synthesis fails when the rewrite also tells about it.
 - No code fences and no JSON. The closing `## UX Patterns Summary`
   table is the only required table; ad-hoc tables are allowed only
   when a 2-column comparison is genuinely clearer than prose.

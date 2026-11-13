@@ -52,6 +52,12 @@ describe('parseGenArgs', () => {
     });
   });
 
+  it('maps --bundle onto bundleDir', () => {
+    expect(
+      parseGenArgs(['m', '--name', 's', '--bundle', 'outputs/bundles/b']).config,
+    ).toMatchObject({ bundleDir: 'outputs/bundles/b' });
+  });
+
   it('applies the default models and leaves the catalog to zod defaults', () => {
     expect(parseGenArgs(['m', '--name', 's']).config).toEqual({
       name: 's',
@@ -94,8 +100,9 @@ describe('parseGenArgs', () => {
 });
 
 describe('USAGE', () => {
-  it('shows the --data option', () => {
+  it('shows the --data and --bundle options', () => {
     expect(USAGE).toContain('--data <dir>');
+    expect(USAGE).toContain('--bundle <dir>');
   });
 
   it('shows the build agent default', () => {

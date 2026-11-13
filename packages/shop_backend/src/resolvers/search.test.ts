@@ -626,6 +626,67 @@ describe('searchResolvers — Query.productRecommendations', () => {
     expect(result).toEqual([{ handle: 'beta' }, { handle: 'gamma' }]);
   });
 
+  /** A server over `products` with `related` set on the first one, alpha. */
+  function yogaWithRelated(related: Product['related'], products: readonly Product[] = synthetic) {
+    const [alpha, ...others] = products;
+    if (alpha === undefined) throw new Error('no products to serve');
+    const relatedData = makeData([{ ...alpha, related }, ...others]);
+    return createYoga({
+      schema: createSandboxSchema(resolvers),
+      context: (): ResolverContext => ({ data: relatedData, carts, baseUrl: BASE_URL }),
+    });
+  }
+
+  it('puts the bought-together products first, then the also-bought ones, then the ranking', async () => {
+    const relatedYoga = yogaWithRelated({ bought_together: ['delta'], also_bought: ['gamma'] });
+    const result = await recommend(relatedYoga, 'gid://shopify/Product/1');
+    expect(result).toEqual([
+      { handle: 'delta' },
+      { handle: 'gamma' },
+      { handle: 'beta' },
+      { handle: 'epsilon' },
+    ]);
+  });
+
+  it('keeps the related order and caps it at four products', async () => {
+    const relatedYoga = yogaWithRelated(
+      { bought_together: ['zeta', 'delta'], also_bought: ['gamma', 'beta', 'epsilon'] },
+      [...synthetic, makeProduct(6, 'zeta', 'cat', ['red'])],
+    );
+    const result = await recommend(relatedYoga, 'gid://shopify/Product/1');
+    expect(result).toEqual([
+      { handle: 'zeta' },
+      { handle: 'delta' },
+      { handle: 'gamma' },
+      { handle: 'beta' },
+    ]);
+  });
+
+  it('lists a related product once and skips the product itself and unknown handles', async () => {
+    const relatedYoga = yogaWithRelated({
+      bought_together: ['ghost', 'alpha', 'delta'],
+      also_bought: ['delta'],
+    });
+    const result = await recommend(relatedYoga, 'gid://shopify/Product/1');
+    expect(result).toEqual([
+      { handle: 'delta' },
+      { handle: 'beta' },
+      { handle: 'epsilon' },
+      { handle: 'gamma' },
+    ]);
+  });
+
+  it('uses the ranking alone when both related lists are empty', async () => {
+    const relatedYoga = yogaWithRelated({ bought_together: [], also_bought: [] });
+    const result = await recommend(relatedYoga, 'gid://shopify/Product/1');
+    expect(result).toEqual([
+      { handle: 'beta' },
+      { handle: 'epsilon' },
+      { handle: 'gamma' },
+      { handle: 'delta' },
+    ]);
+  });
+
   it('returns null for an unknown product GID', async () => {
     const result = await recommend(syntheticYoga, 'gid://shopify/Product/999');
     expect(result).toBeNull();

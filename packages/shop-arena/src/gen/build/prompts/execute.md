@@ -58,6 +58,23 @@ Feedback shapes you should know how to react to:
   "Total", or an unknown code did not show "Enter a valid discount code"
   with the "Total" unchanged. The body names the step. Restore the
   template's "Discount code" form and its error.
+- `site_graph`: a transition of the Site state graph does not work on the
+  built shop. The body names it as `` `from` -> `to` (`action`) `` with the
+  built page that was loaded. Add a link or a form on that page whose
+  target is the built route of the `to` page type (header and footer
+  controls count), or fix the page that answered an error.
+- `page_lint`: a page or the open cart drawer (`?cart=open`) broke a
+  fixed look rule. The body names the page, the rule, a CSS selector and
+  the text of each element: a visible control with the browser's default
+  look (`unstyled_control`, also a native checkbox, radio or range
+  input), a `summary` that shows the browser disclosure triangle
+  (`unstyled_summary`), a link in the browser's default blue
+  (`unstyled_link`), a button whose box cuts its label (`clipped_label`),
+  the variant title "Default Title" on screen
+  (`placeholder_title`), a cart backdrop that does not cover the window
+  with square corners (`drawer_backdrop`), or a drawer image wider than
+  the drawer (`drawer_image`). Fix the rule that the selector names; do
+  not hide the element.
 - `visual_judge`: a page scored below the bar. Fix the listed issues in
   order, then confirm with `screenshot_page` on the same route before you
   mark the task done.
@@ -147,6 +164,28 @@ Rules:
    table shows each row as a block of label and value lines (the
    template's `.responsive-table`, with a `data-label` on each cell)
    instead of pushing the page sideways.
+7. Every visible control gets the shop's styles: buttons, inputs of
+   every type, selects, textareas, `summary` rows and links. An element
+   with the browser's default look fails `page_lint`:
+   - Draw checkboxes and radios with `appearance: none`, then a size, a
+     border, a background and a check mark or dot for `:checked` from
+     the theme tokens. `accent-color` alone keeps the native browser box
+     and fails. A native input that is visually hidden behind a
+     shop-drawn box passes.
+   - Give each `summary` `list-style: none` and a shop marker, for
+     example a chevron in `summary::after` that turns for
+     `details[open]`. The browser disclosure triangle fails, and
+     `::-webkit-details-marker` does not hide it in Chromium.
+   - Give links a theme color, never the browser default blue.
+   - A button shows its whole label: no fixed width or height with
+     `overflow: hidden` that cuts the text.
+
+   Style controls with classes. An element selector such as
+   `button` or `input` also changes component elements, such as the cart
+   drawer backdrop (`.cart-backdrop`, a full-window `button` with square
+   corners); scope look changes such as a pill shape to classes. Keep the
+   cart drawer markup (`?cart=open`, `#cart-drawer`, `.cart-backdrop`),
+   and never show the variant title "Default Title".
 
 #### `gen_account` and `gen_checkout`: restyle the prebuilt pages
 

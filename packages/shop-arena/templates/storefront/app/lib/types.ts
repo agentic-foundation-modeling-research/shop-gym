@@ -86,12 +86,21 @@ export interface ProductDetail extends ProductSummary {
   readonly rating: { readonly value: string } | null;
   /** The `reviews.rating_count` metafield; null when the product has no Reviews. */
   readonly ratingCount: { readonly value: string } | null;
+  /** The number of the product's Reviews at each star rating, from 5 stars down to 1 star. */
+  readonly ratingHistogram: readonly RatingCount[];
   readonly reviews: {
     readonly nodes: readonly Review[];
     readonly pageInfo: {
       readonly hasNextPage: boolean;
     };
   };
+}
+
+/** The number of a product's Reviews with one star rating. */
+export interface RatingCount {
+  /** 1 to 5. */
+  readonly rating: number;
+  readonly count: number;
 }
 
 /** One read-only product Review. */
@@ -126,7 +135,25 @@ export interface CollectionDetail extends CollectionSummary {
   readonly products: {
     readonly nodes: readonly ProductSummary[];
     readonly totalCount: number | null;
+    readonly filters: readonly Filter[];
   };
+}
+
+/** One value of a facet, e.g. a brand, with the number of products it gives. */
+export interface FilterValue {
+  readonly id: string;
+  readonly label: string;
+  readonly count: number;
+  /** The JSON of the product filter that selects this value, e.g. `{"brand":"Acme"}`. */
+  readonly input: string;
+}
+
+/** One facet of a product list; the backend returns none for a shop without marketplace data. */
+export interface Filter {
+  readonly id: string;
+  readonly label: string;
+  readonly type: 'BOOLEAN' | 'LIST' | 'PRICE_RANGE';
+  readonly values: readonly FilterValue[];
 }
 
 export interface Page {

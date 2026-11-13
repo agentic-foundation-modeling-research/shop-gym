@@ -3,10 +3,13 @@
 The browser layer: one Playwright session per episode, the tools an
 `AgentRuntime` uses to drive it, and a probe for graders.
 
-- `session.ts` - `BrowserSession.launch({episodeId, baseUrl?, headless?,
+- `session.ts` - `BrowserSession.launch({episodeId?, baseUrl?, headless?,
   viewport?, video?, trace?, evaluateEnabled?})` starts chromium with one
-  context whose every request carries `x-shopgym-episode: <episodeId>`, so
-  the sandbox backend can keep episode state apart. Exposes `page`,
+  context. With an `episodeId`, every request carries
+  `x-shopgym-episode: <episodeId>`, so the sandbox backend can keep episode
+  state apart. Leave it out on a site that is not a sandbox shop: the extra
+  header makes each cross-origin fetch send a CORS preflight, which such a
+  site can refuse. Exposes `page`,
   `context`, `storageState()`, `finished`, and `close()` (writes the trace
   zip and flushes video when enabled).
 - `snapshot.ts` - `snapshotPage(page)` returns the URL, title, and

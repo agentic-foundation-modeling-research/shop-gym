@@ -178,6 +178,35 @@ describe('checkDataset', () => {
     ]);
   });
 
+  it('reports related products and Review authors that are not in the dataset', async () => {
+    type EditableProduct = { handle: string; related?: unknown };
+    let firstHandle = '';
+    let secondHandle = '';
+    await editJson('products.json', (products: EditableProduct[]) => {
+      const [first, second] = products;
+      if (first === undefined || second === undefined) {
+        throw new Error('fixture needs two products');
+      }
+      firstHandle = first.handle;
+      secondHandle = second.handle;
+      first.related = { bought_together: [second.handle, 'ghost-product'], also_bought: [] };
+      second.related = { bought_together: [], also_bought: ['ghost-toy'] };
+      return products;
+    });
+    await editJson('reviews.json', (reviews: { id: number; customer_id?: number }[]) =>
+      reviews.map((r) => {
+        if (r.id === 1) return { ...r, customer_id: 1 };
+        if (r.id === 2) return { ...r, customer_id: 99 };
+        return r;
+      }),
+    );
+    expect(await checkDataset(dataDir)).toEqual([
+      `products.json: ${firstHandle} related bought_together lists unknown product ghost-product`,
+      `products.json: ${secondHandle} related also_bought lists unknown product ghost-toy`,
+      'reviews.json: review 2 references unknown customer 99',
+    ]);
+  });
+
   it('reports a file that fails the backend schema', async () => {
     await fs.writeFile(path.join(dataDir, 'store.json'), JSON.stringify({ name: 'x' }));
     const problems = await checkDataset(dataDir);

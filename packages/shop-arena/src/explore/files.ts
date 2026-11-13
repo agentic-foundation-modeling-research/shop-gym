@@ -5,7 +5,9 @@
  * needs these three to read prefetched evidence and to write `plan.md`,
  * `artifact/parts/*`, and `artifact/evidence/*`. Every path is relative to
  * the run directory; anything resolving outside it, also through a
- * symlink, is refused.
+ * symlink, is refused. A `ReadBudget` limits the characters that all
+ * `read_file` calls return together, so that the reads of one agent run
+ * cannot fill its context.
  */
 
 import {
@@ -25,6 +27,39 @@ import { type Static, type TSchema, Type } from '@sinclair/typebox';
 
 /** Characters of a file returned per `read_file` call. */
 const READ_MAX_CHARS = 60_000;
+
+/** The `read_file` budget, in characters, that the explore step gives each agent run. */
+export const READ_BUDGET_CHARS = 200_000;
+
+/**
+ * A total of characters that `read_file` may return over many calls. The
+ * owner calls `reset` when a new agent run starts.
+ */
+export class ReadBudget {
+  private used = 0;
+
+  constructor(readonly limit: number) {}
+
+  /** The characters that `read_file` may still return. */
+  get remaining(): number {
+    return Math.max(0, this.limit - this.used);
+  }
+
+  /** Counts `chars` returned characters. */
+  spend(chars: number): void {
+    this.used += chars;
+  }
+
+  /** Starts a new count. */
+  reset(): void {
+    this.used = 0;
+  }
+}
+
+export interface FileToolsOptions {
+  /** Limits the characters that all `read_file` calls return together. No limit when absent. */
+  readonly readBudget?: ReadBudget;
+}
 
 const PATH = Type.String({ description: 'Path relative to the run directory, e.g. "plan.md".' });
 
@@ -87,24 +122,45 @@ function defineTool<P extends TSchema>(
   };
 }
 
-/** `read_file`, `write_file`, and `list_dir`, all rooted at the run dir. */
-export function fileTools(): readonly Tool[] {
+/**
+ * `read_file`, `write_file`, and `list_dir`, all rooted at the run dir.
+ * With a `readBudget`, `read_file` cuts a read at the budget, and refuses
+ * to read when the budget is spent.
+ */
+export function fileTools(options: FileToolsOptions = {}): readonly Tool[] {
+  const budget = options.readBudget;
+  const spent =
+    budget === undefined
+      ? ''
+      : `the read_file budget of ${budget.limit} characters for this agent run is spent`;
   const readFile = defineTool(
     'read_file',
-    `Read a UTF-8 text file under the run directory. Returns at most ${READ_MAX_CHARS} characters; pass "offset" to continue.`,
+    `Read a UTF-8 text file under the run directory. Returns at most ${READ_MAX_CHARS} characters; pass "offset" to continue.${
+      budget === undefined
+        ? ''
+        : ` All read_file calls of one agent run return at most ${budget.limit} characters in total.`
+    }`,
     Type.Object({
       path: PATH,
       offset: Type.Optional(Type.Integer({ minimum: 0, description: 'Character offset.' })),
     }),
     ({ path, offset }, cwd) => {
+      if (budget !== undefined && budget.remaining === 0) {
+        throw new Error(`${spent}; work from what you already read`);
+      }
       const text = readFileSync(resolveInside(cwd, path), 'utf8');
       const start = offset ?? 0;
-      const chunk = text.slice(start, start + READ_MAX_CHARS);
+      const chunk = text.slice(
+        start,
+        start + Math.min(READ_MAX_CHARS, budget?.remaining ?? READ_MAX_CHARS),
+      );
+      budget?.spend(chunk.length);
       const suffix =
         start + chunk.length < text.length
           ? `\n\n[truncated: ${text.length - start - chunk.length} more characters; next offset ${start + chunk.length}]`
           : '';
-      return textResult(chunk + suffix);
+      const budgetNote = budget !== undefined && budget.remaining === 0 ? `\n\n[${spent}]` : '';
+      return textResult(chunk + suffix + budgetNote);
     },
   );
 

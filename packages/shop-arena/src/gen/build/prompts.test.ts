@@ -61,3 +61,14 @@ describe('planner canonical task list', () => {
     ]);
   });
 });
+
+describe('planner read list', () => {
+  it('reads the Site state graph next to the manual, as flows on the built routes', async () => {
+    const { planner } = await loadBuildPrompts({ backendUrl: 'http://x', genBackend: false });
+    const section = planner.split('## 1. Light read budget')[1]?.split('## 2.')[0] ?? '';
+    const readList = section.replace(/\s+/g, ' ');
+    expect(readList).toContain('`artifact/manual/manual.md`');
+    expect(readList).toContain('`artifact/manual/site_graph.json`, when it exists');
+    expect(readList).toContain('never on the source `url_pattern`s');
+  });
+});
