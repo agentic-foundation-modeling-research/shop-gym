@@ -50,20 +50,23 @@ that file.
 
 ### `shopgym bundle <adapter> <src> --out <dir>`
 
-Builds a raw Source bundle from one category of a source dataset.
+Builds a complete Source bundle from one category of a source dataset.
 
 ```
 shopgym bundle <adapter> <src> --out <dir> --category <name> --cutoff <date>
                --products <n> --users <n> --seed <s>
-               [--min-events-before <n>] [--reviews-per-product <n>] [--from <step>]
+               [--min-events-before <n>] [--reviews-per-product <n>]
+               [--model <provider/id>] [--concurrency <n>] [--from <step>]
 ```
 
 The only adapter is `amazon_reviews_2023`. `<src>` holds
 `review_categories/<name>.jsonl` and `meta_categories/meta_<name>.jsonl`.
 `--cutoff` is a date (midnight UTC) or a UTC time. `--min-events-before`
 defaults to 5. Without `--reviews-per-product`, every review of a kept
-product stays. `--from` must be `sample` or `publish`. Prints the bundle
-directory on stdout.
+product stays. `--model` (default `openai/gpt-5.5`) names the variants and
+writes the User profiles in the complete step, with `--concurrency`
+parallel calls; the key comes from `.env`. `--from` must be `sample`,
+`complete` or `publish`. Prints the bundle directory on stdout.
 
 ### `shopgym gen <manual_dir>... --name <name>`
 

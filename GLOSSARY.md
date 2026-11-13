@@ -117,8 +117,14 @@ _Avoid_: hosting sidecar
 The advisory check of a built shop after the Build loop: a visual sweep that screenshots and judges the canonical pages, and a functional sweep that runs a fixed sign-up-to-order script. Its result never fails Shop generation.
 
 **Source bundle**:
-A directory in one format for every source dataset: `bundle.json`, a catalog of products with variants, their reviews, and the User events of the Modeled users. `shopgym bundle` writes a raw bundle, which has only the source facts. A complete bundle also has the fields that a shop needs, such as a price and an inventory on every variant, and user profiles. The core validator checks each level.
+A directory in one format for every source dataset: `bundle.json`, a catalog of products with variants, their reviews, and the User events of the Modeled users. A raw bundle has only the source facts. A complete bundle also has the fields that a shop needs, such as a price and an inventory on every variant, and User profiles. `shopgym bundle` writes a complete bundle. The core validator checks each level.
 _Avoid_: dataset bundle, source dump
+
+**Complete step**:
+The step of `shopgym bundle` that turns a raw Source bundle into a complete one. Rules fill the catalog fields that they can derive, an LLM names the variants and writes the User profiles, and each filled field gets a Provenance mark.
+
+**Provenance**:
+The mark on a Source bundle record that tells where a field comes from: `source`, `inferred` (derived from other source values by a rule), `synthetic` (written by a model, or made up by a seeded rule) or `rewritten`. A field that is not marked comes from the source.
 
 **Adapter**:
 The code that reads one source dataset and writes a raw Source bundle. It maps the source fields to the bundle fields, and marks the values that it infers.
@@ -131,6 +137,10 @@ A source user that the sampling picks, with enough User events before the Cutoff
 
 **Cutoff**:
 The one time that splits the User events of a Source bundle: events before it are a user's history, and purchases after it are Task targets.
+
+**User profile**:
+What a Modeled user is like as of the Cutoff, in a complete Source bundle: demographics, preferences (price sensitivity, category interests, brands, focus aspects), habits and a narrative. An LLM writes it from the user's history before the Cutoff. It has no account fields: Shop generation makes those for a Persona.
+_Avoid_: persona, customer
 
 ### ShopBackend
 

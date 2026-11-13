@@ -267,17 +267,18 @@ and the proposed 9-shop, 900-task RL and transfer-evaluation pilot across six Sa
 
 ## Source bundles
 
-`shopgym bundle` turns a source dataset into a raw **Source bundle**: a
-catalog, its reviews, and the User events of a few modeled users, in one
-format for every dataset. The first adapter reads Amazon Reviews 2023 (a
-research dataset with no license; use it for research only). Put the
-category files under `outputs/` (gitignored) and run:
+`shopgym bundle` turns a source dataset into a complete **Source
+bundle**: a catalog, its reviews, and the User events and User profiles
+of a few modeled users, in one format for every dataset. The first
+adapter reads Amazon Reviews 2023 (a research dataset with no license;
+use it for research only). Put the category files under `outputs/`
+(gitignored), set a model key in `.env`, and run:
 
 ```bash
 node packages/cli/dist/main.js bundle amazon_reviews_2023 outputs/sources/amazon_reviews_2023/raw \
   --category Video_Games --out outputs/bundles/vg_10k --cutoff 2022-07-16 \
   --products 10000 --users 200 --seed 7 --reviews-per-product 50
-# -> outputs/bundles/vg_10k/{bundle.json,catalog/products.jsonl,catalog/reviews.jsonl,events/events.jsonl,report.json}
+# -> outputs/bundles/vg_10k/{bundle.json,catalog/products.jsonl,catalog/reviews.jsonl,users/profiles.jsonl,events/events.jsonl,report.json}
 ```
 
 The sampling starts from the users. It picks `--users` users at random
@@ -288,10 +289,27 @@ products of the same categories. Each review gives a `review` event, and a
 verified review also gives an inferred `purchase` event. Only modeled users
 get User events. `--reviews-per-product` keeps a seeded choice of the
 reviews of each product, and always keeps the reviews of modeled users.
-The same options and seed give the same bytes. On Video_Games (4.6M review
-rows) a run takes about 45 s and 2.7 GB of memory. See
+Products that the same users bought before the cutoff get a
+`related.also_bought` list.
+
+Then the complete step fills the gaps that Shop generation cannot accept,
+and marks each filled field in `provenance`. Rules fill a missing price
+(the median of the same category), brand (the seller, else `Generic`),
+description, category and inventory. An LLM (`--model`, default
+`openai/gpt-5.5`; `--concurrency` parallel calls) names the variants of
+each product with more than one variant, and writes one User profile per
+modeled user from that user's history before the cutoff. A bad reply gets
+one repair call. The replies are cached by their input in
+`<out>/.bundle/llm_cache`, so a rerun with the same options, seed and
+model makes no LLM call and gives the same bytes. The bundle must pass
+the `complete` validation level (`validateBundle(dir, 'complete')` in
+`@shop-gym/core`) before it is published. On
+Video_Games (4.6M review rows, 10K products, 200 users) the sample step
+takes about 30 to 45 s and 2.8 GB of memory, and the complete step makes
+about 3,800 LLM calls (one per product with more than one variant, and
+one per user). See
 [`packages/shop-arena/README.md`](packages/shop-arena/README.md#bundle) for
-the field map and the step layout.
+the field map, the fill rules and the step layout.
 
 ## Common commands
 
