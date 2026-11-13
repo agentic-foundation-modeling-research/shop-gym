@@ -11,7 +11,7 @@ Layout:
 ```
 src/
   explore/      explore pipeline: prefetch, harness tasks, capability merge, manual synthesis, Site state graph
-  bundle/       Source bundle pipeline: user-first sampling, source adapters (ar23/)
+  bundle/       Source bundle pipeline: user-first sampling, source adapters (ar23/), image download
   gen/
     build/      build loop: template seeding, backend sidecar, owned-file rules, verifiers, prompts
     ...         manual_merge, data_synth, data_validation, final_eval, publish (see Gen)
@@ -302,13 +302,15 @@ and `stopped`.
 
 `buildBundle(options, deps)` turns one category of a source dataset into
 a raw Source bundle (the `@shop-gym/core` bundle schemas). The only
-adapter is Amazon Reviews 2023 (`src/bundle/ar23/`). It runs two steps on
-the `@shop-gym/core` pipeline runner; `BUNDLE_STEPS` lists them in order:
+adapter is Amazon Reviews 2023 (`src/bundle/ar23/`). It runs three steps
+on the `@shop-gym/core` pipeline runner; `BUNDLE_STEPS` lists them in
+order:
 
 | Step | Reads | Writes |
 | --- | --- | --- |
-| `sample` | `.bundle/request.json` (the resolved options), the source review and meta files | `.bundle/raw/` (a raw bundle), `.bundle/sample.json` (what the adapter read, dropped and kept) |
-| `publish` | `.bundle/raw/`, `.bundle/sample.json` | `bundle.json`, `catalog/`, `events/` copied from the raw bundle after it passes the `raw` validation level, and `report.json` |
+| `sample` | `.bundle/request.json` (the resolved sample options), the source review and meta files | `.bundle/raw/` (a raw bundle), `.bundle/sample.json` (what the adapter read, dropped and kept) |
+| `images` | `.bundle/images-request.json` (`imagesPerProduct`), `.bundle/raw/catalog/products.jsonl` | the image files in `catalog/images/`, `.bundle/images/products.jsonl` (the products with local paths), `.bundle/images/report.json` |
+| `publish` | `.bundle/raw/`, `.bundle/sample.json`, `.bundle/images/` | `bundle.json`, `catalog/reviews.jsonl`, `events/` copied from the raw bundle, `catalog/products.jsonl` from `images`, and `report.json`, after the bundle passes the `raw` validation level |
 
 `sample` streams each source file twice and keeps only small per-row
 numbers in memory between the passes. It drops exact duplicate reviews
@@ -338,6 +340,30 @@ verified one is also an inferred `purchase` event at the review time
 Products are sorted by id, reviews keep the source order, and events are
 sorted by user and time, so the same options and source give the same
 bytes.
+
+`images` (`src/bundle/images.ts`) picks the first `imagesPerProduct`
+(default 1, 0 turns it off) images of each product that have a
+`source_url` and no `path`, and downloads each distinct URL once to
+`catalog/images/<16 hex digits of the URL hash>.<extension>`. The local
+`path` (relative to `catalog/`) goes next to the `source_url`. The
+download uses `deps.fetch` (the global `fetch` by default) and requests
+only these URLs:
+
+- 4 requests at a time, a 30 s time limit per request, no redirects
+  followed.
+- A network error, a time-out, a 408 or a 5xx is retried 3 times, after
+  1 s, 2 s and 4 s.
+- A refusal (a 3xx, 401, 403 or 429, or an answer that is not
+  `image/*`) is not retried. 10 refusals in a row stop the download, and
+  the report gives the reason and the images not requested.
+- A failed image is listed in `report.json` (`images.failed`) and keeps
+  only its `source_url`; the bundle is still published.
+
+No step owns the image files, so the pipeline never deletes them. A file
+is written under a temporary name and then renamed, so a file on disk is
+complete, and a rerun of `images` (after an interruption, with
+`from: 'images'`, or with a larger `imagesPerProduct`) requests only the
+images that are not on disk.
 
 ## Gen
 

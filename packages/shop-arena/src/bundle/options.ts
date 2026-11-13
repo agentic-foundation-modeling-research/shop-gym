@@ -12,11 +12,13 @@ export const BUNDLE_ADAPTERS = ['amazon_reviews_2023'] as const;
 export type BundleAdapter = (typeof BUNDLE_ADAPTERS)[number];
 
 /** Pipeline step ids in execution order. */
-export const BUNDLE_STEPS = ['sample', 'publish'] as const;
+export const BUNDLE_STEPS = ['sample', 'images', 'publish'] as const;
 
 export type BundleStepName = (typeof BUNDLE_STEPS)[number];
 
 export const DEFAULT_MIN_EVENTS_BEFORE = 5;
+
+export const DEFAULT_IMAGES_PER_PRODUCT = 1;
 
 export const bundleOptionsSchema = z.strictObject({
   adapter: z.enum(BUNDLE_ADAPTERS),
@@ -38,6 +40,8 @@ export const bundleOptionsSchema = z.strictObject({
   minEventsBefore: z.number().int().nonnegative().default(DEFAULT_MIN_EVENTS_BEFORE),
   /** Keep at most this many reviews of one product, plus the reviews of modeled users. */
   reviewsPerProduct: z.number().int().positive().optional(),
+  /** Large images to download per product, the first ones first; 0 turns the download off. */
+  imagesPerProduct: z.number().int().nonnegative().default(DEFAULT_IMAGES_PER_PRODUCT),
   /** Force this step and everything after it. */
   from: z.enum(BUNDLE_STEPS).optional(),
 });
