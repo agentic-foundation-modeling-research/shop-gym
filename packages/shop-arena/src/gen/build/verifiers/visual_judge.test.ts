@@ -253,6 +253,28 @@ describe('visual_judge', () => {
     });
   }, 90_000);
 
+  it("judges the seeded customer's first order page after the account page", async () => {
+    const judge = new ScriptedJudge(() => JSON.stringify(PASS_VERDICT));
+    const verifier = visualJudgeVerifier({
+      target: { url },
+      dataDir: FIXTURE_DIR,
+      llm: judge,
+      model: MODEL,
+    });
+    const result = await verifier.run(ctx('gen_account'));
+    expect(result.verdict).toBe('pass');
+    // jane.doe@example.com, the first seeded customer, placed order 1001.
+    expect(requestedPaths.indexOf('/account/orders/1001')).toBeGreaterThan(
+      requestedPaths.indexOf('/account'),
+    );
+    const pages = (result.details as { pages: { route: string }[] }).pages;
+    expect(pages.map((page) => page.route)).toEqual([
+      '/account/login',
+      '/account',
+      '/account/orders/1001',
+    ]);
+  }, 60_000);
+
   it("returns the failing pages' screenshots as images", async () => {
     const judge = new ScriptedJudge(() => JSON.stringify(FAIL_VERDICT));
     const verifier = visualJudgeVerifier({
