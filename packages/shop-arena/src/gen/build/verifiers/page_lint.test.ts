@@ -17,6 +17,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { type StubStorefrontOptions, stubStorefront } from '../../testing.js';
 import { defaultBackendTemplateDir } from '../seed.js';
 import {
+  CHECKED_INPUT_TYPES,
   type LintScope,
   type PageLintResult,
   lintLoadedPage,
@@ -25,10 +26,13 @@ import {
 
 const FIXTURE_DIR = path.join(defaultBackendTemplateDir(), 'tests', 'fixtures', 'sandbox_shop_v0');
 
-/** Shop styles for every checked control type. */
+/** Shop styles for every checked element type. */
 const SHOP_STYLES = `<style>
 button,input,select,textarea{background:#fff;border:1px solid #223344;border-radius:4px}
-input[type=checkbox],input[type=radio]{accent-color:#223344}
+input[type=checkbox],input[type=radio],input[type=range]{appearance:none;width:16px;height:16px}
+input[type=file]::file-selector-button{background:#fff;border:1px solid #223344}
+summary{list-style:none}
+a{color:#223344}
 </style>`;
 
 /** An open cart drawer; `backdrop` and `drawer` add CSS to the two components. */
@@ -85,20 +89,76 @@ describe('lintLoadedPage', () => {
     ]);
   });
 
-  it('passes styled controls of every checked type', async () => {
-    const findings = await lint(`${SHOP_STYLES}<form>
-      <button>Buy</button>
-      ${['text', 'number', 'email', 'password', 'search', 'checkbox', 'radio']
-        .map((type) => `<input type="${type}" name="${type}">`)
-        .join('')}
-      <select name="sort"><option>Newest</option></select><textarea name="note"></textarea>
-    </form>`);
+  it('fails a native checkbox and radio that only set an accent color', async () => {
+    const findings = await lint(`<style>
+      input[type="checkbox"],input[type="radio"]{accent-color:#007185}
+      .cart-gift input{width:16px;height:16px}
+    </style><div class="cart-gift"><label><input type="checkbox"> This is a gift</label></div>
+    <label><input type="radio" name="ship" checked> Standard</label>`);
+    expect(findings.map((finding) => [finding.rule, finding.text, finding.detail])).toEqual([
+      ['unstyled_control', 'This is a gift', expect.stringContaining('appearance auto')],
+      ['unstyled_control', 'Standard', expect.stringContaining('`input[type="radio"]`')],
+    ]);
+  });
+
+  it('passes a checkbox drawn with appearance none, a shop border, background and check mark', async () => {
+    const findings = await lint(`<style>
+      .gift-check{appearance:none;width:16px;height:16px;margin:0;border:1px solid #223344;border-radius:3px;background:#fff;display:inline-grid;place-content:center}
+      .gift-check:checked{background:#223344}
+      .gift-check:checked::before{content:"";width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+    </style><label><input class="gift-check" type="checkbox"> This is a gift</label>
+    <label><input class="gift-check" type="checkbox" checked> Gift wrap</label>`);
     expect(findings).toEqual([]);
   });
 
-  it('passes a checkbox drawn with appearance none', async () => {
+  it('passes a visually hidden native input with a shop-drawn box on its label', async () => {
+    const findings = await lint(`<style>
+      .sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0)}
+      .box{display:inline-block;width:16px;height:16px;border:1px solid #223344;background:#fff}
+    </style><label><input class="sr-only" type="checkbox"><span class="box"></span> Verified Buyers only</label>
+    <label><input type="radio" name="size" style="position:absolute;opacity:0"><span class="box"></span> Small</label>`);
+    expect(findings).toEqual([]);
+  });
+
+  it('fails a bare number input against its own baseline', async () => {
     const findings = await lint(
-      '<input type="checkbox" style="appearance:none;width:16px;height:16px;border:1px solid #223344">',
+      '<form class="qty"><label>Qty <input type="number" name="quantity" value="1"></label></form>',
+    );
+    expect(findings).toEqual([
+      {
+        rule: 'unstyled_control',
+        selector: 'form.qty > label > input',
+        text: 'Qty',
+        detail: expect.stringContaining('browser default look of a bare `input[type="number"]`'),
+      },
+    ]);
+  });
+
+  it('fails every bare control type, each against its own baseline', async () => {
+    const findings = await lint(`<form>
+      ${CHECKED_INPUT_TYPES.map((type) => `<input type="${type}" name="${type}">`).join('')}
+      <select name="sort"><option>Newest</option></select><textarea name="note"></textarea>
+    </form>`);
+    expect(findings.map((finding) => [finding.rule, finding.text])).toEqual(
+      [...CHECKED_INPUT_TYPES, 'sort', 'note'].map((name) => ['unstyled_control', name]),
+    );
+    expect(findings.find((finding) => finding.text === 'file')?.detail).toContain(
+      '`input[type="file"]::file-selector-button`',
+    );
+  });
+
+  it('passes styled elements of every checked type', async () => {
+    const findings = await lint(`${SHOP_STYLES}<form>
+      <button>Buy</button>
+      ${CHECKED_INPUT_TYPES.map((type) => `<input type="${type}" name="${type}">`).join('')}
+      <select name="sort"><option>Newest</option></select><textarea name="note"></textarea>
+    </form><details><summary>Shipping</summary></details><a href="/cart">Cart</a>`);
+    expect(findings).toEqual([]);
+  });
+
+  it('passes a file input whose button has shop styles', async () => {
+    const findings = await lint(
+      '<input type="file" name="receipt" style="border:0" class="upload"><style>.upload::file-selector-button{background:#223344;color:#fff;border:0;border-radius:4px}</style>',
     );
     expect(findings).toEqual([]);
   });
@@ -117,9 +177,104 @@ describe('lintLoadedPage', () => {
       <label><input type="radio" name="variant" style="opacity:0"> Small</label>
       <button style="position:absolute;left:-9999px">Off screen</button>
       <div style="opacity:0"><button>Faded</button></div>
-      <details><summary>More</summary><input type="text" name="closed"></details>
+      <details><summary style="list-style:none">More</summary><input type="text" name="closed"></details>
       <input type="hidden" name="intent" value="add">
     </main>`);
+    expect(findings).toEqual([]);
+  });
+
+  it('fails a summary that shows the browser disclosure marker', async () => {
+    const findings = await lint(`<style>
+      .product-info-accordion summary{cursor:pointer;background:#f2f3f3;padding:.8rem 1rem;font-weight:700}
+      .webkit-only summary::-webkit-details-marker{display:none}
+    </style><details class="product-info-accordion"><summary>Product description</summary><p>Text</p></details>
+    <details class="product-info-accordion" open><summary>Shipping &amp; returns</summary><p>Text</p></details>
+    <details class="webkit-only"><summary>See 12 more</summary></details>`);
+    expect(findings).toEqual([
+      {
+        rule: 'unstyled_summary',
+        selector: 'details.product-info-accordion > summary',
+        text: 'Product description',
+        detail: expect.stringContaining('list-style-type disclosure-closed'),
+      },
+      {
+        rule: 'unstyled_summary',
+        selector: 'details.product-info-accordion > summary',
+        text: 'Shipping & returns',
+        detail: expect.stringContaining('list-style-type disclosure-open'),
+      },
+      {
+        rule: 'unstyled_summary',
+        selector: 'details.webkit-only > summary',
+        text: 'See 12 more',
+        detail: expect.stringContaining('browser disclosure marker'),
+      },
+    ]);
+  });
+
+  it('passes a summary with a shop marker', async () => {
+    const findings = await lint(`<style>
+      .facet-more summary{list-style:none;cursor:pointer}
+      .facet-more summary::after{content:"+";margin-left:.5rem}
+      .faq summary::marker{content:"\\203A  "}
+      .flex summary{display:flex;justify-content:space-between}
+    </style><details class="facet-more"><summary>See 12 more</summary></details>
+    <details class="faq"><summary>Returns</summary></details>
+    <details class="flex"><summary>Delivery <span>+</span></summary></details>`);
+    expect(findings).toEqual([]);
+  });
+
+  it('fails a link in the default link blue and passes links in shop colors', async () => {
+    const findings = await lint(`<style>.brand{color:#111}.footer a{color:inherit}</style>
+      <nav class="keep"><a href="/collections/all">Shop all departments</a></nav>
+      <a class="brand" href="/">Shopliseum</a>
+      <p class="footer"><a href="/policies/privacy">Privacy</a></p>
+      <a href="/products/oak-bowl"><img alt="" style="width:40px;height:40px"></a>
+      <a>Not a link</a>`);
+    expect(findings).toEqual([
+      {
+        rule: 'unstyled_link',
+        selector: 'nav.keep > a',
+        text: 'Shop all departments',
+        detail: expect.stringContaining('rgb(0, 0, 238)'),
+      },
+    ]);
+  });
+
+  it('fails a clipped "Delete" pill and passes a label that fits', async () => {
+    const findings = await lint(`<style>
+      .cart-inline-actions button{box-sizing:border-box;height:29px;border-radius:16px;padding:0 .7rem;border:1px solid #d5d9d9;background:#fff;white-space:nowrap;overflow:hidden;font-size:14px}
+      .cart-delete{width:44px}
+    </style><div class="cart-inline-actions">
+      <button class="cart-delete" type="submit">Delete</button>
+      <button class="cart-update" type="submit">Update</button>
+      <a class="button-link" href="/checkout" style="display:inline-block;width:40px;overflow:hidden;white-space:nowrap;color:#111">Continue to checkout</a>
+    </div>`);
+    expect(findings).toEqual([
+      {
+        rule: 'clipped_label',
+        selector: 'div.cart-inline-actions > button.cart-delete',
+        text: 'Delete',
+        detail: expect.stringMatching(/needs \d+x\d+ px but the box shows 42x27 px/),
+      },
+      {
+        rule: 'clipped_label',
+        selector: 'div.cart-inline-actions > a.button-link',
+        text: 'Continue to checkout',
+        detail: expect.stringContaining('overflow hidden'),
+      },
+    ]);
+  });
+
+  it('passes a label that overflows visibly, an icon-only button and an ellipsis on purpose', async () => {
+    const findings = await lint(`<style>
+      button{background:#fff;border:1px solid #223344}
+      .tight{width:30px;white-space:nowrap}
+      .icon{width:24px;height:24px;padding:0;overflow:hidden}
+      .ellipsis{display:inline-block;width:60px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    </style><button class="tight">Delete</button>
+    <button class="icon" aria-label="Close"><svg width="40" height="40"><rect width="40" height="40"></rect></svg></button>
+    <button class="ellipsis">Nintendo Switch Lite</button>`);
     expect(findings).toEqual([]);
   });
 

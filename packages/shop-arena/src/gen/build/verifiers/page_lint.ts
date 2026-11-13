@@ -7,18 +7,35 @@
  *
  * The rules:
  *
- * - `unstyled_control`: a visible `button`, `input` (text, number, email,
- *   password, search, checkbox, radio), `select` or `textarea` still has the
- *   browser default look of its element type. The baseline is the computed
- *   style of the same bare element in an empty page of the same browser. A
- *   box control (all but checkbox and radio) keeps the default look when its
- *   background (color and image) and its border (style, width and color)
- *   all equal the baseline: that is the grey bevelled button or the inset
- *   text box, whatever its radius, padding or font. A checkbox or radio
- *   keeps the default look when its `appearance` and `accent-color` both
- *   equal the baseline. A control is visible when it and its ancestors show
- *   it (not `display: none`, `visibility: hidden` or `opacity: 0`), its box
- *   is at least 2x2 px and it is not off-screen to the left, right or top.
+ * - `unstyled_control`: a visible `button`, `input` (every type in
+ *   `CHECKED_INPUT_TYPES`), `select` or `textarea` still has the browser
+ *   default look of its element type. The baseline is the computed style of
+ *   the same bare element in an empty page of the same browser. A box
+ *   control keeps the default look when its background (color and image)
+ *   and its border (style, width and color) all equal the baseline: that is
+ *   the grey bevelled button or the inset text box, whatever its radius,
+ *   padding or font. For a file input the box is its
+ *   `::file-selector-button`. A checkbox, radio or range input is a native
+ *   widget that the browser draws whatever its background, border or
+ *   `accent-color` (which only tints it): it keeps the default look while
+ *   its computed `appearance` is not `none`.
+ * - `unstyled_summary`: a visible `summary` still shows the browser
+ *   disclosure marker: its `display`, `list-style-type`,
+ *   `list-style-image` and `::marker` content all equal those of a bare
+ *   `summary` in the same open or closed state. `list-style: none`, a
+ *   non-list-item `display` or a `::marker` content of the shop's own
+ *   removes it; `::-webkit-details-marker` does not exist in Chromium.
+ * - `unstyled_link`: a visible `a[href]` with text keeps the color of a
+ *   bare link (the default blue). A link without text, such as an image
+ *   link, shows no link color and does not count.
+ * - `clipped_label`: a visible button (a `button`, a `submit`, `reset` or
+ *   `button` input, an element with `role="button"`, or a link with a class
+ *   name that has "button" or "btn") hides part of its label: its content
+ *   (scroll size) is more than 1 px wider or taller than its padding box
+ *   (client size) and its `overflow` on that axis is not `visible`. A
+ *   button without text (an icon button) does not count, and a label that
+ *   the shop cuts on purpose with `text-overflow: ellipsis` passes on the
+ *   horizontal axis. A label that spills visibly out of its box is not cut.
  * - `placeholder_title`: the visible text has the placeholder variant title
  *   "Default Title".
  * - `drawer_closed`, `drawer_backdrop`, `drawer_image` (the open cart drawer
@@ -26,6 +43,11 @@
  *   whole viewport and has square corners; no visible image in the drawer is
  *   wider than the drawer's content box. In the drawer, the first two rules
  *   check only what is inside the drawer.
+ *
+ * An element is visible when it and its ancestors show it (not
+ * `display: none`, `visibility: hidden` or `opacity: 0`), its box is at
+ * least 2x2 px and it is not off-screen to the left, right or top. So a
+ * visually hidden native input behind a shop-drawn box does not count.
  */
 
 import { BrowserSession } from '@shop-gym/browser';
@@ -51,26 +73,54 @@ export const PAGE_LINT_NAME = 'page_lint';
 export const PLACEHOLDER_VARIANT_TITLE = 'Default Title';
 /** The backdrop that the storefront renders behind its open cart drawer. */
 export const CART_BACKDROP_SELECTOR = '.cart-backdrop';
-/** The `input` types that the `unstyled_control` rule checks. */
+/** The `input` types that the `unstyled_control` rule checks: all but `hidden` and `image`. */
 export const CHECKED_INPUT_TYPES: readonly string[] = [
   'text',
-  'number',
+  'search',
   'email',
   'password',
-  'search',
+  'number',
+  'tel',
+  'url',
+  'date',
+  'time',
+  'datetime-local',
+  'month',
+  'week',
+  'color',
+  'file',
+  'submit',
+  'reset',
+  'button',
   'checkbox',
   'radio',
+  'range',
 ];
-const TOGGLE_INPUT_TYPES: readonly string[] = ['checkbox', 'radio'];
-const BOX_PROPERTIES = [
+/** The `input` types that the browser draws as a native widget until `appearance: none`. */
+const NATIVE_INPUT_TYPES: readonly string[] = ['checkbox', 'radio', 'range'];
+/** The `input` types that show as a button, which the `clipped_label` rule checks. */
+const BUTTON_INPUT_TYPES: readonly string[] = ['submit', 'reset', 'button'];
+const BOX_PROPERTIES: readonly string[] = [
   'background-color',
   'background-image',
   'border-style',
   'border-width',
   'border-color',
-] as const;
-const TOGGLE_PROPERTIES = ['appearance', 'accent-color'] as const;
-const SAMPLED_PROPERTIES: readonly string[] = [...BOX_PROPERTIES, ...TOGGLE_PROPERTIES];
+];
+/** `samplePage` reads `::marker content` from the `::marker` pseudo element. */
+const SUMMARY_PROPERTIES: readonly string[] = [
+  'display',
+  'list-style-type',
+  'list-style-image',
+  '::marker content',
+];
+const LINK_PROPERTIES: readonly string[] = ['color'];
+const SAMPLED_PROPERTIES: readonly string[] = [
+  ...BOX_PROPERTIES,
+  'appearance',
+  ...LINK_PROPERTIES,
+  ...SUMMARY_PROPERTIES.filter((property) => !property.startsWith('::')),
+];
 /** One bare element per baseline key, in a standards-mode page with no styles. */
 const BARE_CONTROLS_HTML = `<!doctype html><html><head></head><body>
 <button>Button</button>
@@ -78,9 +128,22 @@ ${CHECKED_INPUT_TYPES.map((type) => `<input type="${type}">`).join('\n')}
 <select><option>Option</option></select>
 <select multiple><option>Option</option></select>
 <textarea></textarea>
+<details><summary>Summary</summary></details>
+<details open><summary>Summary</summary></details>
+<a href="#">Link</a>
 </body></html>`;
 /** Pixels a box may miss the viewport edge by and still cover it. */
 const COVER_TOLERANCE_PX = 0.5;
+/** Pixels a label may overflow its button by before the rule counts it as cut. */
+const CLIP_TOLERANCE_PX = 1;
+/** The `samplePage` arguments that do not depend on the scope. */
+const SAMPLE_ARGS: Omit<SampleArgs, 'drawerSelector'> = {
+  backdropSelector: CART_BACKDROP_SELECTOR,
+  inputTypes: CHECKED_INPUT_TYPES,
+  buttonInputTypes: BUTTON_INPUT_TYPES,
+  properties: SAMPLED_PROPERTIES,
+  placeholder: PLACEHOLDER_VARIANT_TITLE,
+};
 const NAVIGATION_TIMEOUT_MS = 30_000;
 const SETTLE_MS = 300;
 
@@ -93,6 +156,9 @@ export type LintScope = 'page' | 'cartDrawer';
 
 export type LintRule =
   | 'unstyled_control'
+  | 'unstyled_summary'
+  | 'unstyled_link'
+  | 'clipped_label'
   | 'placeholder_title'
   | 'drawer_closed'
   | 'drawer_backdrop'
@@ -112,10 +178,7 @@ export async function lintLoadedPage(page: Page, scope: LintScope): Promise<Lint
   const baseline = await bareControlStyles(page.context());
   const sample = await page.evaluate(samplePage, {
     drawerSelector: scope === 'cartDrawer' ? CART_DRAWER_SELECTOR : null,
-    backdropSelector: CART_BACKDROP_SELECTOR,
-    inputTypes: CHECKED_INPUT_TYPES,
-    properties: SAMPLED_PROPERTIES,
-    placeholder: PLACEHOLDER_VARIANT_TITLE,
+    ...SAMPLE_ARGS,
   });
   if (sample.drawer === null) {
     return [
@@ -129,6 +192,7 @@ export async function lintLoadedPage(page: Page, scope: LintScope): Promise<Lint
   }
   return [
     ...sample.controls.flatMap((control) => unstyledFinding(control, baseline)),
+    ...sample.labels.flatMap(clippedFinding),
     ...sample.placeholders.map(
       (element): LintFinding => ({
         rule: 'placeholder_title',
@@ -250,7 +314,13 @@ export function renderLintFeedback(taskId: string, pages: readonly PageLintResul
 
 const RULE_HINTS: Readonly<Record<LintRule, string>> = {
   unstyled_control:
-    'Give every visible control shop styles: a background and a border from the theme tokens (for a checkbox or radio, `accent-color` or a drawn box).',
+    'Give every visible control shop styles: a background and a border from the theme tokens. Draw checkboxes, radios and range inputs with `appearance: none` and shop styles (a border, a background and a check mark or dot when checked); `accent-color` alone keeps the native widget. Style the `::file-selector-button` of a file input.',
+  unstyled_summary:
+    'Hide the browser disclosure marker of a `summary` with `list-style: none` and draw a shop marker (for example a chevron in `summary::after`); `::-webkit-details-marker` does not hide it in Chromium.',
+  unstyled_link:
+    'Give links a color from the theme tokens (for example `a { color: inherit }` or the accent token), not the browser default blue.',
+  clipped_label:
+    'Let the button fit its whole label: remove the fixed width or height that cuts it, or make the button wider; do not hide the overflow of a label.',
   placeholder_title: `Hide a variant title of "${PLACEHOLDER_VARIANT_TITLE}" in the product, cart and drawer lines.`,
   drawer_closed: `Keep the cart drawer: \`?cart=open\` opens \`${CART_DRAWER_SELECTOR}\`.`,
   drawer_backdrop: `Keep \`${CART_BACKDROP_SELECTOR}\` a full-viewport layer with square corners. Element selectors such as \`button\` must not change it; scope look changes with classes.`,
@@ -309,50 +379,92 @@ async function readBareControlStyles(
   const page = await context.newPage();
   try {
     await page.setContent(BARE_CONTROLS_HTML);
-    const sample = await page.evaluate(samplePage, {
-      drawerSelector: null,
-      backdropSelector: CART_BACKDROP_SELECTOR,
-      inputTypes: CHECKED_INPUT_TYPES,
-      properties: SAMPLED_PROPERTIES,
-      placeholder: PLACEHOLDER_VARIANT_TITLE,
-    });
+    const sample = await page.evaluate(samplePage, { drawerSelector: null, ...SAMPLE_ARGS });
     return new Map(sample.controls.map((control) => [control.key, control.style]));
   } finally {
     await page.close();
   }
 }
 
+/**
+ * The `unstyled_*` finding of one sampled element, if it keeps the browser
+ * default look: a native widget by its `appearance`, any other element by
+ * the properties of its kind that all equal its bare baseline.
+ */
 function unstyledFinding(
   control: ControlSample,
   baseline: ReadonlyMap<string, StyleSample>,
 ): LintFinding[] {
-  const bare = baseline.get(control.key);
-  if (bare === undefined) {
-    return [];
-  }
-  const toggle = TOGGLE_INPUT_TYPES.includes(control.key.replace(/^input:/, ''));
-  const properties: readonly string[] = toggle ? TOGGLE_PROPERTIES : BOX_PROPERTIES;
-  if (properties.some((property) => control.style[property] !== bare[property])) {
-    return [];
-  }
+  const at = { selector: control.selector, text: control.text };
   const element = controlElement(control.key);
+  const [tag, type = ''] = control.key.split(':');
+  if (tag === 'input' && NATIVE_INPUT_TYPES.includes(type)) {
+    const appearance = control.style.appearance;
+    if (appearance === 'none') return [];
+    return [
+      {
+        rule: 'unstyled_control',
+        ...at,
+        detail: `keeps the native browser widget of \`${element}\` (appearance ${appearance}); \`accent-color\` only tints it`,
+      },
+    ];
+  }
+  const bare = baseline.get(control.key);
+  const rule: LintRule =
+    tag === 'a' ? 'unstyled_link' : tag === 'summary' ? 'unstyled_summary' : 'unstyled_control';
+  const properties =
+    rule === 'unstyled_link'
+      ? LINK_PROPERTIES
+      : rule === 'unstyled_summary'
+        ? SUMMARY_PROPERTIES
+        : BOX_PROPERTIES;
+  if (
+    bare === undefined ||
+    properties.some((property) => control.style[property] !== bare[property])
+  ) {
+    return [];
+  }
   const look = properties.map((property) => `${property} ${control.style[property]}`).join('; ');
-  return [
-    {
-      rule: 'unstyled_control',
-      selector: control.selector,
-      text: control.text,
-      detail: `keeps the browser default look of a bare \`${element}\` (${look})`,
-    },
-  ];
+  const detail =
+    rule === 'unstyled_link'
+      ? `keeps the browser default link color (${look})`
+      : rule === 'unstyled_summary'
+        ? `shows the browser disclosure marker of a bare \`summary\` (${look})`
+        : `keeps the browser default look of a bare \`${element}\` (${look})`;
+  return [{ rule, ...at, detail }];
 }
 
-/** `input:checkbox` -> `input[type="checkbox"]`, `select:select-one` -> `select`. */
+/**
+ * `input:checkbox` -> `input[type="checkbox"]`, `select:select-one` -> `select`,
+ * `input:file` -> `input[type="file"]::file-selector-button` (the part the rule checks).
+ */
 function controlElement(key: string): string {
   const [tag = key, type] = key.split(':');
+  if (tag === 'input' && type === 'file') return 'input[type="file"]::file-selector-button';
   if (tag === 'input' && type !== undefined) return `input[type="${type}"]`;
   if (type === 'select-multiple') return 'select[multiple]';
   return tag;
+}
+
+/** The `clipped_label` finding of one sampled button, if its overflow hides part of its label. */
+function clippedFinding(label: LabelSample): LintFinding[] {
+  const cutX =
+    label.overflowX !== 'visible' &&
+    label.textOverflow !== 'ellipsis' &&
+    label.scrollWidth > label.clientWidth + CLIP_TOLERANCE_PX;
+  const cutY =
+    label.overflowY !== 'visible' && label.scrollHeight > label.clientHeight + CLIP_TOLERANCE_PX;
+  if (!cutX && !cutY) return [];
+  const overflow =
+    label.overflowX === label.overflowY ? label.overflowX : `${label.overflowX} ${label.overflowY}`;
+  return [
+    {
+      rule: 'clipped_label',
+      selector: label.selector,
+      text: label.text,
+      detail: `the label is cut: it needs ${label.scrollWidth}x${label.scrollHeight} px but the box shows ${label.clientWidth}x${label.clientHeight} px (overflow ${overflow})`,
+    },
+  ];
 }
 
 function drawerFindings(drawer: DrawerSample): LintFinding[] {
@@ -406,9 +518,12 @@ function round(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-/** What `samplePage` reads about one visible control. */
+/** What `samplePage` reads about one visible control, `summary` or link. */
 interface ControlSample {
-  /** `button`, `textarea`, `input:<type>` or `select:<type>`. */
+  /**
+   * `button`, `textarea`, `a`, `input:<type>`, `select:<type>`, or
+   * `summary:open` and `summary:closed` by the state of its `details`.
+   */
   readonly key: string;
   readonly selector: string;
   readonly text: string;
@@ -418,6 +533,17 @@ interface ControlSample {
 interface ElementSample {
   readonly selector: string;
   readonly text: string;
+}
+
+/** What `samplePage` reads about one visible button with text. */
+interface LabelSample extends ElementSample {
+  readonly scrollWidth: number;
+  readonly scrollHeight: number;
+  readonly clientWidth: number;
+  readonly clientHeight: number;
+  readonly overflowX: string;
+  readonly overflowY: string;
+  readonly textOverflow: string;
 }
 
 interface DrawerSample {
@@ -440,6 +566,7 @@ interface DrawerSample {
 
 interface PageSample {
   readonly controls: readonly ControlSample[];
+  readonly labels: readonly LabelSample[];
   readonly placeholders: readonly ElementSample[];
   /** Read for the drawer scope only; `null` when the drawer is not open. */
   readonly drawer?: DrawerSample | null;
@@ -450,6 +577,7 @@ interface SampleArgs {
   readonly drawerSelector: string | null;
   readonly backdropSelector: string;
   readonly inputTypes: readonly string[];
+  readonly buttonInputTypes: readonly string[];
   readonly properties: readonly string[];
   readonly placeholder: string;
 }
@@ -473,6 +601,8 @@ interface DomElement {
   readonly innerText: string;
   readonly clientWidth: number;
   readonly clientHeight: number;
+  readonly scrollWidth: number;
+  readonly scrollHeight: number;
   readonly labels?: ArrayLike<DomElement> | null;
   getAttribute(name: string): string | null;
   getBoundingClientRect(): DomRect;
@@ -493,13 +623,17 @@ interface DomWindow {
   readonly innerWidth: number;
   readonly scrollY: number;
   readonly CSS: { escape(value: string): string };
-  getComputedStyle(element: DomElement): { getPropertyValue(name: string): string };
+  getComputedStyle(
+    element: DomElement,
+    pseudoElement?: string | null,
+  ): { getPropertyValue(name: string): string };
 }
 
 /**
- * Runs in the browser: read the visible controls, the visible placeholder
- * titles and, for the drawer scope, the drawer's backdrop and images. It is
- * serialized into the page, so it uses nothing outside its own body.
+ * Runs in the browser: read the visible controls, summaries and links, the
+ * visible buttons with text, the visible placeholder titles and, for the
+ * drawer scope, the drawer's backdrop and images. It is serialized into the
+ * page, so it uses nothing outside its own body.
  */
 function samplePage(args: SampleArgs): PageSample {
   const win = globalThis as unknown as DomWindow;
@@ -535,14 +669,20 @@ function samplePage(args: SampleArgs): PageSample {
     }
     return parts.join(' > ');
   };
+  const isButtonInput = (element: DomElement): boolean =>
+    element.tagName === 'INPUT' && args.buttonInputTypes.includes(element.type ?? '');
+  /** The text that the element shows: a button input shows its value. */
+  const shownText = (element: DomElement): string =>
+    clean(isButtonInput(element) ? (element.getAttribute('value') ?? '') : element.innerText);
   const textOf = (element: DomElement): string => {
-    if (element.tagName === 'BUTTON') {
+    if (['A', 'BUTTON', 'SUMMARY'].includes(element.tagName)) {
       return clean(element.innerText || (element.getAttribute('aria-label') ?? ''));
     }
     const label = element.labels?.[0];
     return clean(
       element.getAttribute('aria-label') ??
         (label === undefined ? null : label.innerText) ??
+        (isButtonInput(element) ? element.getAttribute('value') : null) ??
         element.getAttribute('placeholder') ??
         element.getAttribute('name') ??
         '',
@@ -554,7 +694,7 @@ function samplePage(args: SampleArgs): PageSample {
   if (args.drawerSelector !== null) {
     const open = doc.querySelector(args.drawerSelector);
     if (open === null || !visible(open)) {
-      return { controls: [], placeholders: [], drawer: null };
+      return { controls: [], labels: [], placeholders: [], drawer: null };
     }
     root = open;
     const backdrop = doc.querySelector(args.backdropSelector);
@@ -592,19 +732,47 @@ function samplePage(args: SampleArgs): PageSample {
   }
 
   const controls: ControlSample[] = [];
-  for (const element of root.querySelectorAll('button, input, select, textarea')) {
+  const checked = 'button, input, select, textarea, summary, a[href]';
+  for (const element of root.querySelectorAll(checked)) {
     const tag = element.tagName.toLowerCase();
     const type = element.type ?? '';
     if (tag === 'input' && !args.inputTypes.includes(type)) continue;
+    if (tag === 'a' && shownText(element) === '') continue;
     if (!visible(element)) continue;
+    const pseudo = tag === 'input' && type === 'file' ? '::file-selector-button' : null;
+    const style = win.getComputedStyle(element, pseudo);
+    const sampled: Record<string, string> = Object.fromEntries(
+      args.properties.map((property) => [property, style.getPropertyValue(property)]),
+    );
+    let key = tag === 'input' || tag === 'select' ? `${tag}:${type}` : tag;
+    if (tag === 'summary') {
+      key = element.parentElement?.getAttribute('open') == null ? 'summary:closed' : 'summary:open';
+      sampled['::marker content'] = win
+        .getComputedStyle(element, '::marker')
+        .getPropertyValue('content');
+    }
+    controls.push({ key, selector: cssPath(element), text: textOf(element), style: sampled });
+  }
+
+  const labels: LabelSample[] = [];
+  for (const element of root.querySelectorAll('button, input, [role="button"], a[href]')) {
+    const buttonLike =
+      element.tagName === 'BUTTON' ||
+      isButtonInput(element) ||
+      element.getAttribute('role') === 'button' ||
+      (element.tagName === 'A' && [...element.classList].some((name) => /button|btn/i.test(name)));
+    if (!buttonLike || shownText(element) === '' || !visible(element)) continue;
     const style = win.getComputedStyle(element);
-    controls.push({
-      key: tag === 'input' || tag === 'select' ? `${tag}:${type}` : tag,
+    labels.push({
       selector: cssPath(element),
       text: textOf(element),
-      style: Object.fromEntries(
-        args.properties.map((property) => [property, style.getPropertyValue(property)]),
-      ),
+      scrollWidth: element.scrollWidth,
+      scrollHeight: element.scrollHeight,
+      clientWidth: element.clientWidth,
+      clientHeight: element.clientHeight,
+      overflowX: style.getPropertyValue('overflow-x'),
+      overflowY: style.getPropertyValue('overflow-y'),
+      textOverflow: style.getPropertyValue('text-overflow'),
     });
   }
 
@@ -617,5 +785,7 @@ function samplePage(args: SampleArgs): PageSample {
       placeholders.push({ selector: cssPath(parent), text: clean(parent.innerText) });
     }
   }
-  return drawer === undefined ? { controls, placeholders } : { controls, placeholders, drawer };
+  return drawer === undefined
+    ? { controls, labels, placeholders }
+    : { controls, labels, placeholders, drawer };
 }

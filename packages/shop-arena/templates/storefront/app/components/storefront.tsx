@@ -443,6 +443,12 @@ export function CartSummary({
         <Price money={cart.cost.subtotalAmount} />
       </div>
       {discount ? <DiscountRow discount={discount} /> : null}
+      {cart.cost.totalTaxAmount ? (
+        <div className="cart-total-row">
+          <span>Estimated tax</span>
+          <Price money={cart.cost.totalTaxAmount} />
+        </div>
+      ) : null}
       <div className="cart-total-row cart-total-row-grand">
         <span>Total</span>
         <Price money={cart.cost.totalAmount} />

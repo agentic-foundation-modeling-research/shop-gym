@@ -148,7 +148,7 @@ The backend rows run only when backend generation is enabled.
 | `account_flow`      | `gen_account`, `visual_fix`                                    | in a browser: sign up, log out, "Forgot your password?", log in, add and edit an address                              |
 | `discount_flow`     | `gen_checkout`, `visual_fix`                                   | in a browser: a Dataset Discount code changes the checkout total; an unknown code shows "Enter a valid discount code" |
 | `site_graph`        | the task that builds the `from` page, `visual_fix`             | only with `artifact/manual/site_graph.json`: each checked transition has a link or form to the built route of `to`    |
-| `page_lint`         | page tasks (below), `visual_fix`                               | no unstyled control or "Default Title" on the pages and open cart drawer; drawer backdrop and images fit              |
+| `page_lint`         | page tasks (below), `visual_fix`                               | no raw control, `summary` marker, default-blue link, clipped label or "Default Title"; drawer backdrop and images fit |
 | `visual_judge`      | page tasks (below), `visual_fix`                               | a model judges the task's pages at desktop and mobile size                                                            |
 
 A storefront that does not build or start fails every verifier that serves it
