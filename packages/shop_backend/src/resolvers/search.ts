@@ -36,10 +36,12 @@
  *     `types` argument may also include `QUERY`, which gates whether the
  *     suggestion is emitted; omitting `types` defaults to all five types.
  *     Articles are empty when `blogs.json` is absent.
- *   - `Query.productRecommendations(productId)` returns up to 4 other products,
- *     prioritised by the spec §5.3 / plan T3.3 cascade: shared
- *     (non-empty) `product_type` first, then descending tag-overlap count,
- *     then dataset insertion order. The requesting product is excluded;
+ *   - `Query.productRecommendations(productId)` returns up to 4 other products.
+ *     The product's `related` products come first: its bought-together
+ *     handles, then its also-bought handles, each list in its own order.
+ *     The ranking fills the rest: shared (non-empty) `product_type` first, then
+ *     descending tag-overlap count, then dataset insertion order. The
+ *     requesting product, unknown related handles and repeats are left out;
  *     unknown product GIDs resolve to `null`.
  */
 
@@ -53,7 +55,7 @@ import type {
   SearchType,
 } from '../__generated__/resolvers-types.js';
 import { type Connection, mapConnection, paginate } from '../data/pagination.js';
-import type { Blog, Collection, Product } from '../data/types.js';
+import type { Blog, Collection, Product, SandboxShopData } from '../data/types.js';
 import {
   type CollectionNode,
   type ProductNode,
@@ -186,8 +188,7 @@ export const searchResolvers = {
     ): readonly ProductNode[] | null => {
       const target = findProductByGid(ctx.data.products, args.productId);
       if (target === null) return null;
-      const ranked = rankRecommendations(ctx.data.products, target);
-      return ranked
+      return recommendationsFor(ctx.data, target)
         .slice(0, MAX_RECOMMENDATIONS)
         .map((p) =>
           buildProductNode(
@@ -378,6 +379,28 @@ function findProductByGid(products: readonly Product[], productId: string): Prod
     if (product.id === numericId) return product;
   }
   return null;
+}
+
+/**
+ * Every other product in `productRecommendations` order: the `related`
+ * products of `target` (bought together, then also bought) and then the
+ * rest by `rankRecommendations`. Each product appears once; related handles
+ * that name no product, or `target` itself, are skipped.
+ */
+function recommendationsFor(data: SandboxShopData, target: Product): readonly Product[] {
+  const picked = new Map<number, Product>();
+  const relatedHandles = [
+    ...(target.related?.bought_together ?? []),
+    ...(target.related?.also_bought ?? []),
+  ];
+  for (const handle of relatedHandles) {
+    const product = data.productsByHandle.get(handle);
+    if (product !== undefined && product.id !== target.id) picked.set(product.id, product);
+  }
+  for (const product of rankRecommendations(data.products, target)) {
+    if (!picked.has(product.id)) picked.set(product.id, product);
+  }
+  return [...picked.values()];
 }
 
 /**

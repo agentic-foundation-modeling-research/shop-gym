@@ -49,6 +49,12 @@ category, brand, price and rating, and each value counts the products that
 choosing it would give. They are empty when no product has a `brand` or a
 `category_path`.
 
+`productRecommendations(productId)` returns up to four other products. A
+product's `related` products come first, the bought-together ones and then
+the also-bought ones. A ranking fills the rest: products with the same
+`productType`, then products with more shared tags, then Dataset order. A
+product with no `related` products gets the ranking only.
+
 Read paths are deterministic for a given dataset. Mutable state (carts,
 customers, sessions, password reset requests, orders, inventory) lives in a
 per-episode `ShopState`; see "Episodes" below. There is no Admin API, real
