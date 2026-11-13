@@ -55,15 +55,14 @@ export const reviewResolvers = {
  * rounded half up to one decimal, in Shopify's `rating` JSON shape.
  */
 export function ratingMetafields(reviews: readonly Review[]): readonly Metafield[] {
-  if (reviews.length === 0) return [];
-  const sum = reviews.reduce((total, review) => total + review.rating, 0);
-  const tenths = Math.round((sum * 10) / reviews.length);
+  const rating = averageRating(reviews);
+  if (rating === null) return [];
   return [
     {
       namespace: RATING_NAMESPACE,
       key: RATING_KEY,
       value: JSON.stringify({
-        value: (tenths / 10).toFixed(1),
+        value: rating.toFixed(1),
         scale_min: '1.0',
         scale_max: '5.0',
       }),
@@ -76,6 +75,13 @@ export function ratingMetafields(reviews: readonly Review[]): readonly Metafield
       type: 'number_integer',
     },
   ];
+}
+
+/** The mean rating of `reviews`, rounded half up to one decimal; `null` when there are none. */
+export function averageRating(reviews: readonly Review[]): number | null {
+  if (reviews.length === 0) return null;
+  const sum = reviews.reduce((total, review) => total + review.rating, 0);
+  return Math.round((sum * 10) / reviews.length) / 10;
 }
 
 /** Whether `metafield` is one of the two that `ratingMetafields` computes. */
