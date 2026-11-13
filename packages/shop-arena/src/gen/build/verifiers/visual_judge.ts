@@ -11,7 +11,8 @@
  * sees the populated state the shopper sees rather than the empty-cart
  * message. Account routes other than the login page are captured after
  * logging in as the first seeded customer, so the profile shows the orders
- * table. Screenshots of the failing pages are returned as `images` so the
+ * table; the detail page of that customer's first order is judged after
+ * them. Screenshots of the failing pages are returned as `images` so the
  * harness can show them to the next executor iteration.
  */
 
@@ -31,7 +32,12 @@ import {
   loadJudgeRubric,
   mapConcurrent,
 } from './page_judge.js';
-import { type StorefrontTarget, prepareTarget, readSeededCustomer } from './storefront_target.js';
+import {
+  type StorefrontTarget,
+  prepareTarget,
+  readSeededCustomer,
+  readSeededOrderId,
+} from './storefront_target.js';
 import {
   type BucketCaps,
   DEFAULT_CAPS,
@@ -91,7 +97,8 @@ export function visualJudgeVerifier(options: VisualJudgeOptions): Verifier {
         const memberRoutes = routes.filter(needsLogin);
         if (memberRoutes.length > 0) {
           accountSeed = await seedAccount(session, options.target.url, options.dataDir);
-          for (const route of memberRoutes) {
+          const orderRoutes = await seededOrderRoutes(options.dataDir);
+          for (const route of [...memberRoutes, ...orderRoutes]) {
             captures.push(
               await capturePage({ session, baseUrl: options.target.url, route, outDir }),
             );
@@ -162,6 +169,14 @@ async function seedAccount(
   }
   const outcome = await logIn(session.page, baseUrl, customer);
   return outcome.detail;
+}
+
+/** The detail page of the first seeded customer's first order; empty when there is none. */
+async function seededOrderRoutes(dataDir: string): Promise<string[]> {
+  const customer = await readSeededCustomer(dataDir);
+  const orderId =
+    customer === undefined ? undefined : await readSeededOrderId(dataDir, customer.email);
+  return orderId === undefined ? [] : [`/account/orders/${orderId}`];
 }
 
 export interface RetryBudgetState {
