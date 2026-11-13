@@ -27,9 +27,9 @@ The current GraphQL contract is the per-domain SDL under `src/schema/`
 | Shop | `shop`, `Shop.paymentSettings`, `Shop.primaryDomain`, `Shop.brand`, policies, `Shop.metafield(s)` |
 | Menu | `menu(handle)` |
 | Product | `product(handle)`, `products(...)`, product options, variants, images, encoded variant fields, inventory-backed `availableForSale` / `quantityAvailable`, `Product.metafield(s)`, `Product.reviews(...)` and `Product.ratingHistogram` (sandbox-only) |
-| Collection | `collection(handle)`, `collections(...)`, `Collection.products(...)`, `Collection.metafield(s)` |
+| Collection | `collection(handle)`, `collections(...)`, `Collection.products(...)` with `filters` and its facets, `Collection.metafield(s)` |
 | Content | `page(handle)`, `blog(handle)`, `blogs(...)`, `Blog.articles(...)`, `Blog.articleByHandle(...)` |
-| Search | `search(...)`, `predictiveSearch(...)`, `productRecommendations(productId)` |
+| Search | `search(...)` with `productFilters` and its facets, `predictiveSearch(...)`, `productRecommendations(productId)` |
 | Localization | `localization`, plus validation for literal `@inContext(country:, language:)` values |
 | Cart | `cart(id)` and cart mutations for create, line add/update/remove, Discount codes (one per cart, priced into `cost` and `discountAllocations`), buyer identity (including `customerAccessToken`), note, attributes, and gift-card codes |
 | Customer | `customerCreate`, `customerAccessTokenCreate`, `customerAccessTokenDelete`, `customerRecover` (a mock that sends nothing), the address book (`customerAddressCreate`, `customerAddressUpdate`, `customerAddressDelete`, `customerDefaultAddressUpdate`), `customer(customerAccessToken)` with profile, addresses, and `orders` |
@@ -38,6 +38,22 @@ The current GraphQL contract is the per-domain SDL under `src/schema/`
 
 Fields and operations with no Storefront API equivalent carry the `@sandbox`
 directive in the SDL.
+
+Product filters and facets use the Storefront shapes: a `ProductFilter`
+input (`available`, `price`, `productType`, `productVendor`, `variantOption`,
+and the sandbox additions `brand`, `categoryPath` and `rating`) and `Filter`
+results with `FilterValue`s (`id`, `label`, `count`, and `input`, the JSON of
+the `ProductFilter` that chooses the value). Filters with the same key match
+when any of them matches; different keys must all match. The facets are
+category, brand, price and rating, and each value counts the products that
+choosing it would give. They are empty when no product has a `brand` or a
+`category_path`.
+
+`productRecommendations(productId)` returns up to four other products. A
+product's `related` products come first, the bought-together ones and then
+the also-bought ones. A ranking fills the rest: products with the same
+`productType`, then products with more shared tags, then Dataset order. A
+product with no `related` products gets the ranking only.
 
 Read paths are deterministic for a given dataset. Mutable state (carts,
 customers, sessions, password reset requests, orders, inventory) lives in a
@@ -244,7 +260,7 @@ Required files:
 | File | Contents |
 | --- | --- |
 | `store.json` | Store identity, domain, description, currency, country, payment settings, and brand colors |
-| `products.json` | Products, options, variants, images, prices, tags, timestamps, and availability fallback flags |
+| `products.json` | Products, options, variants, images, prices, tags, timestamps, and availability fallback flags; optional `brand`, `category_path` (department first), `attributes`, `related` (`bought_together` and `also_bought` handles), `source` (`dataset` and `id`) and `provenance` (field name to `source`, `inferred`, `synthetic` or `rewritten`) |
 | `collections.json` | Collections and ordered product-handle membership |
 | `navigation.json` | Menu handles mapped to nested navigation items |
 | `pages.json` | Static pages |
@@ -260,7 +276,7 @@ Optional files:
 | `customers.json` | `[]` | Seeded customer accounts (plain-text sandbox passwords) with addresses |
 | `orders.json` | `[]` | Seeded order history, with an optional `discount_code` and `discount_amount`; new orders are numbered after the highest seed (minimum `#1001`) |
 | `commerce.json` | `DEFAULT_COMMERCE` | `tax_rate`, `free_shipping_threshold`, `shipping_methods`, `payment_methods`, `discount_codes` |
-| `reviews.json` | `[]` | Product Reviews: `id`, `product_handle`, `variant_id`, `rating`, `title`, `body`, `reviewer_name`, `created_at` (ISO 8601 date and time), `verified_buyer`, `helpful_count` |
+| `reviews.json` | `[]` | Product Reviews: `id`, `product_handle`, `variant_id`, `rating`, `title`, `body`, `reviewer_name`, `created_at` (ISO 8601 date and time), `verified_buyer`, `helpful_count`, and an optional `customer_id` |
 
 `DEFAULT_COMMERCE` is no tax, no free-shipping threshold, one free `standard`
 shipping method, one `card` payment method, and no Discount codes. A partial `commerce.json`

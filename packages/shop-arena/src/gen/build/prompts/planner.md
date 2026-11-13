@@ -44,7 +44,7 @@ em dash character U+2014; the parser rejects any other separator.
 - [ ] gen_navigation — implement header, footer, mega menu and mobile nav from the navigation data and `artifact/manual/parts/navigation.md`; announcement bar per `parts/standard.md`; every collection handle reachable [priority: 8]
 - [ ] gen_homepage — render hero, featured collections, and any promo banner per `artifact/manual/parts/homepage.md`; bind to live GraphQL queries [priority: 7]
 - [ ] gen_collections — collection list and detail with the filter / sort affordances `capabilities.collection` and `artifact/manual/parts/collections.md` declare [priority: 6]
-- [ ] gen_product — product detail with variant pickers, gallery, and the rules `capabilities.product` and `artifact/manual/parts/product.md` declare; Reviews per the Reviews section of `parts/standard.md` [priority: 5]
+- [ ] gen_product — product detail with variant pickers, gallery, and the rules `capabilities.product` and `artifact/manual/parts/product.md` declare; Reviews and related products per the Reviews and Related products sections of `parts/standard.md` [priority: 5]
 - [ ] gen_cart_search — cart surfaces exactly as `capabilities.cart` and `artifact/manual/parts/cart_and_search.md` declare; predictive search per `capabilities.search` [priority: 4]
 - [ ] gen_info_pages — every page in `info_pages_present` per `artifact/manual/parts/info_pages.md`; wire into routes and the footer [priority: 3]
 - [ ] gen_account — restyle the prebuilt account pages to the theme and the Account section of `artifact/manual/parts/standard.md`; keep their behavior and form selectors [priority: 3]

@@ -41,9 +41,9 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 | Path | Purpose |
 | --- | --- |
 | `/` | Home: shop, featured collections and products |
-| `/collections`, `/collections/:handle` | Collection list and detail |
-| `/products/:handle` | Product detail with variant radios, add-to-cart, and the Reviews: stars, count and a rating histogram near the title (each bar links to `?reviews_rating=<n>#reviews`), a "Sort by" control (`?reviews_sort=most_recent\|highest_rating\|lowest_rating\|most_helpful`), a "Rating" filter (`?reviews_rating=1..5`), a "Verified Buyers only" filter (`?reviews_verified=true`) and "Show more reviews" (`?reviews_pages=<n>`, five Reviews a page); "No reviews match these filters." when none match; no Reviews section when the product has none |
-| `/search?q=` | Products, pages, and articles |
+| `/collections`, `/collections/:handle` | Collection list and detail; the detail has the "Filters" panel (see below) |
+| `/products/:handle` | Product detail with variant radios, add-to-cart, and the Reviews: stars, count and a rating histogram near the title (each bar links to `?reviews_rating=<n>#reviews`), a "Sort by" control (`?reviews_sort=most_recent\|highest_rating\|lowest_rating\|most_helpful`), a "Rating" filter (`?reviews_rating=1..5`), a "Verified Buyers only" filter (`?reviews_verified=true`) and "Show more reviews" (`?reviews_pages=<n>`, five Reviews a page); "No reviews match these filters." when none match; no Reviews section when the product has none. Above the Reviews, "You may also like" shows the backend's `productRecommendations`, up to four product cards; no block when there are none |
+| `/search?q=` | Products, pages, and articles; with the "Filters" panel (see below), and only products when a filter is set |
 | `/cart` | Cart page; its action handles `add`, `update`, `remove`, `discount`, `discount-remove` intents |
 | `/cart.js` | The session's cart as JSON in the fields of Shopify's AJAX cart: `items`, `item_count`, `total_price`, `total_discount`, `discount_codes`. Amounts are integer cents. Read only, no login; with no cart it returns the empty cart |
 | `/checkout` | Contact email, delivery address, shipping and payment method radios, and an order summary with the "Discount code" field and backend-matching totals; the action applies or removes a Discount code, or calls `checkoutComplete` |
@@ -63,6 +63,17 @@ and has "Previous announcement" and "Next announcement" arrows that go round
 the slides. It starts at the first code on each page and never moves by
 itself. One code is a plain "Announcement" region with no arrows; with no
 codes there is no bar.
+
+The search and collection pages show the "Filters" panel next to the
+products when the backend returns facets (`filters` of `Collection.products`,
+`productFilters` of `search`); with no facets the page has no panel. The
+panel has one region for each facet: "Category", "Brand" and "Rating" list
+values as links named `<label> (<count>)`, with `aria-current="true"` on a
+chosen one, and "Price" is a form with "Min price", "Max price" and "Apply".
+The URL holds the filters: `filter.<key>=<JSON>`, for example
+`filter.brand="Acme"` or `filter.categoryPath=["Dogs","Toys"]`, and
+`filter.price.min=<n>` and `filter.price.max=<n>`. A brand link adds or
+removes its brand; a category or rating link replaces the current one.
 
 Account loaders redirect to `/account/login?redirectTo=<path>` when there is
 no valid session. Checkout works for guests; logged-in customers get the
@@ -91,6 +102,8 @@ the cart, and the form shows "Enter a valid discount code".
   `createAddress`, `updateAddress`, `deleteAddress`, `setDefaultAddress`.
 - `app/lib/reviews.ts`: the Reviews URL parameters, sort options and page
   size, and the product rating read from its rating metafields.
+- `app/lib/facets.ts`: the `filter.*` URL parameters, read as `ProductFilter`
+  inputs, and the links that choose or clear a facet value.
 - `app/components/storefront.tsx`: header, footer, grids, cart drawer, cart
   summary and the "Discount code" form.
 - `app/components/announcement-bar.tsx`: the announcement bar with the
@@ -103,6 +116,8 @@ the cart, and the form shows "Enter a valid discount code".
   forms.
 - `app/components/reviews.tsx`: the rating block near the product title and
   the "Reviews" section.
+- `app/components/facets.tsx`: `FacetLayout`, the "Filters" panel next to a
+  product list.
 
 ## Fixture
 
