@@ -3,14 +3,17 @@
  * register, log in, log out, request a password reset with "Forgot your
  * password?", add, edit and delete an address in the address book, step
  * through the announcement bar, open a product page, sort its Reviews and
- * show more of them, add a product to the cart, apply or have a Discount
- * code turned down at checkout, place an order, and open that order's
- * thank-you page, the account order history and an account order page.
+ * show more of them, narrow a search or collection page by a value or a
+ * price range of its "Filters" panel, add a product to the cart, apply or
+ * have a Discount code turned down at checkout, place an order, and open
+ * that order's thank-you page, the account order history and an account
+ * order page.
  * Each step drives one Playwright page, never throws, and reports what it
  * observed so the callers can record it.
  *
- * Forms are submitted with `requestSubmit()` rather than a pointer click so
- * consent or newsletter popups layered over the page cannot intercept them.
+ * Forms are submitted with `requestSubmit()` and links followed with a DOM
+ * `click()` rather than a pointer click, so consent or newsletter popups
+ * layered over the page cannot intercept them.
  */
 
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -739,6 +742,89 @@ function reviewsSection(page: Page): Locator {
   return page.getByRole('region', { name: 'Reviews', exact: true });
 }
 
+/**
+ * Open product list `path` (a search or collection page; it may hold a
+ * query) and follow the value `valueLabel` of facet `facetLabel` in the
+ * "Filters" panel; ok when the page reloads with that value marked as
+ * chosen. A value's link reads "<label> (<count>)", e.g. "Acme (2)".
+ */
+export async function chooseFacetValue(
+  page: Page,
+  baseUrl: string,
+  path: string,
+  facetLabel: string,
+  valueLabel: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const link = facetValueLink(page, facetLabel, valueLabel);
+    if ((await link.count()) === 0) {
+      return {
+        ok: false,
+        detail: `no "${valueLabel}" value under "${facetLabel}" in the Filters panel on ${path}`,
+      };
+    }
+    const landed = await follow(page, link);
+    const chosen = (await link.count()) > 0 && (await link.getAttribute('aria-current')) === 'true';
+    return {
+      ok: landed !== path && chosen,
+      detail: `choosing "${valueLabel}" under "${facetLabel}" landed on ${landed} with the value ${chosen ? '' : 'not '}marked as chosen`,
+      url: landed,
+    };
+  });
+}
+
+/**
+ * Open product list `path`, enter `range` in "Min price" and "Max price" of
+ * the "Filters" panel's "Price" facet and press "Apply"; ok when the page
+ * reloads with the range in its URL and in the two fields.
+ */
+export async function filterByPrice(
+  page: Page,
+  baseUrl: string,
+  path: string,
+  range: { readonly min: number; readonly max: number },
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const facet = filtersPanel(page).getByRole('region', { name: 'Price', exact: true });
+    const min = facet.getByLabel('Min price', { exact: true });
+    const max = facet.getByLabel('Max price', { exact: true });
+    if ((await min.count()) === 0 || (await max.count()) === 0) {
+      return {
+        ok: false,
+        detail: `no "Min price" and "Max price" fields in the Filters panel on ${path}`,
+      };
+    }
+    await min.fill(String(range.min));
+    await max.fill(String(range.max));
+    const landed = await submit(page, min.locator('xpath=ancestor::form'));
+    const params = new URL(landed, baseUrl).searchParams;
+    const inUrl =
+      params.get('filter.price.min') === String(range.min) &&
+      params.get('filter.price.max') === String(range.max);
+    const wanted = `${range.min}-${range.max}`;
+    const shown = `${await min.inputValue()}-${await max.inputValue()}`;
+    return {
+      ok: inUrl && shown === wanted,
+      detail: `filtering by price ${wanted} landed on ${landed} with ${shown} in the fields`,
+      url: landed,
+    };
+  });
+}
+
+/** The "Filters" panel of a search or collection page. */
+function filtersPanel(page: Page): Locator {
+  return page.getByRole('complementary', { name: 'Filters', exact: true });
+}
+
+function facetValueLink(page: Page, facetLabel: string, valueLabel: string): Locator {
+  return filtersPanel(page)
+    .getByRole('region', { name: facetLabel, exact: true })
+    .getByRole('link', { name: new RegExp(`^${escapeRegExp(valueLabel)} \\(\\d+\\)$`) })
+    .first();
+}
+
 /** Open the account page of order `orderNumber`; expects 200 and the heading "Order #<number>". */
 export async function viewOrder(
   page: Page,
@@ -837,6 +923,21 @@ async function submit(page: Page, form: Locator): Promise<string> {
   await form.evaluate((element) =>
     (element as unknown as { requestSubmit(): void }).requestSubmit(),
   );
+  return landing(page, before);
+}
+
+/**
+ * Follow `link` with a DOM click, which popups over the page cannot
+ * intercept, and wait for the URL to change; resolves with the resulting path.
+ */
+async function follow(page: Page, link: Locator): Promise<string> {
+  const before = pathOf(page.url());
+  await link.evaluate((element) => (element as unknown as { click(): void }).click());
+  return landing(page, before);
+}
+
+/** Wait for the URL to leave path `before` and the page to load; resolves with the new path. */
+async function landing(page: Page, before: string): Promise<string> {
   await page
     .waitForURL((url) => url.pathname + url.search !== before, { timeout: SUBMIT_TIMEOUT_MS })
     .catch(() => undefined);
@@ -881,4 +982,8 @@ function quoted(texts: readonly string[]): string {
 
 function normalizedText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

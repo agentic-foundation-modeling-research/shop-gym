@@ -134,6 +134,15 @@ export function paginate<T>(items: readonly T[], args: PaginationArgs): Connecti
   };
 }
 
+/**
+ * Apply `map` to every node of `connection`, keeping the cursors and page
+ * info. Resolvers paginate cheap items first and map only the page.
+ */
+export function mapConnection<T, U>(connection: Connection<T>, map: (item: T) => U): Connection<U> {
+  const edges = connection.edges.map((edge) => ({ node: map(edge.node), cursor: edge.cursor }));
+  return { nodes: edges.map((edge) => edge.node), edges, pageInfo: connection.pageInfo };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
