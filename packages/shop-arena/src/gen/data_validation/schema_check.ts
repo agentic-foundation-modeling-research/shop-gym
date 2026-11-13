@@ -1,8 +1,9 @@
 /**
  * Dataset invariants the backend zod schema cannot express: referential
- * integrity between files (including the product and variant of each
- * Review), the presence of referenced image files, valid Discount codes,
- * and seeded order totals that follow the backend pricing rules.
+ * integrity between files (including the product, variant and customer of
+ * each Review and the related products of each product), the presence of
+ * referenced image files, valid Discount codes, and seeded order totals
+ * that follow the backend pricing rules.
  */
 
 import * as fs from 'node:fs/promises';
@@ -131,6 +132,14 @@ export async function checkDataset(dataDir: string): Promise<string[]> {
     }
   }
   if (products.length === 0) problems.push('products.json: no products');
+  for (const p of products) {
+    for (const [list, handles] of Object.entries(p.related ?? {})) {
+      for (const h of handles) {
+        if (!productHandles.has(h))
+          problems.push(`products.json: ${p.handle} related ${list} lists unknown product ${h}`);
+      }
+    }
+  }
 
   const collectionHandles = new Set<string>();
   for (const c of collections) {
@@ -192,6 +201,11 @@ export async function checkDataset(dataDir: string): Promise<string[]> {
       problems.push(
         `customers.json: ${c.email} default_address_id ${c.default_address_id} is not one of its addresses`,
       );
+    }
+  }
+  for (const r of reviews ?? []) {
+    if (r.customer_id !== undefined && !customerIds.has(r.customer_id)) {
+      problems.push(`reviews.json: review ${r.id} references unknown customer ${r.customer_id}`);
     }
   }
   for (const o of orders ?? []) {
