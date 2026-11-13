@@ -7,6 +7,11 @@ Shared contracts and utilities with no ShopGym-internal dependencies.
   `state_check`, `llm_judge`).
 - `schema/result.ts` - per-episode result and aggregate report contracts,
   including token usage and cost.
+- `bundle/` - the Source bundle contract: zod schemas for `bundle.json`,
+  catalog products (with variants), reviews, User profiles and User events
+  (closed `EVENT_TYPES`, page types shared with the Site state graph), a
+  JSONL line reader, and `validateBundle(dir, 'raw' | 'complete')`, which
+  checks every record and the joins between the files.
 - `pipeline/` - a file-based step pipeline. Steps declare input and output
   paths; completion is derived from the filesystem (outputs exist and the
   recorded input fingerprint still matches), so re-running a pipeline only

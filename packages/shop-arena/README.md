@@ -1,15 +1,17 @@
 # @shop-gym/shop-arena
 
-TypeScript ShopArena: storefront exploration (`src/explore/`), SandboxShop
-generation (`src/gen/`), and the storefront template under `templates/`.
-The `shopgym explore` and `shopgym gen` commands in `packages/cli` drive
-it; see `docs/specs/v1_1_typescript_redesign.md`.
+TypeScript ShopArena: storefront exploration (`src/explore/`), Source
+bundles (`src/bundle/`), SandboxShop generation (`src/gen/`), and the
+storefront template under `templates/`. The `shopgym explore`, `shopgym
+bundle` and `shopgym gen` commands in `packages/cli` drive it; see
+`docs/specs/v1_1_typescript_redesign.md`.
 
 Layout:
 
 ```
 src/
   explore/      explore pipeline: prefetch, harness tasks, capability merge, manual synthesis, Site state graph
+  bundle/       Source bundle pipeline: user-first sampling, source adapters (ar23/), complete step (complete/)
   gen/
     build/      build loop: template seeding, backend sidecar, owned-file rules, verifiers, prompts
     ...         manual_merge, data_synth, data_validation, final_eval, publish (see Gen)
@@ -295,6 +297,78 @@ finished parts, the unfinished areas are coverage gaps, and
 (`null` when the run did not stop early). `ExploreResult.stop` gives the
 reason and the Iteration, and `shopgym explore` exits 0 for `completed`
 and `stopped`.
+
+## Bundle
+
+`buildBundle(options, deps)` turns one category of a source dataset into
+a complete Source bundle (the `@shop-gym/core` bundle schemas). The only
+adapter is Amazon Reviews 2023 (`src/bundle/ar23/`). `deps.llm` is the
+`LlmClient` of the complete step. It runs three steps on the
+`@shop-gym/core` pipeline runner; `BUNDLE_STEPS` lists them in order:
+
+| Step | Reads | Writes |
+| --- | --- | --- |
+| `sample` | `.bundle/request.json` (the resolved sample options), the source review and meta files | `.bundle/raw/` (a raw bundle), `.bundle/sample.json` (what the adapter read, dropped and kept) |
+| `complete` | `.bundle/raw/`, `.bundle/complete_request.json` (the model) | `.bundle/complete/` (a complete bundle in the same layout, with `users/profiles.jsonl`), `.bundle/complete.json` (what it filled) |
+| `publish` | `.bundle/complete/`, `.bundle/sample.json`, `.bundle/complete.json` | `bundle.json`, `catalog/`, `users/`, `events/` copied from the complete bundle after it passes the `complete` validation level, and `report.json` |
+
+`sample` streams each source file twice and keeps only small per-row
+numbers in memory between the passes. It drops exact duplicate reviews
+(same user, asin, time, rating, title and text). Then it samples, user
+first, with one global cutoff (`src/bundle/sample.ts`):
+
+1. Pick `users` modeled users at random (seeded) among the users with at
+   least `minEventsBefore` (default 5) User events before the cutoff and
+   at least one purchase after it.
+2. Keep every product in their histories, before and after the cutoff.
+3. Fill up to `products` with the other products of the same category
+   paths, the most reviewed before the cutoff first.
+4. Keep the reviews of the kept products. `reviewsPerProduct` caps them
+   with a seeded choice per product, and always keeps the reviews of
+   modeled users.
+5. Drop the products first seen after the cutoff, unless a modeled user
+   buys them after the cutoff (Task targets).
+
+AR23 field map: `parent_asin` is the product, each reviewed `asin` a
+variant, `features` the bullets, `details.Brand` the brand, `store` the
+seller, `categories` the category path, the other text `details` the
+attributes, and the large images the image source URLs. The source price
+(a number, or text such as `from 29.99`) goes on every variant, marked
+`inferred`. Each review of a modeled user is a `review` User event, and a
+verified one is also an inferred `purchase` event at the review time
+(precision `order`). Other reviewers have no events and no `user_id`.
+`related.also_bought` comes from co-purchases, marked `inferred`
+(`src/bundle/co_purchase.ts`): the products that at least two users
+bought with this one, the most shared buyers first, at most ten. It
+counts the verified reviews before the cutoff by every reviewer in the
+source, not only the modeled users, and before the per-product review
+cap. Video_Games has no `bought_together` lists, so this is its only
+related-product signal. Products are sorted by id, reviews keep the
+source order, and events are sorted by user and time, so the same
+options and source give the same bytes.
+
+`complete` (`src/bundle/complete/`) fills the fields that the `complete`
+validation level needs and marks each one in the record's `provenance`:
+`inferred` when a rule derives it from other source values, `synthetic`
+when a model writes it or a seeded rule makes it up.
+
+| Field | Fill | Mark |
+| --- | --- | --- |
+| `category_path` | the most common top category of the catalog | `inferred` |
+| `brand` | the seller, else `Generic` | `inferred`, `synthetic` |
+| `description` | the bullets, one per line, else the title | `inferred` |
+| `variants[].price` | the price of another variant, else the median price of the longest category path prefix with prices, else of the catalog | `inferred` |
+| `variants[].inventory` | a seeded whole number from 1 to 50 | `synthetic` |
+| `options`, `variants[].option_values` | for a product with more than one variant: an LLM infers one option and a value per variant from the title, description, bullets and attributes (`prompts/variant_options.md`) | `synthetic` |
+| `users/profiles.jsonl` | one User profile per modeled user: an LLM writes it from the products that the user bought and reviewed before the cutoff, with the catalog's top categories and price range (`prompts/user_profile.md`); each category interest must be a category path of the catalog, and there are no account fields | `{"*": "synthetic"}` |
+
+Each LLM reply is checked with its zod schema and the rules above, and a
+bad reply gets one repair call with the error. The checked replies are
+cached in `.bundle/llm_cache/`, one file per reply named by the hash of
+the model, the prompt and the reply schema. No step owns the cache, so
+`from` and a changed option keep it, and a rerun with the same input
+makes no LLM call and writes the same bytes. Reviews and User events are
+copied without change.
 
 ## Gen
 
