@@ -127,11 +127,19 @@ export const bundleVariantSchema = z.strictObject({
   inventory: z.number().int().nonnegative().optional(),
 });
 
+/** A relative path with `/` separators that stays inside its directory. */
+function isInnerPath(value: string): boolean {
+  return (
+    !value.includes('\\') &&
+    value.split('/').every((part) => part !== '' && part !== '.' && part !== '..')
+  );
+}
+
 export const bundleImageSchema = z
   .strictObject({
     source_url: z.url().optional(),
-    /** Local copy, relative to the `catalog/` directory. */
-    path: textSchema.optional(),
+    /** Local copy, relative to the `catalog/` directory, for example `images/1f3a9c0b7d2e4f60.jpg`. */
+    path: textSchema.refine(isInnerPath, 'must be a relative path inside catalog/').optional(),
     alt: textSchema.optional(),
   })
   .refine((image) => image.source_url !== undefined || image.path !== undefined, {
