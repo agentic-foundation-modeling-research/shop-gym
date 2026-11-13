@@ -1,6 +1,6 @@
 import { Form, Link } from 'react-router';
 import { formatDate } from '~/components/account';
-import { variantTitle } from '~/components/checkout';
+import { variantTitle } from '~/components/storefront';
 import {
   type ProductRating,
   REVIEW_RATINGS,

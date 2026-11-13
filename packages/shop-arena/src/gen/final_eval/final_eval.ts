@@ -1,8 +1,9 @@
 /**
- * Final evaluation of a built shop: a visual sweep over its canonical pages
- * and a scripted functional sweep, both against an already-running
- * storefront and backend. Writes `report.json`, `summary.md`,
- * `pages/<name>.json` and `screenshots/` under `outDir`.
+ * Final evaluation of a built shop: a visual sweep over its canonical pages,
+ * a scripted functional sweep, and the page lint (the deterministic checks
+ * of the build-loop `page_lint` verifier on the same canonical pages), all
+ * against an already-running storefront and backend. Writes `report.json`,
+ * `summary.md`, `pages/<name>.json` and `screenshots/` under `outDir`.
  */
 
 import * as fs from 'node:fs/promises';
@@ -11,6 +12,7 @@ import * as path from 'node:path';
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
 import { BrowserSession } from '@shop-gym/browser';
 
+import { type PageLintResult, lintShopPages } from '../build/verifiers/page_lint.js';
 import { readApplicableDiscountCode } from '../build/verifiers/storefront_target.js';
 import {
   SWEEP_CAPS,
@@ -66,6 +68,7 @@ export interface FinalEvalReport extends SweepCounts {
   readonly model: ModelRef;
   readonly visual: SweepCounts & { readonly pages: readonly VisualPageReport[] };
   readonly functional: SweepCounts & { readonly steps: readonly FunctionalStep[] };
+  readonly pageLint: SweepCounts & { readonly pages: readonly PageLintResult[] };
 }
 
 export interface FinalEvalResult extends SweepCounts {
@@ -107,9 +110,22 @@ export async function runFinalEval(options: FinalEvalOptions): Promise<FinalEval
     }),
   );
 
+  log('final_eval: running the page lint');
+  const lintPages = await withSession(options, 'final-eval-lint', (session) =>
+    lintShopPages({
+      session,
+      baseUrl: options.storefrontUrl,
+      dataDir: options.dataDir,
+      handles,
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+      log,
+    }),
+  );
+
   const pages = visual.map((page) => pageReport(page, options.outDir));
   const visualCounts = count(pages.map((page) => page.status));
   const functionalCounts = count(steps.map((step) => step.status));
+  const lintCounts = count(lintPages.map((page) => page.status));
   const report: FinalEvalReport = {
     generatedAt: new Date().toISOString(),
     storefrontUrl: options.storefrontUrl,
@@ -117,9 +133,10 @@ export async function runFinalEval(options: FinalEvalOptions): Promise<FinalEval
     model: options.model,
     visual: { ...visualCounts, pages },
     functional: { ...functionalCounts, steps },
-    passed: visualCounts.passed + functionalCounts.passed,
-    failed: visualCounts.failed + functionalCounts.failed,
-    skipped: visualCounts.skipped + functionalCounts.skipped,
+    pageLint: { ...lintCounts, pages: lintPages },
+    passed: visualCounts.passed + functionalCounts.passed + lintCounts.passed,
+    failed: visualCounts.failed + functionalCounts.failed + lintCounts.failed,
+    skipped: visualCounts.skipped + functionalCounts.skipped + lintCounts.skipped,
   };
   for (const page of visual) {
     await fs.writeFile(
@@ -134,7 +151,9 @@ export async function runFinalEval(options: FinalEvalOptions): Promise<FinalEval
     `final_eval: ${report.passed} passed, ${report.failed} failed, ${report.skipped} skipped -> ${reportPath}`,
   );
   return {
-    ...count([...pages.map((p) => p.status), ...steps.map((s) => s.status)]),
+    passed: report.passed,
+    failed: report.failed,
+    skipped: report.skipped,
     reportPath,
     report,
   };
@@ -220,6 +239,27 @@ export function renderSummary(report: FinalEvalReport): string {
     '| --- | --- | --- |',
     ...report.functional.steps.map((step) => `| ${step.name} | ${step.status} | ${step.detail} |`),
     '',
+    '## Page lint',
+    '',
+    '| Page | Route | Status | Problems |',
+    '| --- | --- | --- | --- |',
+    ...report.pageLint.pages.map(
+      (page) => `| ${page.name} | ${page.route} | ${page.status} | ${lintProblems(page)} |`,
+    ),
+    '',
   ];
   return lines.join('\n');
+}
+
+/** The problems of a linted page, or why it was skipped, on one table cell. */
+function lintProblems(page: PageLintResult): string {
+  if (page.status === 'skipped') {
+    return page.reason;
+  }
+  if (page.issues.length === 0) {
+    return '-';
+  }
+  return page.issues
+    .map((issue) => `${issue.rule} \`${issue.selector}\` (${issue.viewports.join(', ')})`)
+    .join('; ');
 }

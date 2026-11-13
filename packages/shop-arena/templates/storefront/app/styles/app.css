@@ -107,6 +107,11 @@ input {
   line-height: 1.2;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-accent);
+}
+
 label {
   display: grid;
   gap: 0.35rem;

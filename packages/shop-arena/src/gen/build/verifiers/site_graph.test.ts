@@ -388,8 +388,8 @@ describe('buildVerifiers with a Site state graph', () => {
         },
       })
         .map((verifier) => verifier.name)
-        .slice(-2);
-    expect(names(WORKING)).toEqual(['discount_flow', 'site_graph']);
-    expect(names()).toEqual(['account_flow', 'discount_flow']);
+        .slice(-3);
+    expect(names(WORKING)).toEqual(['discount_flow', 'site_graph', 'page_lint']);
+    expect(names()).toEqual(['account_flow', 'discount_flow', 'page_lint']);
   });
 });
