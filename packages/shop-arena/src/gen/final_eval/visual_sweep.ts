@@ -6,9 +6,6 @@
  * dataset cannot provide that state the page is recorded as skipped.
  */
 
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-
 import type { LlmClient, ModelRef } from '@shop-gym/agent';
 import type { BrowserSession } from '@shop-gym/browser';
 
@@ -22,7 +19,7 @@ import {
   loadJudgeRubric,
   mapConcurrent,
 } from '../build/verifiers/page_judge.js';
-import { readSeededCustomer } from '../build/verifiers/storefront_target.js';
+import { readSeededCustomer, readSeededOrderId } from '../build/verifiers/storefront_target.js';
 import {
   type DatasetHandles,
   type PageBucket,
@@ -178,7 +175,7 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
   };
   const customer = await readSeededCustomer(options.dataDir);
   const orderId =
-    customer === undefined ? undefined : await seededOrderId(options.dataDir, customer.email);
+    customer === undefined ? undefined : await readSeededOrderId(options.dataDir, customer.email);
   const orderPage: CanonicalPage = {
     name: 'orderDetail',
     route: `/account/orders/${orderId ?? ''}`,
@@ -225,25 +222,4 @@ export async function runVisualSweep(options: VisualSweepOptions): Promise<Visua
     },
   );
   return [...judged, ...results];
-}
-
-/** The id of the first order in `orders.json` placed by `email`. */
-async function seededOrderId(dataDir: string, email: string): Promise<string | undefined> {
-  const raw = await fs.readFile(path.join(dataDir, 'orders.json'), 'utf-8').catch(() => undefined);
-  if (raw === undefined) {
-    return undefined;
-  }
-  const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed)) {
-    return undefined;
-  }
-  for (const order of parsed) {
-    if (typeof order === 'object' && order !== null) {
-      const { id, email: orderEmail } = order as { id?: unknown; email?: unknown };
-      if (orderEmail === email && (typeof id === 'number' || typeof id === 'string')) {
-        return String(id);
-      }
-    }
-  }
-  return undefined;
 }
