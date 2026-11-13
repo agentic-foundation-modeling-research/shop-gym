@@ -13,15 +13,15 @@ The repository is a pnpm mono-repo of TypeScript packages:
 
 | Package | Role |
 |---|---|
-| [`packages/core`](packages/core) | **Core** - shared task / result schemas (zod), the file-based pipeline runner, and the `.env` credentials loader. |
+| [`packages/core`](packages/core) | **Core** - shared task / result schemas (zod), Source bundle schemas and validator, the file-based pipeline runner, and the `.env` credentials loader. |
 | [`packages/agent`](packages/agent) | **Agent** - the `AgentRuntime` / `LlmClient` / `Tool` / `Trajectory` seam, the pi SDK adapter, and `FakeRuntime` plus the conformance suite. |
 | [`packages/harness`](packages/harness) | **Harness** - runtime-agnostic plan-then-loop engine: workspace, seed immutability, verifier dispatch, resume, telemetry. |
 | [`packages/browser`](packages/browser) | **Browser** - per-episode Playwright `BrowserSession`, agent `browserTools` on aria-snapshot refs, and `probe` for graders. |
 | [`packages/shop_backend`](packages/shop_backend) | **ShopBackend** - Storefront-API-compatible GraphQL server with episode-scoped state (carts, customers, checkout, orders); also the backend template seeded into every generated shop. |
-| [`packages/shop-arena`](packages/shop-arena) | **ShopArena** - storefront exploration (`explore`), SandboxShop generation (`gen`), and the storefront template under `templates/storefront`. |
+| [`packages/shop-arena`](packages/shop-arena) | **ShopArena** - storefront exploration (`explore`), Source bundles from datasets (`bundle`), SandboxShop generation (`gen`), and the storefront template under `templates/storefront`. |
 | [`packages/shop-guru`](packages/shop-guru) | **ShopGuru** - benchmark pipeline: seed and explored tasks, `AgentUnderTest` episodes, graders, `aggregate.json`. |
 | [`packages/reports`](packages/reports) | **Reports** - local website for the HTML reports we review with teammates: an index, one shared style, and a small server. |
-| [`packages/cli`](packages/cli) | **CLI** - the `shopgym` binary: `explore`, `gen`, `host`, `guru`, `trace`, `report`, `doctor`. |
+| [`packages/cli`](packages/cli) | **CLI** - the `shopgym` binary: `explore`, `bundle`, `gen`, `host`, `guru`, `trace`, `report`, `doctor`. |
 
 A typical loop:
 
@@ -265,6 +265,45 @@ See the [shopping task generation proposal](docs/specs/shop_guru/task_generation
 for sandbox limitations, three generation methods, validation and difficulty,
 and the proposed 9-shop, 900-task RL and transfer-evaluation pilot across six SandboxShops and three real shops.
 
+## Source bundles
+
+`shopgym bundle` turns a source dataset into a raw **Source bundle**: a
+catalog, its reviews, and the User events of a few modeled users, in one
+format for every dataset. The first adapter reads Amazon Reviews 2023 (a
+research dataset with no license; use it for research only). Put the
+category files under `outputs/` (gitignored) and run:
+
+```bash
+node packages/cli/dist/main.js bundle amazon_reviews_2023 outputs/sources/amazon_reviews_2023/raw \
+  --category Video_Games --out outputs/bundles/vg_10k --cutoff 2022-07-16 \
+  --products 10000 --users 200 --seed 7 --reviews-per-product 50
+# -> outputs/bundles/vg_10k/{bundle.json,catalog/products.jsonl,catalog/reviews.jsonl,catalog/images/,events/events.jsonl,report.json}
+```
+
+The sampling starts from the users. It picks `--users` users at random
+among those with at least `--min-events-before` (default 5) User events
+before the cutoff and one purchase after it. It keeps every product in
+their histories. Then it fills up to `--products` with the most reviewed
+products of the same categories. Each review gives a `review` event, and a
+verified review also gives an inferred `purchase` event. Only modeled users
+get User events. `--reviews-per-product` keeps a seeded choice of the
+reviews of each product, and always keeps the reviews of modeled users.
+The same options and seed give the same bytes. On Video_Games (4.6M review
+rows) a run takes about 45 s and 2.7 GB of memory, before the images.
+
+Then the bundle downloads the first `--images-per-product` (default 1)
+large images of each product into `catalog/images/`, and records the
+local `path` next to the `source_url` of each image. The download
+requests only the image URLs of the dataset, four at a time, with a
+30 s time limit and three retries with backoff. It never tries to get
+past a block: a refusal (a redirect, a 401, 403 or 429, or an answer that
+is not an image) is not retried, and 10 refusals in a row stop the
+download. Failed images are listed in `report.json` and do not fail the
+bundle. `--from images` tries the missing images again and skips the
+files already on disk. `--images-per-product 0` turns the download off. See
+[`packages/shop-arena/README.md`](packages/shop-arena/README.md#bundle) for
+the field map and the step layout.
+
 ## Common commands
 
 ```bash
@@ -338,16 +377,16 @@ shop-gym/
 │   ├── reports/                # point-in-time HTML review reports
 │   └── specs/                  # design specifications (intent, not reality)
 ├── packages/
-│   ├── core/                   # @shop-gym/core: schemas, pipeline runner, credentials
+│   ├── core/                   # @shop-gym/core: schemas, bundle validator, pipeline runner, credentials
 │   ├── agent/                  # @shop-gym/agent: AgentRuntime seam + pi adapter
 │   ├── harness/                # @shop-gym/harness: plan-then-loop engine
 │   ├── browser/                # @shop-gym/browser: Playwright session + browser tools
 │   ├── shop_backend/           # @shop-gym/shop-backend: GraphQL server + backend template
-│   ├── shop-arena/             # @shop-gym/shop-arena: explore, gen, templates/storefront
+│   ├── shop-arena/             # @shop-gym/shop-arena: explore, bundle, gen, templates/storefront
 │   ├── shop-guru/              # @shop-gym/shop-guru: benchmark build / explore / solve / eval
 │   ├── reports/                # @shop-gym/reports: review reports site (pages/, assets/, server)
 │   └── cli/                    # @shop-gym/cli: the `shopgym` binary
-├── outputs/                    # generated artifacts (gitignored): shop_manuals, shops, shop_guru
+├── outputs/                    # generated artifacts (gitignored): shop_manuals, bundles, shops, shop_guru
 ├── scripts/                    # thin shell helpers
 ├── pnpm-workspace.yaml         # pnpm workspace root
 ├── package.json                # root scripts (build, test, lint, codegen:check, shop:host, reports)
