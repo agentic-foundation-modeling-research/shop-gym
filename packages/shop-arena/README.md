@@ -405,7 +405,7 @@ pipeline runner; `GEN_STEPS` lists them in order:
 | Step | Reads | Writes |
 | --- | --- | --- |
 | `manual_merge` | each manual dir's `manual.md`, `capabilities.json`, `stats.json`; the checked-in Standard sub-manual `src/gen/manual_merge/standard_sub_manual.md` | `manual/` (`manual.md`, `capabilities.json`, `stats.json`, `parts/*.md`, `manifest.json`); one manual is copied, several are merged (deterministic capability rules, LLM tiebreak for the descriptor and tied layout enums, LLM prose merge per H2 section); `parts/` holds the six Sub-manuals cut from `manual.md` and the shop's copy of the Standard sub-manual as `parts/standard.md`. Fusion: for each observed `## Account` or `## Checkout` section in `manual.md`, one LLM call fuses the notes into the copy. Observed labels and layout win. Unsupported behavior and the labels that the browser steps check keep the standard text. With no observed notes, the copy is unchanged and there is no LLM call. Merged stats take the totals only from the `catalog_endpoint` seeds; the merged `source` is `observed_sample` when any seed is, and `sample_size` adds up the seeds |
-| `data_synth` | `manual/`; with `sourceDataDir` (`--data`), also `products.json`, `collections.json` and `images/` of that Dataset | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce`, `reviews` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/` |
+| `data_synth` | `manual/`; with `sourceDataDir` (`--data`), also `products.json`, `collections.json` and `images/` of that Dataset; with `bundleDir` (`--bundle`), also `bundle.json`, `catalog/`, `users/` and `events/` of that Source bundle | `data/` (`store`, `products`, `collections`, `navigation`, `pages`, `policies`, `inventory`, `customers`, `orders`, `commerce`, `reviews` `.json` and `images/`), `identity.json`, `.shop_gen/stage_cache/`; with `bundleDir`, also `users/` |
 | `data_validation` | `data/` | `data_validation.json` (backend zod schema, referential integrity that includes the product and variant of each Review, valid Discount codes, seeded order totals and discounts that follow the backend pricing rules, hosting smoke on the pristine backend template: shop, products, collection, search, image, cart create / add / `checkoutComplete` as the first seeded customer) |
 | `build` | `data/`, `manual/`, `data_validation.json` | `runs/build/` via `build.runBuildLoop` (seed staged in `.shop_gen/build_seed/`); a final status other than `completed` fails the step so the next run resumes it |
 | `final_eval` | `runs/build/run.json`, `runs/build/build.json` | `final_eval/` via `finalEval.runFinalEval` against the build artifacts booted on the recorded backend port (sidecar logs in `final_eval/{backend,storefront}.log`); advisory, never fails the step |
@@ -445,6 +445,58 @@ types, the price range and some titles. The descriptor and tone must fit
 these products. Menus link only to the kept collections. All other files
 come from the manual as usual, so `catalog` and `imageBackend` do not
 apply. A change to the three source paths runs `data_synth` again.
+
+With `bundleDir` (`shopgym gen --bundle <dir>`), `data_synth` maps a
+complete Source bundle into the Dataset. It cannot be used with
+`sourceDataDir`. It first runs `validateBundle(dir, 'complete')`, so an
+incomplete bundle fails the step with a `BundleValidationError`. It does
+not run `collections` through `images`, `navigation`, `customers` or
+`reviews`; `identity` (with the bundle currency and the country of the
+bundle locale), `store`, `pages`, `policies` and `commerce` run as usual.
+All of the mapping is code, from a fixed seed, so the same bundle and the
+same LLM replies give the same bytes:
+
+- Clock. Every bundle time moves by `clockOffsetDays`, the whole days
+  from the cutoff to the Episode clock start (2026-01-01), rounded down.
+  A product or a customer is created when it first shows in the shop
+  history, else at the shifted cutoff.
+- Catalog. Products are sorted by bundle product id and numbered from 1,
+  and so are their variants and images. The handle is the slug of the
+  title (at most 60 characters, cut at a dash), with `-2`, `-3` for
+  repeats. `vendor` is the seller, else the brand. `product_type` is the
+  leaf of `category_path`, and `tags` is the whole path. `sku` is the
+  bundle variant id, and `inventory.json` takes the bundle inventory.
+  `brand`, `category_path`, `attributes`, `source` and `provenance` are
+  copied, and `related` names product handles. A product with no options
+  gets `Title` / `Default Title`; more than three options fail the step.
+- Images. Each local PNG or JPEG `path` is copied to
+  `data/images/<handle>-<n>.<ext>` with its pixel size. Other formats are
+  left out and logged. A `source_url` with no local copy is not used, so
+  the shop needs no network. A product with no image gets one 800x800
+  placeholder.
+- Collections and menus. Each node of a category path is one collection
+  (handle: the slug of the path) that lists every product under it. The
+  main menu links each department and the nodes one level below it. The
+  footer links every page and policy.
+- Reviews. Only the Reviews before the cutoff are kept, sorted by review
+  id. `verified_buyer` and `helpful_count` come from the bundle. A review
+  by a modeled user names that Persona (first name and last initial) and
+  sets `customer_id`; any other reviewer gets a seeded first name and
+  last initial. The backend computes the ratings from these Reviews.
+- Personas and orders. Each modeled user is one Persona with a seeded
+  name pair that no other Persona has (at most 1,200 users), one or two
+  saved addresses, and the email and password that every Persona gets.
+  The purchase events before the cutoff become paid and fulfilled
+  orders, one for each user and `order_id` (else `session_id`, else
+  time), with the event price or the variant price.
+- `users/` (next to `data/`, so the backend never loads it):
+  `profiles.jsonl` (the bundle profiles as they are), `persona_map.json`
+  (bundle user id to customer id) and `future_events.jsonl` (the User
+  events at the cutoff or later, each with a `shop` block of the shifted
+  time and the shop customer id, product id and handle, and variant id).
+
+A change to `bundle.json`, `catalog/`, `users/` or `events/` runs
+`data_synth` again; the `.bundle/` work files and `report.json` do not.
 
 ```ts
 import { PiLlmClient, PiRuntime } from '@shop-gym/agent';
@@ -609,6 +661,7 @@ backend serves its own `data/`. It writes `<shopDir>/shop.json`:
 {
   "name": "<basename of shopDir>",
   "sourceManuals": ["/abs/path/to/outputs/shop_manuals/<host>/<run_id>"],
+  "sourceBundle": { "dir": "/abs/path/to/outputs/bundles/<name>", "name": "<bundle name>", "cutoff": "2022-07-16T00:00:00.000Z", "clockOffsetDays": 1265, "sources": [{ "dataset": "...", "license": "..." }] },
   "templates": { "storefront": { "name": "storefront", "commit": "...", "dirty": false, "contentHash": "...", "files": {}, "seededAt": "..." }, "backend": { "...": "..." } },
   "genBackend": true,
   "publishedAt": "2026-09-30T00:00:00.000Z",
@@ -616,6 +669,9 @@ backend serves its own `data/`. It writes `<shopDir>/shop.json`:
 }
 ```
 
-Calling it again replaces both component directories and rewrites the
-manifest. `publish.readShopManifest(shopDir)` parses and validates it;
+`sourceBundle` is present only for a shop made with `bundleDir`. It
+records the bundle directory, its name and cutoff, the clock offset and
+the sources with their licenses, from `bundle.json`. Calling it again
+replaces both component directories and rewrites the manifest.
+`publish.readShopManifest(shopDir)` parses and validates it;
 `dirty` may be absent in manifests written before the flag existed.

@@ -79,8 +79,8 @@ disk. Prints the bundle directory on stdout.
 Generates a SandboxShop from one or more shop manuals.
 
 ```
-shopgym gen <manual_dir>... --name <name> [--out <dir>] [--data <dir>]
-            [--gen-backend] [--from <step>] [--model <ref>] [--build-model <ref>]
+shopgym gen <manual_dir>... --name <name> [--out <dir>]
+            [--data <dir> | --bundle <dir>] [--gen-backend] [--from <step>] [--model <ref>] [--build-model <ref>]
             [--image-backend placeholder|openai] [--max-iters <n>]
             [--collections <n>] [--products-per-collection <n>]
             [--images-per-product <n>] [--concurrency <n>] [--force-resume]
@@ -92,8 +92,12 @@ and the judges. The build agent runs on `--build-model`, default
 `openai/gpt-6-sol`, even if `--model` is set. `--data` copies the products,
 collections and images of an existing SandboxShop Dataset. Data synthesis then
 makes no catalog, so `--collections`, `--products-per-collection`,
-`--images-per-product` and `--image-backend` do not apply. Prints the published
-shop directory on stdout.
+`--images-per-product` and `--image-backend` do not apply. `--bundle` makes the
+Dataset from a complete Source bundle: the catalog, the Personas with their
+orders and the Reviews before the cutoff, with every time shifted so that the
+cutoff falls on the Episode clock start. It also writes the hidden `users/`
+directory. It cannot be used with `--data`, and the same catalog and image
+options do not apply. Prints the published shop directory on stdout.
 
 ### `shopgym host start|stop|restart|list`
 
