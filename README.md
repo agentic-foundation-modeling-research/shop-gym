@@ -176,7 +176,24 @@ Dataset, for example `outputs/shops/<old shop>/data`. It keeps the products,
 the collections and the images without change. It drops the collections that
 have no products. All other data comes from the manual
 ([ADR 0017](docs/adr/0017-gen-may-copy-a-sandboxshop-catalog.md)). The catalog
-sizing and `--image-backend` do not apply with `--data`. Output layout:
+sizing and `--image-backend` do not apply with `--data`.
+
+`--bundle <bundle dir>` makes the Dataset from a complete
+[Source bundle](#source-bundles). It cannot be used with `--data`, and the
+bundle must pass the `complete` validation level. The products, their
+images, one collection for each node of a category path, and the
+department menu come from the bundle. A product with no local image gets
+one placeholder. Only the Reviews before the cutoff go into the shop, and
+the ratings come from them. Each modeled user becomes one Persona. Code
+makes the name, email, password and addresses, and the purchase events
+before the cutoff become the Persona's orders. The manual still gives the
+identity, the store, the pages, the policies and the Commerce settings,
+and the footer links every page and policy. Every bundle time moves by
+the same whole number of days, so that the cutoff falls on the Episode
+clock start (2026-01-01). The bundle profiles, the map from bundle user
+id to customer id, and the User events at the cutoff or later go to
+`users/`, which the backend does not serve. The catalog sizing and
+`--image-backend` do not apply with `--bundle`. Output layout:
 
 ```
 outputs/shops/mock_shop/
@@ -186,7 +203,8 @@ outputs/shops/mock_shop/
   final_eval/    visual + functional sweep report (advisory)
   storefront/    published storefront source
   backend/       published backend source (serves data/)
-  shop.json      Shop manifest (sourceManuals, templates, genBackend, finalStatus)
+  users/         with --bundle only: profiles.jsonl, persona_map.json, future_events.jsonl
+  shop.json      Shop manifest (sourceManuals, sourceBundle, templates, genBackend, finalStatus)
 ```
 
 Every SandboxShop has customer accounts: register, log in and out, "Forgot
@@ -200,8 +218,8 @@ manual merge fits to the shop's observed account and checkout notes
 The Storefront template already builds them. The `gen_account` and
 `gen_checkout` build tasks only restyle them, and the `account_flow` and
 `discount_flow` Verifiers drive their forms in a browser. Data synthesis
-makes three to five Discount codes, five Personas, fifteen seeded orders
-with mixed statuses, and Reviews. See the
+makes three to five Discount codes and, without `--bundle`, five Personas,
+fifteen seeded orders with mixed statuses, and Reviews. See the
 [ShopArena](docs/specs/shop_arena/standard_account_checkout.md) and
 [ShopBackend](docs/specs/shop_backend/account_discount_reviews.md) specs.
 
@@ -321,7 +339,9 @@ The published bundle must pass the `complete` validation level
 (`validateBundle(dir, 'complete')` in `@shop-gym/core`), which also checks
 that each image `path` names a file on disk. See
 [`packages/shop-arena/README.md`](packages/shop-arena/README.md#bundle) for
-the field map, the fill rules and the step layout.
+the field map, the fill rules and the step layout. To make a shop from the
+bundle, run `shopgym gen <manual dir> --name <name> --bundle <bundle dir>`
+(see [Generate a SandboxShop](#2-generate-a-sandboxshop)).
 
 ## Common commands
 
