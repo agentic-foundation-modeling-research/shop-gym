@@ -1,6 +1,7 @@
 /**
- * Catalog domain: products, variants, options, collections, and the
- * read-only product Reviews (`@sandbox`) from `reviews.json`.
+ * Catalog domain: products, variants, options, collections, product filters
+ * and facets, and the read-only product Reviews (`@sandbox`) from
+ * `reviews.json`.
  */
 
 export const catalogTypeDefs = /* GraphQL */ `
@@ -64,13 +65,23 @@ export const catalogTypeDefs = /* GraphQL */ `
     metafields(identifiers: [HasMetafieldsIdentifier!]!): [Metafield]!
     """
     The product's Reviews. The Storefront API has no Review type; shops show
-    Reviews through a review app.
+    Reviews through a review app. The filters apply before the sort and the
+    paging.
     """
     reviews(
       first: Int
       after: String
       sortKey: ReviewSortKeys = MOST_RECENT
+      """Only the Reviews with this star rating, 1 to 5."""
+      rating: Int
+      """Only the Reviews with this Verified Buyer flag."""
+      verifiedBuyer: Boolean
     ): ReviewConnection! @sandbox
+    """
+    The number of the product's Reviews at each star rating, from 5 stars
+    down to 1 star. A rating that no Review has gets a count of 0.
+    """
+    ratingHistogram: [ReviewRatingCount!]! @sandbox
   }
 
   type ProductPriceRange {
@@ -149,6 +160,8 @@ export const catalogTypeDefs = /* GraphQL */ `
     edges: [ProductEdge!]!
     pageInfo: PageInfo!
     totalCount: Int
+    """The facets of the list; empty when the shop has no marketplace data."""
+    filters: [Filter!]!
   }
 
   type ProductEdge {
@@ -186,6 +199,13 @@ export const catalogTypeDefs = /* GraphQL */ `
     cursor: String!
   }
 
+  """The number of a product's Reviews with one star rating."""
+  type ReviewRatingCount @sandbox {
+    """1 to 5."""
+    rating: Int!
+    count: Int!
+  }
+
   """
   Review orders. Ties put the more recent Review first, then keep the
   reviews.json order.
@@ -195,6 +215,66 @@ export const catalogTypeDefs = /* GraphQL */ `
     HIGHEST_RATING
     LOWEST_RATING
     MOST_HELPFUL
+  }
+
+  # ── Product filters ───────────────────────────────────────────────────────
+
+  """
+  One filter on a product list; set one field per entry. Entries with the same
+  field match when any of them matches. Entries with different fields must all
+  match. variantOption entries group by option name.
+  """
+  input ProductFilter {
+    available: Boolean
+    price: PriceRangeFilter
+    productType: String
+    productVendor: String
+    variantOption: VariantOptionFilter
+    """The maker's name as the catalog gives it."""
+    brand: String @sandbox
+    """A category from the department down; matches the products in it or below it."""
+    categoryPath: [String!] @sandbox
+    """The mean Review rating, rounded to one decimal. Products with no Reviews never match."""
+    rating: RatingRangeFilter @sandbox
+  }
+
+  """Matches a product when the price of one of its variants is in the range."""
+  input PriceRangeFilter {
+    min: Float
+    max: Float
+  }
+
+  input VariantOptionFilter {
+    name: String!
+    value: String!
+  }
+
+  input RatingRangeFilter @sandbox {
+    min: Float
+    max: Float
+  }
+
+  """One facet of a product list: the values a shopper can filter by, with counts."""
+  type Filter {
+    id: String!
+    label: String!
+    type: FilterType!
+    values: [FilterValue!]!
+  }
+
+  type FilterValue {
+    id: String!
+    label: String!
+    """The products the list would have with this value, with the other facets' filters kept."""
+    count: Int!
+    """The ProductFilter that selects this value."""
+    input: JSON!
+  }
+
+  enum FilterType {
+    BOOLEAN
+    LIST
+    PRICE_RANGE
   }
 
   # ── Collection ────────────────────────────────────────────────────────────
@@ -212,6 +292,7 @@ export const catalogTypeDefs = /* GraphQL */ `
       last: Int
       before: String
       after: String
+      filters: [ProductFilter!]
     ): ProductConnection!
     seo: SEO!
     updatedAt: String

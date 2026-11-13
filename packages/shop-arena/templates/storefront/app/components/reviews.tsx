@@ -1,30 +1,85 @@
-import { Form } from 'react-router';
+import { Form, Link } from 'react-router';
 import { formatDate } from '~/components/account';
 import { variantTitle } from '~/components/checkout';
 import {
   type ProductRating,
-  REVIEW_PAGES_PARAM,
+  REVIEW_RATINGS,
+  REVIEW_RATING_PARAM,
   REVIEW_SORTS,
   REVIEW_SORT_PARAM,
+  REVIEW_VERIFIED_PARAM,
   type ReviewView,
+  reviewViewHref,
+  reviewViewParams,
 } from '~/lib/reviews';
-import type { ProductDetail, Review } from '~/lib/types';
+import type { ProductDetail, RatingCount, Review } from '~/lib/types';
 
 const STAR_POSITIONS = [1, 2, 3, 4, 5] as const;
 
 /** The top of the rating scale of one Review. */
 const REVIEW_SCALE_MAX = '5';
 
-/** Dawn's rating block near the product title: the stars, "3.8 / 5.0", then "(6)". */
-export function RatingBlock({ rating }: { readonly rating: ProductRating }) {
-  return <RatingLine rating={rating} countText={`(${rating.count})`} />;
+/**
+ * The rating block near the product title: Dawn's stars, "3.8 / 5.0" and
+ * "(6)", then the rating histogram. The bar of each star rating that has
+ * Reviews links to the Reviews section of `productPath` with only the
+ * Reviews of that rating; the link keeps the rest of `view` and starts again
+ * at the first page.
+ */
+export function RatingBlock({
+  rating,
+  histogram,
+  productPath,
+  view,
+}: {
+  readonly rating: ProductRating;
+  readonly histogram: readonly RatingCount[];
+  readonly productPath: string;
+  readonly view: ReviewView;
+}) {
+  return (
+    <div className="rating-block">
+      <RatingLine rating={rating} countText={`(${rating.count})`} />
+      <ul className="rating-histogram" aria-label="Rating histogram">
+        {histogram.map(({ rating: stars, count }) => {
+          const row = (
+            <>
+              <span>{starsText(stars)}</span>{' '}
+              <span className="histogram-bar" aria-hidden="true">
+                <span style={{ width: `${Math.round((count * 100) / rating.count)}%` }} />
+              </span>{' '}
+              <span className="muted">{count}</span>
+            </>
+          );
+          return (
+            <li key={stars}>
+              {count === 0 ? (
+                row
+              ) : (
+                <Link
+                  to={reviewViewHref(productPath, { ...view, rating: stars, pages: 1 })}
+                  reloadDocument
+                  aria-label={`${starsText(stars)}, ${reviewCountText(count)}`}
+                  aria-current={view.rating === stars ? 'true' : undefined}
+                >
+                  {row}
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 /**
- * The "Reviews" section below the product details: the rating at the top, a
- * "Sort by" control, the Reviews, and a "Show more reviews" button while
- * more Reviews remain. Renders nothing for a product with no Reviews. Both
- * forms reload the product page at `productPath` with the new view.
+ * The "Reviews" section below the product details: the rating at the top,
+ * the "Sort by", "Rating" and "Verified Buyers only" controls, the Reviews,
+ * and a "Show more reviews" button while more Reviews remain. Renders
+ * nothing for a product with no Reviews, and says so when no Review matches
+ * the filters. Both forms reload the product page at `productPath` with the
+ * new view.
  */
 export function ReviewsSection({
   productPath,
@@ -37,18 +92,13 @@ export function ReviewsSection({
   readonly rating: ProductRating | null;
   readonly view: ReviewView;
 }) {
-  if (reviews.nodes.length === 0) return null;
+  if (rating === null) return null;
   const action = `${productPath}#reviews`;
   return (
     <section id="reviews" className="page-width stack reviews" aria-labelledby="reviews-heading">
       <h2 id="reviews-heading">Reviews</h2>
-      {rating ? (
-        <RatingLine
-          rating={rating}
-          countText={`${rating.count} ${rating.count === 1 ? 'review' : 'reviews'}`}
-        />
-      ) : null}
-      <Form method="get" action={action} className="reviews-sort" reloadDocument>
+      <RatingLine rating={rating} countText={reviewCountText(rating.count)} />
+      <Form method="get" action={action} className="reviews-controls" reloadDocument>
         <label htmlFor="reviews-sort">Sort by</label>
         <select id="reviews-sort" name={REVIEW_SORT_PARAM} defaultValue={view.sort.param}>
           {REVIEW_SORTS.map((sort) => (
@@ -57,19 +107,46 @@ export function ReviewsSection({
             </option>
           ))}
         </select>
-        <button type="submit">Sort</button>
+        <label htmlFor="reviews-rating">Rating</label>
+        <select
+          id="reviews-rating"
+          name={REVIEW_RATING_PARAM}
+          defaultValue={view.rating === null ? '' : String(view.rating)}
+        >
+          <option value="">All ratings</option>
+          {REVIEW_RATINGS.map((stars) => (
+            <option key={stars} value={stars}>
+              {starsText(stars)}
+            </option>
+          ))}
+        </select>
+        <label className="reviews-verified-choice">
+          <input
+            type="checkbox"
+            name={REVIEW_VERIFIED_PARAM}
+            value="true"
+            defaultChecked={view.verifiedOnly}
+          />{' '}
+          Verified Buyers only
+        </label>
+        <button type="submit">Apply</button>
       </Form>
-      <ol className="review-list">
-        {reviews.nodes.map((review) => (
-          <li key={review.id}>
-            <ReviewBlock review={review} />
-          </li>
-        ))}
-      </ol>
+      {reviews.nodes.length === 0 ? (
+        <p className="muted">No reviews match these filters.</p>
+      ) : (
+        <ol className="review-list">
+          {reviews.nodes.map((review) => (
+            <li key={review.id}>
+              <ReviewBlock review={review} />
+            </li>
+          ))}
+        </ol>
+      )}
       {reviews.pageInfo.hasNextPage ? (
         <Form method="get" action={action} reloadDocument>
-          <input type="hidden" name={REVIEW_SORT_PARAM} value={view.sort.param} />
-          <input type="hidden" name={REVIEW_PAGES_PARAM} value={view.pages + 1} />
+          {reviewViewParams({ ...view, pages: view.pages + 1 }).map(([name, value]) => (
+            <input key={name} type="hidden" name={name} value={value} />
+          ))}
           <button type="submit">Show more reviews</button>
         </Form>
       ) : null}
@@ -157,6 +234,16 @@ function starFill(rating: number, position: number): 'full' | 'half' | 'empty' {
 function variantText(variant: Review['variant']): string | null {
   if (variant === null || variantTitle(variant.title) === null) return null;
   return variant.selectedOptions.map((option) => `${option.name}: ${option.value}`).join(' / ');
+}
+
+/** "1 star" or "<stars> stars". */
+function starsText(stars: number): string {
+  return stars === 1 ? '1 star' : `${stars} stars`;
+}
+
+/** "1 review" or "<count> reviews". */
+function reviewCountText(count: number): string {
+  return count === 1 ? '1 review' : `${count} reviews`;
 }
 
 /** "1 person found this helpful", "12 people found this helpful", or null for 0. */
