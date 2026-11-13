@@ -65,13 +65,23 @@ export const catalogTypeDefs = /* GraphQL */ `
     metafields(identifiers: [HasMetafieldsIdentifier!]!): [Metafield]!
     """
     The product's Reviews. The Storefront API has no Review type; shops show
-    Reviews through a review app.
+    Reviews through a review app. The filters apply before the sort and the
+    paging.
     """
     reviews(
       first: Int
       after: String
       sortKey: ReviewSortKeys = MOST_RECENT
+      """Only the Reviews with this star rating, 1 to 5."""
+      rating: Int
+      """Only the Reviews with this Verified Buyer flag."""
+      verifiedBuyer: Boolean
     ): ReviewConnection! @sandbox
+    """
+    The number of the product's Reviews at each star rating, from 5 stars
+    down to 1 star. A rating that no Review has gets a count of 0.
+    """
+    ratingHistogram: [ReviewRatingCount!]! @sandbox
   }
 
   type ProductPriceRange {
@@ -187,6 +197,13 @@ export const catalogTypeDefs = /* GraphQL */ `
   type ReviewEdge @sandbox {
     node: Review!
     cursor: String!
+  }
+
+  """The number of a product's Reviews with one star rating."""
+  type ReviewRatingCount @sandbox {
+    """1 to 5."""
+    rating: Int!
+    count: Int!
   }
 
   """

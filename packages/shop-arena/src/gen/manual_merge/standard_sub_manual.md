@@ -313,7 +313,17 @@ Reviews are read-only data from the backend.
 - The stars round to the nearest half star: a decimal part from 0.3 to 0.7
   shows a half star, and a decimal part above 0.7 shows a full star.
 - The accessible name is "<rating> out of <scale max> stars".
-- A product with no Reviews shows no stars and no count.
+- Under the stars, a rating histogram from the backend's
+  `ratingHistogram`: a list with the accessible name "Rating histogram"
+  and one row for each star rating, from "5 stars" down to "1 star". Each
+  row shows the label, a bar as wide as that rating's share of the
+  Reviews, and the count.
+- A row with a count above 0 is a link to the Reviews section with only
+  that rating (`?reviews_rating=<n>#reviews`). The link keeps the current
+  sort and the Verified Buyer filter. Its accessible name is
+  "<label>, <count> reviews", for example "4 stars, 2 reviews" or
+  "2 stars, 1 review". A row with a count of 0 is not a link.
+- A product with no Reviews shows no stars, no count and no histogram.
 
 ### Reviews section
 
@@ -321,6 +331,13 @@ Reviews are read-only data from the backend.
   the stars and the number of Reviews at the top.
 - A sort control with the options "Most recent", "Highest rating",
   "Lowest rating" and "Most helpful". The default is "Most recent".
+- A "Rating" filter with the options "All ratings" (the default) and
+  "5 stars" down to "1 star", and a "Verified Buyers only" checkbox.
+- The sort and the filters are in one form with an "Apply" button. They
+  stay in the URL: `reviews_sort`, `reviews_rating=<n>` and
+  `reviews_verified=true`.
+- When no Review matches the filters, the section stays and shows
+  "No reviews match these filters." in place of the Reviews.
 - One block for each Review, with:
   - the stars for its rating (1 to 5);
   - its title and text;
@@ -332,8 +349,8 @@ Reviews are read-only data from the backend.
     "<count> people found this helpful" for a larger count, for example
     "12 people found this helpful". It is not a button. A count of 0 shows
     no text.
-- A "Show more reviews" button loads the next page of Reviews. It is
-  hidden when there are no more Reviews.
+- A "Show more reviews" button loads the next page of Reviews, with the
+  same sort and filters. It is hidden when there are no more Reviews.
 - Show only the fields that have data. Leave out an element that has no
   data.
 - A product with no Reviews has no Reviews section.

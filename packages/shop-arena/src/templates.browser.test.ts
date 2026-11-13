@@ -8,8 +8,9 @@
  * the Control API. To cover one more page or flow, add a test that calls
  * one more step from `gen/build/verifiers/browser_steps.ts`. The last tests
  * serve the same build over more backends: on the test Dataset with fewer
- * Discount codes, for the announcement bar, and on the test Dataset with a
- * brand and a category path on each product, for the "Filters" panel.
+ * Discount codes, for the announcement bar, with more Reviews, for a
+ * filtered list that has more than one page, and with a brand and a
+ * category path on each product, for the "Filters" panel.
  *
  * Not gated: it runs in every `pnpm test`. It needs `pnpm` on PATH,
  * Playwright Chromium and a built `packages/shop_backend`.
@@ -43,6 +44,7 @@ import {
   deleteAddress,
   editAddress,
   filterByPrice,
+  filterReviewsByRating,
   logIn,
   logOut,
   placeOrder,
@@ -50,6 +52,7 @@ import {
   rejectDiscountCode,
   requestPasswordReset,
   showMoreReviews,
+  showVerifiedReviews,
   sortReviews,
   stepThroughAnnouncements,
   viewOrder,
@@ -177,6 +180,21 @@ function reviewsSection() {
   return session.page.getByRole('region', { name: 'Reviews', exact: true });
 }
 
+/** The rating histogram near the product title. */
+function ratingHistogram() {
+  return session.page
+    .getByRole('region', { name: PRODUCT.title, exact: true })
+    .getByRole('list', { name: 'Rating histogram', exact: true });
+}
+
+/** The text of the chosen option of the Reviews control `label`. */
+async function chosenOption(label: string): Promise<string | null> {
+  return reviewsSection()
+    .getByLabel(label, { exact: true })
+    .locator('option:checked')
+    .textContent();
+}
+
 /** Text of each Review block in the "Reviews" section, in page order. */
 async function reviewBlocks(): Promise<string[]> {
   return (await reviewsSection().locator('article').allInnerTexts()).map(normalized);
@@ -234,6 +252,32 @@ async function serveWithDiscountCodes(count: number): Promise<string> {
     `storefront-${count}-codes.log`,
     { runner: NO_BUILD },
   );
+  return servers.sidecar.url;
+}
+
+/**
+ * Serve the copy that `beforeAll` built over a new backend on the test
+ * Dataset with `count` more five-star Reviews of Verified Buyers for the
+ * test product; resolves to its URL. The new sidecar's runner does nothing,
+ * so the copy is not built again.
+ */
+async function serveWithMoreReviews(count: number): Promise<string> {
+  const dataDir = path.join(workDir, 'more-reviews-data');
+  await fs.cp(FIXTURE_DIR, dataDir, { recursive: true });
+  const reviews = loadShopData(FIXTURE_DIR).reviews;
+  const model = reviews.find((review) => review.product_handle === PRODUCT.handle);
+  if (model === undefined) throw new Error(`no Review of ${PRODUCT.handle} to copy`);
+  const more = Array.from({ length: count }, (_, index) => ({
+    ...model,
+    id: 1000 + index,
+    title: `More five stars ${index + 1}`,
+    rating: 5,
+    verified_buyer: true,
+  }));
+  await fs.writeFile(path.join(dataDir, 'reviews.json'), JSON.stringify([...reviews, ...more]));
+  const servers = await serve(loadShopData(dataDir), 'storefront-more-reviews.log', {
+    runner: NO_BUILD,
+  });
   return servers.sidecar.url;
 }
 
@@ -387,11 +431,15 @@ describe('storefront template in a browser', () => {
     ]);
     const firstReview = reviews.locator('article').first();
     expect(await firstReview.getByRole('img', { name: '2 out of 5 stars' }).count()).toBe(1);
-    // No "Write a Review" and no helpful-vote buttons: sorting and paging only.
+    // No "Write a Review" and no helpful-vote buttons: sorting, filtering and paging only.
     expect(await reviews.getByRole('button').allInnerTexts()).toEqual([
-      'Sort',
+      'Apply',
       'Show more reviews',
     ]);
+    expect(await chosenOption('Rating')).toBe('All ratings');
+    expect(await reviews.getByLabel('Verified Buyers only', { exact: true }).isChecked()).toBe(
+      false,
+    );
   }, 60_000);
 
   it('shows more Reviews until there are no more', async () => {
@@ -428,6 +476,79 @@ describe('storefront template in a browser', () => {
     ]);
   }, 60_000);
 
+  it('shows the rating histogram near the title, with a link for each rating that has Reviews', async () => {
+    const outcome = await viewProduct(session.page, sidecar.url, PRODUCT.handle);
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect((await ratingHistogram().getByRole('listitem').allInnerTexts()).map(normalized)).toEqual(
+      ['5 stars 2', '4 stars 2', '3 stars 1', '2 stars 1', '1 star 0'],
+    );
+    const links = ratingHistogram().getByRole('link');
+    expect(await Promise.all((await links.all()).map((link) => link.getAttribute('href')))).toEqual(
+      [5, 4, 3, 2].map((rating) => `${PRODUCT_PATH}?reviews_rating=${rating}#reviews`),
+    );
+    expect(
+      await ratingHistogram().getByRole('link', { name: '2 stars, 1 review', exact: true }).count(),
+    ).toBe(1);
+  }, 60_000);
+
+  it('filters the Reviews by star rating from the histogram and keeps the sort', async () => {
+    const outcome = await filterReviewsByRating(
+      session.page,
+      sidecar.url,
+      `${PRODUCT_PATH}?reviews_sort=most_helpful`,
+      4,
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(outcome.url).toBe(`${PRODUCT_PATH}?reviews_sort=most_helpful&reviews_rating=4`);
+    expect(await reviewTitles()).toEqual(['Good, but the stem came off', 'Bright colours']);
+    expect(await chosenOption('Sort by')).toBe('Most helpful');
+    expect(await chosenOption('Rating')).toBe('4 stars');
+    const current = ratingHistogram().getByRole('link', { name: '4 stars, 2 reviews' });
+    expect(await current.getAttribute('aria-current')).toBe('true');
+  }, 60_000);
+
+  it('shows only the Reviews of Verified Buyers and keeps the sort', async () => {
+    const outcome = await showVerifiedReviews(
+      session.page,
+      sidecar.url,
+      `${PRODUCT_PATH}?reviews_sort=highest_rating`,
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(outcome.url).toBe(
+      `${PRODUCT_PATH}?reviews_sort=highest_rating&reviews_rating=&reviews_verified=true`,
+    );
+    expect(await reviewTitles()).toEqual([
+      'Still squeaking after a month',
+      "Our puppy's favourite",
+      'Good, but the stem came off',
+      'Fine for gentle chewers',
+    ]);
+    expect(await chosenOption('Sort by')).toBe('Highest rating');
+  }, 60_000);
+
+  it('keeps the Verified Buyer filter when a histogram bar sets the star rating', async () => {
+    const outcome = await filterReviewsByRating(
+      session.page,
+      sidecar.url,
+      `${PRODUCT_PATH}?reviews_verified=true`,
+      4,
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(outcome.url).toBe(`${PRODUCT_PATH}?reviews_rating=4&reviews_verified=true`);
+    expect(await reviewTitles()).toEqual(['Good, but the stem came off']);
+  }, 60_000);
+
+  it('keeps the Reviews section when no Review matches the filters', async () => {
+    await session.page.goto(`${sidecar.url}${PRODUCT_PATH}?reviews_rating=1`, {
+      waitUntil: 'load',
+    });
+    expect(await reviewsSection().locator('article').count()).toBe(0);
+    expect(normalized(await reviewsSection().innerText())).toContain(
+      'No reviews match these filters.',
+    );
+    expect(await chosenOption('Rating')).toBe('1 star');
+  }, 60_000);
+
   it('shows a half star for a 4.5 rating', async () => {
     const outcome = await viewProduct(session.page, sidecar.url, HALF_STAR_PRODUCT);
     expect(outcome.ok, outcome.detail).toBe(true);
@@ -458,6 +579,7 @@ describe('storefront template in a browser', () => {
     expect(outcome.ok, outcome.detail).toBe(true);
     expect(await reviewsSection().count()).toBe(0);
     expect(await session.page.getByRole('img', { name: /out of 5\.0 stars/ }).count()).toBe(0);
+    expect(await session.page.getByRole('list', { name: 'Rating histogram' }).count()).toBe(0);
   }, 60_000);
 
   it('adds a product to the cart', async () => {
@@ -762,6 +884,28 @@ describe('storefront template in a browser', () => {
     );
     expect(outcome.ok, outcome.detail).toBe(true);
     expect(await pageText()).not.toContain('WELCOME10');
+  }, 60_000);
+
+  it('keeps the star rating and the Verified Buyer filters on the next page', async () => {
+    // With four more, the test product has six five-star Reviews of Verified Buyers.
+    const url = await serveWithMoreReviews(4);
+    const outcome = await showMoreReviews(
+      session.page,
+      url,
+      `${PRODUCT_PATH}?reviews_sort=most_helpful&reviews_rating=5&reviews_verified=true`,
+    );
+    expect(outcome.ok, outcome.detail).toBe(true);
+    expect(outcome.url).toBe(
+      `${PRODUCT_PATH}?reviews_sort=most_helpful&reviews_rating=5&reviews_verified=true&reviews_pages=2`,
+    );
+    const reviews = reviewsSection().locator('article');
+    expect(await reviews.count()).toBe(6);
+    expect(
+      await reviews
+        .filter({ has: session.page.getByRole('img', { name: '5 out of 5 stars', exact: true }) })
+        .filter({ has: session.page.getByText('Verified Buyer', { exact: true }) })
+        .count(),
+    ).toBe(6);
   }, 60_000);
 
   it('shows no Filters panel for a Dataset with no brands or category paths', async () => {

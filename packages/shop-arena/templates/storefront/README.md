@@ -42,7 +42,7 @@ PUBLIC_STORE_DOMAIN=http://127.0.0.1:4000 pnpm start
 | --- | --- |
 | `/` | Home: shop, featured collections and products |
 | `/collections`, `/collections/:handle` | Collection list and detail; the detail has the "Filters" panel (see below) |
-| `/products/:handle` | Product detail with variant radios, add-to-cart, and the Reviews: stars and count near the title, a "Sort by" control (`?reviews_sort=most_recent\|highest_rating\|lowest_rating\|most_helpful`) and "Show more reviews" (`?reviews_pages=<n>`, five Reviews a page); no Reviews section when the product has none |
+| `/products/:handle` | Product detail with variant radios, add-to-cart, and the Reviews: stars, count and a rating histogram near the title (each bar links to `?reviews_rating=<n>#reviews`), a "Sort by" control (`?reviews_sort=most_recent\|highest_rating\|lowest_rating\|most_helpful`), a "Rating" filter (`?reviews_rating=1..5`), a "Verified Buyers only" filter (`?reviews_verified=true`) and "Show more reviews" (`?reviews_pages=<n>`, five Reviews a page); "No reviews match these filters." when none match; no Reviews section when the product has none |
 | `/search?q=` | Products, pages, and articles; with the "Filters" panel (see below), and only products when a filter is set |
 | `/cart` | Cart page; its action handles `add`, `update`, `remove`, `discount`, `discount-remove` intents |
 | `/cart.js` | The session's cart as JSON in the fields of Shopify's AJAX cart: `items`, `item_count`, `total_price`, `total_discount`, `discount_codes`. Amounts are integer cents. Read only, no login; with no cart it returns the empty cart |

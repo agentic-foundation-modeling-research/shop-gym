@@ -2,18 +2,18 @@
  * Fixed browser scripts over the storefront template's forms and pages:
  * register, log in, log out, request a password reset with "Forgot your
  * password?", add, edit and delete an address in the address book, step
- * through the announcement bar, open a product page, sort its Reviews and
- * show more of them, narrow a search or collection page by a value or a
- * price range of its "Filters" panel, add a product to the cart, apply or
- * have a Discount code turned down at checkout, place an order, and open
- * that order's thank-you page, the account order history and an account
- * order page.
- * Each step drives one Playwright page, never throws, and reports what it
- * observed so the callers can record it.
+ * through the announcement bar, open a product page, sort its Reviews,
+ * filter them by star rating or by Verified Buyer and show more of them,
+ * narrow a search or collection page by a value or a price range of its
+ * "Filters" panel, add a product to the cart, apply or have a Discount code
+ * turned down at checkout, place an order, and open that order's thank-you
+ * page, the account order history and an account order page. Each step
+ * drives one Playwright page, never throws, and reports what it observed so
+ * the callers can record it.
  *
- * Forms are submitted with `requestSubmit()` and links followed with a DOM
- * `click()` rather than a pointer click, so consent or newsletter popups
- * layered over the page cannot intercept them.
+ * Forms are submitted with `requestSubmit()`, links are followed and boxes
+ * are checked through the DOM, rather than with a pointer click, so consent
+ * or newsletter popups layered over the page cannot intercept them.
  */
 
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -737,6 +737,75 @@ export async function showMoreReviews(
   });
 }
 
+/**
+ * Open product page `path` and follow the bar of `rating` stars (1 to 5) in
+ * the "Rating histogram"; ok when the page reloads with Reviews that all
+ * have that star rating. `path` may hold a query.
+ */
+export async function filterReviewsByRating(
+  page: Page,
+  baseUrl: string,
+  path: string,
+  rating: number,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const label = rating === 1 ? '1 star' : `${rating} stars`;
+    const bar = page
+      .getByRole('list', { name: 'Rating histogram', exact: true })
+      .getByRole('link', { name: new RegExp(`^${label}\\b`) });
+    if ((await bar.count()) === 0) {
+      return { ok: false, detail: `no "${label}" link in the rating histogram on ${path}` };
+    }
+    const landed = await follow(page, bar.first());
+    const reviews = reviewsSection(page).locator('article');
+    const total = await reviews.count();
+    const matching = await reviews
+      .filter({ has: page.getByRole('img', { name: `${rating} out of 5 stars`, exact: true }) })
+      .count();
+    return {
+      ok: landed !== path && total > 0 && matching === total,
+      detail: `the "${label}" bar landed on ${landed} with ${total} Reviews, ${matching} of them rated ${rating}`,
+      url: landed,
+    };
+  });
+}
+
+/**
+ * Open product page `path`, check "Verified Buyers only" in the Reviews
+ * section and submit its form; ok when the page reloads with the box
+ * checked and Reviews that all have the "Verified Buyer" badge. `path` may
+ * hold a query.
+ */
+export async function showVerifiedReviews(
+  page: Page,
+  baseUrl: string,
+  path: string,
+): Promise<StepOutcome> {
+  return attempt(async () => {
+    await open(page, `${baseUrl}${path}`);
+    const box = reviewsSection(page).getByLabel('Verified Buyers only', { exact: true });
+    if ((await box.count()) === 0) {
+      return { ok: false, detail: `no Reviews "Verified Buyers only" box on ${path}` };
+    }
+    await box.evaluate((element) => {
+      (element as unknown as { checked: boolean }).checked = true;
+    });
+    const landed = await submit(page, box.locator('xpath=ancestor::form'));
+    const checked = await box.isChecked();
+    const reviews = reviewsSection(page).locator('article');
+    const total = await reviews.count();
+    const verified = await reviews
+      .filter({ has: page.getByText('Verified Buyer', { exact: true }) })
+      .count();
+    return {
+      ok: landed !== path && checked && total > 0 && verified === total,
+      detail: `"Verified Buyers only" landed on ${landed} with the box ${checked ? 'checked' : 'clear'} and ${total} Reviews, ${verified} of them from Verified Buyers`,
+      url: landed,
+    };
+  });
+}
+
 /** The product page's "Reviews" section. */
 function reviewsSection(page: Page): Locator {
   return page.getByRole('region', { name: 'Reviews', exact: true });
@@ -919,11 +988,9 @@ async function open(page: Page, url: string): Promise<void> {
 
 /** Submit `form` and wait for the URL to change; resolves with the resulting path. */
 async function submit(page: Page, form: Locator): Promise<string> {
-  const before = pathOf(page.url());
-  await form.evaluate((element) =>
-    (element as unknown as { requestSubmit(): void }).requestSubmit(),
+  return navigateBy(page, () =>
+    form.evaluate((element) => (element as unknown as { requestSubmit(): void }).requestSubmit()),
   );
-  return landing(page, before);
 }
 
 /**
@@ -931,13 +998,15 @@ async function submit(page: Page, form: Locator): Promise<string> {
  * intercept, and wait for the URL to change; resolves with the resulting path.
  */
 async function follow(page: Page, link: Locator): Promise<string> {
-  const before = pathOf(page.url());
-  await link.evaluate((element) => (element as unknown as { click(): void }).click());
-  return landing(page, before);
+  return navigateBy(page, () =>
+    link.evaluate((element) => (element as unknown as { click(): void }).click()),
+  );
 }
 
-/** Wait for the URL to leave path `before` and the page to load; resolves with the new path. */
-async function landing(page: Page, before: string): Promise<string> {
+/** Run `act` and wait for the URL to change; resolves with the resulting path. */
+async function navigateBy(page: Page, act: () => Promise<void>): Promise<string> {
+  const before = pathOf(page.url());
+  await act();
   await page
     .waitForURL((url) => url.pathname + url.search !== before, { timeout: SUBMIT_TIMEOUT_MS })
     .catch(() => undefined);

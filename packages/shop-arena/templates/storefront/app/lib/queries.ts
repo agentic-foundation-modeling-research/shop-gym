@@ -327,7 +327,13 @@ export const COLLECTION_QUERY = `#graphql
 `;
 
 export const PRODUCT_QUERY = `#graphql
-  query Product($handle: String!, $reviewsFirst: Int!, $reviewsSortKey: ReviewSortKeys!) {
+  query Product(
+    $handle: String!
+    $reviewsFirst: Int!
+    $reviewsSortKey: ReviewSortKeys!
+    $reviewsRating: Int
+    $reviewsVerifiedBuyer: Boolean
+  ) {
     product(handle: $handle) {
       ...ProductCardFields
       description
@@ -352,7 +358,16 @@ export const PRODUCT_QUERY = `#graphql
       ratingCount: metafield(namespace: "reviews", key: "rating_count") {
         value
       }
-      reviews(first: $reviewsFirst, sortKey: $reviewsSortKey) {
+      ratingHistogram {
+        rating
+        count
+      }
+      reviews(
+        first: $reviewsFirst
+        sortKey: $reviewsSortKey
+        rating: $reviewsRating
+        verifiedBuyer: $reviewsVerifiedBuyer
+      ) {
         nodes {
           id
           rating
