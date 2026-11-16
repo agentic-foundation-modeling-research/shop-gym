@@ -33,6 +33,7 @@ shop-gym/
 │   ├── shop-arena/             # @shop-gym/shop-arena - explore, gen, templates/storefront
 │   ├── shop-guru/              # @shop-gym/shop-guru - benchmark build / explore / solve / eval
 │   ├── reports/                # @shop-gym/reports - review reports site (HTML pages + server)
+│   ├── shop/                   # storefront code of generated shops (not workspace packages)
 │   └── cli/                    # @shop-gym/cli - the `shopgym` binary
 ├── docs/
 │   ├── adr/                    # architecture decision records (`NNNN-slug.md`)

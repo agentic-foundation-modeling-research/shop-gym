@@ -1,0 +1,34 @@
+{
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    ".react-router/types/**/*",
+    "react-router.config.ts",
+    "vite.config.ts"
+  ],
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "types": ["node", "react-router", "vite/client"],
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "allowJs": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "rootDirs": [".", "./.react-router/types"],
+    "verbatimModuleSyntax": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./app/*"]
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "shop-gym-react-vite-template",
+  "private": true,
+  "sideEffects": false,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "react-router typegen && react-router build",
+    "start": "NODE_ENV=production node server.mjs",
+    "typecheck": "react-router typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-router/express": "7.12.0",
+    "@react-router/node": "7.12.0",
+    "compression": "^1.7.4",
+    "express": "^4.21.0",
+    "isbot": "^5.1.22",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router": "7.12.0",
+    "react-router-dom": "7.12.0"
+  },
+  "devDependencies": {
+    "@react-router/dev": "7.12.0",
+    "@types/compression": "^1.8.1",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.7",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "typescript": "^5.9.2",
+    "vite": "^6.2.4",
+    "vite-tsconfig-paths": "^4.3.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
