@@ -21,6 +21,7 @@ The repository is a pnpm mono-repo of TypeScript packages:
 | [`packages/shop-arena`](packages/shop-arena) | **ShopArena** - storefront exploration (`explore`), SandboxShop generation (`gen`), and the storefront template under `templates/storefront`. |
 | [`packages/shop-guru`](packages/shop-guru) | **ShopGuru** - benchmark pipeline: seed and explored tasks, `AgentUnderTest` episodes, graders, `aggregate.json`. |
 | [`packages/reports`](packages/reports) | **Reports** - local website for the HTML reports we review with teammates: an index, one shared style, and a small server. |
+| [`packages/shop`](packages/shop) | **Shops** - storefront code of generated SandboxShops, kept for review. Not workspace packages: no data, no backend, and the root scripts do not build or check them. |
 | [`packages/cli`](packages/cli) | **CLI** - the `shopgym` binary: `explore`, `gen`, `host`, `guru`, `trace`, `report`, `doctor`. |
 
 A typical loop:
